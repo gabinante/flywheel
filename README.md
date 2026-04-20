@@ -23,10 +23,10 @@ You need **Docker** with the **Compose v2 plugin**, and a [GitHub OAuth app](htt
 **Option A — setup script** (creates `.env`, asks for secrets when possible, starts the stack):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gabinante/flywheel/main/scripts/warrant-docker-setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/gabinante/flywheel/main/scripts/flywheel-docker-setup.sh | bash
 ```
 
-That clones into `$HOME/warrant` when you run it from `curl`. If you already have the repo: `./scripts/warrant-docker-setup.sh` from the project root (symlinks are fine).
+That clones into `$HOME/flywheel` when you run it from `curl`. If you already have the repo: `./scripts/flywheel-docker-setup.sh` from the project root (symlinks are fine).
 
 Script flags: `--ghcr` (use the published image instead of building), `--no-build`. In CI (no terminal), it generates `JWT_SECRET` and leaves GitHub OAuth blank.
 
@@ -63,8 +63,8 @@ Everything lives in `.env.example` with comments. The usual suspects: `PORT`, `D
 ## API surface
 
 - **REST** — [api/openapi.yaml](api/openapi.yaml); `make generate` after edits. Errors: [docs/structured-errors.md](docs/structured-errors.md).
-- **MCP** — [docs/cursor-mcp.md](docs/cursor-mcp.md), [docs/interacting.md](docs/interacting.md); resource `warrant://docs/agent-guide` for in-app help.
-- **Git notes** — [docs/git-notes.md](docs/git-notes.md), [docs/git-integration-design.md](docs/git-integration-design.md). Builds: `make build-warrant-git` → `./warrant-git`, `make build-warrant-mcp` → `./warrant-mcp`.
+- **MCP** — [docs/cursor-mcp.md](docs/cursor-mcp.md), [docs/interacting.md](docs/interacting.md); resource `flywheel://docs/agent-guide` for in-app help.
+- **Git notes** — [docs/git-notes.md](docs/git-notes.md), [docs/git-integration-design.md](docs/git-integration-design.md). Builds: `make build-flywheel-git` → `./flywheel-git`, `make build-flywheel-mcp` → `./flywheel-mcp`.
 
 ## How this project was built
 

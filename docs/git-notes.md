@@ -49,6 +49,6 @@ Example:
 
 ## How to use
 
-- **CLI**: `warrant-git note add|show|log|diff`, `warrant-git sync` — see `warrant-git help`.
-- **MCP**: `warrant_add_git_note`, `warrant_show_git_notes`, `warrant_log_git_notes`, `warrant_diff_git_notes`, `warrant_sync_git_notes`.
+- **CLI**: `flywheel-git note add|show|log|diff`, `flywheel-git sync` — see `flywheel-git help`.
+- **MCP**: `flywheel_add_git_note`, `flywheel_show_git_notes`, `flywheel_log_git_notes`, `flywheel_diff_git_notes`, `flywheel_sync_git_notes`.
 - **REST**: `GET /orgs/{orgID}/projects/{projectID}/git-notes/commits/{commitSha}?repo_path=...`, `GET .../git-notes/log?repo_path=...&limit=20&type=decision`.

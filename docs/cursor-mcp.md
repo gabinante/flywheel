@@ -68,13 +68,13 @@ Create **`.cursor/mcp.json`** (or use global MCP config):
 ```json
 {
   "mcpServers": {
-    "warrant": {
+    "flywheel": {
       "command": "go",
       "args": ["run", "./cmd/mcp"],
       "env": {
         "DATABASE_URL": "postgres://warrant:warrant@localhost:5433/warrant?sslmode=disable",
         "REDIS_URL": "redis://localhost:6379/0",
-        "WARRANT_TOKEN": "PASTE_YOUR_JWT_HERE"
+        "FLYWHEEL_TOKEN": "PASTE_YOUR_JWT_HERE"
       }
     }
   }
@@ -83,16 +83,16 @@ Create **`.cursor/mcp.json`** (or use global MCP config):
 
 Replace `PASTE_YOUR_JWT_HERE` with the token from the sign-in success page.
 
-- **Working directory:** If the Warrant code is in a subfolder, set `"cwd": "warrant"` or use an absolute path in `args`.
-- With stdio, you must pass `agent_id` in tool calls for `claim_ticket` and `start_ticket` (or set `WARRANT_TOKEN` so the server can infer it if you add support in the stdio path).
+- **Working directory:** If the Flywheel code is in a subfolder, set `"cwd": "flywheel"` or use an absolute path in `args`.
+- With stdio, you must pass `agent_id` in tool calls for `claim_ticket` and `start_ticket` (or set `FLYWHEEL_TOKEN` so the server can infer it if you add support in the stdio path).
 
 ### Using a built binary
 
 ```bash
-cd /path/to/warrant && go build -o warrant-mcp ./cmd/mcp
+cd /path/to/flywheel && go build -o flywheel-mcp ./cmd/mcp
 ```
 
-Then in `mcp.json` use `"command": "/path/to/warrant/warrant-mcp"` with the same `env`.
+Then in `mcp.json` use `"command": "/path/to/flywheel/flywheel-mcp"` with the same `env`.
 
 ---
 
@@ -102,9 +102,9 @@ Then in `mcp.json` use `"command": "/path/to/warrant/warrant-mcp"` with the same
 |----------------|----------|-------------|
 | `DATABASE_URL` | Yes      | Same Postgres URL the REST server uses (e.g. port 5433 if using Docker). |
 | `REDIS_URL`    | Yes      | Same Redis URL the REST server uses. |
-| `WARRANT_TOKEN`| No*      | JWT from the sign-in page. Lets the MCP server know which agent is calling. |
+| `FLYWHEEL_TOKEN`| No*      | JWT from the sign-in page. Lets the MCP server know which agent is calling. |
 
-\* If you don’t set `WARRANT_TOKEN`, you must pass `agent_id` explicitly when calling tools that require it (e.g. `claim_ticket`, `start_ticket`).
+\* If you don’t set `FLYWHEEL_TOKEN`, you must pass `agent_id` explicitly when calling tools that require it (e.g. `claim_ticket`, `start_ticket`).
 
 ---
 

@@ -43,13 +43,13 @@ Cursor will use PKCE and a redirect URI (e.g. `http://127.0.0.1:PORT/callback` o
 
 ## Cursor config after this is built
 
-User adds the server by **URL** (no `command`, no `WARRANT_TOKEN`):
+User adds the server by **URL** (no `command`, no `FLYWHEEL_TOKEN`):
 
 ```json
 {
   "mcpServers": {
-    "warrant": {
-      "url": "https://warrant.example.com/mcp"
+    "flywheel": {
+      "url": "https://flywheel.example.com/mcp"
     }
   }
 }

@@ -135,7 +135,7 @@ with env: `DATABASE_URL`, `REDIS_URL` (same as REST).
 
 3. **Sign in:** Open `GET /auth/github` in a browser (or redirect the user there). After authorizing on GitHub, you’re redirected back; the callback creates your user + agent and redirects to **`BASE_URL/`** with **`#token=<jwt>`** for the web UI (or your `AUTH_SUCCESS_REDIRECT_URL` with the same fragment). The **TUI** still uses `?token=...` on a localhost `redirect_uri`; **MCP** uses the OAuth `code` exchange—those flows are unchanged.
 
-4. **Use the token:** For **MCP over URL**, Cursor uses the token automatically after you complete the in-browser sign-in. For **MCP over stdio**, set the Bearer token (e.g. `WARRANT_TOKEN` env) to that JWT. Same token works for REST: `Authorization: Bearer <token>`.
+4. **Use the token:** For **MCP over URL**, Cursor uses the token automatically after you complete the in-browser sign-in. For **MCP over stdio**, set the Bearer token (e.g. `FLYWHEEL_TOKEN` env) to that JWT. Same token works for REST: `Authorization: Bearer <token>`.
 
 **API keys** still work for headless/CI: create an agent via `POST /agents` (no OAuth), get an `api_key`, and use `X-API-Key` header. For humans and IDE agents, use GitHub OAuth and the JWT.
 
