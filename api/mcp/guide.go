@@ -1,13 +1,13 @@
 package mcp
 
 // AgentGuideURI is the URI for the MCP resource that describes the typical agent flow.
-const AgentGuideURI = "warrant://docs/agent-guide"
+const AgentGuideURI = "flywheel://docs/agent-guide"
 
 // AgentGuideContent is the markdown content for the agent guide resource.
 // Uses (param) instead of `param` so the string can be a single raw literal.
-const AgentGuideContent = `# Warrant MCP – Agent guide
+const AgentGuideContent = `# Flywheel MCP – Agent guide
 
-Use this flow when working on tickets via Warrant. Your identity is tied to your OAuth login; you only see projects in organizations you belong to.
+Use this flow when working on tickets via Flywheel. Your identity is tied to your OAuth login; you only see projects in organizations you belong to.
 
 **Work streams + Git:** If the project has **repo_url** and you use **work streams**, you must call **update_work_stream** with **branch** after you create or check out the Git branch. **update_work_stream_plan** only changes Markdown—it does **not** set the branch. Omitting **branch** is a common mistake; **claim_ticket** / **get_ticket** will keep returning **create_or_set_branch** until you fix it.
 
@@ -93,11 +93,11 @@ Without these steps, **get_trace** returns an empty list and reviewers cannot se
 
 ## Git notes after submit
 
-When you complete work and call **submit_ticket**, if the user's repo is the project repo (or you have a repo_path), add a **git note** so the commit records what was done. Use **warrant_add_git_note** with type **decision**, message = one-line summary of the work, and optional ticket_id/project_id. If the server cannot access the repo, the tool returns commands to run **warrant-git note add** locally—surface those to the user or run them in the workspace. That way refs/notes/warrant/decision (and optionally trace/intent) stay in sync with completed work.
+When you complete work and call **submit_ticket**, if the user's repo is the project repo (or you have a repo_path), add a **git note** so the commit records what was done. Use **warrant_add_git_note** with type **decision**, message = one-line summary of the work, and optional ticket_id/project_id. If the server cannot access the repo, the tool returns commands to run **flywheel-git note add** locally—surface those to the user or run them in the workspace. That way refs/notes/flywheel/decision (and optionally trace/intent) stay in sync with completed work.
 
 ## Work streams and Git branches
 
-Work streams group tickets toward a goal. **Warrant does not create a Git branch for you.** When the project has **repo_url** (Git is opted in):
+Work streams group tickets toward a goal. **Flywheel does not create a Git branch for you.** When the project has **repo_url** (Git is opted in):
 
 **Checklist (agents often skip steps 2–3):**
 

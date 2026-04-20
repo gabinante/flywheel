@@ -66,19 +66,19 @@ func buildMCPConfig(serverURL, apiKey string) mcpConfig {
 	}
 	return mcpConfig{
 		MCPServers: map[string]mcpServerConfig{
-			"warrant": serverCfg,
+			"flywheel": serverCfg,
 		},
 	}
 }
 
 func buildTaskPrompt(ticketID, projectID string) string {
 	return fmt.Sprintf(
-		"Execute warrant ticket %s. "+
+		"Execute flywheel ticket %s. "+
 			"FIRST: call the claim_ticket MCP tool with project_id \"%s\". "+
 			"This returns ticket_id and lease_token — use these for all subsequent MCP calls. "+
 			"THEN: call start_ticket, do the implementation work (call log_step for each step), "+
 			"commit your changes to the current branch, and call submit_ticket with outputs. "+
-			"You MUST use the warrant MCP tools — do not skip any steps.",
+			"You MUST use the flywheel MCP tools — do not skip any steps.",
 		ticketID, projectID,
 	)
 }
@@ -87,7 +87,7 @@ func buildTaskPrompt(ticketID, projectID string) string {
 // It delegates agent-specific behavior (CLI flags, env vars) to the AgentDriver.
 type CLIWorker struct {
 	Driver AgentDriver // agent-specific behavior
-	APIKey string      // warrant API key for MCP authentication
+	APIKey string      // flywheel API key for MCP authentication
 }
 
 // Spawn starts an agent process with the given system prompt and MCP config.
@@ -96,7 +96,7 @@ func (w *CLIWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt
 	systemPrompt = w.Driver.FormatPrompt(systemPrompt)
 
 	// Write temporary MCP config file for this worker.
-	mcpCfgPath := filepath.Join(workDir, ".warrant-mcp-config.json")
+	mcpCfgPath := filepath.Join(workDir, ".flywheel-mcp-config.json")
 	cfgBytes, err := json.Marshal(buildMCPConfig(serverURL, w.APIKey))
 	if err != nil {
 		return nil, fmt.Errorf("marshal mcp config: %w", err)
@@ -134,11 +134,13 @@ func (w *CLIWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt
 	// For generic drivers, inject prompt info via environment.
 	if w.Driver.Name() == "generic" {
 		env = append(env,
-			"WARRANT_SYSTEM_PROMPT="+systemPrompt,
-			"WARRANT_TASK_MESSAGE="+taskMessage,
-			"WARRANT_MCP_CONFIG_PATH="+mcpCfgPath,
+			"FLYWHEEL_SYSTEM_PROMPT="+systemPrompt,
+			"FLYWHEEL_TASK_MESSAGE="+taskMessage,
+			"FLYWHEEL_MCP_CONFIG_PATH="+mcpCfgPath,
 		)
 	}
+
+	env = append(env, "CLAUDE_CODE_ENTRYPOINT=flywheel-dispatch")
 
 	cmd.Env = env
 
@@ -165,7 +167,7 @@ func (w *CLIWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt
 type DockerWorker struct {
 	Driver       AgentDriver // agent-specific behavior
 	Image        string      // Docker image (overrides driver's DockerImage if set)
-	APIKey       string      // warrant API key for MCP authentication
+	APIKey       string      // flywheel API key for MCP authentication
 	RepoDir      string      // host path to the git repository to mount
 	AnthropicKey string      // static API key for agent inside the container
 	Memory       string      // container memory limit (default: "4g")
@@ -186,11 +188,11 @@ func (w *DockerWorker) Spawn(ctx context.Context, ticketID, projectID, systemPro
 		image = w.Image
 	}
 	if image == "" {
-		image = "warrant-worker"
+		image = "flywheel-worker"
 	}
 
 	// Write MCP config and prompts to a temp dir on host.
-	tmpDir, err := os.MkdirTemp("", "warrant-worker-*")
+	tmpDir, err := os.MkdirTemp("", "flywheel-worker-*")
 	if err != nil {
 		return nil, fmt.Errorf("worker tmpdir: %w", err)
 	}
@@ -244,7 +246,7 @@ func (w *DockerWorker) Spawn(ctx context.Context, ticketID, projectID, systemPro
 	}
 
 	branch := "ticket/" + ticketID
-	containerName := "warrant-worker-" + sanitizeContainerName(ticketID)
+	containerName := "flywheel-worker-" + sanitizeContainerName(ticketID)
 
 	args := []string{
 		"run", "--rm",
@@ -282,13 +284,13 @@ func (w *DockerWorker) Spawn(ctx context.Context, ticketID, projectID, systemPro
 		args = append(args,
 			"--cap-add", "NET_ADMIN",
 			"--cap-add", "NET_RAW",
-			"-e", "WARRANT_FIREWALL=true",
+			"-e", "FLYWHEEL_FIREWALL=true",
 		)
 		allowedHosts := w.AllowedHosts
 		if allowedHosts == "" {
 			allowedHosts = "api.anthropic.com,registry.npmjs.org,github.com"
 		}
-		args = append(args, "-e", "WARRANT_ALLOWED_HOSTS="+allowedHosts)
+		args = append(args, "-e", "FLYWHEEL_ALLOWED_HOSTS="+allowedHosts)
 	}
 
 	// Image (must come after all -v/-e flags, before the command).

@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	oauthStatePrefix   = "warrant:oauth:state:"
-	oauthCodePrefix    = "warrant:oauth:code:"
-	oauthClientPrefix  = "warrant:oauth:client:"
+	oauthStatePrefix   = "flywheel:oauth:state:"
+	oauthCodePrefix    = "flywheel:oauth:code:"
+	oauthClientPrefix  = "flywheel:oauth:client:"
 	oauthTTL           = 5 * time.Minute
 	oauthClientTTL     = 365 * 24 * time.Hour // 1 year
 )

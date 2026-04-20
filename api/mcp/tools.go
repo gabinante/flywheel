@@ -323,8 +323,8 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"additionalProperties": false,
 	}}, wrap(reopenTicketHandler))
 
-	// Git notes (Warrant integration): if repo_path provided and server has access, run git notes; else return commands for warrant-git CLI.
-	mcp.AddTool(s, &mcp.Tool{Name: "warrant_add_git_note", Description: "Add a git note to a commit (refs/notes/warrant/decision|trace|intent). Params: message (required), type (decision|trace|intent, default decision), commit_sha (default HEAD), optional repo_path, ticket_id, project_id. If server has repo_path, adds note; else returns commands to run warrant-git note add locally.", InputSchema: map[string]any{
+	// Git notes (Flywheel integration): if repo_path provided and server has access, run git notes; else return commands for flywheel-git CLI.
+	mcp.AddTool(s, &mcp.Tool{Name: "warrant_add_git_note", Description: "Add a git note to a commit (refs/notes/flywheel/decision|trace|intent). Params: message (required), type (decision|trace|intent, default decision), commit_sha (default HEAD), optional repo_path, ticket_id, project_id. If server has repo_path, adds note; else returns commands to run flywheel-git note add locally.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"message":    map[string]any{"type": "string", "description": "Note message content"},
@@ -338,7 +338,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"required":             []string{"message"},
 		"additionalProperties": false,
 	}}, wrap(warrantAddGitNoteHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "warrant_show_git_notes", Description: "Show git note(s) for a commit. Params: commit_sha (default HEAD), optional repo_path, type (decision|trace|intent, or omit for all). Returns note body or commands for warrant-git note show.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "warrant_show_git_notes", Description: "Show git note(s) for a commit. Params: commit_sha (default HEAD), optional repo_path, type (decision|trace|intent, or omit for all). Returns note body or commands for flywheel-git note show.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"commit_sha": map[string]any{"type": "string", "description": "Commit SHA to show notes for (default: HEAD)"},
@@ -347,7 +347,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		},
 		"additionalProperties": false,
 	}}, wrap(warrantShowGitNotesHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "warrant_log_git_notes", Description: "Log commits with notes (last N). Params: limit (default 20), optional repo_path, type (default decision). Returns list of {commit_sha, ref, body} or commands for warrant-git note log.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "warrant_log_git_notes", Description: "Log commits with notes (last N). Params: limit (default 20), optional repo_path, type (default decision). Returns list of {commit_sha, ref, body} or commands for flywheel-git note log.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"limit":     map[string]any{"type": "integer", "description": "Number of entries to return (default: 20)", "minimum": 1},
@@ -356,7 +356,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		},
 		"additionalProperties": false,
 	}}, wrap(warrantLogGitNotesHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "warrant_diff_git_notes", Description: "Notes on commits in base..head. Params: base, head (required), optional repo_path, type (default decision). Returns entries or commands for warrant-git note diff.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "warrant_diff_git_notes", Description: "Notes on commits in base..head. Params: base, head (required), optional repo_path, type (default decision). Returns entries or commands for flywheel-git note diff.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"base":      map[string]any{"type": "string", "description": "Base commit SHA or ref"},
@@ -367,7 +367,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"required":             []string{"base", "head"},
 		"additionalProperties": false,
 	}}, wrap(warrantDiffGitNotesHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "warrant_sync_git_notes", Description: "Push/pull refs/notes/warrant/*. Params: optional repo_path, direction (push|pull|both). Usually returns commands to run warrant-git sync locally.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "warrant_sync_git_notes", Description: "Push/pull refs/notes/flywheel/*. Params: optional repo_path, direction (push|pull|both). Usually returns commands to run flywheel-git sync locally.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"repo_path": map[string]any{"type": "string", "description": "Path to git repo (optional)"},
@@ -1678,14 +1678,14 @@ func warrantAddGitNoteHandler(b *Backend, ctx context.Context, args map[string]a
 		}
 		return jsonResult(map[string]any{"ok": true, "message": "Note added."})
 	}
-	return jsonResult(map[string]any{"ok": true, "commands": warrantGitNoteAddCommands(noteType, message, commitSHA), "hint": "Run these in your repo (or install warrant-git and run the first)."})
+	return jsonResult(map[string]any{"ok": true, "commands": warrantGitNoteAddCommands(noteType, message, commitSHA), "hint": "Run these in your repo (or install flywheel-git and run the first)."})
 }
 
 func warrantGitNoteAddCommands(noteType, message, commitSHA string) []string {
 	esc := strings.ReplaceAll(message, `\`, `\\`)
 	esc = strings.ReplaceAll(esc, `"`, `\"`)
 	return []string{
-		fmt.Sprintf(`warrant-git note add -t %s -m %q -c %s`, noteType, esc, commitSHA),
+		fmt.Sprintf(`flywheel-git note add -t %s -m %q -c %s`, noteType, esc, commitSHA),
 	}
 }
 
@@ -1722,7 +1722,7 @@ func warrantShowGitNotesHandler(b *Backend, ctx context.Context, args map[string
 		out["notes"] = notes
 		return jsonResult(out)
 	}
-	cmd := fmt.Sprintf("warrant-git note show -c %s", commitSHA)
+	cmd := fmt.Sprintf("flywheel-git note show -c %s", commitSHA)
 	if noteType != "" {
 		cmd += " -t " + noteType
 	}
@@ -1749,7 +1749,7 @@ func warrantLogGitNotesHandler(b *Backend, ctx context.Context, args map[string]
 		}
 		return jsonResult(map[string]any{"entries": list})
 	}
-	return jsonResult(map[string]any{"commands": []string{fmt.Sprintf("warrant-git note log -t %s -n %d", noteType, limit)}})
+	return jsonResult(map[string]any{"commands": []string{fmt.Sprintf("flywheel-git note log -t %s -n %d", noteType, limit)}})
 }
 
 func warrantDiffGitNotesHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
@@ -1779,13 +1779,13 @@ func warrantDiffGitNotesHandler(b *Backend, ctx context.Context, args map[string
 		}
 		return jsonResult(map[string]any{"entries": list})
 	}
-	return jsonResult(map[string]any{"commands": []string{fmt.Sprintf("warrant-git note diff -t %s %s %s", noteType, base, head)}})
+	return jsonResult(map[string]any{"commands": []string{fmt.Sprintf("flywheel-git note diff -t %s %s %s", noteType, base, head)}})
 }
 
 func warrantSyncGitNotesHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
 	direction := getString(args, "direction", "both")
 	return jsonResult(map[string]any{
-		"commands": []string{fmt.Sprintf("warrant-git sync %s", direction)},
-		"hint":     "Run in your repo to push/pull refs/notes/warrant/*.",
+		"commands": []string{fmt.Sprintf("flywheel-git sync %s", direction)},
+		"hint":     "Run in your repo to push/pull refs/notes/flywheel/*.",
 	})
 }

@@ -1,4 +1,4 @@
-.PHONY: run run-mcp migrate migrate-down test generate docker-up docker-down build-warrant-git build-warrant-mcp web-build varlock-validate
+.PHONY: run run-mcp migrate migrate-down test generate docker-up docker-down build-flywheel-git build-flywheel-mcp web-build varlock-validate
 
 VARLOCK := ./scripts/varlock
 
@@ -22,11 +22,11 @@ varlock-validate:
 migrate:
 	migrate -path db/migrations -database "$${DATABASE_URL:-postgres://warrant:warrant@localhost:5433/warrant?sslmode=disable}" up
 
-build-warrant-git:
-	go build -o warrant-git ./cmd/warrant-git
+build-flywheel-git:
+	go build -o flywheel-git ./cmd/flywheel-git
 
-build-warrant-mcp:
-	go build -o warrant-mcp ./cmd/mcp
+build-flywheel-mcp:
+	go build -o flywheel-mcp ./cmd/mcp
 
 migrate-down:
 	migrate -path db/migrations -database "$${DATABASE_URL:-postgres://warrant:warrant@localhost:5433/warrant?sslmode=disable}" down 1

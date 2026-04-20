@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Set up Warrant with Docker Compose: clone if needed, configure .env, then start the stack.
+# Set up Flywheel with Docker Compose: clone if needed, configure .env, then start the stack.
 #
 # curl|bash trusts the fetched script and TLS to GitHub — same trust model as cloning the repo.
-#   curl -fsSL https://raw.githubusercontent.com/gabinante/flywheel/main/scripts/warrant-docker-setup.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/gabinante/flywheel/main/scripts/flywheel-docker-setup.sh | bash
 
 set -euo pipefail
 
@@ -48,15 +48,15 @@ random_hex_secret() {
 
 usage() {
   cat <<'EOF'
-Usage: warrant-docker-setup.sh [--ghcr] [--no-build]
+Usage: flywheel-docker-setup.sh [--ghcr] [--no-build]
   --ghcr      Use pre-built image (docker-compose.ghcr.yml).
   --no-build  Skip image rebuild when building from source.
   -h, --help  Show this help.
 
-curl | bash:  curl -fsSL .../warrant-docker-setup.sh | bash
+curl | bash:  curl -fsSL .../flywheel-docker-setup.sh | bash
   Options:     ... | bash -s -- --ghcr
 
-Advanced: WARRANT_REPO, WARRANT_CLONE_DIR, WARRANT_REF, WARRANT_GIT_URL (see script source).
+Advanced: FLYWHEEL_REPO, FLYWHEEL_CLONE_DIR, FLYWHEEL_REF, FLYWHEEL_GIT_URL (see script source).
 EOF
 }
 
@@ -72,13 +72,13 @@ resolve_script_dir() {
 }
 
 materialize_repo() {
-  local clone_dir="${WARRANT_CLONE_DIR:-$HOME/warrant}"
-  local ref="${WARRANT_REF:-main}"
-  local url="${WARRANT_GIT_URL:-https://github.com/gabinante/flywheel.git}"
+  local clone_dir="${FLYWHEEL_CLONE_DIR:-$HOME/flywheel}"
+  local ref="${FLYWHEEL_REF:-main}"
+  local url="${FLYWHEEL_GIT_URL:-https://github.com/gabinante/flywheel.git}"
 
-  validate_path_safe "$clone_dir" WARRANT_CLONE_DIR
+  validate_path_safe "$clone_dir" FLYWHEEL_CLONE_DIR
   if ! validate_ref "$ref"; then
-    echo "error: invalid WARRANT_REF (use branch/tag characters only, no ..): $ref" >&2
+    echo "error: invalid FLYWHEEL_REF (use branch/tag characters only, no ..): $ref" >&2
     exit 1
   fi
 
@@ -88,24 +88,24 @@ materialize_repo() {
   fi
 
   if [[ -e "$clone_dir" ]]; then
-    echo "error: $clone_dir exists but is not a Warrant tree. Remove it or set WARRANT_REPO." >&2
+    echo "error: $clone_dir exists but is not a Flywheel tree. Remove it or set FLYWHEEL_REPO." >&2
     exit 1
   fi
 
   if command -v git >/dev/null 2>&1; then
-    echo "Cloning Warrant into $clone_dir ..."
+    echo "Cloning Flywheel into $clone_dir ..."
     git clone --depth 1 --branch "$ref" -- "$url" "$clone_dir"
   else
-    echo "Downloading Warrant into $clone_dir (no git in PATH) ..."
+    echo "Downloading Flywheel into $clone_dir (no git in PATH) ..."
     local parent tmp extracted
     parent="$(dirname "$clone_dir")"
     mkdir -p "$parent"
     tmp="$(mktemp -d)"
     curl -fsSL "https://github.com/gabinante/flywheel/archive/refs/heads/${ref}.tar.gz" | tar xz -C "$tmp"
-    extracted="$(find "$tmp" -maxdepth 1 -type d -name 'warrant-*' | head -n 1)"
+    extracted="$(find "$tmp" -maxdepth 1 -type d -name 'flywheel-*' | head -n 1)"
     if [[ -z "$extracted" || ! -f "$extracted/.env.example" ]]; then
       rm -rf "$tmp"
-      echo "error: could not unpack Warrant (install git, or use WARRANT_REF=main)" >&2
+      echo "error: could not unpack Flywheel (install git, or use FLYWHEEL_REF=main)" >&2
       exit 1
     fi
     mv "$extracted" "$clone_dir"
@@ -116,9 +116,9 @@ materialize_repo() {
 }
 
 resolve_repo_root() {
-  if [[ -n "${WARRANT_REPO:-}" ]]; then
-    validate_path_safe "$WARRANT_REPO" WARRANT_REPO
-    cd -P "$WARRANT_REPO" && pwd
+  if [[ -n "${FLYWHEEL_REPO:-}" ]]; then
+    validate_path_safe "$FLYWHEEL_REPO" FLYWHEEL_REPO
+    cd -P "$FLYWHEEL_REPO" && pwd
     return
   fi
   if [[ -n "${BASH_SOURCE[0]:-}" ]]; then

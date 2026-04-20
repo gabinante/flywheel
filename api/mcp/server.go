@@ -9,7 +9,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// NewServer creates an MCP server with Warrant tools and resources using the official go-sdk.
+// NewServer creates an MCP server with Flywheel tools and resources using the official go-sdk.
 // Returns the server and an HTTP handler for Streamable HTTP. The handler can be wrapped
 // with MCPHTTPHandler for auth.
 func NewServer(b *Backend) (*mcp.Server, error) {
@@ -17,7 +17,7 @@ func NewServer(b *Backend) (*mcp.Server, error) {
 		return nil, fmt.Errorf("mcp: backend is required")
 	}
 	server := mcp.NewServer(&mcp.Implementation{
-		Name:    "Warrant",
+		Name:    "Flywheel",
 		Version: "0.1.0",
 	}, nil)
 	RegisterTools(server, b)
@@ -45,8 +45,8 @@ func NewSSEHandler(server *mcp.Server) http.Handler {
 func registerResources(s *mcp.Server) {
 	s.AddResource(&mcp.Resource{
 		URI:         AgentGuideURI,
-		Name:        "Warrant agent guide",
-		Description: "Typical agent flow, tool summary, and ticket lifecycle for working with Warrant via MCP.",
+		Name:        "Flywheel agent guide",
+		Description: "Typical agent flow, tool summary, and ticket lifecycle for working with Flywheel via MCP.",
 		MIMEType:    "text/markdown",
 	}, func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 		return &mcp.ReadResourceResult{

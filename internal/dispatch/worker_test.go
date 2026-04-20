@@ -11,9 +11,9 @@ func TestBuildMCPConfigWithAPIKey(t *testing.T) {
 		t.Fatalf("expected 1 MCP server, got %d", len(cfg.MCPServers))
 	}
 
-	srv, ok := cfg.MCPServers["warrant"]
+	srv, ok := cfg.MCPServers["flywheel"]
 	if !ok {
-		t.Fatal("missing 'warrant' MCP server")
+		t.Fatal("missing 'flywheel' MCP server")
 	}
 
 	if srv.Type != "sse" {
@@ -33,7 +33,7 @@ func TestBuildMCPConfigWithAPIKey(t *testing.T) {
 func TestBuildMCPConfigWithoutAPIKey(t *testing.T) {
 	cfg := buildMCPConfig("http://localhost:9090", "")
 
-	srv := cfg.MCPServers["warrant"]
+	srv := cfg.MCPServers["flywheel"]
 	if srv.URL != "http://localhost:9090/sse" {
 		t.Errorf("expected URL 'http://localhost:9090/sse', got %q", srv.URL)
 	}
@@ -50,13 +50,13 @@ func TestBuildMCPConfigURLSuffix(t *testing.T) {
 	}{
 		{"plain http", "http://example.com", "http://example.com/sse"},
 		{"with port", "http://localhost:8083", "http://localhost:8083/sse"},
-		{"https", "https://api.warrant.dev", "https://api.warrant.dev/sse"},
+		{"https", "https://api.flywheel.dev", "https://api.flywheel.dev/sse"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := buildMCPConfig(tt.serverURL, "")
-			if cfg.MCPServers["warrant"].URL != tt.wantURL {
-				t.Errorf("got %q, want %q", cfg.MCPServers["warrant"].URL, tt.wantURL)
+			if cfg.MCPServers["flywheel"].URL != tt.wantURL {
+				t.Errorf("got %q, want %q", cfg.MCPServers["flywheel"].URL, tt.wantURL)
 			}
 		})
 	}
