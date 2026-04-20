@@ -41,7 +41,7 @@ srv.SendNotificationToAllClients("flywheel/need_human", map[string]interface{}{
 **Spec:** [MCP Elicitation](https://modelcontextprotocol.io/docs/concepts/elicitation) (form mode: JSON schema; URL mode: redirect for sensitive flows).  
 **MCP-Go:** Client capabilities can include elicitation; servers can check and send elicitation requests (see [PR #491](https://github.com/mark3labs/mcp-go/pull/491)).
 
-**Use in Flywheel:** When a tool is blocked (e.g. “ticket X is executing, I don’t have the lease”), the server sends an elicitation request: “Please release the lease on ticket `agent-reliability-2`. When done, confirm below.” with a response schema e.g. `{ "confirmed": boolean, "notes": string (optional) }`. The client shows this; the user confirms or declines; the tool receives the result and continues (e.g. try `claim_ticket` again) or stops.
+**Use in Flywheel:** When a tool is blocked (e.g. “ticket X is executing, I don’t have the lease”), the server sends an elicitation request: “Please release the lease on ticket `agent-reliability-2`. When done, confirm below.” with a response schema e.g. `{ “confirmed”: boolean, “notes”: string (optional) }`. The client shows this; the user confirms or declines; the tool receives the result and continues (e.g. try `claim_ticket` again) or stops.
 
 **Pros:** Purpose-built for “server asks user for input”; structured response; accept/decline/cancel. **Cons:** Requires client to support elicitation and Wire/server support in mcp-go if not already present.
 
