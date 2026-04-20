@@ -347,6 +347,16 @@ func (s *Service) ListUnresolvedAttributions(ctx context.Context, projectID stri
 	return s.store.ListUnresolvedAttributions(ctx, projectID)
 }
 
+// ListSignals returns recent signals for a project.
+func (s *Service) ListSignals(ctx context.Context, projectID string, since time.Time, limit int) ([]*Signal, error) {
+	return s.store.ListSignals(ctx, projectID, since, limit)
+}
+
+// GetSource returns a registered signal source by name, or nil if not found.
+func (s *Service) GetSource(name string) SignalSource {
+	return s.sources.Get(name)
+}
+
 // severityMeetsThreshold returns true if the signal severity is at or above the threshold.
 func severityMeetsThreshold(signal, threshold Severity) bool {
 	return severityRank(signal) >= severityRank(threshold)

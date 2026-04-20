@@ -22,6 +22,7 @@ import (
 	"github.com/gabinante/flywheel/internal/mirror"
 	"github.com/gabinante/flywheel/internal/mirror/jira"
 	"github.com/gabinante/flywheel/internal/mirror/linear"
+	"github.com/gabinante/flywheel/internal/observation"
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/plan"
 	"github.com/gabinante/flywheel/internal/project"
@@ -126,6 +127,10 @@ func main() {
 		log.Println("mirror: service started")
 	}
 
+	// Observation service for production signal tracking and attribution.
+	obsStore := observation.NewPostgresStore(pool)
+	obsSvc := observation.NewService(obsStore, bus)
+
 	strictServer := &rest.StrictServer{
 		OrgSvc:        orgSvc,
 		ProjectSvc:    projectSvc,
@@ -220,16 +225,17 @@ func main() {
 	}
 
 	router := rest.NewRouter(rest.RouterConfig{
-		StrictServer:    strictServer,
-		AuthMiddleware:  authMiddleware,
-		AuthHandler:     authHandler,
-		OAuthHandler:    oauthHandler,
-		MCPHandler:      mcpHandler,
-		MCPSSEHandler:   mcpSSEHandler,
-		AgentsHandler:   &rest.AgentsHandler{AgentSvc: agentSvc},
-		DispatchHandler: &rest.DispatchHandler{Dispatcher: dispatcher},
-		PlansHandler:    &rest.PlansHandler{PlanSvc: planSvc},
-		WebDist:         cfg.Server.WebDist,
+		StrictServer:       strictServer,
+		AuthMiddleware:     authMiddleware,
+		AuthHandler:        authHandler,
+		OAuthHandler:       oauthHandler,
+		MCPHandler:         mcpHandler,
+		MCPSSEHandler:      mcpSSEHandler,
+		AgentsHandler:      &rest.AgentsHandler{AgentSvc: agentSvc},
+		DispatchHandler:    &rest.DispatchHandler{Dispatcher: dispatcher},
+		PlansHandler:       &rest.PlansHandler{PlanSvc: planSvc},
+		ObservationHandler: &rest.ObservationHandler{Svc: obsSvc},
+		WebDist:            cfg.Server.WebDist,
 	})
 
 	srv := &http.Server{
