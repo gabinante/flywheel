@@ -322,10 +322,19 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 	// Run first-run wizard if no data exists yet.
 	firstRun := bootstrap.IsFirstRun(dataDir)
 	if firstRun {
-		log.Println("first run detected — launching setup wizard")
-		_, wizardErr := bootstrap.RunWizard(ctx, orgSvc, projectSvc, agentSvc)
-		if wizardErr != nil {
-			log.Fatalf("wizard: %v", wizardErr)
+		if bootstrap.IsTTY() {
+			log.Println("first run detected — launching interactive setup wizard")
+			_, wizardErr := bootstrap.RunWizard(ctx, orgSvc, projectSvc, agentSvc)
+			if wizardErr != nil {
+				log.Fatalf("wizard: %v", wizardErr)
+			}
+		} else {
+			log.Println("first run detected — running headless bootstrap (no TTY)")
+			headlessCfg := bootstrap.HeadlessConfigFromEnv()
+			_, wizardErr := bootstrap.RunHeadless(ctx, headlessCfg, orgSvc, projectSvc, agentSvc)
+			if wizardErr != nil {
+				log.Fatalf("headless bootstrap: %v", wizardErr)
+			}
 		}
 	}
 
