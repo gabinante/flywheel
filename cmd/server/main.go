@@ -158,17 +158,6 @@ func main() {
 		}
 	}
 
-	router := rest.NewRouter(rest.RouterConfig{
-		StrictServer:   strictServer,
-		AuthMiddleware: authMiddleware,
-		AuthHandler:    authHandler,
-		OAuthHandler:   oauthHandler,
-		MCPHandler:     mcpHandler,
-		MCPSSEHandler:  mcpSSEHandler,
-		AgentsHandler:  &rest.AgentsHandler{AgentSvc: agentSvc},
-		WebDist:        cfg.Server.WebDist,
-	})
-
 	// Start dispatcher if enabled.
 	var dispatcher *dispatch.Dispatcher
 	if cfg.Dispatch.Enabled {
@@ -193,6 +182,18 @@ func main() {
 		dispatcher.SetLeaseReleaser(queueSvc)
 		dispatcher.Start(ctx)
 	}
+
+	router := rest.NewRouter(rest.RouterConfig{
+		StrictServer:    strictServer,
+		AuthMiddleware:  authMiddleware,
+		AuthHandler:     authHandler,
+		OAuthHandler:    oauthHandler,
+		MCPHandler:      mcpHandler,
+		MCPSSEHandler:   mcpSSEHandler,
+		AgentsHandler:   &rest.AgentsHandler{AgentSvc: agentSvc},
+		DispatchHandler: &rest.DispatchHandler{Dispatcher: dispatcher},
+		WebDist:         cfg.Server.WebDist,
+	})
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Server.Port,
