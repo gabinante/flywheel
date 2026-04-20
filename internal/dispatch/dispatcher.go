@@ -41,6 +41,10 @@ type Config struct {
 	APIKey       string // warrant API key for worker MCP authentication
 	ProjectID    string // only dispatch tickets for this project (empty = all)
 	AutoApprove  bool   // auto-approve tickets when acceptance tests pass
+	// Agent driver selection.
+	AgentDriver  string // driver name: "claude" (default), "generic", or custom
+	AgentCLIPath string // override CLI path for the agent binary
+	AgentArgs    []string // extra static arguments for the agent command
 	// Docker isolation settings.
 	DockerEnabled  bool
 	DockerImage    string
@@ -67,9 +71,28 @@ type Dispatcher struct {
 
 // New creates a dispatcher that subscribes to the event bus.
 func New(cfg Config, bus events.Bus, tickets TicketGetter, projects ProjectGetter) *Dispatcher {
+	// Resolve the agent driver.
+	driverName := cfg.AgentDriver
+	if driverName == "" {
+		driverName = "claude"
+	}
+	cliPath := cfg.AgentCLIPath
+	if cliPath == "" {
+		cliPath = cfg.ClaudePath // backward compat
+	}
+	driver, err := LookupDriver(driverName, DriverConfig{
+		CLIPath:   cliPath,
+		ExtraArgs: cfg.AgentArgs,
+	})
+	if err != nil {
+		log.Printf("dispatch: %v, falling back to claude driver", err)
+		driver = NewClaudeDriver(DriverConfig{CLIPath: cliPath})
+	}
+
 	var worker Worker
 	if cfg.DockerEnabled {
 		worker = &DockerWorker{
+			Driver:       driver,
 			Image:        cfg.DockerImage,
 			APIKey:       cfg.APIKey,
 			RepoDir:      cfg.RepoDir,
@@ -80,8 +103,8 @@ func New(cfg Config, bus events.Bus, tickets TicketGetter, projects ProjectGette
 		}
 	} else {
 		worker = &CLIWorker{
-			ClaudePath: cfg.ClaudePath,
-			APIKey:     cfg.APIKey,
+			Driver: driver,
+			APIKey: cfg.APIKey,
 		}
 	}
 	d := &Dispatcher{

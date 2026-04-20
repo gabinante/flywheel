@@ -171,8 +171,13 @@ func TestNewDispatcherCLIWorker(t *testing.T) {
 	}
 
 	// Should use CLIWorker when DockerEnabled is false.
-	if _, ok := d.worker.(*CLIWorker); !ok {
-		t.Error("expected CLIWorker when DockerEnabled is false")
+	cliWorker, ok := d.worker.(*CLIWorker)
+	if !ok {
+		t.Fatal("expected CLIWorker when DockerEnabled is false")
+	}
+	// Driver should be Claude by default.
+	if cliWorker.Driver.Name() != "claude" {
+		t.Errorf("expected claude driver, got %q", cliWorker.Driver.Name())
 	}
 }
 
@@ -205,6 +210,32 @@ func TestNewDispatcherDockerWorker(t *testing.T) {
 	}
 	if dw.APIKey != "key-456" {
 		t.Errorf("expected API key 'key-456', got %q", dw.APIKey)
+	}
+	// Driver should be Claude by default.
+	if dw.Driver.Name() != "claude" {
+		t.Errorf("expected claude driver, got %q", dw.Driver.Name())
+	}
+}
+
+func TestNewDispatcherGenericDriver(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter()
+	pg := newMockProjectGetter()
+
+	cfg := Config{
+		MaxWorkers:  1,
+		AgentDriver: "generic",
+		AgentCLIPath: "/usr/bin/opencode",
+		RepoDir:     "/repo",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	cliWorker, ok := d.worker.(*CLIWorker)
+	if !ok {
+		t.Fatal("expected CLIWorker when DockerEnabled is false")
+	}
+	if cliWorker.Driver.Name() != "generic" {
+		t.Errorf("expected generic driver, got %q", cliWorker.Driver.Name())
 	}
 }
 

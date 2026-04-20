@@ -172,6 +172,8 @@ func main() {
 			APIKey:         cfg.Dispatch.APIKey,
 			ProjectID:      cfg.Dispatch.ProjectID,
 			AutoApprove:    cfg.Dispatch.AutoApproveOnAcceptancePass,
+			AgentDriver:    cfg.Dispatch.AgentDriver,
+			AgentCLIPath:   cfg.Dispatch.AgentCLIPath,
 			DockerEnabled:  cfg.Dispatch.DockerEnabled,
 			DockerImage:    cfg.Dispatch.DockerImage,
 			DockerMemory:   cfg.Dispatch.DockerMemory,
