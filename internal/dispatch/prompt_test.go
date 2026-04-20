@@ -26,7 +26,7 @@ func TestAssembleWorkerPromptMinimal(t *testing.T) {
 	result := AssembleWorkerPrompt(proj, tk, nil, "http://localhost:8080", "agent-1")
 
 	// Should contain the role preamble.
-	if !strings.Contains(result, "coding agent executing a flywheel ticket") {
+	if !strings.Contains(result, "coding agent executing a Flywheel ticket") {
 		t.Error("missing role preamble")
 	}
 

@@ -156,7 +156,7 @@ type DispatchConfig struct {
 	MaxWorkers   int
 	ClaudePath   string   // path to claude CLI binary (host mode, backward compat)
 	WorktreeDir  string   // base directory for git worktrees (host mode)
-	APIKey       string   // flywheel API key for worker MCP authentication
+	APIKey       string   // Flywheel API key for worker MCP authentication
 	ProjectID    string   // only dispatch tickets for this project (empty = all)
 	AutoApproveOnAcceptancePass bool
 	// Agent driver settings.

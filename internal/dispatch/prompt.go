@@ -14,8 +14,8 @@ func AssembleWorkerPrompt(proj *project.Project, t *ticket.Ticket, depOutputs ma
 	var b strings.Builder
 
 	// Role
-	b.WriteString("You are a coding agent executing a flywheel ticket. ")
-	b.WriteString("Use the flywheel MCP tools to manage your ticket lifecycle.\n\n")
+	b.WriteString("You are a coding agent executing a Flywheel ticket. ")
+	b.WriteString("Use the Flywheel MCP tools to manage your ticket lifecycle.\n\n")
 
 	// Project context
 	if proj.ContextPack.SystemPrompt != "" {
@@ -112,7 +112,7 @@ func AssembleWorkerPrompt(proj *project.Project, t *ticket.Ticket, depOutputs ma
 
 	// Workflow instructions
 	b.WriteString("## Workflow\n\n")
-	b.WriteString("Follow these steps exactly using the flywheel MCP tools:\n\n")
+	b.WriteString("Follow these steps exactly using the Flywheel MCP tools:\n\n")
 	b.WriteString(fmt.Sprintf("1. Call `claim_ticket` with `project_id: \"%s\"` — this returns `ticket_id` and `lease_token` in the response.\n", proj.ID))
 	b.WriteString("2. Call `start_ticket` with the `ticket_id` and `lease_token` from step 1.\n")
 	b.WriteString("3. Do the work. Call `log_step` with `ticket_id`, `lease_token`, and `step_type` after each significant action.\n")
