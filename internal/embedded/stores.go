@@ -687,6 +687,28 @@ func (s *TicketStore) SetCreateIdempotency(_ context.Context, projectID, idempot
 	return err
 }
 
+func (s *TicketStore) ListStaleTickets(_ context.Context, states []ticket.State, threshold time.Duration) ([]*ticket.Ticket, error) {
+	if len(states) == 0 {
+		return nil, nil
+	}
+	placeholders := strings.Repeat("?,", len(states))
+	placeholders = placeholders[:len(placeholders)-1]
+	cutoff := time.Now().UTC().Add(-threshold).Format(time.RFC3339Nano)
+	args := make([]any, len(states)+1)
+	for i, st := range states {
+		args[i] = string(st)
+	}
+	args[len(states)] = cutoff
+	rows, err := s.db.Query(fmt.Sprintf(
+		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, assigned_to, created_by, created_at, updated_at
+		 FROM tickets WHERE state IN (%s) AND updated_at < ? ORDER BY updated_at`, placeholders), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return s.scanTickets(rows)
+}
+
 // scanTicket scans a single ticket row.
 func (s *TicketStore) scanTicket(query string, args ...any) (*ticket.Ticket, error) {
 	var t ticket.Ticket

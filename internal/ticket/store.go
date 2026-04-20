@@ -278,6 +278,27 @@ func (s *Store) SetCreateIdempotency(ctx context.Context, projectID, idempotency
 	return err
 }
 
+// ListStaleTickets returns tickets in any of the given states whose updated_at
+// is older than now - threshold. Scans across all projects.
+func (s *Store) ListStaleTickets(ctx context.Context, states []State, threshold time.Duration) ([]*Ticket, error) {
+	if len(states) == 0 {
+		return nil, nil
+	}
+	stateStrings := make([]string, len(states))
+	for i, st := range states {
+		stateStrings[i] = string(st)
+	}
+	cutoff := time.Now().UTC().Add(-threshold)
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, assigned_to, created_by, created_at, updated_at
+		 FROM tickets WHERE state = ANY($1) AND updated_at < $2 ORDER BY updated_at`, stateStrings, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return s.scanRows(rows)
+}
+
 func (s *Store) scanRows(rows pgx.Rows) ([]*Ticket, error) {
 	var list []*Ticket
 	for rows.Next() {

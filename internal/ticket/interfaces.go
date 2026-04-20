@@ -1,6 +1,9 @@
 package ticket
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // TicketStore is the persistence interface for tickets.
 // *Store (Postgres) and embedded.TicketStore (SQLite) implement this.
@@ -21,4 +24,8 @@ type TicketStore interface {
 	CountByCreatedByPerDay(ctx context.Context, createdBy string, days int) ([]int, error)
 	GetTicketIDByCreateIdempotency(ctx context.Context, projectID, idempotencyKey string) (string, error)
 	SetCreateIdempotency(ctx context.Context, projectID, idempotencyKey, ticketID string) error
+	// ListStaleTickets returns tickets in any of the given states whose updated_at
+	// is older than the staleness threshold. Used by the DB staleness sweep (Layer 3
+	// recovery) to find zombie tickets across all projects.
+	ListStaleTickets(ctx context.Context, states []State, threshold time.Duration) ([]*Ticket, error)
 }
