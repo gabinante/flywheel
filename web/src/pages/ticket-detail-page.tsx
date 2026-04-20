@@ -7,6 +7,7 @@ import { TicketOutputsCard } from '@/components/ticket-outputs'
 import { TicketRelationshipsCard } from '@/components/ticket-relationships-card'
 import { TicketReopenPanel } from '@/components/ticket-reopen-panel'
 import { TicketReviewPanel } from '@/components/ticket-review-panel'
+import { TicketTimeline } from '@/components/ticket-timeline'
 import { WorkStreamSummaryCard } from '@/components/work-stream-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -268,6 +269,12 @@ export function TicketDetailPage() {
           </CardContent>
         </Card>
       ) : null}
+
+      <TicketTimeline
+        ticketId={ticketId}
+        currentState={ticket.state}
+        createdAt={ticket.created_at}
+      />
 
       <TicketRelationshipsCard
         orgId={orgId}

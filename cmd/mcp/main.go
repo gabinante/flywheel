@@ -51,7 +51,9 @@ func main() {
 	projectStore := project.NewStore(pool)
 	projectSvc := project.NewService(projectStore)
 	ticketStore := ticket.NewStore(pool)
+	transitionStore := ticket.NewTransitionStore(pool)
 	ticketSvc := ticket.NewService(ticketStore, bus, projectSvc)
+	ticketSvc.SetTransitionStore(transitionStore)
 	queueSvc := queue.NewService(ticketSvc, ticketSvc, queueRedis)
 
 	leaseValidator := &leaseValidatorAdapter{redis: queueRedis}
