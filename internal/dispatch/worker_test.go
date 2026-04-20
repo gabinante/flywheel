@@ -63,7 +63,7 @@ func TestBuildMCPConfigURLSuffix(t *testing.T) {
 }
 
 func TestBuildTaskPrompt(t *testing.T) {
-	prompt := buildTaskPrompt("ticket-42")
+	prompt := buildTaskPrompt("ticket-42", "project-1")
 
 	if prompt == "" {
 		t.Fatal("expected non-empty task prompt")
@@ -84,7 +84,7 @@ func TestBuildTaskPrompt(t *testing.T) {
 	if !containsStr(prompt, "log_step") {
 		t.Error("task prompt should reference log_step")
 	}
-	if !containsStr(prompt, "Commit") {
+	if !containsStr(prompt, "commit") {
 		t.Error("task prompt should reference committing changes")
 	}
 }

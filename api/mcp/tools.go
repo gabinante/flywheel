@@ -154,6 +154,18 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		},
 		"required": []string{"project_id"},
 	}}, wrap(getProjectContextHandler))
+	mcp.AddTool(s, &mcp.Tool{Name: "update_project_context", Description: "Update a project's context pack. Pass project_id and any of: conventions (string), system_prompt (string), key_files (JSON array of {path, snippet}), extra (JSON object of string key-value pairs). Merges with existing context pack. Returns the updated context pack.", InputSchema: map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"project_id":    map[string]any{"type": "string", "description": "Project ID"},
+			"conventions":   map[string]any{"type": "string", "description": "Conventions text (optional, merges with existing)"},
+			"system_prompt": map[string]any{"type": "string", "description": "System prompt (optional, replaces existing)"},
+			"key_files":     map[string]any{"type": "array", "description": "JSON array of {path, snippet} objects (optional, replaces existing)", "items": map[string]any{"type": "object"}},
+			"extra":         map[string]any{"type": "object", "description": "JSON object of string key-value pairs (optional, replaces existing)"},
+			"agent_id":      map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+		},
+		"required": []string{"project_id"},
+	}}, wrap(updateProjectContextHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "update_project_status", Description: "Set a project's status to active or closed. Use to close a project when work is done, or reopen it (set to active) for follow-up. Requires OAuth and org access. Pass project_id and status (\"active\" or \"closed\"). Returns the updated project.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -976,6 +988,75 @@ func getProjectContextHandler(b *Backend, ctx context.Context, args map[string]a
 			return toolErrTriple(apierrors.MapError(err))
 		}
 		return jsonResult(pack)
+}
+
+func updateProjectContextHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
+	agentID, err := getAgentIDFromArgs(ctx, args)
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	projectID, err := requireString(args, "project_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	proj, err := b.Project.GetProject(ctx, projectID)
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	agent, err := b.AgentStore.GetByID(ctx, agentID)
+	if err != nil || agent == nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "agent not found", false))
+	}
+	if agent.UserID == "" {
+		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "update_project_context requires OAuth login", false))
+	}
+	orgIDs, err := b.Org.ListOrgIDsForUser(ctx, agent.UserID)
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	allowed := false
+	for _, id := range orgIDs {
+		if id == proj.OrgID {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return toolErrTriple(apierrors.New(apierrors.CodeForbidden, "you do not have access to that project", false))
+	}
+	pack := proj.ContextPack
+	if c := getString(args, "conventions", ""); c != "" {
+		pack.Conventions = c
+	}
+	if sp := getString(args, "system_prompt", ""); sp != "" {
+		pack.SystemPrompt = sp
+	}
+	if kf, ok := args["key_files"]; ok && kf != nil {
+		var keyFiles []project.FileRef
+		raw, err := json.Marshal(kf)
+		if err != nil {
+			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, "key_files must be a JSON array of {path, snippet} objects", false))
+		}
+		if err := json.Unmarshal(raw, &keyFiles); err != nil {
+			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, "key_files must be a JSON array of {path, snippet} objects", false))
+		}
+		pack.KeyFiles = keyFiles
+	}
+	if ex, ok := args["extra"]; ok && ex != nil {
+		var extra map[string]string
+		raw, err := json.Marshal(ex)
+		if err != nil {
+			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, "extra must be a JSON object of string key-value pairs", false))
+		}
+		if err := json.Unmarshal(raw, &extra); err != nil {
+			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, "extra must be a JSON object of string key-value pairs", false))
+		}
+		pack.Extra = extra
+	}
+	if err := b.Project.UpdateContextPack(ctx, projectID, pack); err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	return jsonResult(pack)
 }
 
 func updateProjectStatusHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {

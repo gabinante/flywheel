@@ -103,20 +103,22 @@ type mockWorker struct {
 	calls     []mockWorkerCall
 	result    *WorkerResult
 	err       error
-	spawnFunc func(ctx context.Context, ticketID, systemPrompt, workDir, serverURL string) (*WorkerResult, error)
+	spawnFunc func(ctx context.Context, ticketID, projectID, systemPrompt, workDir, serverURL string) (*WorkerResult, error)
 }
 
 type mockWorkerCall struct {
 	TicketID     string
+	ProjectID    string
 	SystemPrompt string
 	WorkDir      string
 	ServerURL    string
 }
 
-func (w *mockWorker) Spawn(ctx context.Context, ticketID, systemPrompt, workDir, serverURL string) (*WorkerResult, error) {
+func (w *mockWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt, workDir, serverURL string) (*WorkerResult, error) {
 	w.mu.Lock()
 	w.calls = append(w.calls, mockWorkerCall{
 		TicketID:     ticketID,
+		ProjectID:    projectID,
 		SystemPrompt: systemPrompt,
 		WorkDir:      workDir,
 		ServerURL:    serverURL,
@@ -124,7 +126,7 @@ func (w *mockWorker) Spawn(ctx context.Context, ticketID, systemPrompt, workDir,
 	w.mu.Unlock()
 
 	if w.spawnFunc != nil {
-		return w.spawnFunc(ctx, ticketID, systemPrompt, workDir, serverURL)
+		return w.spawnFunc(ctx, ticketID, projectID, systemPrompt, workDir, serverURL)
 	}
 	if w.err != nil {
 		return nil, w.err
@@ -569,7 +571,7 @@ func TestSpawnDuplicatePrevented(t *testing.T) {
 
 	blockCh := make(chan struct{})
 	worker := &mockWorker{
-		spawnFunc: func(ctx context.Context, _, _, _, _ string) (*WorkerResult, error) {
+		spawnFunc: func(ctx context.Context, _, _, _, _, _ string) (*WorkerResult, error) {
 			<-blockCh // block until released
 			return &WorkerResult{Success: true}, nil
 		},
