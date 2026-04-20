@@ -130,6 +130,7 @@ func main() {
 		log.Println("mirror: service started")
 	}
 
+
 	// Observation service for production signal tracking and attribution.
 	obsStore := observation.NewPostgresStore(pool)
 	obsSvc := observation.NewService(obsStore, bus)
