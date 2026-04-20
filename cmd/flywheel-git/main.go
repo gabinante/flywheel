@@ -56,14 +56,14 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Fprintf(os.Stderr, `warrant-git — Warrant Git Notes CLI
+	fmt.Fprintf(os.Stderr, `flywheel-git — Flywheel Git Notes CLI
 
 Usage:
-  warrant-git note add  -t <type> -m <message> [-c commit]   Add a note (type: decision|trace|intent)
-  warrant-git note show [-t type] [-c commit]                Show note(s) for a commit
-  warrant-git note log   [-t type] [-n limit]                List commits with notes
-  warrant-git note diff  [-t type] <base> <head>             Notes in base..head
-  warrant-git sync       [push|pull|both]                     Push/pull refs/notes/warrant/*
+  flywheel-git note add  -t <type> -m <message> [-c commit]   Add a note (type: decision|trace|intent)
+  flywheel-git note show [-t type] [-c commit]                Show note(s) for a commit
+  flywheel-git note log   [-t type] [-n limit]                List commits with notes
+  flywheel-git note diff  [-t type] <base> <head>             Notes in base..head
+  flywheel-git sync       [push|pull|both]                     Push/pull refs/notes/flywheel/*
 
 Defaults: repo=., commit=HEAD, type=decision, limit=20.
 `)
@@ -117,12 +117,12 @@ func runNoteAdd(repoPath string, args []string) {
 		noteType = gitnotes.TypeDecision
 	}
 	if gitnotes.RefForType(noteType) == "" {
-		fmt.Fprintf(os.Stderr, "warrant-git: type must be decision, trace, or intent\n")
+		fmt.Fprintf(os.Stderr, "flywheel-git: type must be decision, trace, or intent\n")
 		os.Exit(1)
 	}
 	message := flags["m"]
 	if message == "" {
-		fmt.Fprintf(os.Stderr, "warrant-git: -m <message> required\n")
+		fmt.Fprintf(os.Stderr, "flywheel-git: -m <message> required\n")
 		os.Exit(1)
 	}
 	commit := flags["c"]
@@ -138,13 +138,13 @@ func runNoteAdd(repoPath string, args []string) {
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "warrant-git: %v\n", err)
+		fmt.Fprintf(os.Stderr, "flywheel-git: %v\n", err)
 		os.Exit(1)
 	}
 
 	ref := gitnotes.RefForType(noteType)
 	if err := gitnotes.AddNote(repoPath, ref, commit, string(body)); err != nil {
-		fmt.Fprintf(os.Stderr, "warrant-git: %v\n", err)
+		fmt.Fprintf(os.Stderr, "flywheel-git: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Printf("Added %s note to %s\n", noteType, commit)
@@ -161,12 +161,12 @@ func runNoteShow(repoPath string, args []string) {
 	if noteType != "" {
 		ref := gitnotes.RefForType(noteType)
 		if ref == "" {
-			fmt.Fprintf(os.Stderr, "warrant-git: type must be decision, trace, or intent\n")
+			fmt.Fprintf(os.Stderr, "flywheel-git: type must be decision, trace, or intent\n")
 			os.Exit(1)
 		}
 		body, err := gitnotes.ShowNote(repoPath, ref, commit)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "warrant-git: %v\n", err)
+			fmt.Fprintf(os.Stderr, "flywheel-git: %v\n", err)
 			os.Exit(1)
 		}
 		if body == "" {
@@ -180,7 +180,7 @@ func runNoteShow(repoPath string, args []string) {
 	for _, ref := range gitnotes.AllRefs() {
 		body, err := gitnotes.ShowNote(repoPath, ref, commit)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "warrant-git: %v\n", err)
+			fmt.Fprintf(os.Stderr, "flywheel-git: %v\n", err)
 			os.Exit(1)
 		}
 		if body != "" {
@@ -197,7 +197,7 @@ func runNoteLog(repoPath string, args []string) {
 	}
 	ref := gitnotes.RefForType(noteType)
 	if ref == "" {
-		fmt.Fprintf(os.Stderr, "warrant-git: type must be decision, trace, or intent\n")
+		fmt.Fprintf(os.Stderr, "flywheel-git: type must be decision, trace, or intent\n")
 		os.Exit(1)
 	}
 	limit := 20
@@ -209,7 +209,7 @@ func runNoteLog(repoPath string, args []string) {
 
 	entries, err := gitnotes.Log(repoPath, ref, limit)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "warrant-git: %v\n", err)
+		fmt.Fprintf(os.Stderr, "flywheel-git: %v\n", err)
 		os.Exit(1)
 	}
 	for _, e := range entries {
@@ -225,18 +225,18 @@ func runNoteDiff(repoPath string, args []string) {
 	}
 	ref := gitnotes.RefForType(noteType)
 	if ref == "" {
-		fmt.Fprintf(os.Stderr, "warrant-git: type must be decision, trace, or intent\n")
+		fmt.Fprintf(os.Stderr, "flywheel-git: type must be decision, trace, or intent\n")
 		os.Exit(1)
 	}
 	if len(rest) < 2 {
-		fmt.Fprintf(os.Stderr, "warrant-git: diff requires <base> <head>\n")
+		fmt.Fprintf(os.Stderr, "flywheel-git: diff requires <base> <head>\n")
 		os.Exit(1)
 	}
 	base, head := rest[0], rest[1]
 
 	entries, err := gitnotes.Diff(repoPath, ref, base, head)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "warrant-git: %v\n", err)
+		fmt.Fprintf(os.Stderr, "flywheel-git: %v\n", err)
 		os.Exit(1)
 	}
 	for _, e := range entries {
@@ -256,25 +256,25 @@ func runSync(repoPath string, args []string) {
 	switch direction {
 	case "push":
 		if err := pushNotes(dir); err != nil {
-			fmt.Fprintf(os.Stderr, "warrant-git: %v\n", err)
+			fmt.Fprintf(os.Stderr, "flywheel-git: %v\n", err)
 			os.Exit(1)
 		}
 	case "pull":
 		if err := pullNotes(dir); err != nil {
-			fmt.Fprintf(os.Stderr, "warrant-git: %v\n", err)
+			fmt.Fprintf(os.Stderr, "flywheel-git: %v\n", err)
 			os.Exit(1)
 		}
 	case "both":
 		if err := pullNotes(dir); err != nil {
-			fmt.Fprintf(os.Stderr, "warrant-git pull: %v\n", err)
+			fmt.Fprintf(os.Stderr, "flywheel-git pull: %v\n", err)
 			os.Exit(1)
 		}
 		if err := pushNotes(dir); err != nil {
-			fmt.Fprintf(os.Stderr, "warrant-git push: %v\n", err)
+			fmt.Fprintf(os.Stderr, "flywheel-git push: %v\n", err)
 			os.Exit(1)
 		}
 	default:
-		fmt.Fprintf(os.Stderr, "warrant-git: sync expects push, pull, or both\n")
+		fmt.Fprintf(os.Stderr, "flywheel-git: sync expects push, pull, or both\n")
 		os.Exit(1)
 	}
 	fmt.Println("Sync done.")

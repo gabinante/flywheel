@@ -45,6 +45,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"properties": map[string]any{
 			"agent_id": map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
+		"additionalProperties": false,
 	}}, wrap(listOrgsHandler))
 
 	mcp.AddTool(s, &mcp.Tool{Name: "create_project", Description: "Create a project in your default (first) organization. Use for initiatives, epics, or any work container. You do not pass org_id; the project is created in an org you belong to.", InputSchema: map[string]any{
@@ -54,7 +55,8 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"slug":     map[string]any{"type": "string", "description": "URL-friendly slug (optional, auto-generated if omitted)"},
 			"agent_id": map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
-		"required": []string{"name"},
+		"required":             []string{"name"},
+		"additionalProperties": false,
 	}}, wrap(createProjectHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "create_work_stream", Description: "Create a work stream in a project. Work streams group tickets toward a goal (e.g. 'Productionize feature A'). When the project has repo_url: Warrant does NOT create a Git branch. The response includes git_instruction—follow it immediately: create or checkout the branch in the repo, then call update_work_stream with branch (required in that session; do not stop after only setting plan text). Until branch is set, claim_ticket/get_ticket repeat create_or_set_branch. Params: project_id, name (required), slug (optional), plan (optional Markdown). Returns work_stream and optional git_instruction.", InputSchema: map[string]any{
 		"type": "object",
@@ -65,16 +67,18 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"plan":       map[string]any{"type": "string", "description": "Markdown plan for the work stream (optional)"},
 			"agent_id":   map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
-		"required": []string{"project_id", "name"},
+		"required":             []string{"project_id", "name"},
+		"additionalProperties": false,
 	}}, wrap(createWorkStreamHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "list_work_streams", Description: "List work streams for a project. Params: project_id, optional status (active, closed, all).", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"project_id": map[string]any{"type": "string", "description": "Project ID"},
-			"status":     map[string]any{"type": "string", "description": "Filter by status: active, closed, or all (default: active)"},
+			"status":     map[string]any{"type": "string", "description": "Filter by status: active, closed, or all (default: active)", "enum": []string{"active", "closed", "all"}},
 			"agent_id":   map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
-		"required": []string{"project_id"},
+		"required":             []string{"project_id"},
+		"additionalProperties": false,
 	}}, wrap(listWorkStreamsHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "get_work_stream", Description: "Get a work stream by ID. Params: project_id, work_stream_id. When project has repo_url, response includes git_instruction: if branch is empty, you must create/checkout the branch and call update_work_stream with branch (plan updates alone are insufficient).", InputSchema: map[string]any{
 		"type": "object",
@@ -83,7 +87,8 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"work_stream_id": map[string]any{"type": "string", "description": "Work stream ID"},
 			"agent_id":       map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
-		"required": []string{"project_id", "work_stream_id"},
+		"required":             []string{"project_id", "work_stream_id"},
+		"additionalProperties": false,
 	}}, wrap(getWorkStreamHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "update_work_stream", Description: "Update a work stream (name, plan, branch, status). When project has repo_url: you MUST set branch (pass the real Git branch name) as soon as you create or checkout that branch—this is easy to forget if you only update the Markdown plan. update_work_stream_plan does NOT set branch. Omit branch only to leave the stored branch unchanged. When closing (status=closed) and project has repo_url, returns git_instruction to checkout default branch. Params: project_id, work_stream_id, optional name, plan, branch, status (active|closed).", InputSchema: map[string]any{
 		"type": "object",
@@ -93,10 +98,11 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"name":           map[string]any{"type": "string", "description": "New name (optional, keeps current if omitted)"},
 			"plan":           map[string]any{"type": "string", "description": "Markdown plan (optional, keeps current if omitted)"},
 			"branch":         map[string]any{"type": "string", "description": "Git branch name (optional, keeps current if omitted)"},
-			"status":         map[string]any{"type": "string", "description": "Status: active or closed (optional, keeps current if omitted)"},
+			"status":         map[string]any{"type": "string", "description": "Status: active or closed (optional, keeps current if omitted)", "enum": []string{"active", "closed"}},
 			"agent_id":       map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
-		"required": []string{"project_id", "work_stream_id"},
+		"required":             []string{"project_id", "work_stream_id"},
+		"additionalProperties": false,
 	}}, wrap(updateWorkStreamHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "update_work_stream_plan", Description: "Replace only the work stream's Markdown plan. Does NOT set or change the Git branch—if repo_url is set and branch is still empty, you must still call update_work_stream with branch after creating/checking out the branch. Params: project_id, work_stream_id, plan (required). Returns work_stream and optional git_instruction when repo_url is set and stream is active.", InputSchema: map[string]any{
 		"type": "object",
@@ -106,7 +112,8 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"plan":           map[string]any{"type": "string", "description": "New Markdown plan content"},
 			"agent_id":       map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
-		"required": []string{"project_id", "work_stream_id", "plan"},
+		"required":             []string{"project_id", "work_stream_id", "plan"},
+		"additionalProperties": false,
 	}}, wrap(updateWorkStreamPlanHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "create_ticket", Description: "Create a ticket in a project. Response JSON has **ticket** (the new ticket) and **workflow** (next_steps + note) to remind you to claim → start → log_step → submit. The ticket is created as pending; agents claim via claim_ticket. created_by is set to your agent identity. **work_stream_id:** pass when the work belongs to a stream—otherwise the ticket will not appear in the web UI when that stream is filtered (use **update_ticket** later to attach). If set and project has repo_url, the work stream must already have **branch** set via **update_work_stream** after you create/checkout that branch (plan-only updates do not count). Optional idempotency_key.", InputSchema: map[string]any{
 		"type": "object",
@@ -114,8 +121,8 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"project_id":       map[string]any{"type": "string", "description": "Project ID"},
 			"title":            map[string]any{"type": "string", "description": "Ticket title"},
 			"description":      map[string]any{"type": "string", "description": "Ticket description / objective"},
-			"ticket_type":      map[string]any{"type": "string", "description": "Ticket type: task, bug, spike, or review (default: task)"},
-			"priority":         map[string]any{"type": "integer", "description": "Priority 0-3 (0=P0 highest, default: 2)"},
+			"ticket_type":      map[string]any{"type": "string", "description": "Ticket type: task, bug, spike, or review (default: task)", "enum": []string{"task", "bug", "spike", "review"}},
+			"priority":         map[string]any{"type": "integer", "description": "Priority 0-3 (0=P0 highest, default: 2)", "minimum": 0, "maximum": 3},
 			"success_criteria": map[string]any{"type": "string", "description": "JSON array of success criteria strings (optional)"},
 			"acceptance_test":  map[string]any{"type": "string", "description": "Acceptance test description (optional)"},
 			"idempotency_key":  map[string]any{"type": "string", "description": "Idempotency key to prevent duplicate creation (optional)"},
@@ -123,7 +130,8 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"depends_on":       map[string]any{"type": "string", "description": "JSON array of ticket IDs this ticket depends on (optional)"},
 			"agent_id":         map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
-		"required": []string{"project_id", "title", "description"},
+		"required":             []string{"project_id", "title", "description"},
+		"additionalProperties": false,
 	}}, wrap(createTicketHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "list_projects", Description: "List projects for the authenticated user's organization(s). Requires OAuth (agent linked to a user). Returns only active projects by default. Pass include_closed: true to include closed projects. Optionally pass org_id to limit to one org (must be an org you belong to).", InputSchema: map[string]any{
 		"type": "object",
@@ -132,13 +140,15 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"include_closed": map[string]any{"type": "boolean", "description": "Include closed projects (default: false)"},
 			"agent_id":       map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
+		"additionalProperties": false,
 	}}, wrap(listProjectsHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "get_project_context", Description: "Return the full context pack for a project: conventions, key files, system prompt, and extra hints. Call this after list_projects to load the project's context before claiming or inspecting tickets.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"project_id": map[string]any{"type": "string", "description": "Project ID"},
 		},
-		"required": []string{"project_id"},
+		"required":             []string{"project_id"},
+		"additionalProperties": false,
 	}}, wrap(getProjectContextHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "update_project_context", Description: "Update a project's context pack. Pass project_id and any of: conventions (string), system_prompt (string), key_files (JSON array of {path, snippet}), extra (JSON object of string key-value pairs). Merges with existing context pack. Returns the updated context pack.", InputSchema: map[string]any{
 		"type": "object",
@@ -146,37 +156,41 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"project_id":    map[string]any{"type": "string", "description": "Project ID"},
 			"conventions":   map[string]any{"type": "string", "description": "Conventions text (optional, merges with existing)"},
 			"system_prompt": map[string]any{"type": "string", "description": "System prompt (optional, replaces existing)"},
-			"key_files":     map[string]any{"type": "array", "description": "JSON array of {path, snippet} objects (optional, replaces existing)", "items": map[string]any{"type": "object"}},
-			"extra":         map[string]any{"type": "object", "description": "JSON object of string key-value pairs (optional, replaces existing)"},
+			"key_files":     map[string]any{"type": "array", "description": "JSON array of {path, snippet} objects (optional, replaces existing)", "items": map[string]any{"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string"}, "snippet": map[string]any{"type": "string"}}, "required": []string{"path", "snippet"}}},
+			"extra":         map[string]any{"type": "object", "description": "JSON object of string key-value pairs (optional, replaces existing)", "additionalProperties": map[string]any{"type": "string"}},
 			"agent_id":      map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
-		"required": []string{"project_id"},
+		"required":             []string{"project_id"},
+		"additionalProperties": false,
 	}}, wrap(updateProjectContextHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "update_project_status", Description: "Set a project's status to active or closed. Use to close a project when work is done, or reopen it (set to active) for follow-up. Requires OAuth and org access. Pass project_id and status (\"active\" or \"closed\"). Returns the updated project.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"project_id": map[string]any{"type": "string", "description": "Project ID"},
-			"status":     map[string]any{"type": "string", "description": "New status: active or closed"},
+			"status":     map[string]any{"type": "string", "description": "New status: active or closed", "enum": []string{"active", "closed"}},
 			"agent_id":   map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
-		"required": []string{"project_id", "status"},
+		"required":             []string{"project_id", "status"},
+		"additionalProperties": false,
 	}}, wrap(updateProjectStatusHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "list_tickets", Description: "List tickets for a project. Response JSON has **tickets** (array). When you omit **state** or set state=pending, **workflow** (next_steps + note) is included to nudge claim → start → submit. Optionally filter by state, priority (0–3), or work_stream_id. Use after get_project_context to see what work is available.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"project_id":     map[string]any{"type": "string", "description": "Project ID"},
 			"work_stream_id": map[string]any{"type": "string", "description": "Filter by work stream ID (optional)"},
-			"state":          map[string]any{"type": "string", "description": "Filter by state: pending, claimed, executing, awaiting_review, done, needs_human (optional)"},
-			"priority":       map[string]any{"type": "integer", "description": "Filter by priority 0-3 (optional)"},
+			"state":          map[string]any{"type": "string", "description": "Filter by state: pending, claimed, executing, awaiting_review, done, needs_human (optional)", "enum": []string{"pending", "claimed", "executing", "awaiting_review", "done", "needs_human"}},
+			"priority":       map[string]any{"type": "integer", "description": "Filter by priority 0-3 (optional)", "minimum": 0, "maximum": 3},
 		},
-		"required": []string{"project_id"},
+		"required":             []string{"project_id"},
+		"additionalProperties": false,
 	}}, wrap(listTicketsHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "get_ticket", Description: "Get the full ticket payload: objective, success criteria, acceptance test, context pack, dependency outputs (from tickets this one depends on), prior attempts, and human answers. This is the main input for doing the work. Call after claim_ticket and before start_ticket to load everything you need. If the ticket has a work_stream and the project has repo_url, the response may include git_instruction (checkout branch, or create branch + update_work_stream if branch is not set yet).", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"ticket_id": map[string]any{"type": "string", "description": "Ticket ID"},
 		},
-		"required": []string{"ticket_id"},
+		"required":             []string{"ticket_id"},
+		"additionalProperties": false,
 	}}, wrap(getTicketHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "update_ticket", Description: "Update ticket metadata. Pass project_id and ticket_id. Optional: depends_on (JSON array string), work_stream_id. For title/objective text, use REST PATCH /tickets/{id} with JSON body (title, objective partial merge) or recreate the ticket.", InputSchema: map[string]any{
 		"type": "object",
@@ -187,17 +201,19 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"work_stream_id": map[string]any{"type": "string", "description": "Work stream ID to attach this ticket to (optional)"},
 			"agent_id":       map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
-		"required": []string{"project_id", "ticket_id"},
+		"required":             []string{"project_id", "ticket_id"},
+		"additionalProperties": false,
 	}}, wrap(updateTicketHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "claim_ticket", Description: "Claim the next available ticket in the queue for a project. Returns the ticket, lease (lease_token, expires_at), and **workflow** (next_steps + note). If the ticket has a work_stream and the project has repo_url, the response may include git_instruction (checkout branch, or create branch + update_work_stream if branch is not set yet). Optional idempotency_key: retries with the same key return the same ticket/lease (renewed if still valid) so the same agent does not claim a different ticket. You must start_ticket and then either submit_ticket or escalate_ticket before the lease expires, or renew_lease to extend. agent_id is inferred from OAuth when using URL auth.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"project_id":      map[string]any{"type": "string", "description": "Project ID"},
-			"priority":        map[string]any{"type": "integer", "description": "Claim only tickets at this priority level 0-3 (optional, claims next available if omitted)"},
+			"priority":        map[string]any{"type": "integer", "description": "Claim only tickets at this priority level 0-3 (optional, claims next available if omitted)", "minimum": 0, "maximum": 3},
 			"idempotency_key": map[string]any{"type": "string", "description": "Idempotency key to prevent claiming multiple tickets (optional)"},
 			"agent_id":        map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
-		"required": []string{"project_id"},
+		"required":             []string{"project_id"},
+		"additionalProperties": false,
 	}}, wrap(claimTicketHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "start_ticket", Description: "Move the ticket from claimed to executing. Response includes **workflow** (next_steps + note). Call after claim_ticket and get_ticket when you are ready to do the work. Requires the lease_token from claim_ticket. agent_id is inferred from OAuth when using URL auth.", InputSchema: map[string]any{
 		"type": "object",
@@ -206,17 +222,19 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"lease_token": map[string]any{"type": "string", "description": "Lease token from claim_ticket"},
 			"agent_id":    map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
-		"required": []string{"ticket_id", "lease_token"},
+		"required":             []string{"ticket_id", "lease_token"},
+		"additionalProperties": false,
 	}}, wrap(startTicketHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "log_step", Description: "Append a step to the execution trace. Call this as you work—after each significant tool use (step_type tool_call, payload as object e.g. {\"name\":\"write\",\"input\":{\"path\":\"...\"}}), for key observations or decisions (observation/thought), and on errors (error). payload can be a JSON object or JSON string. Reviewers see this trace when approving the ticket; call it regularly so they know what was done.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"ticket_id":   map[string]any{"type": "string", "description": "Ticket ID"},
 			"lease_token": map[string]any{"type": "string", "description": "Lease token from claim_ticket"},
-			"step_type":   map[string]any{"type": "string", "description": "Step type: tool_call, observation, thought, or error"},
+			"step_type":   map[string]any{"type": "string", "description": "Step type: tool_call, observation, thought, or error", "enum": []string{"tool_call", "observation", "thought", "error"}},
 			"payload":     map[string]any{"type": "object", "description": "Step payload as a JSON object (or JSON string)"},
 		},
-		"required": []string{"ticket_id", "lease_token", "step_type"},
+		"required":             []string{"ticket_id", "lease_token", "step_type"},
+		"additionalProperties": false,
 	}}, wrap(logStepHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "submit_ticket", Description: "Submit your outputs and move the ticket to awaiting_review. outputs must be a JSON object (e.g. {\"summary\":\"...\", \"artifacts\":[...]}). A human will approve or reject via the REST API. Call when the work is done.", InputSchema: map[string]any{
 		"type": "object",
@@ -225,7 +243,8 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"lease_token": map[string]any{"type": "string", "description": "Lease token from claim_ticket"},
 			"outputs":     map[string]any{"type": "string", "description": "JSON object string with outputs (e.g. {\"summary\":\"...\", \"artifacts\":[...]})"},
 		},
-		"required": []string{"ticket_id", "lease_token", "outputs"},
+		"required":             []string{"ticket_id", "lease_token", "outputs"},
+		"additionalProperties": false,
 	}}, wrap(submitTicketHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "escalate_ticket", Description: "Escalate to a human when you need help. Moves the ticket to needs_human. Provide a reason and a specific question; the human's answer is stored and the ticket returns to executing so you can continue. Use when blocked or when the objective is ambiguous.", InputSchema: map[string]any{
 		"type": "object",
@@ -235,7 +254,8 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"reason":      map[string]any{"type": "string", "description": "Reason for escalation"},
 			"question":    map[string]any{"type": "string", "description": "Specific question for the human"},
 		},
-		"required": []string{"ticket_id", "lease_token", "reason", "question"},
+		"required":             []string{"ticket_id", "lease_token", "reason", "question"},
+		"additionalProperties": false,
 	}}, wrap(escalateTicketHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "renew_lease", Description: "Extend the lease TTL so the ticket is not returned to the queue. Call periodically while working if the job takes longer than the lease duration. Returns the new expires_at.", InputSchema: map[string]any{
 		"type": "object",
@@ -243,7 +263,8 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"ticket_id":   map[string]any{"type": "string", "description": "Ticket ID"},
 			"lease_token": map[string]any{"type": "string", "description": "Lease token from claim_ticket"},
 		},
-		"required": []string{"ticket_id", "lease_token"},
+		"required":             []string{"ticket_id", "lease_token"},
+		"additionalProperties": false,
 	}}, wrap(renewLeaseHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "force_release_lease", Description: "Force-release a ticket's lease (no token needed). Use when the user directs you to release a stuck ticket so you can claim it in this session (e.g. 'release agent-reliability-3 and claim it'). Caller must have access to the ticket's project. Ticket returns to pending; then use claim_ticket to claim it.", InputSchema: map[string]any{
 		"type": "object",
@@ -251,7 +272,8 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"ticket_id": map[string]any{"type": "string", "description": "Ticket ID to force-release"},
 			"agent_id":  map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
-		"required": []string{"ticket_id"},
+		"required":             []string{"ticket_id"},
+		"additionalProperties": false,
 	}}, wrap(forceReleaseLeaseHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "list_pending_reviews", Description: "List tickets in awaiting_review for a project. Use this when the user asks 'what needs my review?' or 'show pending reviews'. Returns full tickets so you can summarize them in chat; use get_trace(ticket_id) to show execution steps for each.", InputSchema: map[string]any{
 		"type": "object",
@@ -259,14 +281,16 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"project_id": map[string]any{"type": "string", "description": "Project ID"},
 			"agent_id":   map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
-		"required": []string{"project_id"},
+		"required":             []string{"project_id"},
+		"additionalProperties": false,
 	}}, wrap(listPendingReviewsHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "get_trace", Description: "Get the execution trace for a ticket (all log_step entries). Use when summarizing a ticket for review so the user can see what was done before approving or rejecting.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"ticket_id": map[string]any{"type": "string", "description": "Ticket ID"},
 		},
-		"required": []string{"ticket_id"},
+		"required":             []string{"ticket_id"},
+		"additionalProperties": false,
 	}}, wrap(getTraceHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "approve_ticket", Description: "Approve a ticket in awaiting_review. Moves it to done. Call when the user says to approve, ship it, looks good, etc. reviewer_id is inferred from OAuth.", InputSchema: map[string]any{
 		"type": "object",
@@ -275,7 +299,8 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"notes":     map[string]any{"type": "string", "description": "Reviewer notes (optional)"},
 			"agent_id":  map[string]any{"type": "string", "description": "Reviewer ID (optional, inferred from OAuth when using URL auth)"},
 		},
-		"required": []string{"ticket_id"},
+		"required":             []string{"ticket_id"},
+		"additionalProperties": false,
 	}}, wrap(approveTicketHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "reject_ticket", Description: "Reject a ticket in awaiting_review. Returns it to executing with your notes appended so the agent can fix and resubmit. Call when the user says reject, needs changes, etc. reviewer_id is inferred from OAuth.", InputSchema: map[string]any{
 		"type": "object",
@@ -284,7 +309,8 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"notes":     map[string]any{"type": "string", "description": "Rejection notes explaining what to fix"},
 			"agent_id":  map[string]any{"type": "string", "description": "Reviewer ID (optional, inferred from OAuth when using URL auth)"},
 		},
-		"required": []string{"ticket_id", "notes"},
+		"required":             []string{"ticket_id", "notes"},
+		"additionalProperties": false,
 	}}, wrap(rejectTicketHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "reopen_ticket", Description: "Move a ticket from done back to awaiting_review (e.g. mistaken approval). Preserves outputs. Only call when the user explicitly asks to reopen or return a completed ticket for review. reviewer_id is inferred from OAuth.", InputSchema: map[string]any{
 		"type": "object",
@@ -293,55 +319,61 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"notes":     map[string]any{"type": "string", "description": "Notes explaining why the ticket is being reopened (optional)"},
 			"agent_id":  map[string]any{"type": "string", "description": "Reviewer ID (optional, inferred from OAuth when using URL auth)"},
 		},
-		"required": []string{"ticket_id"},
+		"required":             []string{"ticket_id"},
+		"additionalProperties": false,
 	}}, wrap(reopenTicketHandler))
 
-	// Git notes (Warrant integration): if repo_path provided and server has access, run git notes; else return commands for warrant-git CLI.
-	mcp.AddTool(s, &mcp.Tool{Name: "warrant_add_git_note", Description: "Add a git note to a commit (refs/notes/warrant/decision|trace|intent). Params: message (required), type (decision|trace|intent, default decision), commit_sha (default HEAD), optional repo_path, ticket_id, project_id. If server has repo_path, adds note; else returns commands to run warrant-git note add locally.", InputSchema: map[string]any{
+	// Git notes (Flywheel integration): if repo_path provided and server has access, run git notes; else return commands for flywheel-git CLI.
+	mcp.AddTool(s, &mcp.Tool{Name: "warrant_add_git_note", Description: "Add a git note to a commit (refs/notes/flywheel/decision|trace|intent). Params: message (required), type (decision|trace|intent, default decision), commit_sha (default HEAD), optional repo_path, ticket_id, project_id. If server has repo_path, adds note; else returns commands to run flywheel-git note add locally.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"message":    map[string]any{"type": "string", "description": "Note message content"},
-			"type":       map[string]any{"type": "string", "description": "Note type: decision, trace, or intent (default: decision)"},
+			"type":       map[string]any{"type": "string", "description": "Note type: decision, trace, or intent (default: decision)", "enum": []string{"decision", "trace", "intent"}},
 			"commit_sha": map[string]any{"type": "string", "description": "Commit SHA to attach note to (default: HEAD)"},
 			"repo_path":  map[string]any{"type": "string", "description": "Path to git repo (optional, for server-side execution)"},
 			"ticket_id":  map[string]any{"type": "string", "description": "Associated ticket ID (optional, stored in note metadata)"},
 			"project_id": map[string]any{"type": "string", "description": "Associated project ID (optional, stored in note metadata)"},
 			"agent_id":   map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
-		"required": []string{"message"},
+		"required":             []string{"message"},
+		"additionalProperties": false,
 	}}, wrap(warrantAddGitNoteHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "warrant_show_git_notes", Description: "Show git note(s) for a commit. Params: commit_sha (default HEAD), optional repo_path, type (decision|trace|intent, or omit for all). Returns note body or commands for warrant-git note show.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "warrant_show_git_notes", Description: "Show git note(s) for a commit. Params: commit_sha (default HEAD), optional repo_path, type (decision|trace|intent, or omit for all). Returns note body or commands for flywheel-git note show.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"commit_sha": map[string]any{"type": "string", "description": "Commit SHA to show notes for (default: HEAD)"},
 			"repo_path":  map[string]any{"type": "string", "description": "Path to git repo (optional, for server-side execution)"},
-			"type":       map[string]any{"type": "string", "description": "Note type filter: decision, trace, or intent (optional, omit for all)"},
+			"type":       map[string]any{"type": "string", "description": "Note type filter: decision, trace, or intent (optional, omit for all)", "enum": []string{"decision", "trace", "intent"}},
 		},
+		"additionalProperties": false,
 	}}, wrap(warrantShowGitNotesHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "warrant_log_git_notes", Description: "Log commits with notes (last N). Params: limit (default 20), optional repo_path, type (default decision). Returns list of {commit_sha, ref, body} or commands for warrant-git note log.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "warrant_log_git_notes", Description: "Log commits with notes (last N). Params: limit (default 20), optional repo_path, type (default decision). Returns list of {commit_sha, ref, body} or commands for flywheel-git note log.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"limit":     map[string]any{"type": "integer", "description": "Number of entries to return (default: 20)"},
+			"limit":     map[string]any{"type": "integer", "description": "Number of entries to return (default: 20)", "minimum": 1},
 			"repo_path": map[string]any{"type": "string", "description": "Path to git repo (optional, for server-side execution)"},
-			"type":      map[string]any{"type": "string", "description": "Note type: decision, trace, or intent (default: decision)"},
+			"type":      map[string]any{"type": "string", "description": "Note type: decision, trace, or intent (default: decision)", "enum": []string{"decision", "trace", "intent"}},
 		},
+		"additionalProperties": false,
 	}}, wrap(warrantLogGitNotesHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "warrant_diff_git_notes", Description: "Notes on commits in base..head. Params: base, head (required), optional repo_path, type (default decision). Returns entries or commands for warrant-git note diff.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "warrant_diff_git_notes", Description: "Notes on commits in base..head. Params: base, head (required), optional repo_path, type (default decision). Returns entries or commands for flywheel-git note diff.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"base":      map[string]any{"type": "string", "description": "Base commit SHA or ref"},
 			"head":      map[string]any{"type": "string", "description": "Head commit SHA or ref"},
 			"repo_path": map[string]any{"type": "string", "description": "Path to git repo (optional, for server-side execution)"},
-			"type":      map[string]any{"type": "string", "description": "Note type: decision, trace, or intent (default: decision)"},
+			"type":      map[string]any{"type": "string", "description": "Note type: decision, trace, or intent (default: decision)", "enum": []string{"decision", "trace", "intent"}},
 		},
-		"required": []string{"base", "head"},
+		"required":             []string{"base", "head"},
+		"additionalProperties": false,
 	}}, wrap(warrantDiffGitNotesHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "warrant_sync_git_notes", Description: "Push/pull refs/notes/warrant/*. Params: optional repo_path, direction (push|pull|both). Usually returns commands to run warrant-git sync locally.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "warrant_sync_git_notes", Description: "Push/pull refs/notes/flywheel/*. Params: optional repo_path, direction (push|pull|both). Usually returns commands to run flywheel-git sync locally.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"repo_path":  map[string]any{"type": "string", "description": "Path to git repo (optional)"},
-			"direction":  map[string]any{"type": "string", "description": "Sync direction: push, pull, or both (default: both)"},
+			"repo_path": map[string]any{"type": "string", "description": "Path to git repo (optional)"},
+			"direction": map[string]any{"type": "string", "description": "Sync direction: push, pull, or both (default: both)", "enum": []string{"push", "pull", "both"}},
 		},
+		"additionalProperties": false,
 	}}, wrap(warrantSyncGitNotesHandler))
 }
 
@@ -1646,14 +1678,14 @@ func warrantAddGitNoteHandler(b *Backend, ctx context.Context, args map[string]a
 		}
 		return jsonResult(map[string]any{"ok": true, "message": "Note added."})
 	}
-	return jsonResult(map[string]any{"ok": true, "commands": warrantGitNoteAddCommands(noteType, message, commitSHA), "hint": "Run these in your repo (or install warrant-git and run the first)."})
+	return jsonResult(map[string]any{"ok": true, "commands": warrantGitNoteAddCommands(noteType, message, commitSHA), "hint": "Run these in your repo (or install flywheel-git and run the first)."})
 }
 
 func warrantGitNoteAddCommands(noteType, message, commitSHA string) []string {
 	esc := strings.ReplaceAll(message, `\`, `\\`)
 	esc = strings.ReplaceAll(esc, `"`, `\"`)
 	return []string{
-		fmt.Sprintf(`warrant-git note add -t %s -m %q -c %s`, noteType, esc, commitSHA),
+		fmt.Sprintf(`flywheel-git note add -t %s -m %q -c %s`, noteType, esc, commitSHA),
 	}
 }
 
@@ -1690,7 +1722,7 @@ func warrantShowGitNotesHandler(b *Backend, ctx context.Context, args map[string
 		out["notes"] = notes
 		return jsonResult(out)
 	}
-	cmd := fmt.Sprintf("warrant-git note show -c %s", commitSHA)
+	cmd := fmt.Sprintf("flywheel-git note show -c %s", commitSHA)
 	if noteType != "" {
 		cmd += " -t " + noteType
 	}
@@ -1717,7 +1749,7 @@ func warrantLogGitNotesHandler(b *Backend, ctx context.Context, args map[string]
 		}
 		return jsonResult(map[string]any{"entries": list})
 	}
-	return jsonResult(map[string]any{"commands": []string{fmt.Sprintf("warrant-git note log -t %s -n %d", noteType, limit)}})
+	return jsonResult(map[string]any{"commands": []string{fmt.Sprintf("flywheel-git note log -t %s -n %d", noteType, limit)}})
 }
 
 func warrantDiffGitNotesHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
@@ -1747,13 +1779,13 @@ func warrantDiffGitNotesHandler(b *Backend, ctx context.Context, args map[string
 		}
 		return jsonResult(map[string]any{"entries": list})
 	}
-	return jsonResult(map[string]any{"commands": []string{fmt.Sprintf("warrant-git note diff -t %s %s %s", noteType, base, head)}})
+	return jsonResult(map[string]any{"commands": []string{fmt.Sprintf("flywheel-git note diff -t %s %s %s", noteType, base, head)}})
 }
 
 func warrantSyncGitNotesHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
 	direction := getString(args, "direction", "both")
 	return jsonResult(map[string]any{
-		"commands": []string{fmt.Sprintf("warrant-git sync %s", direction)},
-		"hint":     "Run in your repo to push/pull refs/notes/warrant/*.",
+		"commands": []string{fmt.Sprintf("flywheel-git sync %s", direction)},
+		"hint":     "Run in your repo to push/pull refs/notes/flywheel/*.",
 	})
 }

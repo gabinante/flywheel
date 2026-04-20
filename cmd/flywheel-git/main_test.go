@@ -33,15 +33,15 @@ func makeTempGitRepo(t *testing.T) string {
 	return dir
 }
 
-var warrantGitBinary string // set by TestMain
+var flywheelGitBinary string // set by TestMain
 
-// runWarrantGit runs the warrant-git CLI in dir with args. Uses a built binary so CWD=dir is the repo.
-func runWarrantGit(t *testing.T, dir string, args ...string) (stdout, stderr string, err error) {
+// runFlywheelGit runs the flywheel-git CLI in dir with args. Uses a built binary so CWD=dir is the repo.
+func runFlywheelGit(t *testing.T, dir string, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
-	if warrantGitBinary == "" {
-		t.Fatal("warrant-git binary not built (TestMain)")
+	if flywheelGitBinary == "" {
+		t.Fatal("flywheel-git binary not built (TestMain)")
 	}
-	cmd := exec.Command(warrantGitBinary, args...)
+	cmd := exec.Command(flywheelGitBinary, args...)
 	cmd.Dir = dir
 	var outBuf, errBuf strings.Builder
 	cmd.Stdout = &outBuf
@@ -51,29 +51,29 @@ func runWarrantGit(t *testing.T, dir string, args ...string) (stdout, stderr str
 }
 
 func TestMain(m *testing.M) {
-	// Build warrant-git binary to a temp location so tests can run it with Dir=tempRepo.
-	dir, err := os.MkdirTemp("", "warrant-git-test-bin-*")
+	// Build flywheel-git binary to a temp location so tests can run it with Dir=tempRepo.
+	dir, err := os.MkdirTemp("", "flywheel-git-test-bin-*")
 	if err != nil {
 		panic(err)
 	}
 	defer os.RemoveAll(dir)
-	warrantGitBinary = filepath.Join(dir, "warrant-git")
-	if out, err := exec.Command("go", "build", "-o", warrantGitBinary, ".").CombinedOutput(); err != nil {
-		panic("build warrant-git: " + err.Error() + ": " + string(out))
+	flywheelGitBinary = filepath.Join(dir, "flywheel-git")
+	if out, err := exec.Command("go", "build", "-o", flywheelGitBinary, ".").CombinedOutput(); err != nil {
+		panic("build flywheel-git: " + err.Error() + ": " + string(out))
 	}
 	os.Exit(m.Run())
 }
 
 func TestCLI_Help(t *testing.T) {
-	stdout, stderr, err := runWarrantGit(t, t.TempDir(), "help")
+	stdout, stderr, err := runFlywheelGit(t, t.TempDir(), "help")
 	if err != nil {
 		t.Fatalf("help: %v\nstderr: %s", err, stderr)
 	}
-	if stdout != "" && !strings.Contains(stdout, "warrant-git") {
-		t.Errorf("stdout should contain warrant-git: %s", stdout)
+	if stdout != "" && !strings.Contains(stdout, "flywheel-git") {
+		t.Errorf("stdout should contain flywheel-git: %s", stdout)
 	}
-	if stderr != "" && !strings.Contains(stderr, "warrant-git") {
-		t.Errorf("stderr should contain warrant-git: %s", stderr)
+	if stderr != "" && !strings.Contains(stderr, "flywheel-git") {
+		t.Errorf("stderr should contain flywheel-git: %s", stderr)
 	}
 	// help prints to stderr (printUsage uses Fprintf os.Stderr)
 	if !strings.Contains(stderr, "note add") && !strings.Contains(stdout, "note add") {
@@ -84,11 +84,11 @@ func TestCLI_Help(t *testing.T) {
 func TestCLI_NoteAdd_Show(t *testing.T) {
 	requireGit(t)
 	dir := makeTempGitRepo(t)
-	_, stderr, err := runWarrantGit(t, dir, "note", "add", "-t", "decision", "-m", "hello world")
+	_, stderr, err := runFlywheelGit(t, dir, "note", "add", "-t", "decision", "-m", "hello world")
 	if err != nil {
 		t.Fatalf("note add: %v\nstderr: %s", err, stderr)
 	}
-	stdout, stderr2, err := runWarrantGit(t, dir, "note", "show", "-t", "decision")
+	stdout, stderr2, err := runFlywheelGit(t, dir, "note", "show", "-t", "decision")
 	if err != nil {
 		t.Fatalf("note show: %v\nstderr: %s", err, stderr2)
 	}
@@ -103,7 +103,7 @@ func TestCLI_NoteAdd_Show(t *testing.T) {
 func TestCLI_NoteAdd_MissingMessage(t *testing.T) {
 	requireGit(t)
 	dir := makeTempGitRepo(t)
-	_, stderr, err := runWarrantGit(t, dir, "note", "add", "-t", "decision")
+	_, stderr, err := runFlywheelGit(t, dir, "note", "add", "-t", "decision")
 	if err == nil {
 		t.Error("expected error when -m missing")
 	}
@@ -115,7 +115,7 @@ func TestCLI_NoteAdd_MissingMessage(t *testing.T) {
 func TestCLI_NoteAdd_InvalidType(t *testing.T) {
 	requireGit(t)
 	dir := makeTempGitRepo(t)
-	_, stderr, err := runWarrantGit(t, dir, "note", "add", "-t", "invalid", "-m", "x")
+	_, stderr, err := runFlywheelGit(t, dir, "note", "add", "-t", "invalid", "-m", "x")
 	if err == nil {
 		t.Error("expected error for invalid type")
 	}
@@ -127,11 +127,11 @@ func TestCLI_NoteAdd_InvalidType(t *testing.T) {
 func TestCLI_NoteLog(t *testing.T) {
 	requireGit(t)
 	dir := makeTempGitRepo(t)
-	_, _, err := runWarrantGit(t, dir, "note", "add", "-t", "decision", "-m", "log test")
+	_, _, err := runFlywheelGit(t, dir, "note", "add", "-t", "decision", "-m", "log test")
 	if err != nil {
 		t.Fatalf("note add: %v", err)
 	}
-	stdout, stderr, err := runWarrantGit(t, dir, "note", "log", "-t", "decision", "-n", "5")
+	stdout, stderr, err := runFlywheelGit(t, dir, "note", "log", "-t", "decision", "-n", "5")
 	if err != nil {
 		t.Fatalf("note log: %v\nstderr: %s", err, stderr)
 	}
@@ -153,11 +153,11 @@ func TestCLI_NoteDiff(t *testing.T) {
 	cmd.Dir = dir
 	baseOut, _ := cmd.Output()
 	base := strings.TrimSpace(string(baseOut))
-	_, _, err := runWarrantGit(t, dir, "note", "add", "-t", "decision", "-m", "diff test")
+	_, _, err := runFlywheelGit(t, dir, "note", "add", "-t", "decision", "-m", "diff test")
 	if err != nil {
 		t.Fatalf("note add: %v", err)
 	}
-	stdout, stderr, err := runWarrantGit(t, dir, "note", "diff", "-t", "decision", base, "HEAD")
+	stdout, stderr, err := runFlywheelGit(t, dir, "note", "diff", "-t", "decision", base, "HEAD")
 	if err != nil {
 		t.Fatalf("note diff: %v\nstderr: %s", err, stderr)
 	}

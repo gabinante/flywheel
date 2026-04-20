@@ -10,7 +10,7 @@ import (
 
 // WorktreeManager handles git worktree lifecycle for concurrent ticket execution.
 type WorktreeManager struct {
-	BaseDir string // base directory for worktrees (e.g. /tmp/warrant-worktrees)
+	BaseDir string // base directory for worktrees (e.g. /tmp/flywheel-worktrees)
 	RepoDir string // path to the main git repository
 }
 

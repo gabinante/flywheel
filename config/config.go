@@ -33,14 +33,14 @@ func Load() *Config {
 			Enabled:      getEnvBool("DISPATCH_ENABLED", false),
 			MaxWorkers:   getEnvInt("DISPATCH_MAX_WORKERS", 4),
 			ClaudePath:   getEnv("DISPATCH_CLAUDE_PATH", "claude"),
-			WorktreeDir:  getEnv("DISPATCH_WORKTREE_DIR", "/tmp/warrant-worktrees"),
+			WorktreeDir:  getEnv("DISPATCH_WORKTREE_DIR", "/tmp/flywheel-worktrees"),
 			APIKey:       getEnv("DISPATCH_API_KEY", ""),
 			ProjectID:    getEnv("DISPATCH_PROJECT_ID", ""),
 			AutoApproveOnAcceptancePass: getEnvBool("AUTO_APPROVE_ON_ACCEPTANCE_PASS", false),
 			AgentDriver:   getEnv("DISPATCH_AGENT_DRIVER", "claude"),
 			AgentCLIPath:  getEnv("DISPATCH_AGENT_CMD", ""),
 			DockerEnabled:  getEnvBool("DISPATCH_DOCKER_ENABLED", false),
-			DockerImage:    getEnv("DISPATCH_DOCKER_IMAGE", "warrant-worker"),
+			DockerImage:    getEnv("DISPATCH_DOCKER_IMAGE", "flywheel-worker"),
 			DockerMemory:   getEnv("DISPATCH_DOCKER_MEMORY", "4g"),
 			DockerCPUs:     getEnv("DISPATCH_DOCKER_CPUS", "2"),
 			DockerFirewall: getEnvBool("DISPATCH_DOCKER_FIREWALL", true),
@@ -156,7 +156,7 @@ type DispatchConfig struct {
 	MaxWorkers   int
 	ClaudePath   string   // path to claude CLI binary (host mode, backward compat)
 	WorktreeDir  string   // base directory for git worktrees (host mode)
-	APIKey       string   // warrant API key for worker MCP authentication
+	APIKey       string   // flywheel API key for worker MCP authentication
 	ProjectID    string   // only dispatch tickets for this project (empty = all)
 	AutoApproveOnAcceptancePass bool
 	// Agent driver settings.
@@ -164,7 +164,7 @@ type DispatchConfig struct {
 	AgentCLIPath string   // override CLI path for the agent binary (DISPATCH_AGENT_CMD)
 	// Docker isolation settings.
 	DockerEnabled  bool
-	DockerImage    string // worker image name (default: "warrant-worker")
+	DockerImage    string // worker image name (default: "flywheel-worker")
 	DockerMemory   string // memory limit per worker (default: "4g")
 	DockerCPUs     string // CPU limit per worker (default: "2")
 	DockerFirewall bool   // enable default-deny firewall with allowlist

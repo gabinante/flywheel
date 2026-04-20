@@ -1,8 +1,8 @@
 package gitnotes
 
 const (
-	// RefPrefix is the prefix for all Warrant git notes refs.
-	RefPrefix = "refs/notes/warrant"
+	// RefPrefix is the prefix for all Flywheel git notes refs.
+	RefPrefix = "refs/notes/flywheel"
 )
 
 // Valid note types (and ref path suffix).
@@ -12,7 +12,7 @@ const (
 	TypeIntent   = "intent"
 )
 
-// RefForType returns the full ref for the given note type (e.g. "decision" -> "refs/notes/warrant/decision").
+// RefForType returns the full ref for the given note type (e.g. "decision" -> "refs/notes/flywheel/decision").
 // Returns empty string if type is not valid.
 func RefForType(noteType string) string {
 	switch noteType {
@@ -23,7 +23,7 @@ func RefForType(noteType string) string {
 	}
 }
 
-// AllRefs returns all Warrant note refs for iteration (e.g. show all note types for a commit).
+// AllRefs returns all Flywheel note refs for iteration (e.g. show all note types for a commit).
 func AllRefs() []string {
 	return []string{
 		RefPrefix + "/" + TypeDecision,
