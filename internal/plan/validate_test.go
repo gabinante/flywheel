@@ -237,8 +237,21 @@ func TestValidateContent_Shell_Valid(t *testing.T) {
 			},
 			WorkingDir: "/app",
 			SideEffectManifest: SideEffectManifest{
-				FilesCreated:  []string{"dist/"},
-				FilesModified: []string{"node_modules/"},
+				FileOps: []FileOp{
+					{Action: "write", Path: "/app/dist/**"},
+					{Action: "write", Path: "/app/node_modules/**"},
+				},
+				NetworkOps: []NetworkOp{
+					{Endpoint: "registry.npmjs.org:443", Method: "GET", Idempotent: true},
+				},
+				ProcessOps: []ProcessOp{
+					{Binary: "npm", Args: []string{"install", "run", "build"}},
+				},
+				ResourceLimits: ResourceLimits{
+					MaxRuntimeSeconds: 120,
+					MaxDiskWriteBytes: 500 * 1024 * 1024,
+					MaxNetworkCalls:   50,
+				},
 			},
 		},
 	}
@@ -272,6 +285,162 @@ func TestValidateContent_Shell_EmptyCommandString(t *testing.T) {
 	err := ValidateContent(BackendShell, content)
 	if err == nil {
 		t.Fatal("expected error for empty command string")
+	}
+}
+
+func TestValidateContent_Shell_ManifestInvalidFileOpAction(t *testing.T) {
+	content := Content{
+		Shell: &ShellPlan{
+			Commands: []ShellCommand{
+				{Command: "echo hi"},
+			},
+			SideEffectManifest: SideEffectManifest{
+				FileOps: []FileOp{
+					{Action: "execute", Path: "/app/script.sh"},
+				},
+			},
+		},
+	}
+	err := ValidateContent(BackendShell, content)
+	if err == nil {
+		t.Fatal("expected error for invalid file op action")
+	}
+	ve, ok := err.(*ValidationError)
+	if !ok {
+		t.Fatalf("expected ValidationError, got: %T", err)
+	}
+	if ve.Field != "side_effect_manifest.file_ops[0].action" {
+		t.Fatalf("expected field 'side_effect_manifest.file_ops[0].action', got: %s", ve.Field)
+	}
+}
+
+func TestValidateContent_Shell_ManifestEmptyPath(t *testing.T) {
+	content := Content{
+		Shell: &ShellPlan{
+			Commands: []ShellCommand{
+				{Command: "echo hi"},
+			},
+			SideEffectManifest: SideEffectManifest{
+				FileOps: []FileOp{
+					{Action: "write", Path: ""},
+				},
+			},
+		},
+	}
+	err := ValidateContent(BackendShell, content)
+	if err == nil {
+		t.Fatal("expected error for empty path in file op")
+	}
+}
+
+func TestValidateContent_Shell_ManifestInvalidNetworkMethod(t *testing.T) {
+	content := Content{
+		Shell: &ShellPlan{
+			Commands: []ShellCommand{
+				{Command: "curl example.com"},
+			},
+			SideEffectManifest: SideEffectManifest{
+				NetworkOps: []NetworkOp{
+					{Endpoint: "example.com:443", Method: "YEET"},
+				},
+			},
+		},
+	}
+	err := ValidateContent(BackendShell, content)
+	if err == nil {
+		t.Fatal("expected error for invalid network method")
+	}
+}
+
+func TestValidateContent_Shell_ManifestEmptyEndpoint(t *testing.T) {
+	content := Content{
+		Shell: &ShellPlan{
+			Commands: []ShellCommand{
+				{Command: "curl example.com"},
+			},
+			SideEffectManifest: SideEffectManifest{
+				NetworkOps: []NetworkOp{
+					{Endpoint: "", Method: "GET"},
+				},
+			},
+		},
+	}
+	err := ValidateContent(BackendShell, content)
+	if err == nil {
+		t.Fatal("expected error for empty endpoint")
+	}
+}
+
+func TestValidateContent_Shell_ManifestEmptyBinary(t *testing.T) {
+	content := Content{
+		Shell: &ShellPlan{
+			Commands: []ShellCommand{
+				{Command: "npm install"},
+			},
+			SideEffectManifest: SideEffectManifest{
+				ProcessOps: []ProcessOp{
+					{Binary: ""},
+				},
+			},
+		},
+	}
+	err := ValidateContent(BackendShell, content)
+	if err == nil {
+		t.Fatal("expected error for empty binary in process op")
+	}
+}
+
+func TestValidateContent_Shell_ManifestEmptyCredentialName(t *testing.T) {
+	content := Content{
+		Shell: &ShellPlan{
+			Commands: []ShellCommand{
+				{Command: "echo hi"},
+			},
+			SideEffectManifest: SideEffectManifest{
+				CredentialOps: []CredentialOp{
+					{Name: "", Purpose: "something"},
+				},
+			},
+		},
+	}
+	err := ValidateContent(BackendShell, content)
+	if err == nil {
+		t.Fatal("expected error for empty credential name")
+	}
+}
+
+func TestValidateContent_Shell_ManifestValidResourceLimits(t *testing.T) {
+	content := Content{
+		Shell: &ShellPlan{
+			Commands: []ShellCommand{
+				{Command: "echo hi"},
+			},
+			SideEffectManifest: SideEffectManifest{
+				ResourceLimits: ResourceLimits{
+					MaxRuntimeSeconds: 60,
+					MaxDiskWriteBytes: 1024,
+					MaxNetworkCalls:   10,
+				},
+			},
+		},
+	}
+	if err := ValidateContent(BackendShell, content); err != nil {
+		t.Fatalf("expected valid resource limits, got: %v", err)
+	}
+}
+
+func TestValidateContent_Shell_ManifestEmptyIsValid(t *testing.T) {
+	// An empty manifest means "no side effects" — valid declaration.
+	content := Content{
+		Shell: &ShellPlan{
+			Commands: []ShellCommand{
+				{Command: "echo hi"},
+			},
+			SideEffectManifest: SideEffectManifest{},
+		},
+	}
+	if err := ValidateContent(BackendShell, content); err != nil {
+		t.Fatalf("expected empty manifest to be valid, got: %v", err)
 	}
 }
 

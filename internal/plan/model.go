@@ -144,10 +144,12 @@ type CodeHunk struct {
 
 // ShellPlan carries shell commands with explicit side-effect manifests.
 // There is no slot for unvalidated prose — every command and its effects are typed.
+// The SideEffectManifest is the permission boundary: the sandbox enforces it, and the
+// classifier reads it (not the script) to determine risk classification.
 type ShellPlan struct {
-	Commands          []ShellCommand      `json:"commands"`
-	WorkingDir        string              `json:"working_dir,omitempty"`
-	Environment       map[string]string   `json:"environment,omitempty"`
+	Commands           []ShellCommand     `json:"commands"`
+	WorkingDir         string             `json:"working_dir,omitempty"`
+	Environment        map[string]string  `json:"environment,omitempty"`
 	SideEffectManifest SideEffectManifest `json:"side_effect_manifest"`
 }
 
@@ -160,14 +162,79 @@ type ShellCommand struct {
 }
 
 // SideEffectManifest explicitly declares what side effects shell commands will have.
+// This is the declarative permission boundary that precedes execution.
+// The sandbox enforces it: if the script attempts operations not declared here,
+// execution fails. The classifier reads this manifest, not the script body.
+// Wildcard operations (glob patterns like "**") widen classification automatically.
 type SideEffectManifest struct {
-	FilesCreated  []string `json:"files_created,omitempty"`
-	FilesModified []string `json:"files_modified,omitempty"`
-	FilesDeleted  []string `json:"files_deleted,omitempty"`
-	NetworkAccess []string `json:"network_access,omitempty"` // host:port or CIDR
-	ProcessesSpawned []string `json:"processes_spawned,omitempty"`
-	EnvVarsSet    []string `json:"env_vars_set,omitempty"`
+	// FileOps declares all file system operations the script may perform.
+	FileOps []FileOp `json:"file_ops,omitempty"`
+
+	// NetworkOps declares all network operations (outbound connections).
+	NetworkOps []NetworkOp `json:"network_ops,omitempty"`
+
+	// ProcessOps declares all subprocesses the script may spawn.
+	ProcessOps []ProcessOp `json:"process_ops,omitempty"`
+
+	// CredentialOps declares which secrets/credentials the script will read.
+	CredentialOps []CredentialOp `json:"credential_ops,omitempty"`
+
+	// ResourceLimits declares upper bounds on resource consumption.
+	ResourceLimits ResourceLimits `json:"resource_limits"`
 }
+
+// FileOp declares a file system operation with typed action and glob pattern.
+type FileOp struct {
+	// Action is the type of file operation: "read", "write", or "delete".
+	Action string `json:"action"`
+	// Path is a glob pattern for the affected files (e.g., "/app/dist/**", "/tmp/*.log").
+	Path string `json:"path"`
+}
+
+// NetworkOp declares an outbound network call.
+type NetworkOp struct {
+	// Endpoint is the target host:port or URL pattern (e.g., "api.github.com:443").
+	Endpoint string `json:"endpoint"`
+	// Method is the HTTP method or protocol (e.g., "GET", "POST", "TCP").
+	Method string `json:"method"`
+	// Idempotent indicates whether this call is safe to retry.
+	Idempotent bool `json:"idempotent"`
+}
+
+// ProcessOp declares a subprocess the script may spawn.
+type ProcessOp struct {
+	// Binary is the executable name or path (e.g., "npm", "/usr/bin/git").
+	Binary string `json:"binary"`
+	// Args is the allowed argument patterns (glob-matched).
+	Args []string `json:"args,omitempty"`
+}
+
+// CredentialOp declares a secret/credential the script will access.
+type CredentialOp struct {
+	// Name is the credential identifier (env var name or secret path).
+	Name string `json:"name"`
+	// Purpose describes why this credential is needed (for audit).
+	Purpose string `json:"purpose,omitempty"`
+}
+
+// ResourceLimits sets upper bounds on resource consumption for sandbox enforcement.
+type ResourceLimits struct {
+	// MaxRuntimeSeconds is the maximum wall-clock time the script may run.
+	// Zero means use system default.
+	MaxRuntimeSeconds int `json:"max_runtime_seconds,omitempty"`
+	// MaxDiskWriteBytes is the maximum total bytes the script may write to disk.
+	// Zero means use system default.
+	MaxDiskWriteBytes int64 `json:"max_disk_write_bytes,omitempty"`
+	// MaxNetworkCalls is the maximum number of outbound network connections.
+	// Zero means use system default.
+	MaxNetworkCalls int `json:"max_network_calls,omitempty"`
+}
+
+// ValidFileOpActions is the set of allowed file operation actions.
+var ValidFileOpActions = []string{"read", "write", "delete"}
+
+// ValidNetworkMethods is the set of allowed network operation methods.
+var ValidNetworkMethods = []string{"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TCP", "UDP"}
 
 // DeployPlan carries deploy objects referencing specific artifact hashes and targets.
 type DeployPlan struct {

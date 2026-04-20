@@ -2048,31 +2048,82 @@ components:
             type: string
         side_effect_manifest:
           type: object
+          description: >
+            Declarative permission boundary for shell execution. The sandbox enforces this
+            manifest at runtime; the classifier reads it (not the script) to determine risk.
+            Wildcard operations widen classification automatically.
           properties:
-            files_created:
+            file_ops:
               type: array
+              description: File system operations the script may perform.
               items:
-                type: string
-            files_modified:
+                type: object
+                required: [action, path]
+                properties:
+                  action:
+                    type: string
+                    enum: [read, write, delete]
+                  path:
+                    type: string
+                    description: Glob pattern for affected files (e.g., "/app/dist/**")
+            network_ops:
               type: array
+              description: Outbound network operations the script may perform.
               items:
-                type: string
-            files_deleted:
+                type: object
+                required: [endpoint, method]
+                properties:
+                  endpoint:
+                    type: string
+                    description: Target host:port or URL pattern
+                  method:
+                    type: string
+                    enum: [GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS, TCP, UDP]
+                  idempotent:
+                    type: boolean
+                    description: Whether this call is safe to retry
+            process_ops:
               type: array
+              description: Subprocesses the script may spawn.
               items:
-                type: string
-            network_access:
+                type: object
+                required: [binary]
+                properties:
+                  binary:
+                    type: string
+                    description: Executable name or path
+                  args:
+                    type: array
+                    items:
+                      type: string
+                    description: Allowed argument patterns (glob-matched)
+            credential_ops:
               type: array
+              description: Secrets/credentials the script will access.
               items:
-                type: string
-            processes_spawned:
-              type: array
-              items:
-                type: string
-            env_vars_set:
-              type: array
-              items:
-                type: string
+                type: object
+                required: [name]
+                properties:
+                  name:
+                    type: string
+                    description: Credential identifier (env var name or secret path)
+                  purpose:
+                    type: string
+                    description: Why this credential is needed (for audit)
+            resource_limits:
+              type: object
+              description: Upper bounds on resource consumption for sandbox enforcement.
+              properties:
+                max_runtime_seconds:
+                  type: integer
+                  description: Maximum wall-clock time (0 = system default)
+                max_disk_write_bytes:
+                  type: integer
+                  format: int64
+                  description: Maximum total writable bytes (0 = system default)
+                max_network_calls:
+                  type: integer
+                  description: Maximum outbound connections (0 = system default)
     DeployPlan:
       type: object
       required: [artifact_hash, target, deploy_strategy]
