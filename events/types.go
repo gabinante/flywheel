@@ -34,6 +34,10 @@ const (
 	EventTicketReopened  = "ticket.reopened"  // closed → draft
 	EventLeaseExpired    = "lease.expired"    // planning/executing → draft
 
+	// --- Policy events ---
+	EventPolicyChanged   = "policy.changed"   // policy set created, activated, deactivated, updated, or deleted
+	EventPolicyEvaluated = "policy.evaluated" // policy was evaluated for a transition (audit trail)
+
 	// --- Deprecated aliases (backward compat for existing subscribers) ---
 	EventTicketDone      = EventTicketClosed // alias: done → closed
 	EventTicketUnblocked = "ticket.unblocked"

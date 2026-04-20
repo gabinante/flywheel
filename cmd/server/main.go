@@ -19,6 +19,7 @@ import (
 	"github.com/gabinante/flywheel/internal/dispatch"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/org"
+	"github.com/gabinante/flywheel/internal/policy"
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
 	"github.com/gabinante/flywheel/internal/review"
@@ -67,6 +68,14 @@ func main() {
 	if cfg.Dispatch.AutoApproveOnAcceptancePass {
 		ticketSvc.SetAutoApproveOnPass(true)
 	}
+
+	// Policy layer: composable rules with most-restrictive-wins semantics.
+	policyStore := policy.NewPostgresStore(pool)
+	policySvc := policy.NewService(policyStore, bus)
+	policyAdapter := policy.NewTicketPolicyAdapter(policySvc)
+	_ = policyAdapter // adapter available for ticket service integration
+	_ = policySvc     // policy service available for API handlers
+	log.Printf("policy: default_posture=%s auto_apply=%v", cfg.Policy.DefaultPosture, cfg.Policy.AutoApplyDefault)
 
 	redisOpts, err := redis.ParseURL(cfg.Redis.URL)
 	if err != nil {

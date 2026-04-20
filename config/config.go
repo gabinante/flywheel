@@ -14,6 +14,10 @@ func Load() *Config {
 	port := getEnv("PORT", "8080")
 	baseURL := getEnv("BASE_URL", "http://localhost:"+port)
 	return &Config{
+		Policy: PolicyConfig{
+			DefaultPosture: getEnv("POLICY_DEFAULT_POSTURE", "plan-only"),
+			AutoApplyDefault: getEnvBool("POLICY_AUTO_APPLY_DEFAULT", true),
+		},
 		Dispatch: DispatchConfig{
 			Enabled:      getEnvBool("DISPATCH_ENABLED", false),
 			MaxWorkers:   getEnvInt("DISPATCH_MAX_WORKERS", 4),
@@ -60,7 +64,19 @@ type Config struct {
 	Queue                     QueueConfig
 	Auth                      AuthConfig
 	Dispatch                  DispatchConfig
+	Policy                    PolicyConfig
 	RunAcceptanceTestOnSubmit bool
+}
+
+// PolicyConfig controls the policy layer behavior.
+type PolicyConfig struct {
+	// DefaultPosture is the posture applied to new projects on first run.
+	// Valid values: plan-only, sandbox, prod-gate, graduated-risk, paranoid-service.
+	// Default: plan-only (most conservative).
+	DefaultPosture string
+	// AutoApplyDefault automatically applies the default posture to projects without an active policy.
+	// Default: true.
+	AutoApplyDefault bool
 }
 
 type DispatchConfig struct {
