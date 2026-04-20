@@ -402,7 +402,7 @@ paths:
           description: Filter by ticket state.
           schema:
             type: string
-            enum: [pending, claimed, executing, awaiting_review, done, blocked, needs_human, failed]
+            enum: [draft, specced, planning, awaiting_input, executing, awaiting_validation, validated, deploying, observing, closed, pending, claimed, awaiting_review, done, blocked, needs_human, failed]
       responses:
         "200":
           description: OK
@@ -1219,7 +1219,7 @@ components:
           maximum: 3
         state:
           type: string
-          enum: [pending, claimed, executing, awaiting_review, done, blocked, needs_human, failed]
+          enum: [draft, specced, planning, awaiting_input, executing, awaiting_validation, validated, deploying, observing, closed, pending, claimed, awaiting_review, done, blocked, needs_human, failed]
         version:
           type: integer
         objective:
@@ -1295,8 +1295,8 @@ components:
           type: string
           enum: [approved, rejected, reopened]
           description: >
-            approved moves awaiting_review → done; rejected moves awaiting_review → executing;
-            reopened moves done → awaiting_review (e.g. undo mistaken approval; outputs preserved).
+            approved moves awaiting_validation → validated; rejected moves awaiting_validation → executing;
+            reopened moves closed → draft (re-opens ticket for new lifecycle).
         notes:
           type: string
         reviewer_id:

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,23 +33,10 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 	}
 	wrap := func(f func(*Backend, context.Context, map[string]any) (*mcp.CallToolResult, any, error)) func(context.Context, *mcp.CallToolRequest, map[string]any) (*mcp.CallToolResult, any, error) {
 		return func(ctx context.Context, req *mcp.CallToolRequest, args map[string]any) (*mcp.CallToolResult, any, error) {
-			toolName := "unknown"
-			if req != nil && req.Params.Name != "" {
-				toolName = req.Params.Name
-			}
-			log.Printf("MCP tool call: %s args=%v", toolName, args)
 			if req != nil && req.Session != nil {
 				ctx = context.WithValue(ctx, sessionContextKey{}, req.Session)
 			}
-			result, elicit, err := f(b, ctx, args)
-			if err != nil {
-				log.Printf("MCP tool %s error: %v", toolName, err)
-			} else if result != nil && result.IsError {
-				log.Printf("MCP tool %s returned error result", toolName)
-			} else {
-				log.Printf("MCP tool %s completed ok", toolName)
-			}
-			return result, elicit, err
+			return f(b, ctx, args)
 		}
 	}
 
@@ -1116,7 +1102,7 @@ func listTicketsHandler(b *Backend, ctx context.Context, args map[string]any) (*
 			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
 		}
 		workStreamID := getString(args, "work_stream_id", "")
-		state := ticket.State(getString(args, "state", ""))
+		state := ticket.MapLegacyState(ticket.State(getString(args, "state", "")))
 		list, err := b.Ticket.ListTickets(ctx, projectID, workStreamID, state)
 		if err != nil {
 			return toolErrTriple(apierrors.MapError(err))
@@ -1245,15 +1231,12 @@ func updateTicketHandler(b *Backend, ctx context.Context, args map[string]any) (
 }
 
 func claimTicketHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-	log.Printf("MCP claim_ticket called with args: %v", args)
 	projectID, err := requireString(args, "project_id")
 	if err != nil {
-		log.Printf("MCP claim_ticket: missing project_id: %v", err)
 		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
 	}
 	agentID, err := getAgentIDFromArgs(ctx, args)
 	if err != nil {
-		log.Printf("MCP claim_ticket: agent error: %v", err)
 		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
 	}
 	proj, err := b.Project.GetProject(ctx, projectID)
@@ -1268,10 +1251,8 @@ func claimTicketHandler(b *Backend, ctx context.Context, args map[string]any) (*
 		priority = &p
 	}
 	idempotencyKey := getString(args, "idempotency_key", "")
-	log.Printf("MCP claim_ticket: attempting claim for agent=%s project=%s", agentID, projectID)
 	t, lease, err := b.Queue.ClaimTicket(ctx, agentID, projectID, priority, idempotencyKey)
 	if err != nil {
-		log.Printf("MCP claim_ticket: error: %v", err)
 		if errors.Is(err, queue.ErrNoTicketAvailable) {
 			if ss := sessionFromContext(ctx); ss != nil {
 				// List tickets that are claimed or executing so the user can direct us to release one.

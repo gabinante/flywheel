@@ -45,7 +45,7 @@ type WorkerResult struct {
 
 // Worker spawns a Claude Code session for a ticket.
 type Worker interface {
-	Spawn(ctx context.Context, ticketID, projectID, systemPrompt, workDir, serverURL string) (*WorkerResult, error)
+	Spawn(ctx context.Context, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL string) (*WorkerResult, error)
 }
 
 // mcpConfig is the MCP configuration file structure for Claude Code.
@@ -90,7 +90,7 @@ type CLIWorker struct {
 }
 
 // Spawn starts a claude CLI process with the given system prompt and MCP config.
-func (w *CLIWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt, workDir, serverURL string) (*WorkerResult, error) {
+func (w *CLIWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL string) (*WorkerResult, error) {
 	claudePath := w.ClaudePath
 	if claudePath == "" {
 		claudePath = "claude"
@@ -111,7 +111,7 @@ func (w *CLIWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt
 		"--print",
 		"--dangerously-skip-permissions",
 		"--system-prompt", systemPrompt,
-		buildTaskPrompt(ticketID, projectID),
+		taskMessage,
 		"--mcp-config", mcpCfgPath,
 	}
 
@@ -167,7 +167,7 @@ type DockerWorker struct {
 }
 
 // Spawn runs a claude CLI process inside a Docker container.
-func (w *DockerWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt, workDir, serverURL string) (*WorkerResult, error) {
+func (w *DockerWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL string) (*WorkerResult, error) {
 	image := w.Image
 	if image == "" {
 		image = "warrant-worker"
@@ -221,7 +221,7 @@ func (w *DockerWorker) Spawn(ctx context.Context, ticketID, projectID, systemPro
 
 	// Write the task prompt to a file (shell escaping is fragile with long prompts).
 	taskPromptPath := filepath.Join(tmpDir, "task-prompt.txt")
-	if err := os.WriteFile(taskPromptPath, []byte(buildTaskPrompt(ticketID, projectID)), 0o644); err != nil {
+	if err := os.WriteFile(taskPromptPath, []byte(taskMessage), 0o644); err != nil {
 		return nil, fmt.Errorf("write task prompt: %w", err)
 	}
 
