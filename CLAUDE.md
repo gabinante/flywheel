@@ -6,7 +6,7 @@ Warrant is a **work queue plus shared context** for software projects — AI age
 
 ## Tech stack
 
-- **Backend:** Go (module `github.com/matt0x6f/warrant`)
+- **Backend:** Go (module `github.com/gabinante/flywheel`)
 - **Frontend:** TypeScript + Vite SPA (in `web/`), hash routes (`/#/…`)
 - **Database:** Postgres, Redis
 - **API:** REST (`api/openapi.yaml`) + MCP (`/mcp`)

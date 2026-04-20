@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/matt0x6f/warrant/internal/agent"
-	"github.com/matt0x6f/warrant/internal/auth"
+	"github.com/gabinante/flywheel/internal/agent"
+	"github.com/gabinante/flywheel/internal/auth"
 )
 
 // MCPHTTPHandler wraps an MCP Streamable HTTP handler and returns 401 with

@@ -3,7 +3,7 @@ package rest
 import (
 	"net/http"
 
-	apierrors "github.com/matt0x6f/warrant/internal/errors"
+	apierrors "github.com/gabinante/flywheel/internal/errors"
 )
 
 // WriteStructuredError writes a structured error as JSON and sets the status code.

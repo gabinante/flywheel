@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	apierrors "github.com/matt0x6f/warrant/internal/errors"
-	"github.com/matt0x6f/warrant/internal/execution"
-	"github.com/matt0x6f/warrant/internal/ticket"
+	apierrors "github.com/gabinante/flywheel/internal/errors"
+	"github.com/gabinante/flywheel/internal/execution"
+	"github.com/gabinante/flywheel/internal/ticket"
 )
 
 // TraceService is the execution trace operations needed by TraceHandler. *execution.Service implements it.

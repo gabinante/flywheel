@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	apierrors "github.com/matt0x6f/warrant/internal/errors"
-	"github.com/matt0x6f/warrant/internal/review"
-	"github.com/matt0x6f/warrant/internal/ticket"
+	apierrors "github.com/gabinante/flywheel/internal/errors"
+	"github.com/gabinante/flywheel/internal/review"
+	"github.com/gabinante/flywheel/internal/ticket"
 )
 
 // ReviewServiceForHandler is the review operations needed by ReviewsHandler. *review.Service implements it.

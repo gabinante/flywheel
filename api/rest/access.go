@@ -5,9 +5,9 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/matt0x6f/warrant/internal/agent"
-	apierrors "github.com/matt0x6f/warrant/internal/errors"
-	"github.com/matt0x6f/warrant/internal/project"
+	"github.com/gabinante/flywheel/internal/agent"
+	apierrors "github.com/gabinante/flywheel/internal/errors"
+	"github.com/gabinante/flywheel/internal/project"
 )
 
 // AgentGetter is used by EnsureOrgAccess. *agent.Store implements it.

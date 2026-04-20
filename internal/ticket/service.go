@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/matt0x6f/warrant/events"
-	"github.com/matt0x6f/warrant/internal/project"
+	"github.com/gabinante/flywheel/events"
+	"github.com/gabinante/flywheel/internal/project"
 )
 
 // ProjectGetter is used to resolve project slug for ticket IDs. Implemented by project.Service.

@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/matt0x6f/warrant/events"
-	"github.com/matt0x6f/warrant/internal/ticket"
+	"github.com/gabinante/flywheel/events"
+	"github.com/gabinante/flywheel/internal/ticket"
 )
 
 // TicketService is the subset of ticket.Service needed for review.

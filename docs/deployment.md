@@ -18,7 +18,7 @@ docker compose up -d
 
 To use the **pre-built image** instead of building from source:  
 `docker compose -f docker-compose.ghcr.yml up -d`  
-(standalone file with postgres, redis, and `ghcr.io/matt0x6f/warrant:latest`).
+(standalone file with postgres, redis, and `ghcr.io/gabinante/flywheel:latest`).
 
 Server is at http://localhost:8080.
 

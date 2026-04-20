@@ -3,8 +3,8 @@ package mcp
 import (
 	"testing"
 
-	"github.com/matt0x6f/warrant/internal/project"
-	"github.com/matt0x6f/warrant/internal/workstream"
+	"github.com/gabinante/flywheel/internal/project"
+	"github.com/gabinante/flywheel/internal/workstream"
 )
 
 func TestWorkStreamGitInstruction(t *testing.T) {

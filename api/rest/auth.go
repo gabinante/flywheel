@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/matt0x6f/warrant/internal/auth"
-	apierrors "github.com/matt0x6f/warrant/internal/errors"
-	"github.com/matt0x6f/warrant/internal/org"
+	"github.com/gabinante/flywheel/internal/auth"
+	apierrors "github.com/gabinante/flywheel/internal/errors"
+	"github.com/gabinante/flywheel/internal/org"
 )
 
 // AuthHandler handles GitHub OAuth and token response.

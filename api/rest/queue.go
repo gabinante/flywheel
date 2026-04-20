@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/matt0x6f/warrant/internal/agent"
-	apierrors "github.com/matt0x6f/warrant/internal/errors"
-	"github.com/matt0x6f/warrant/internal/org"
-	"github.com/matt0x6f/warrant/internal/project"
-	"github.com/matt0x6f/warrant/internal/queue"
-	"github.com/matt0x6f/warrant/internal/ticket"
+	"github.com/gabinante/flywheel/internal/agent"
+	apierrors "github.com/gabinante/flywheel/internal/errors"
+	"github.com/gabinante/flywheel/internal/org"
+	"github.com/gabinante/flywheel/internal/project"
+	"github.com/gabinante/flywheel/internal/queue"
+	"github.com/gabinante/flywheel/internal/ticket"
 )
 
 // QueueHandler handles queue and lease REST endpoints.

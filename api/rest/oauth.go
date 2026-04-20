@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/matt0x6f/warrant/internal/auth"
-	apierrors "github.com/matt0x6f/warrant/internal/errors"
+	"github.com/gabinante/flywheel/internal/auth"
+	apierrors "github.com/gabinante/flywheel/internal/errors"
 )
 
 // OAuthHandler serves OAuth 2.1 discovery, authorize, and token endpoints for MCP clients (e.g. Cursor).

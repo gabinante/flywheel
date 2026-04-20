@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/matt0x6f/warrant/internal/ticket"
+	"github.com/gabinante/flywheel/internal/ticket"
 )
 
 var ErrNoTicketAvailable = errors.New("no ticket available to claim")

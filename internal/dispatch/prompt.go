@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/matt0x6f/warrant/internal/project"
-	"github.com/matt0x6f/warrant/internal/ticket"
+	"github.com/gabinante/flywheel/internal/project"
+	"github.com/gabinante/flywheel/internal/ticket"
 )
 
 // AssembleWorkerPrompt builds a system prompt for a Claude Code worker session.

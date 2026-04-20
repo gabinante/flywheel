@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/matt0x6f/warrant/api/generated"
-	"github.com/matt0x6f/warrant/api/rest/middleware"
-	apierrors "github.com/matt0x6f/warrant/internal/errors"
+	"github.com/gabinante/flywheel/api/generated"
+	"github.com/gabinante/flywheel/api/rest/middleware"
+	apierrors "github.com/gabinante/flywheel/internal/errors"
 )
 
 // RouterConfig configures the main HTTP router (std net/http only).

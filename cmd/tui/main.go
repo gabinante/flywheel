@@ -26,8 +26,8 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/guptarohit/asciigraph"
-	"github.com/matt0x6f/warrant/api/client"
-	"github.com/matt0x6f/warrant/cmd/tui/components"
+	"github.com/gabinante/flywheel/api/client"
+	"github.com/gabinante/flywheel/cmd/tui/components"
 )
 
 const (

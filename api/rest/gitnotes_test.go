@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/matt0x6f/warrant/internal/agent"
-	"github.com/matt0x6f/warrant/internal/gitnotes"
-	"github.com/matt0x6f/warrant/internal/project"
+	"github.com/gabinante/flywheel/internal/agent"
+	"github.com/gabinante/flywheel/internal/gitnotes"
+	"github.com/gabinante/flywheel/internal/project"
 )
 
 func requireGit(t *testing.T) {

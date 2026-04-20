@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/matt0x6f/warrant/internal/project"
-	"github.com/matt0x6f/warrant/internal/queue"
-	"github.com/matt0x6f/warrant/internal/ticket"
+	"github.com/gabinante/flywheel/internal/project"
+	"github.com/gabinante/flywheel/internal/queue"
+	"github.com/gabinante/flywheel/internal/ticket"
 )
 
 // Code is a stable identifier for error types so agents and clients can branch on it.

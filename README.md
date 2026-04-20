@@ -23,7 +23,7 @@ You need **Docker** with the **Compose v2 plugin**, and a [GitHub OAuth app](htt
 **Option A — setup script** (creates `.env`, asks for secrets when possible, starts the stack):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/matt0x6f/warrant/main/scripts/warrant-docker-setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/gabinante/flywheel/main/scripts/warrant-docker-setup.sh | bash
 ```
 
 That clones into `$HOME/warrant` when you run it from `curl`. If you already have the repo: `./scripts/warrant-docker-setup.sh` from the project root (symlinks are fine).
@@ -50,7 +50,7 @@ Vite defaults to port **5173** and proxies API calls to `127.0.0.1:8080` (change
 
 ## Binary releases
 
-[GitHub Releases](https://github.com/matt0x6f/warrant/releases) has prebuilt binaries. Container: `ghcr.io/matt0x6f/warrant:latest` (you supply Postgres/Redis, or use the compose files in this repo).
+[GitHub Releases](https://github.com/gabinante/flywheel/releases) has prebuilt binaries. Container: `ghcr.io/gabinante/flywheel:latest` (you supply Postgres/Redis, or use the compose files in this repo).
 
 ## Tests
 

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/matt0x6f/warrant/internal/project"
-	"github.com/matt0x6f/warrant/internal/ticket"
+	"github.com/gabinante/flywheel/internal/project"
+	"github.com/gabinante/flywheel/internal/ticket"
 )
 
 func TestAssembleWorkerPromptMinimal(t *testing.T) {

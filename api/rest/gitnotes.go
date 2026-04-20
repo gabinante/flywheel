@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strconv"
 
-	apierrors "github.com/matt0x6f/warrant/internal/errors"
-	"github.com/matt0x6f/warrant/internal/gitnotes"
+	apierrors "github.com/gabinante/flywheel/internal/errors"
+	"github.com/gabinante/flywheel/internal/gitnotes"
 )
 
 // GitNotesHandler handles REST endpoints for Warrant git notes (read-only).

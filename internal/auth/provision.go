@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/matt0x6f/warrant/internal/agent"
-	"github.com/matt0x6f/warrant/internal/user"
+	"github.com/gabinante/flywheel/internal/agent"
+	"github.com/gabinante/flywheel/internal/user"
 )
 
 // Provisioner creates or finds user and agent from GitHub identity.

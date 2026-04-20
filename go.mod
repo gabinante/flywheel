@@ -1,4 +1,4 @@
-module github.com/matt0x6f/warrant
+module github.com/gabinante/flywheel
 
 go 1.26.1
 

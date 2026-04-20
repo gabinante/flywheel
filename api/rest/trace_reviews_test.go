@@ -9,11 +9,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/matt0x6f/warrant/internal/agent"
-	"github.com/matt0x6f/warrant/internal/execution"
-	"github.com/matt0x6f/warrant/internal/project"
-	"github.com/matt0x6f/warrant/internal/review"
-	"github.com/matt0x6f/warrant/internal/ticket"
+	"github.com/gabinante/flywheel/internal/agent"
+	"github.com/gabinante/flywheel/internal/execution"
+	"github.com/gabinante/flywheel/internal/project"
+	"github.com/gabinante/flywheel/internal/review"
+	"github.com/gabinante/flywheel/internal/ticket"
 )
 
 type mockTraceService struct {

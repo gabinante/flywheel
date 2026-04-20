@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/matt0x6f/warrant/internal/auth"
+	"github.com/gabinante/flywheel/internal/auth"
 )
 
 func TestGithubRedirect_WithRedirectURI(t *testing.T) {

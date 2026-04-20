@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/matt0x6f/warrant/internal/agent"
-	"github.com/matt0x6f/warrant/internal/auth"
+	"github.com/gabinante/flywheel/internal/agent"
+	"github.com/gabinante/flywheel/internal/auth"
 )
 
 // ContextKey type for auth context values.

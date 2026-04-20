@@ -12,17 +12,17 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/matt0x6f/warrant/api/rest"
-	"github.com/matt0x6f/warrant/internal/auth"
-	apierrors "github.com/matt0x6f/warrant/internal/errors"
-	"github.com/matt0x6f/warrant/internal/execution"
-	"github.com/matt0x6f/warrant/internal/gitnotes"
-	"github.com/matt0x6f/warrant/internal/org"
-	"github.com/matt0x6f/warrant/internal/project"
-	"github.com/matt0x6f/warrant/internal/queue"
-	"github.com/matt0x6f/warrant/internal/review"
-	"github.com/matt0x6f/warrant/internal/ticket"
-	"github.com/matt0x6f/warrant/internal/workstream"
+	"github.com/gabinante/flywheel/api/rest"
+	"github.com/gabinante/flywheel/internal/auth"
+	apierrors "github.com/gabinante/flywheel/internal/errors"
+	"github.com/gabinante/flywheel/internal/execution"
+	"github.com/gabinante/flywheel/internal/gitnotes"
+	"github.com/gabinante/flywheel/internal/org"
+	"github.com/gabinante/flywheel/internal/project"
+	"github.com/gabinante/flywheel/internal/queue"
+	"github.com/gabinante/flywheel/internal/review"
+	"github.com/gabinante/flywheel/internal/ticket"
+	"github.com/gabinante/flywheel/internal/workstream"
 )
 
 type sessionContextKey struct{}

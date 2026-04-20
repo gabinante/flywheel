@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/matt0x6f/warrant/internal/gitnotes"
+	"github.com/gabinante/flywheel/internal/gitnotes"
 )
 
 func main() {

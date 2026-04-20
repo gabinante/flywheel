@@ -2,7 +2,7 @@
 # Set up Warrant with Docker Compose: clone if needed, configure .env, then start the stack.
 #
 # curl|bash trusts the fetched script and TLS to GitHub — same trust model as cloning the repo.
-#   curl -fsSL https://raw.githubusercontent.com/matt0x6f/warrant/main/scripts/warrant-docker-setup.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/gabinante/flywheel/main/scripts/warrant-docker-setup.sh | bash
 
 set -euo pipefail
 
@@ -74,7 +74,7 @@ resolve_script_dir() {
 materialize_repo() {
   local clone_dir="${WARRANT_CLONE_DIR:-$HOME/warrant}"
   local ref="${WARRANT_REF:-main}"
-  local url="${WARRANT_GIT_URL:-https://github.com/matt0x6f/warrant.git}"
+  local url="${WARRANT_GIT_URL:-https://github.com/gabinante/flywheel.git}"
 
   validate_path_safe "$clone_dir" WARRANT_CLONE_DIR
   if ! validate_ref "$ref"; then
@@ -101,7 +101,7 @@ materialize_repo() {
     parent="$(dirname "$clone_dir")"
     mkdir -p "$parent"
     tmp="$(mktemp -d)"
-    curl -fsSL "https://github.com/matt0x6f/warrant/archive/refs/heads/${ref}.tar.gz" | tar xz -C "$tmp"
+    curl -fsSL "https://github.com/gabinante/flywheel/archive/refs/heads/${ref}.tar.gz" | tar xz -C "$tmp"
     extracted="$(find "$tmp" -maxdepth 1 -type d -name 'warrant-*' | head -n 1)"
     if [[ -z "$extracted" || ! -f "$extracted/.env.example" ]]; then
       rm -rf "$tmp"
