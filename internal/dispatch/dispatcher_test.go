@@ -742,6 +742,462 @@ func TestRunWorkerProjectNotFound(t *testing.T) {
 	}
 }
 
+// --- Lease Release Tests (Layer 1 failure recovery) ---
+
+// mockLeaseReleaser implements LeaseReleaser for tests.
+type mockLeaseReleaser struct {
+	mu       sync.Mutex
+	calls    []string // ticket IDs passed to ForceReleaseLease
+	err      error    // error to return
+}
+
+func (m *mockLeaseReleaser) ForceReleaseLease(_ context.Context, ticketID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls = append(m.calls, ticketID)
+	return m.err
+}
+
+func (m *mockLeaseReleaser) callCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.calls)
+}
+
+func (m *mockLeaseReleaser) lastTicketID() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.calls) == 0 {
+		return ""
+	}
+	return m.calls[len(m.calls)-1]
+}
+
+func TestHandleWorkerExit_WorkerCrash_ReleasesLease(t *testing.T) {
+	// Simulate: worker exits with error while ticket is still in executing state.
+	// Expected: lease is immediately released, ticket goes back to draft (pending).
+	proj := &project.Project{ID: "p-1", Name: "test"}
+	tk := &ticket.Ticket{
+		ID:        "t-crash",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+		Title:     "crash test",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	releaser := &mockLeaseReleaser{}
+	worker := &mockWorker{
+		spawnFunc: func(ctx context.Context, _, _, _, _, _, _ string) (*WorkerResult, error) {
+			// Simulate crash: return error.
+			return nil, fmt.Errorf("process killed")
+		},
+	}
+
+	cfg := Config{
+		MaxWorkers:    5,
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+
+	// Ticket state must be planning or executing for handleWorkerExit to trigger.
+	// After spawn → runWorker fails → handleWorkerExit checks ticket state.
+	// Update the mock ticket to be in executing state (simulating that claim happened).
+	tg.mu.Lock()
+	tk.State = ticket.StateExecuting
+	tg.mu.Unlock()
+
+	d.spawn(context.Background(), tk)
+
+	// Wait for goroutine to complete.
+	d.wg.Wait()
+
+	if releaser.callCount() != 1 {
+		t.Fatalf("expected 1 ForceReleaseLease call, got %d", releaser.callCount())
+	}
+	if releaser.lastTicketID() != "t-crash" {
+		t.Errorf("expected ticketID 't-crash', got %q", releaser.lastTicketID())
+	}
+}
+
+func TestHandleWorkerExit_SuccessfulSubmit_NoRelease(t *testing.T) {
+	// Simulate: worker submits successfully, ticket moves to awaiting_validation.
+	// Expected: no lease release (ticket already advanced past worker's responsibility).
+	proj := &project.Project{ID: "p-1", Name: "test"}
+	tk := &ticket.Ticket{
+		ID:        "t-submit",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+		Title:     "submit test",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	releaser := &mockLeaseReleaser{}
+	worker := &mockWorker{
+		spawnFunc: func(ctx context.Context, _, _, _, _, _, _ string) (*WorkerResult, error) {
+			// Simulate successful worker: it submits, ticket moves to awaiting_validation.
+			tg.mu.Lock()
+			tk.State = ticket.StateAwaitingValidation
+			tg.mu.Unlock()
+			return &WorkerResult{Success: true, Output: "done"}, nil
+		},
+	}
+
+	cfg := Config{
+		MaxWorkers:    5,
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+
+	d.spawn(context.Background(), tk)
+	d.wg.Wait()
+
+	if releaser.callCount() != 0 {
+		t.Errorf("expected 0 ForceReleaseLease calls (ticket submitted), got %d", releaser.callCount())
+	}
+}
+
+func TestHandleWorkerExit_PlanningState_ReleasesLease(t *testing.T) {
+	// Simulate: worker exits while ticket is in planning (claimed) state.
+	// Expected: lease is released.
+	proj := &project.Project{ID: "p-1", Name: "test"}
+	tk := &ticket.Ticket{
+		ID:        "t-planning",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+		Title:     "planning crash",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	releaser := &mockLeaseReleaser{}
+	worker := &mockWorker{
+		spawnFunc: func(ctx context.Context, _, _, _, _, _, _ string) (*WorkerResult, error) {
+			return nil, fmt.Errorf("crash during planning")
+		},
+	}
+
+	cfg := Config{
+		MaxWorkers:    5,
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+
+	// Simulate that ticket was claimed (moved to planning).
+	tg.mu.Lock()
+	tk.State = ticket.StatePlanning
+	tg.mu.Unlock()
+
+	d.spawn(context.Background(), tk)
+	d.wg.Wait()
+
+	if releaser.callCount() != 1 {
+		t.Fatalf("expected 1 ForceReleaseLease call for planning state, got %d", releaser.callCount())
+	}
+}
+
+func TestHandleWorkerExit_PreSpawnFailure_NoRelease(t *testing.T) {
+	// Simulate: runWorker fails before reaching spawn (e.g. project not found).
+	// Ticket is still in pending/draft state → handleWorkerExit should not release.
+	tk := &ticket.Ticket{
+		ID:        "t-prespawn",
+		ProjectID: "missing-project",
+		State:     ticket.StatePending,
+		Title:     "pre-spawn fail",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter() // no projects → GetProject fails
+
+	releaser := &mockLeaseReleaser{}
+	worker := &mockWorker{}
+
+	cfg := Config{
+		MaxWorkers:    5,
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+
+	d.spawn(context.Background(), tk)
+	d.wg.Wait()
+
+	// Ticket is still in pending (draft) state, not planning/executing,
+	// so handleWorkerExit should be a no-op.
+	if releaser.callCount() != 0 {
+		t.Errorf("expected 0 ForceReleaseLease calls (ticket still pending), got %d", releaser.callCount())
+	}
+}
+
+func TestHandleWorkerExit_NilReleaser_NoOp(t *testing.T) {
+	// When leaseReleaser is nil, handleWorkerExit is a graceful no-op.
+	proj := &project.Project{ID: "p-1", Name: "test"}
+	tk := &ticket.Ticket{
+		ID:        "t-nil",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+		Title:     "nil releaser",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	worker := &mockWorker{
+		spawnFunc: func(ctx context.Context, _, _, _, _, _, _ string) (*WorkerResult, error) {
+			return nil, fmt.Errorf("crash")
+		},
+	}
+
+	cfg := Config{
+		MaxWorkers:    5,
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	// Note: NOT setting leaseReleaser — it's nil.
+
+	tg.mu.Lock()
+	tk.State = ticket.StateExecuting
+	tg.mu.Unlock()
+
+	// Should not panic with nil leaseReleaser.
+	d.spawn(context.Background(), tk)
+	d.wg.Wait()
+}
+
+func TestHandleWorkerExit_Escalation_NoRelease(t *testing.T) {
+	// Simulate: worker escalates, ticket moves to awaiting_input (needs_human).
+	// Expected: no release — escalation is a valid worker exit.
+	proj := &project.Project{ID: "p-1", Name: "test"}
+	tk := &ticket.Ticket{
+		ID:        "t-escalate",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+		Title:     "escalation test",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	releaser := &mockLeaseReleaser{}
+	worker := &mockWorker{
+		spawnFunc: func(ctx context.Context, _, _, _, _, _, _ string) (*WorkerResult, error) {
+			// Simulate: worker escalates, ticket moves to awaiting_input.
+			tg.mu.Lock()
+			tk.State = ticket.StateAwaitingInput
+			tg.mu.Unlock()
+			return &WorkerResult{Success: true, Output: "escalated"}, nil
+		},
+	}
+
+	cfg := Config{
+		MaxWorkers:    5,
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+
+	d.spawn(context.Background(), tk)
+	d.wg.Wait()
+
+	if releaser.callCount() != 0 {
+		t.Errorf("expected 0 ForceReleaseLease calls (escalation), got %d", releaser.callCount())
+	}
+}
+
+func TestHandleWorkerExit_ActiveMapCleanup(t *testing.T) {
+	// Verify: after worker crash + lease release, the ticket is removed from the active map.
+	proj := &project.Project{ID: "p-1", Name: "test"}
+	tk := &ticket.Ticket{
+		ID:        "t-cleanup",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+		Title:     "cleanup test",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	releaser := &mockLeaseReleaser{}
+	worker := &mockWorker{
+		spawnFunc: func(ctx context.Context, _, _, _, _, _, _ string) (*WorkerResult, error) {
+			return nil, fmt.Errorf("crash")
+		},
+	}
+
+	cfg := Config{
+		MaxWorkers:    5,
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+
+	tg.mu.Lock()
+	tk.State = ticket.StateExecuting
+	tg.mu.Unlock()
+
+	d.spawn(context.Background(), tk)
+	d.wg.Wait()
+
+	// Worker should be removed from active map.
+	if d.activeCount() != 0 {
+		t.Errorf("expected 0 active workers after crash, got %d", d.activeCount())
+	}
+}
+
+func TestHandleWorkerExit_ReleaserError_Logged(t *testing.T) {
+	// Verify: if ForceReleaseLease returns an error, we don't panic and the
+	// worker is still cleaned up from active map (Layer 2 TTL will handle it).
+	proj := &project.Project{ID: "p-1", Name: "test"}
+	tk := &ticket.Ticket{
+		ID:        "t-err",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+		Title:     "release error",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	releaser := &mockLeaseReleaser{err: fmt.Errorf("redis unavailable")}
+	worker := &mockWorker{
+		spawnFunc: func(ctx context.Context, _, _, _, _, _, _ string) (*WorkerResult, error) {
+			return nil, fmt.Errorf("crash")
+		},
+	}
+
+	cfg := Config{
+		MaxWorkers:    5,
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+
+	tg.mu.Lock()
+	tk.State = ticket.StateExecuting
+	tg.mu.Unlock()
+
+	d.spawn(context.Background(), tk)
+	d.wg.Wait()
+
+	// ForceReleaseLease was called (and failed), but we don't crash.
+	if releaser.callCount() != 1 {
+		t.Errorf("expected 1 ForceReleaseLease call, got %d", releaser.callCount())
+	}
+	// Active map still cleaned up (defer handles that).
+	if d.activeCount() != 0 {
+		t.Errorf("expected 0 active after error, got %d", d.activeCount())
+	}
+}
+
+func TestHandleWorkerExit_ConcurrentWorkers(t *testing.T) {
+	// Verify: multiple workers crashing concurrently each get their lease released.
+	proj := &project.Project{ID: "p-1", Name: "test"}
+	tk1 := &ticket.Ticket{
+		ID:        "t-c1",
+		ProjectID: "p-1",
+		State:     ticket.StateExecuting,
+		Title:     "concurrent 1",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	tk2 := &ticket.Ticket{
+		ID:        "t-c2",
+		ProjectID: "p-1",
+		State:     ticket.StateExecuting,
+		Title:     "concurrent 2",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk1, tk2)
+	pg := newMockProjectGetter(proj)
+
+	releaser := &mockLeaseReleaser{}
+	worker := &mockWorker{
+		spawnFunc: func(ctx context.Context, _, _, _, _, _, _ string) (*WorkerResult, error) {
+			return nil, fmt.Errorf("crash")
+		},
+	}
+
+	cfg := Config{
+		MaxWorkers:    5,
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+
+	// Spawn both workers concurrently (they have different IDs so no dup prevention).
+	d.spawn(context.Background(), tk1)
+	d.spawn(context.Background(), tk2)
+	d.wg.Wait()
+
+	if releaser.callCount() != 2 {
+		t.Errorf("expected 2 ForceReleaseLease calls, got %d", releaser.callCount())
+	}
+	if d.activeCount() != 0 {
+		t.Errorf("expected 0 active after concurrent crashes, got %d", d.activeCount())
+	}
+}
+
 func TestEventBusIntegration(t *testing.T) {
 	proj := &project.Project{ID: "p-1", Name: "test"}
 	tk := &ticket.Ticket{
