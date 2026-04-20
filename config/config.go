@@ -2,7 +2,10 @@ package config
 
 import (
 	"bufio"
+	"fmt"
+	"log"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -13,7 +16,7 @@ func Load() *Config {
 	loadEnvFile(".env")
 	port := getEnv("PORT", "8080")
 	baseURL := getEnv("BASE_URL", "http://localhost:"+port)
-	return &Config{
+	cfg := &Config{
 		Dispatch: DispatchConfig{
 			Enabled:      getEnvBool("DISPATCH_ENABLED", false),
 			MaxWorkers:   getEnvInt("DISPATCH_MAX_WORKERS", 4),
@@ -51,6 +54,38 @@ func Load() *Config {
 			JWTSecret:          getEnv("JWT_SECRET", ""),
 		},
 	}
+
+	for _, w := range cfg.Validate() {
+		log.Printf("config warning: %s", w)
+	}
+
+	return cfg
+}
+
+// Validate checks for conflicting or potentially misconfigured settings
+// and returns a list of warning messages. Called automatically by Load().
+func (c *Config) Validate() []string {
+	var warnings []string
+
+	// When dispatch is enabled in host mode, the claude CLI must be reachable.
+	// Skip the check when Docker isolation is active because the binary lives
+	// inside the container image, not on the host PATH.
+	if c.Dispatch.Enabled && !c.Dispatch.DockerEnabled {
+		if _, err := exec.LookPath(c.Dispatch.ClaudePath); err != nil {
+			warnings = append(warnings, fmt.Sprintf(
+				"DISPATCH_ENABLED=true but DISPATCH_CLAUDE_PATH=%q not found on PATH: %v",
+				c.Dispatch.ClaudePath, err))
+		}
+	}
+
+	// Auto-approving on acceptance pass requires acceptance tests to actually run.
+	if c.Dispatch.AutoApproveOnAcceptancePass && !c.RunAcceptanceTestOnSubmit {
+		warnings = append(warnings,
+			"AUTO_APPROVE_ON_ACCEPTANCE_PASS=true but RUN_ACCEPTANCE_TEST_ON_SUBMIT=false; "+
+				"tickets cannot be auto-approved because no acceptance test will run")
+	}
+
+	return warnings
 }
 
 type Config struct {
