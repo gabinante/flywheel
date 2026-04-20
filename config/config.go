@@ -1,15 +1,19 @@
 package config
 
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
 
-// Load reads configuration from environment variables with sensible defaults.
+// Load reads configuration from environment with sensible defaults.
+// If a .env file exists in the current directory, it is loaded first (values already in env are not overwritten).
+// In embedded mode, also loads ~/.warrant/data/config.env for bootstrap-generated settings.
 //
 // Environment variables should be populated by varlock before the server starts:
 //
@@ -19,8 +23,24 @@ import (
 // varlock validates variables against .env.schema and ensures sensitive values
 // are never logged. See scripts/varlock and .env.schema for details.
 func Load() *Config {
+	loadEnvFile(".env")
+	// In embedded mode, also load the data dir config if it exists.
+	// This allows headless bootstrap to persist config across restarts.
+	if getEnv("STORAGE_MODE", "") == "embedded" {
+		dataDir := getEnv("WARRANT_DATA_DIR", "")
+		if dataDir == "" {
+			if home, err := os.UserHomeDir(); err == nil {
+				dataDir = filepath.Join(home, ".warrant", "data")
+			}
+		}
+		if dataDir != "" {
+			loadEnvFile(filepath.Join(dataDir, "config.env"))
+		}
+	}
 	port := getEnv("PORT", "8080")
 	baseURL := getEnv("BASE_URL", "http://localhost:"+port)
+	storageMode := getEnv("STORAGE_MODE", "")
+	embeddedEnabled := storageMode == "embedded"
 	cfg := &Config{
 		Mirror: MirrorConfig{
 			Enabled:      getEnvBool("MIRROR_ENABLED", false),
@@ -28,6 +48,10 @@ func Load() *Config {
 			JiraBaseURL:  getEnv("MIRROR_JIRA_BASE_URL", ""),
 			JiraEmail:    getEnv("MIRROR_JIRA_EMAIL", ""),
 			JiraAPIToken: getEnv("MIRROR_JIRA_API_TOKEN", ""),
+		},
+		Embedded: EmbeddedConfig{
+			Enabled: embeddedEnabled,
+			DataDir: getEnv("WARRANT_DATA_DIR", ""),
 		},
 		Dispatch: DispatchConfig{
 			Enabled:      getEnvBool("DISPATCH_ENABLED", false),
@@ -123,6 +147,7 @@ type Config struct {
 	Dispatch                  DispatchConfig
 	Cost                      CostConfig
 	Mirror                    MirrorConfig
+	Embedded                  EmbeddedConfig
 	RunAcceptanceTestOnSubmit bool
 }
 
@@ -149,6 +174,13 @@ type MirrorConfig struct {
 	JiraBaseURL  string // Jira instance base URL
 	JiraEmail    string // Jira API user email
 	JiraAPIToken string // Jira API token
+}
+
+// EmbeddedConfig controls zero-config embedded mode (SQLite + in-memory Redis).
+// When Enabled is true, Postgres and Redis are not required.
+type EmbeddedConfig struct {
+	Enabled bool   // STORAGE_MODE=embedded or auto-detected
+	DataDir string // directory for SQLite DB and findings (default: ~/.warrant/data)
 }
 
 type DispatchConfig struct {
@@ -201,6 +233,35 @@ func getEnv(key, defaultVal string) string {
 		return v
 	}
 	return defaultVal
+}
+
+// loadEnvFile sets env vars from a file (KEY=VALUE per line). Only sets vars not already in os.Environ().
+func loadEnvFile(path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	s := bufio.NewScanner(f)
+	for s.Scan() {
+		line := strings.TrimSpace(s.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		i := strings.Index(line, "=")
+		if i <= 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:i])
+		val := strings.TrimSpace(line[i+1:])
+		if key == "" {
+			continue
+		}
+		if os.Getenv(key) != "" {
+			continue
+		}
+		_ = os.Setenv(key, val)
+	}
 }
 
 func getEnvInt(key string, defaultVal int) int {

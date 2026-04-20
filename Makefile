@@ -1,4 +1,4 @@
-.PHONY: run run-mcp migrate migrate-down test generate docker-up docker-down build-flywheel-git build-flywheel-mcp web-build varlock-validate
+.PHONY: run run-mcp run-embedded migrate migrate-down test generate docker-up docker-down docker-embedded-up docker-embedded-down build build-flywheel-git build-flywheel-mcp web-build varlock-validate install
 
 VARLOCK := ./scripts/varlock
 
@@ -39,3 +39,24 @@ docker-up:
 
 docker-down:
 	docker compose down
+
+# ─── Embedded / Zero-Config Mode ─────────────────────────────────────────────
+
+# Run in embedded mode (SQLite, no Postgres/Redis required).
+run-embedded:
+	STORAGE_MODE=embedded go run ./cmd/server
+
+# Build the warrant binary.
+build:
+	go build -o warrant ./cmd/server
+
+# Install warrant binary to /usr/local/bin.
+install: build
+	cp warrant /usr/local/bin/warrant
+
+# Docker: build and run in embedded mode (zero-config).
+docker-embedded-up:
+	docker compose -f docker-compose.embedded.yml up -d
+
+docker-embedded-down:
+	docker compose -f docker-compose.embedded.yml down

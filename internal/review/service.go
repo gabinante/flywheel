@@ -18,13 +18,14 @@ type TicketService interface {
 
 // Service provides review and escalation operations.
 type Service struct {
-	store     *Store
+	store     ReviewStore
 	ticketSvc TicketService
 	bus       events.Bus
 }
 
 // NewService returns a new Service and subscribes to ticket.escalated to record escalations.
-func NewService(store *Store, ticketSvc TicketService, bus events.Bus) *Service {
+// The store parameter accepts any ReviewStore implementation.
+func NewService(store ReviewStore, ticketSvc TicketService, bus events.Bus) *Service {
 	svc := &Service{store: store, ticketSvc: ticketSvc, bus: bus}
 	bus.Subscribe(events.EventTicketEscalated, func(ctx context.Context, ev events.Event) {
 		ticketID, _ := ev.Payload["ticket_id"].(string)
