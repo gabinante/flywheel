@@ -19,6 +19,9 @@ import (
 	"github.com/gabinante/flywheel/internal/cost"
 	"github.com/gabinante/flywheel/internal/dispatch"
 	"github.com/gabinante/flywheel/internal/execution"
+	"github.com/gabinante/flywheel/internal/mirror"
+	"github.com/gabinante/flywheel/internal/mirror/jira"
+	"github.com/gabinante/flywheel/internal/mirror/linear"
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/plan"
 	"github.com/gabinante/flywheel/internal/project"
@@ -106,6 +109,22 @@ func main() {
 		costCfg.FlagshipProvider, costCfg.FlagshipModel,
 		costCfg.MidProvider, costCfg.MidModel,
 		costCfg.FastProvider, costCfg.FastModel)
+
+	// Mirror service: one-way ticket mirroring to Linear/Jira (opt-in per project).
+	// Adapters are registered but only activated when a project's mirror_config is set.
+	if cfg.Mirror.Enabled {
+		mirrorSvc := mirror.NewService(ticketSvc, projectSvc, bus)
+		if cfg.Mirror.LinearAPIKey != "" {
+			linearClient := linear.NewClient(cfg.Mirror.LinearAPIKey)
+			mirrorSvc.RegisterAdapter("linear", linear.NewAdapter(linearClient))
+		}
+		if cfg.Mirror.JiraAPIToken != "" {
+			jiraClient := jira.NewClient(cfg.Mirror.JiraBaseURL, cfg.Mirror.JiraEmail, cfg.Mirror.JiraAPIToken)
+			mirrorSvc.RegisterAdapter("jira", jira.NewAdapter(jiraClient))
+		}
+		_ = mirrorSvc // service runs via event subscriptions
+		log.Println("mirror: service started")
+	}
 
 	strictServer := &rest.StrictServer{
 		OrgSvc:        orgSvc,

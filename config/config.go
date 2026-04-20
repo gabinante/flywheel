@@ -22,6 +22,13 @@ func Load() *Config {
 	port := getEnv("PORT", "8080")
 	baseURL := getEnv("BASE_URL", "http://localhost:"+port)
 	cfg := &Config{
+		Mirror: MirrorConfig{
+			Enabled:      getEnvBool("MIRROR_ENABLED", false),
+			LinearAPIKey: getEnv("MIRROR_LINEAR_API_KEY", ""),
+			JiraBaseURL:  getEnv("MIRROR_JIRA_BASE_URL", ""),
+			JiraEmail:    getEnv("MIRROR_JIRA_EMAIL", ""),
+			JiraAPIToken: getEnv("MIRROR_JIRA_API_TOKEN", ""),
+		},
 		Dispatch: DispatchConfig{
 			Enabled:      getEnvBool("DISPATCH_ENABLED", false),
 			MaxWorkers:   getEnvInt("DISPATCH_MAX_WORKERS", 4),
@@ -115,6 +122,7 @@ type Config struct {
 	Auth                      AuthConfig
 	Dispatch                  DispatchConfig
 	Cost                      CostConfig
+	Mirror                    MirrorConfig
 	RunAcceptanceTestOnSubmit bool
 }
 
@@ -130,6 +138,17 @@ type CostConfig struct {
 	MidModel                    string  // model name for mid tier
 	FastProvider                string  // provider for fast/cheap tier
 	FastModel                   string  // model name for fast tier
+}
+
+// MirrorConfig holds configuration for the ticket mirroring service.
+// The mirror service itself is opt-in per project (via project ContextPack.Extra),
+// but global API credentials are configured here.
+type MirrorConfig struct {
+	Enabled      bool   // master switch: enable the mirror service
+	LinearAPIKey string // Linear API key (global, or per-project via varlock)
+	JiraBaseURL  string // Jira instance base URL
+	JiraEmail    string // Jira API user email
+	JiraAPIToken string // Jira API token
 }
 
 type DispatchConfig struct {
