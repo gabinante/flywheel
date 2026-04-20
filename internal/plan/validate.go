@@ -307,10 +307,86 @@ func validateShell(shell *ShellPlan) error {
 			return &ValidationError{Backend: BackendShell, Field: fmt.Sprintf("commands[%d].command", i), Message: "command is required"}
 		}
 	}
-	// Side-effect manifest is structurally validated by type system;
-	// presence validation ensures the agent explicitly declared effects.
-	// An empty manifest means "no side effects" — which is a valid declaration.
+	// Validate the side-effect manifest at schema level before classification.
+	if err := validateManifest(&shell.SideEffectManifest); err != nil {
+		return err
+	}
 	return nil
+}
+
+// validateManifest validates the side-effect manifest structure and field values.
+// Manifest validation happens at schema level before classification.
+func validateManifest(m *SideEffectManifest) error {
+	// Validate file ops.
+	for i, op := range m.FileOps {
+		if strings.TrimSpace(op.Path) == "" {
+			return &ValidationError{Backend: BackendShell, Field: fmt.Sprintf("side_effect_manifest.file_ops[%d].path", i), Message: "path is required"}
+		}
+		if !isValidFileOpAction(op.Action) {
+			return &ValidationError{
+				Backend: BackendShell,
+				Field:   fmt.Sprintf("side_effect_manifest.file_ops[%d].action", i),
+				Message: fmt.Sprintf("action must be one of: %s", strings.Join(ValidFileOpActions, ", ")),
+			}
+		}
+	}
+	// Validate network ops.
+	for i, op := range m.NetworkOps {
+		if strings.TrimSpace(op.Endpoint) == "" {
+			return &ValidationError{Backend: BackendShell, Field: fmt.Sprintf("side_effect_manifest.network_ops[%d].endpoint", i), Message: "endpoint is required"}
+		}
+		if strings.TrimSpace(op.Method) == "" {
+			return &ValidationError{Backend: BackendShell, Field: fmt.Sprintf("side_effect_manifest.network_ops[%d].method", i), Message: "method is required"}
+		}
+		if !isValidNetworkMethod(op.Method) {
+			return &ValidationError{
+				Backend: BackendShell,
+				Field:   fmt.Sprintf("side_effect_manifest.network_ops[%d].method", i),
+				Message: fmt.Sprintf("method must be one of: %s", strings.Join(ValidNetworkMethods, ", ")),
+			}
+		}
+	}
+	// Validate process ops.
+	for i, op := range m.ProcessOps {
+		if strings.TrimSpace(op.Binary) == "" {
+			return &ValidationError{Backend: BackendShell, Field: fmt.Sprintf("side_effect_manifest.process_ops[%d].binary", i), Message: "binary is required"}
+		}
+	}
+	// Validate credential ops.
+	for i, op := range m.CredentialOps {
+		if strings.TrimSpace(op.Name) == "" {
+			return &ValidationError{Backend: BackendShell, Field: fmt.Sprintf("side_effect_manifest.credential_ops[%d].name", i), Message: "name is required"}
+		}
+	}
+	// Validate resource limits (non-negative).
+	if m.ResourceLimits.MaxRuntimeSeconds < 0 {
+		return &ValidationError{Backend: BackendShell, Field: "side_effect_manifest.resource_limits.max_runtime_seconds", Message: "must be non-negative"}
+	}
+	if m.ResourceLimits.MaxDiskWriteBytes < 0 {
+		return &ValidationError{Backend: BackendShell, Field: "side_effect_manifest.resource_limits.max_disk_write_bytes", Message: "must be non-negative"}
+	}
+	if m.ResourceLimits.MaxNetworkCalls < 0 {
+		return &ValidationError{Backend: BackendShell, Field: "side_effect_manifest.resource_limits.max_network_calls", Message: "must be non-negative"}
+	}
+	return nil
+}
+
+func isValidFileOpAction(action string) bool {
+	for _, valid := range ValidFileOpActions {
+		if action == valid {
+			return true
+		}
+	}
+	return false
+}
+
+func isValidNetworkMethod(method string) bool {
+	for _, valid := range ValidNetworkMethods {
+		if method == valid {
+			return true
+		}
+	}
+	return false
 }
 
 func validateDeploy(deploy *DeployPlan) error {
