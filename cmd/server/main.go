@@ -16,6 +16,7 @@ import (
 	"github.com/matt0x6f/warrant/events"
 	"github.com/matt0x6f/warrant/internal/agent"
 	"github.com/matt0x6f/warrant/internal/auth"
+	"github.com/matt0x6f/warrant/internal/dispatch"
 	"github.com/matt0x6f/warrant/internal/execution"
 	"github.com/matt0x6f/warrant/internal/org"
 	"github.com/matt0x6f/warrant/internal/project"
@@ -63,6 +64,9 @@ func main() {
 	if cfg.RunAcceptanceTestOnSubmit {
 		ticketSvc.SetAcceptanceRunner(&ticket.ShellAcceptanceRunner{})
 	}
+	if cfg.Dispatch.AutoApproveOnAcceptancePass {
+		ticketSvc.SetAutoApproveOnPass(true)
+	}
 
 	redisOpts, err := redis.ParseURL(cfg.Redis.URL)
 	if err != nil {
@@ -104,6 +108,7 @@ func main() {
 	var authHandler *rest.AuthHandler
 	var oauthHandler *rest.OAuthHandler
 	var mcpHandler http.Handler
+	var mcpSSEHandler http.Handler
 	if cfg.Auth.GitHubClientID != "" && cfg.Auth.JWTSecret != "" {
 		authMiddleware = rest.AuthMiddleware(cfg.Auth.JWTSecret, agentSvc)
 		authCfg := auth.Config{
@@ -144,6 +149,13 @@ func main() {
 			JWTSecret: cfg.Auth.JWTSecret,
 			AgentSvc:  agentSvc,
 		}
+		sseHandler := mcp.NewSSEHandler(mcpSrv)
+		mcpSSEHandler = &rest.MCPHTTPHandler{
+			Handler:   sseHandler,
+			BaseURL:   cfg.Auth.BaseURL,
+			JWTSecret: cfg.Auth.JWTSecret,
+			AgentSvc:  agentSvc,
+		}
 	}
 
 	router := rest.NewRouter(rest.RouterConfig{
@@ -152,9 +164,34 @@ func main() {
 		AuthHandler:    authHandler,
 		OAuthHandler:   oauthHandler,
 		MCPHandler:     mcpHandler,
+		MCPSSEHandler:  mcpSSEHandler,
 		AgentsHandler:  &rest.AgentsHandler{AgentSvc: agentSvc},
 		WebDist:        cfg.Server.WebDist,
 	})
+
+	// Start dispatcher if enabled.
+	var dispatcher *dispatch.Dispatcher
+	if cfg.Dispatch.Enabled {
+		repoDir, _ := os.Getwd()
+		dispatcher = dispatch.New(dispatch.Config{
+			MaxWorkers:     cfg.Dispatch.MaxWorkers,
+			ClaudePath:     cfg.Dispatch.ClaudePath,
+			WorktreeDir:    cfg.Dispatch.WorktreeDir,
+			RepoDir:        repoDir,
+			ServerURL:      cfg.Auth.BaseURL,
+			AgentID:        "dispatch-worker",
+			APIKey:         cfg.Dispatch.APIKey,
+			ProjectID:      cfg.Dispatch.ProjectID,
+			AutoApprove:    cfg.Dispatch.AutoApproveOnAcceptancePass,
+			DockerEnabled:  cfg.Dispatch.DockerEnabled,
+			DockerImage:    cfg.Dispatch.DockerImage,
+			DockerMemory:   cfg.Dispatch.DockerMemory,
+			DockerCPUs:     cfg.Dispatch.DockerCPUs,
+			DockerFirewall: cfg.Dispatch.DockerFirewall,
+			AnthropicKey:   cfg.Dispatch.AnthropicKey,
+		}, bus, ticketSvc, projectSvc)
+		dispatcher.Start(ctx)
+	}
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Server.Port,
@@ -174,6 +211,9 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
+	if dispatcher != nil {
+		dispatcher.Stop()
+	}
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {

@@ -34,6 +34,14 @@ func NewStreamableHTTPHandler(server *mcp.Server) http.Handler {
 	}, nil)
 }
 
+// NewSSEHandler returns an http.Handler that serves MCP over SSE (legacy transport).
+// Needed for older Claude Code versions that use type:"sse" MCP config.
+func NewSSEHandler(server *mcp.Server) http.Handler {
+	return mcp.NewSSEHandler(func(req *http.Request) *mcp.Server {
+		return server
+	}, nil)
+}
+
 func registerResources(s *mcp.Server) {
 	s.AddResource(&mcp.Resource{
 		URI:         AgentGuideURI,

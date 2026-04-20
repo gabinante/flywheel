@@ -16,6 +16,7 @@ type RouterConfig struct {
 	AuthHandler    *AuthHandler
 	OAuthHandler   *OAuthHandler
 	MCPHandler     http.Handler
+	MCPSSEHandler  http.Handler // SSE transport for older MCP clients
 	AgentsHandler  *AgentsHandler
 	// WebDist is the Vite outDir (contains index.html and assets/). Empty skips SPA routes.
 	WebDist string
@@ -75,6 +76,10 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	if cfg.MCPHandler != nil {
 		mux.Handle("/mcp", cfg.MCPHandler)
 		mux.Handle("/mcp/", cfg.MCPHandler)
+	}
+	if cfg.MCPSSEHandler != nil {
+		mux.Handle("/sse", cfg.MCPSSEHandler)
+		mux.Handle("/sse/", cfg.MCPSSEHandler)
 	}
 	if cfg.AgentsHandler != nil {
 		agents := cfg.AgentsHandler

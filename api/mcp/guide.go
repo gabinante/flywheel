@@ -124,6 +124,37 @@ The user can review work entirely in chat. When they ask **"What needs my review
 
 When **claim_ticket** returns "no ticket available", the client may show an **elicitation** prompt: the server lists any stuck tickets (claimed or executing) and asks the user to confirm. The user can **direct the agent to claim** by choosing a ticket ID to force-release (e.g. agent-reliability-3); the server then force-releases that ticket and retries **claim_ticket** so the agent gets the lease in this session. Alternatively, the user can say "release (ticket_id) and claim it"—the agent should call **force_release_lease** (ticket_id) then **claim_ticket** (project_id). See **docs/mcp-human-in-the-loop.md** and **docs/troubleshooting.md** (releasing a stuck lease).
 
+## Coordinator mode (goal decomposition)
+
+When operating as a **coordinator**, your job is to decompose a high-level goal into a ticket DAG:
+
+1. **Understand the goal** – Read the project context pack (get_project_context) and any relevant code.
+2. **Plan the work** – Break the goal into discrete tickets with clear boundaries. Each ticket should be independently executable by a worker agent.
+3. **Create tickets with dependencies** – Use create_ticket for each unit of work. Set depends_on so tickets execute in the correct order (e.g. migration before API handler before tests).
+4. **Group into a work stream** – Create a work_stream for the goal, then update_ticket to set work_stream_id on each ticket.
+5. **Set acceptance tests** – Every ticket should have success_criteria and ideally an acceptance_test (shell command). This enables auto-validation.
+
+**Ticket templates** (use as patterns for success_criteria and acceptance_test):
+- **Implement function**: success_criteria = ["function X exists", "handles edge cases Y, Z"], acceptance_test = "go test ./pkg/... -run TestX"
+- **Add migration**: success_criteria = ["migration file created", "up/down both work"], acceptance_test = "go run ./cmd/migrate up && go run ./cmd/migrate down"
+- **Add MCP tool**: success_criteria = ["tool registered", "returns expected shape"], acceptance_test = "go test ./api/mcp/... -run TestToolName"
+- **Add test**: success_criteria = ["test covers cases X, Y"], acceptance_test = "go test ./path/... -run TestName"
+- **Refactor**: success_criteria = ["old code removed", "new structure in place"], acceptance_test = "go test ./..."
+
+The coordinator does **not** execute tickets—it creates them and lets the dispatcher assign workers.
+
+## Worker mode (ticket execution)
+
+When operating as a **worker**, you have been spawned to execute a single ticket:
+
+1. Your system prompt contains the project context, ticket objective, success criteria, dependency outputs, and any prior attempt feedback.
+2. **claim_ticket** → **start_ticket** → do the work → **log_step** frequently → **submit_ticket**.
+3. If blocked, use **escalate_ticket** to ask for human help.
+4. Your work happens in a **git worktree** isolated from other workers. Commit to the ticket branch.
+5. If this is a retry (prior_attempts exist), read the rejection notes carefully and address every point.
+
+The worker flow is the same as the typical flow above, but automated—no human selects tickets.
+
 ## Idempotency and retries
 
 - **create_ticket**: Pass an optional **idempotency_key** (e.g. a UUID or deterministic key per "logical" create). Retries with the same key return the existing ticket instead of creating a duplicate. Use when the client may retry after timeouts or network errors.

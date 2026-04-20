@@ -22,6 +22,7 @@ type Service struct {
 	bus               events.Bus
 	project           ProjectGetter
 	acceptanceRunner  AcceptanceRunner
+	autoApproveOnPass bool
 }
 
 // NewService returns a new Service.
@@ -37,6 +38,12 @@ func NewService(store *Store, bus events.Bus, project ProjectGetter) *Service {
 // SetAcceptanceRunner sets the optional runner for acceptance_test on submit. When set and the ticket has objective.acceptance_test, SubmitTicket runs it and rejects on failure.
 func (s *Service) SetAcceptanceRunner(r AcceptanceRunner) {
 	s.acceptanceRunner = r
+}
+
+// SetAutoApproveOnPass enables automatic approval when acceptance tests pass on submit.
+// Only applies to tickets that have an acceptance_test defined.
+func (s *Service) SetAutoApproveOnPass(enabled bool) {
+	s.autoApproveOnPass = enabled
 }
 
 // ErrAcceptanceCriteriaRequired is returned when a task or bug is created without success_criteria or acceptance_test.
@@ -234,6 +241,21 @@ func (s *Service) SubmitTicket(ctx context.Context, id string, leaseToken string
 	}
 	_ = leaseToken
 	s.emitTransitionEvent(TriggerSubmit, id, newState, t.ProjectID, nil)
+
+	// Auto-approve if enabled and acceptance test was present and passed.
+	if s.autoApproveOnPass && t.Objective.AcceptanceTest != "" && s.acceptanceRunner != nil {
+		// Re-read ticket at new version for the approve transition.
+		t2, err := s.store.GetByID(ctx, id)
+		if err == nil && t2.State == StateAwaitingReview {
+			approveState, err := s.sm.Transition(t2, TriggerApprove, Actor{ID: "system", Type: ActorSystem}, nil, nil)
+			if err == nil {
+				if err := s.store.UpdateState(ctx, id, t2.Version, approveState, t2.AssignedTo); err == nil {
+					s.emitTransitionEvent(TriggerApprove, id, approveState, t.ProjectID, nil)
+				}
+			}
+		}
+	}
+
 	return nil
 }
 

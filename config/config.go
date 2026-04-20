@@ -14,6 +14,21 @@ func Load() *Config {
 	port := getEnv("PORT", "8080")
 	baseURL := getEnv("BASE_URL", "http://localhost:"+port)
 	return &Config{
+		Dispatch: DispatchConfig{
+			Enabled:      getEnvBool("DISPATCH_ENABLED", false),
+			MaxWorkers:   getEnvInt("DISPATCH_MAX_WORKERS", 4),
+			ClaudePath:   getEnv("DISPATCH_CLAUDE_PATH", "claude"),
+			WorktreeDir:  getEnv("DISPATCH_WORKTREE_DIR", "/tmp/warrant-worktrees"),
+			APIKey:       getEnv("DISPATCH_API_KEY", ""),
+			ProjectID:    getEnv("DISPATCH_PROJECT_ID", ""),
+			AutoApproveOnAcceptancePass: getEnvBool("AUTO_APPROVE_ON_ACCEPTANCE_PASS", false),
+			DockerEnabled:  getEnvBool("DISPATCH_DOCKER_ENABLED", false),
+			DockerImage:    getEnv("DISPATCH_DOCKER_IMAGE", "warrant-worker"),
+			DockerMemory:   getEnv("DISPATCH_DOCKER_MEMORY", "4g"),
+			DockerCPUs:     getEnv("DISPATCH_DOCKER_CPUS", "2"),
+			DockerFirewall: getEnvBool("DISPATCH_DOCKER_FIREWALL", true),
+			AnthropicKey:   getEnv("ANTHROPIC_API_KEY", ""),
+		},
 		Server: ServerConfig{
 			Port:    port,
 			WebDist: getEnv("WEB_DIST", "web/dist"),
@@ -44,7 +59,25 @@ type Config struct {
 	Redis                     RedisConfig
 	Queue                     QueueConfig
 	Auth                      AuthConfig
+	Dispatch                  DispatchConfig
 	RunAcceptanceTestOnSubmit bool
+}
+
+type DispatchConfig struct {
+	Enabled      bool
+	MaxWorkers   int
+	ClaudePath   string   // path to claude CLI binary (host mode)
+	WorktreeDir  string   // base directory for git worktrees (host mode)
+	APIKey       string   // warrant API key for worker MCP authentication
+	ProjectID    string   // only dispatch tickets for this project (empty = all)
+	AutoApproveOnAcceptancePass bool
+	// Docker isolation settings.
+	DockerEnabled  bool
+	DockerImage    string // worker image name (default: "warrant-worker")
+	DockerMemory   string // memory limit per worker (default: "4g")
+	DockerCPUs     string // CPU limit per worker (default: "2")
+	DockerFirewall bool   // enable default-deny firewall with allowlist
+	AnthropicKey   string // ANTHROPIC_API_KEY passed to docker workers
 }
 
 type ServerConfig struct {
