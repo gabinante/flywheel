@@ -190,6 +190,7 @@ func main() {
 			DockerFirewall: cfg.Dispatch.DockerFirewall,
 			AnthropicKey:   cfg.Dispatch.AnthropicKey,
 		}, bus, ticketSvc, projectSvc)
+		dispatcher.SetLeaseReleaser(queueSvc)
 		dispatcher.Start(ctx)
 	}
 
