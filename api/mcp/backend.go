@@ -23,6 +23,6 @@ type Backend struct {
 	AgentStore *agent.Store
 
 	// DefaultAgentID is used as a fallback when agent_id is not passed in args
-	// and not available from HTTP auth context (e.g. stdio mode with WARRANT_TOKEN).
+	// and not available from HTTP auth context (e.g. stdio mode with FLYWHEEL_TOKEN).
 	DefaultAgentID string
 }

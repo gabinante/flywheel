@@ -215,7 +215,7 @@ func checkAndUnlockAchievements(stats *client.MeStats, history *client.MeStatsHi
 }
 
 func renderHeader(m model) string {
-	s := components.Primary.Render("Warrant")
+	s := components.Primary.Render("Flywheel")
 	if m.orgID != "" {
 		name := ""
 		for _, o := range m.orgs {
@@ -1532,7 +1532,7 @@ func (m model) View() string {
 	}
 	switch m.screen {
 	case screenLogin:
-		b.WriteString(components.Primary.Render("Warrant") + "\n")
+		b.WriteString(components.Primary.Render("Flywheel") + "\n")
 		b.WriteString(components.Muted.Render("Agent work tracking & review") + "\n\n")
 		b.WriteString("Not logged in.\n\n")
 		b.WriteString(components.Border.Width(40).Padding(0, 1).Render(components.Primary.Render("Log in with GitHub") + " (opens browser)") + "\n\n")
@@ -2030,7 +2030,7 @@ func startLoginFlow(baseURL string) tea.Cmd {
 			token := r.URL.Query().Get("token")
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`<!DOCTYPE html><html><head><title>Warrant</title></head><body><p>Success! You can close this window and return to the TUI.</p></body></html>`))
+			_, _ = w.Write([]byte(`<!DOCTYPE html><html><head><title>Flywheel</title></head><body><p>Success! You can close this window and return to the TUI.</p></body></html>`))
 			select {
 			case ch <- token:
 			default:

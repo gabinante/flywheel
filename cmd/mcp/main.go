@@ -1,4 +1,4 @@
-// Package main runs the Warrant MCP server over stdio. Use this from IDEs (Cursor, Claude Code, etc.)
+// Package main runs the Flywheel MCP server over stdio. Use this from IDEs (Cursor, Claude Code, etc.)
 // or agents that speak MCP. Requires DATABASE_URL and REDIS_URL (same as the REST server).
 package main
 
