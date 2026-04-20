@@ -103,7 +103,7 @@ func (s *Service) CreateTicket(ctx context.Context, projectID, title string, typ
 	if idempotencyKey != "" {
 		_ = s.store.SetCreateIdempotency(ctx, projectID, idempotencyKey, id)
 	}
-	_ = s.bus.Publish(ctx, events.Event{Type: events.EventTicketCreated, Payload: map[string]any{"ticket_id": id}})
+	_ = s.bus.Publish(ctx, events.NewEvent(events.EventTicketCreated, map[string]any{"ticket_id": id}).WithEntityKey("ticket:"+id))
 	return t, nil
 }
 
@@ -296,6 +296,7 @@ func (s *Service) InjectEscalationAnswer(ctx context.Context, ticketID, answer s
 }
 
 // emitTransitionEvent publishes a typed event for the given trigger/transition.
+// Events are keyed by ticket ID for ordered delivery within an entity.
 func (s *Service) emitTransitionEvent(trigger, ticketID string, newState State, projectID string, extra map[string]any) {
 	payload := map[string]any{"ticket_id": ticketID, "state": string(newState)}
 	if projectID != "" {
@@ -306,7 +307,8 @@ func (s *Service) emitTransitionEvent(trigger, ticketID string, newState State, 
 	}
 	eventType := triggerToEventType(trigger, newState)
 	if eventType != "" {
-		_ = s.bus.Publish(context.Background(), events.Event{Type: eventType, Payload: payload})
+		event := events.NewEvent(eventType, payload).WithEntityKey("ticket:" + ticketID)
+		_ = s.bus.Publish(context.Background(), event)
 	}
 }
 

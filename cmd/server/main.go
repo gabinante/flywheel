@@ -51,7 +51,17 @@ func main() {
 	}
 	defer pool.Close()
 
-	bus := events.NewInProcessBus()
+	// Create event bus: use Postgres durable bus by default for at-least-once delivery.
+	// Falls back to in-process bus if DURABLE_BUS=false is set.
+	var bus events.DurableEventBus
+	if os.Getenv("DURABLE_BUS") == "false" {
+		bus = events.NewInProcessBus()
+		log.Println("events: using in-process bus (no durability)")
+	} else {
+		pgBus := events.NewPostgresBus(pool, events.PostgresBusConfig{})
+		bus = pgBus
+		log.Println("events: using Postgres durable bus (at-least-once delivery)")
+	}
 
 	orgStore := org.NewStore(pool)
 	orgSvc := org.NewService(orgStore)
@@ -194,6 +204,11 @@ func main() {
 		dispatcher.Start(ctx)
 	}
 
+	// Start durable bus delivery (LISTEN/NOTIFY + polling) after all subscriptions are registered.
+	if err := bus.Start(ctx); err != nil {
+		log.Fatalf("event bus start: %v", err)
+	}
+
 	srv := &http.Server{
 		Addr:              ":" + cfg.Server.Port,
 		Handler:           router,
@@ -216,6 +231,7 @@ func main() {
 	if dispatcher != nil {
 		dispatcher.Stop()
 	}
+	_ = bus.Stop()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {

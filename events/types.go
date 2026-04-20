@@ -1,5 +1,7 @@
 package events
 
+import "time"
+
 // Event type constants for the ticket lifecycle (spec v0.2).
 // Each state transition emits a typed event on the bus.
 const (
@@ -40,7 +42,37 @@ const (
 )
 
 // Event carries type and typed payload for the bus.
+// ID and EntityKey are set by durable implementations; in-process bus leaves them empty.
 type Event struct {
-	Type    string
+	// ID is a unique identifier assigned by the durable store (empty for in-process).
+	ID string
+
+	// Type is the event type (e.g., "ticket.created").
+	Type string
+
+	// EntityKey groups events for ordered delivery. Events with the same entity key
+	// are delivered in order. Typically "ticket:<id>" or "project:<id>".
+	EntityKey string
+
+	// Payload carries event-specific data.
 	Payload map[string]any
+
+	// Timestamp is when the event was created (set by store for durable, time.Now for in-process).
+	Timestamp time.Time
+}
+
+// NewEvent creates an event with the given type and payload.
+// EntityKey defaults to empty (no ordering guarantee).
+func NewEvent(eventType string, payload map[string]any) Event {
+	return Event{
+		Type:      eventType,
+		Payload:   payload,
+		Timestamp: time.Now(),
+	}
+}
+
+// WithEntityKey returns a copy of the event with the given entity key set.
+func (e Event) WithEntityKey(key string) Event {
+	e.EntityKey = key
+	return e
 }
