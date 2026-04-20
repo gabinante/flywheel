@@ -138,6 +138,11 @@ func (s *Service) GetTicketsByIDs(ctx context.Context, ids []string) ([]*Ticket,
 	return s.store.GetByIDs(ctx, ids)
 }
 
+// ListByWorkStream returns all tickets in a work stream (any state).
+func (s *Service) ListByWorkStream(ctx context.Context, projectID string, workStreamID string) ([]*Ticket, error) {
+	return s.store.GetByProject(ctx, projectID, workStreamID, "")
+}
+
 // UpdateDependsOn sets the dependency list for a ticket. Caller must ensure dep IDs are valid and in the same project; no cycle check.
 func (s *Service) UpdateDependsOn(ctx context.Context, ticketID string, dependsOn []string) error {
 	if dependsOn == nil {

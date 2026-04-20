@@ -19,6 +19,7 @@ type TicketGetter interface {
 	GetTicket(ctx context.Context, id string) (*ticket.Ticket, error)
 	GetTicketsByIDs(ctx context.Context, ids []string) ([]*ticket.Ticket, error)
 	ListByState(ctx context.Context, projectID string, state ticket.State) ([]*ticket.Ticket, error)
+	ListByWorkStream(ctx context.Context, projectID string, workStreamID string) ([]*ticket.Ticket, error)
 }
 
 // ProjectGetter retrieves projects.
@@ -343,6 +344,42 @@ func (d *Dispatcher) handleTicketDone(ctx context.Context, e events.Event) {
 	if err := d.worktrees.Remove(ticketID); err != nil {
 		log.Printf("dispatch: worktree cleanup %s: %v", ticketID, err)
 	}
+
+	// Check work stream completion.
+	if t != nil && t.WorkStreamID != "" {
+		d.checkWorkStreamCompletion(ctx, t)
+	}
+}
+
+// checkWorkStreamCompletion checks whether all tickets in the work stream are
+// done (closed). If so, it logs a completion message — the foundation for
+// coordinator follow-up work.
+func (d *Dispatcher) checkWorkStreamCompletion(ctx context.Context, completed *ticket.Ticket) {
+	tickets, err := d.tickets.ListByWorkStream(ctx, completed.ProjectID, completed.WorkStreamID)
+	if err != nil {
+		log.Printf("dispatch: work stream completion check for %s: %v", completed.WorkStreamID, err)
+		return
+	}
+	if len(tickets) == 0 {
+		return
+	}
+
+	for _, t := range tickets {
+		if t.State != ticket.StateClosed {
+			return
+		}
+	}
+
+	log.Printf("dispatch: work stream %s complete — all %d tickets done (project=%s)",
+		completed.WorkStreamID, len(tickets), completed.ProjectID)
+	d.bus.Publish(ctx, events.Event{
+		Type: events.EventWorkStreamCompleted,
+		Payload: map[string]any{
+			"work_stream_id": completed.WorkStreamID,
+			"project_id":     completed.ProjectID,
+			"ticket_count":   len(tickets),
+		},
+	})
 }
 
 func (d *Dispatcher) spawn(ctx context.Context, t *ticket.Ticket) {

@@ -45,6 +45,9 @@ const (
 	EventRateLimitResumed  = "cost.rate_limit_resumed" // rate limit cleared, resuming
 	EventCostCallRecorded  = "cost.call_recorded"      // LLM call cost attributed
 
+	// --- Work stream events ---
+	EventWorkStreamCompleted = "work_stream.completed" // all tickets in stream are closed
+
 	// --- Plan lifecycle events ---
 	EventPlanCreated    = "plan.created"
 	EventPlanSubmitted  = "plan.submitted"
