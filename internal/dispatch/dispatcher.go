@@ -138,6 +138,18 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 	case <-time.After(2 * time.Second):
 	}
 
+	// Reviewers first — finish in-progress work before starting new work.
+	// This handles tickets stuck in awaiting_review when the reviewer was
+	// deferred due to capacity (worker still occupied the slot at submit time).
+	reviewing, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, ticket.StateAwaitingReview)
+	if err != nil {
+		log.Printf("dispatch: scan awaiting_review: %v", err)
+	} else {
+		for _, t := range reviewing {
+			d.spawnReviewer(ctx, t)
+		}
+	}
+
 	pending, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, ticket.StatePending)
 	if err != nil {
 		log.Printf("dispatch: scan pending: %v", err)
@@ -454,8 +466,9 @@ func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
 
 // autoMergePR merges the PR after a ticket is approved.
 func (d *Dispatcher) autoMergePR(t *ticket.Ticket, prURL string) {
-	// Extract PR number or use the URL directly with gh.
-	// gh pr merge works with URLs.
+	// Clean up the worktree first so gh can delete the local branch.
+	_ = d.worktrees.Remove(t.ID)
+
 	cmd := exec.Command("gh", "pr", "merge", prURL, "--squash", "--delete-branch")
 	cmd.Dir = d.cfg.RepoDir
 	out, err := cmd.CombinedOutput()
