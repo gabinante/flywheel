@@ -10,11 +10,11 @@ func ResolveDependencies(store *Store, ctx context.Context, t *Ticket) ([]*Ticke
 	return store.GetByIDs(ctx, t.DependsOn)
 }
 
-// IsUnblocked returns true when all dependency tickets are in state done.
+// IsUnblocked returns true when all dependency tickets are in state closed (done).
 func IsUnblocked(t *Ticket, deps []*Ticket) bool {
 	done := make(map[string]bool)
 	for _, d := range deps {
-		done[d.ID] = (d.State == StateDone)
+		done[d.ID] = (d.State == StateClosed)
 	}
 	for _, id := range t.DependsOn {
 		if !done[id] {
@@ -24,12 +24,12 @@ func IsUnblocked(t *Ticket, deps []*Ticket) bool {
 	return true
 }
 
-// GetDependencyOutputs collects outputs from dependency tickets keyed by dependency ticket ID,
+// GetDependencyOutputs collects outputs from closed dependency tickets keyed by dependency ticket ID,
 // for injection as inputs. Returns a map from dep ticket ID to its outputs (or nil).
 func GetDependencyOutputs(t *Ticket, deps []*Ticket) map[string]any {
 	out := make(map[string]any)
 	for _, d := range deps {
-		if d.State == StateDone && len(d.Outputs) > 0 {
+		if d.State == StateClosed && len(d.Outputs) > 0 {
 			out[d.ID] = d.Outputs
 		}
 	}

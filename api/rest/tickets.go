@@ -79,7 +79,7 @@ func (h *TicketsHandler) listTickets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	workStreamID := r.URL.Query().Get("work_stream_id")
-	state := ticket.State(r.URL.Query().Get("state"))
+	state := ticket.MapLegacyState(ticket.State(r.URL.Query().Get("state")))
 	list, err := h.TicketSvc.ListTickets(r.Context(), projectID, workStreamID, state)
 	if err != nil {
 		WriteStructuredError(w, TicketError(err))

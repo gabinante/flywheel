@@ -85,7 +85,7 @@ func (s *Service) CreateTicket(ctx context.Context, projectID, title string, typ
 		Title:        title,
 		Type:         typ,
 		Priority:     priority,
-		State:        StatePending,
+		State:        StateDraft,
 		Version:      0,
 		Objective:    objective,
 		Context:      ticketContext,
@@ -209,7 +209,7 @@ func (s *Service) TransitionTicket(ctx context.Context, id string, trigger strin
 	return nil
 }
 
-// SubmitTicket validates outputs and transitions to awaiting_review. Lease token is validated by caller (queue) if needed.
+// SubmitTicket validates outputs and transitions to awaiting_validation. Lease token is validated by caller (queue) if needed.
 // If an AcceptanceRunner is set and the ticket has objective.acceptance_test, the test is run first; on failure the submit is rejected with AcceptanceTestFailure.
 func (s *Service) SubmitTicket(ctx context.Context, id string, leaseToken string, outputs map[string]any) error {
 	t, err := s.store.GetByID(ctx, id)
@@ -246,7 +246,7 @@ func (s *Service) SubmitTicket(ctx context.Context, id string, leaseToken string
 	if s.autoApproveOnPass && t.Objective.AcceptanceTest != "" && s.acceptanceRunner != nil {
 		// Re-read ticket at new version for the approve transition.
 		t2, err := s.store.GetByID(ctx, id)
-		if err == nil && t2.State == StateAwaitingReview {
+		if err == nil && t2.State == StateAwaitingValidation {
 			approveState, err := s.sm.Transition(t2, TriggerApprove, Actor{ID: "system", Type: ActorSystem}, nil, nil)
 			if err == nil {
 				if err := s.store.UpdateState(ctx, id, t2.Version, approveState, t2.AssignedTo); err == nil {
@@ -259,7 +259,7 @@ func (s *Service) SubmitTicket(ctx context.Context, id string, leaseToken string
 	return nil
 }
 
-// EscalateTicket transitions to needs_human with reason and question.
+// EscalateTicket transitions to awaiting_input with reason and question.
 func (s *Service) EscalateTicket(ctx context.Context, id string, leaseToken string, reason, question string) error {
 	payload := map[string]any{"reason": reason, "question": question}
 	t, err := s.store.GetByID(ctx, id)
@@ -295,6 +295,7 @@ func (s *Service) InjectEscalationAnswer(ctx context.Context, ticketID, answer s
 	return s.store.UpdateContext(ctx, ticketID, t.Context)
 }
 
+// emitTransitionEvent publishes a typed event for the given trigger/transition.
 func (s *Service) emitTransitionEvent(trigger, ticketID string, newState State, projectID string, extra map[string]any) {
 	payload := map[string]any{"ticket_id": ticketID, "state": string(newState)}
 	if projectID != "" {
@@ -303,31 +304,60 @@ func (s *Service) emitTransitionEvent(trigger, ticketID string, newState State, 
 	for k, v := range extra {
 		payload[k] = v
 	}
-	eventType := ""
-	switch trigger {
-	case TriggerClaim:
-		eventType = events.EventTicketClaimed
-	case TriggerStart:
-		eventType = events.EventTicketStarted
-	case TriggerSubmit:
-		eventType = events.EventTicketSubmitted
-	case TriggerApprove:
-		eventType = events.EventTicketApproved
-		if newState == StateDone {
-			_ = s.bus.Publish(context.Background(), events.Event{Type: events.EventTicketDone, Payload: payload})
-		}
-	case TriggerReopenReview:
-		eventType = events.EventTicketReopened
-	case TriggerReject:
-		eventType = events.EventTicketRejected
-	case TriggerFail:
-		eventType = events.EventTicketFailed
-	case TriggerEscalate:
-		eventType = events.EventTicketEscalated
-	case TriggerLeaseExpired:
-		eventType = events.EventLeaseExpired
-	}
+	eventType := triggerToEventType(trigger, newState)
 	if eventType != "" {
 		_ = s.bus.Publish(context.Background(), events.Event{Type: eventType, Payload: payload})
+	}
+}
+
+// triggerToEventType maps a trigger+state to the correct event type to emit.
+func triggerToEventType(trigger string, newState State) string {
+	switch trigger {
+	case TriggerSpec:
+		return events.EventTicketSpecced
+	case TriggerPlan:
+		return events.EventTicketPlanning
+	case TriggerClaim:
+		return events.EventTicketClaimed
+	case TriggerStart:
+		return events.EventTicketStarted
+	case TriggerSubmit:
+		return events.EventTicketSubmitted
+	case TriggerValidate:
+		return events.EventTicketValidated
+	case TriggerApprove:
+		if newState == StateValidated {
+			return events.EventTicketApproved
+		}
+		// Resolving awaiting_input → executing
+		return events.EventTicketInputProvided
+	case TriggerDeploy:
+		return events.EventTicketDeploying
+	case TriggerObserve:
+		return events.EventTicketObserving
+	case TriggerClose:
+		return events.EventTicketClosed
+	case TriggerRequestInput:
+		return events.EventTicketAwaitingInput
+	case TriggerEscalate:
+		return events.EventTicketEscalated
+	case TriggerProvideInput:
+		return events.EventTicketInputProvided
+	case TriggerReplan:
+		return events.EventTicketReplanned
+	case TriggerInvalidate:
+		return events.EventTicketInvalidated
+	case TriggerReject:
+		return events.EventTicketRejected
+	case TriggerCancel:
+		return events.EventTicketCancelled
+	case TriggerFail:
+		return events.EventTicketFailed
+	case TriggerLeaseExpired:
+		return events.EventLeaseExpired
+	case TriggerReopen:
+		return events.EventTicketReopened
+	default:
+		return ""
 	}
 }

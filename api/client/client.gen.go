@@ -141,26 +141,45 @@ func (e StructuredErrorCode) Valid() bool {
 
 // Defines values for TicketState.
 const (
-	TicketStateAwaitingReview TicketState = "awaiting_review"
-	TicketStateBlocked        TicketState = "blocked"
-	TicketStateClaimed        TicketState = "claimed"
-	TicketStateDone           TicketState = "done"
-	TicketStateExecuting      TicketState = "executing"
-	TicketStateFailed         TicketState = "failed"
-	TicketStateNeedsHuman     TicketState = "needs_human"
-	TicketStatePending        TicketState = "pending"
+	TicketStateAwaitingInput      TicketState = "awaiting_input"
+	TicketStateAwaitingReview     TicketState = "awaiting_review"
+	TicketStateAwaitingValidation TicketState = "awaiting_validation"
+	TicketStateBlocked            TicketState = "blocked"
+	TicketStateClaimed            TicketState = "claimed"
+	TicketStateClosed             TicketState = "closed"
+	TicketStateDeploying          TicketState = "deploying"
+	TicketStateDone               TicketState = "done"
+	TicketStateDraft              TicketState = "draft"
+	TicketStateExecuting          TicketState = "executing"
+	TicketStateFailed             TicketState = "failed"
+	TicketStateNeedsHuman         TicketState = "needs_human"
+	TicketStateObserving          TicketState = "observing"
+	TicketStatePending            TicketState = "pending"
+	TicketStatePlanning           TicketState = "planning"
+	TicketStateSpecced            TicketState = "specced"
+	TicketStateValidated          TicketState = "validated"
 )
 
 // Valid indicates whether the value is a known member of the TicketState enum.
 func (e TicketState) Valid() bool {
 	switch e {
+	case TicketStateAwaitingInput:
+		return true
 	case TicketStateAwaitingReview:
+		return true
+	case TicketStateAwaitingValidation:
 		return true
 	case TicketStateBlocked:
 		return true
 	case TicketStateClaimed:
 		return true
+	case TicketStateClosed:
+		return true
+	case TicketStateDeploying:
+		return true
 	case TicketStateDone:
+		return true
+	case TicketStateDraft:
 		return true
 	case TicketStateExecuting:
 		return true
@@ -168,7 +187,15 @@ func (e TicketState) Valid() bool {
 		return true
 	case TicketStateNeedsHuman:
 		return true
+	case TicketStateObserving:
+		return true
 	case TicketStatePending:
+		return true
+	case TicketStatePlanning:
+		return true
+	case TicketStateSpecced:
+		return true
+	case TicketStateValidated:
 		return true
 	default:
 		return false
@@ -387,26 +414,45 @@ func (e GetGitNotesLogParamsType) Valid() bool {
 
 // Defines values for ListTicketsParamsState.
 const (
-	ListTicketsParamsStateAwaitingReview ListTicketsParamsState = "awaiting_review"
-	ListTicketsParamsStateBlocked        ListTicketsParamsState = "blocked"
-	ListTicketsParamsStateClaimed        ListTicketsParamsState = "claimed"
-	ListTicketsParamsStateDone           ListTicketsParamsState = "done"
-	ListTicketsParamsStateExecuting      ListTicketsParamsState = "executing"
-	ListTicketsParamsStateFailed         ListTicketsParamsState = "failed"
-	ListTicketsParamsStateNeedsHuman     ListTicketsParamsState = "needs_human"
-	ListTicketsParamsStatePending        ListTicketsParamsState = "pending"
+	ListTicketsParamsStateAwaitingInput      ListTicketsParamsState = "awaiting_input"
+	ListTicketsParamsStateAwaitingReview     ListTicketsParamsState = "awaiting_review"
+	ListTicketsParamsStateAwaitingValidation ListTicketsParamsState = "awaiting_validation"
+	ListTicketsParamsStateBlocked            ListTicketsParamsState = "blocked"
+	ListTicketsParamsStateClaimed            ListTicketsParamsState = "claimed"
+	ListTicketsParamsStateClosed             ListTicketsParamsState = "closed"
+	ListTicketsParamsStateDeploying          ListTicketsParamsState = "deploying"
+	ListTicketsParamsStateDone               ListTicketsParamsState = "done"
+	ListTicketsParamsStateDraft              ListTicketsParamsState = "draft"
+	ListTicketsParamsStateExecuting          ListTicketsParamsState = "executing"
+	ListTicketsParamsStateFailed             ListTicketsParamsState = "failed"
+	ListTicketsParamsStateNeedsHuman         ListTicketsParamsState = "needs_human"
+	ListTicketsParamsStateObserving          ListTicketsParamsState = "observing"
+	ListTicketsParamsStatePending            ListTicketsParamsState = "pending"
+	ListTicketsParamsStatePlanning           ListTicketsParamsState = "planning"
+	ListTicketsParamsStateSpecced            ListTicketsParamsState = "specced"
+	ListTicketsParamsStateValidated          ListTicketsParamsState = "validated"
 )
 
 // Valid indicates whether the value is a known member of the ListTicketsParamsState enum.
 func (e ListTicketsParamsState) Valid() bool {
 	switch e {
+	case ListTicketsParamsStateAwaitingInput:
+		return true
 	case ListTicketsParamsStateAwaitingReview:
+		return true
+	case ListTicketsParamsStateAwaitingValidation:
 		return true
 	case ListTicketsParamsStateBlocked:
 		return true
 	case ListTicketsParamsStateClaimed:
 		return true
+	case ListTicketsParamsStateClosed:
+		return true
+	case ListTicketsParamsStateDeploying:
+		return true
 	case ListTicketsParamsStateDone:
+		return true
+	case ListTicketsParamsStateDraft:
 		return true
 	case ListTicketsParamsStateExecuting:
 		return true
@@ -414,7 +460,15 @@ func (e ListTicketsParamsState) Valid() bool {
 		return true
 	case ListTicketsParamsStateNeedsHuman:
 		return true
+	case ListTicketsParamsStateObserving:
+		return true
 	case ListTicketsParamsStatePending:
+		return true
+	case ListTicketsParamsStatePlanning:
+		return true
+	case ListTicketsParamsStateSpecced:
+		return true
+	case ListTicketsParamsStateValidated:
 		return true
 	default:
 		return false
@@ -479,13 +533,13 @@ type CreateProjectRequest struct {
 
 // CreateReviewRequest defines model for CreateReviewRequest.
 type CreateReviewRequest struct {
-	// Decision approved moves awaiting_review → done; rejected moves awaiting_review → executing; reopened moves done → awaiting_review (e.g. undo mistaken approval; outputs preserved).
+	// Decision approved moves awaiting_validation → validated; rejected moves awaiting_validation → executing; reopened moves closed → draft (re-opens ticket for new lifecycle).
 	Decision   CreateReviewRequestDecision `json:"decision"`
 	Notes      *string                     `json:"notes,omitempty"`
 	ReviewerId *string                     `json:"reviewer_id,omitempty"`
 }
 
-// CreateReviewRequestDecision approved moves awaiting_review → done; rejected moves awaiting_review → executing; reopened moves done → awaiting_review (e.g. undo mistaken approval; outputs preserved).
+// CreateReviewRequestDecision approved moves awaiting_validation → validated; rejected moves awaiting_validation → executing; reopened moves closed → draft (re-opens ticket for new lifecycle).
 type CreateReviewRequestDecision string
 
 // CreateTicketRequest defines model for CreateTicketRequest.
