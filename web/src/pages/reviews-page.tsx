@@ -7,7 +7,7 @@ import { ReviewQueueCelebration } from '@/components/review-queue-celebration'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import type { WarrantClient } from '@/contexts/auth-context'
+import type { FlywheelClient } from '@/contexts/auth-context'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
 import { formatApiError } from '@/lib/api/client'
@@ -17,7 +17,7 @@ type Ticket = components['schemas']['Ticket']
 type TraceStep = components['schemas']['TraceStep']
 
 async function loadPendingReviews(
-  client: WarrantClient,
+  client: FlywheelClient,
   projectId: string,
 ): Promise<
   { ok: true; tickets: Ticket[] } | { ok: false; message: string }

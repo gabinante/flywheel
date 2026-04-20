@@ -11,7 +11,7 @@ import (
 	"github.com/gabinante/flywheel/internal/gitnotes"
 )
 
-// GitNotesHandler handles REST endpoints for Warrant git notes (read-only).
+// GitNotesHandler handles REST endpoints for Flywheel git notes (read-only).
 // Tenancy: all endpoints require project access. Repo path is passed as query param repo_path;
 // if missing or not accessible, returns 501.
 type GitNotesHandler struct {

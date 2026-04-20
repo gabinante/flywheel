@@ -1,6 +1,6 @@
-# Warrant Git Notes — Refs and schema
+# Flywheel Git Notes — Refs and schema
 
-Quick reference for the Warrant git-notes integration. Full design: [git-integration-design.md](git-integration-design.md).
+Quick reference for the Flywheel git-notes integration. Full design: [git-integration-design.md](git-integration-design.md).
 
 ## Refs (multi-ref)
 
@@ -8,15 +8,15 @@ Notes are stored in separate refs per type:
 
 | Type      | Ref                              |
 |-----------|----------------------------------|
-| decision  | `refs/notes/warrant/decision`    |
-| trace     | `refs/notes/warrant/trace`       |
-| intent    | `refs/notes/warrant/intent`      |
+| decision  | `refs/notes/flywheel/decision`   |
+| trace     | `refs/notes/flywheel/trace`      |
+| intent    | `refs/notes/flywheel/intent`     |
 
 - **decision** — high-level decisions and rationale
 - **trace** — execution summaries / trace attachments
 - **intent** — what the agent set out to do
 
-Sync: push/pull `refs/notes/warrant/*` (or each ref).
+Sync: push/pull `refs/notes/flywheel/*` (or each ref).
 
 ## Note schema (JSON)
 
@@ -28,9 +28,9 @@ Versioned; current version `v: 1`.
 | `type`     | string | yes      | `decision`, `trace`, or `intent` |
 | `message`  | string | yes      | Note content |
 | `created_at` | string | no    | RFC3339 timestamp |
-| `agent_id` | string | no       | Warrant agent ID |
-| `ticket_id`| string | no       | Warrant ticket ID |
-| `project_id` | string | no     | Warrant project ID |
+| `agent_id` | string | no       | Flywheel agent ID |
+| `ticket_id`| string | no       | Flywheel ticket ID |
+| `project_id` | string | no     | Flywheel project ID |
 | `payload`  | object | no       | Extra structured data |
 
 Example:

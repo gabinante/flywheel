@@ -1,6 +1,6 @@
 # Runtime & deployment
 
-Warrant runs reliably in Docker Compose and uses the same stack for local dev and future hosted runs.
+Flywheel runs reliably in Docker Compose and uses the same stack for local dev and future hosted runs.
 
 ## Docker Compose (reference deployment)
 
@@ -48,7 +48,7 @@ Optional:
 ## Security
 
 - **Secrets only in env:** No secrets in the repo or in the image. Use **.env** (not committed; copy from `.env.example`) for local dev. For production or hosted runs, inject **GITHUB_CLIENT_ID**, **GITHUB_CLIENT_SECRET**, **JWT_SECRET**, **DATABASE_URL**, and **REDIS_URL** from a vault or your provider. Never bake secrets into the image or commit them.
-- **HTTPS-ready (production/hosted):** The app serves **HTTP** only. For production, put **TLS termination in front** (reverse proxy, load balancer, or ingress). The server listens on PORT; the proxy terminates TLS and forwards to the app. Set **BASE_URL** to the public HTTPS URL (e.g. `https://warrant.example.com`) so OAuth redirects and MCP URL auth work. No code change required; only deploy topology and env.
+- **HTTPS-ready (production/hosted):** The app serves **HTTP** only. For production, put **TLS termination in front** (reverse proxy, load balancer, or ingress). The server listens on PORT; the proxy terminates TLS and forwards to the app. Set **BASE_URL** to the public HTTPS URL (e.g. `https://flywheel.example.com`) so OAuth redirects and MCP URL auth work. No code change required; only deploy topology and env.
 - **CORS:** The built-in **web UI** is served from the **same origin** as the API (`GET /`, `GET /assets/*`), so the browser does not need CORS for that layout. For **Vite local dev**, the dev server proxies API routes to the Go server (see above), which also avoids CORS. If you host static files on a **different origin** without a proxy (e.g. a CDN) while the API stays on another host, add **CORS** middleware with an allowlist (e.g. env-driven `CORS_ORIGINS`) and document it in `.env.example`.
 - **Rate limiting:** For a future hosted deployment, rate limiting belongs in **middleware** (per-IP or per-agent) or in the **proxy/load balancer** (e.g. nginx, cloud LB). The app does not implement rate limiting today; document that it should be added at the edge or in a middleware layer when scaling to multi-tenant hosted use.
 
@@ -87,10 +87,10 @@ The server listens for **SIGTERM** and **SIGINT**. On receipt it stops accepting
 ### Postgres backup & restore
 
 - **Backup:** Use `pg_dump` (or your provider’s backup). Example for a single database:  
-  `pg_dump -U warrant -d warrant -Fc -f warrant_backup.dump`  
-  With Docker: `docker compose exec postgres pg_dump -U warrant -d warrant -Fc > warrant_backup.dump`
+  `pg_dump -U flywheel -d flywheel -Fc -f flywheel_backup.dump`  
+  With Docker: `docker compose exec postgres pg_dump -U flywheel -d flywheel -Fc > flywheel_backup.dump`
 - **Restore:** Use `pg_restore` (or provider restore). Example:  
-  `pg_restore -U warrant -d warrant --clean --if-exists warrant_backup.dump`  
+  `pg_restore -U flywheel -d flywheel --clean --if-exists flywheel_backup.dump`  
   Run against an empty or existing DB as needed; for production, follow your provider’s restore and point-in-time recovery docs.
 
 For local troubleshooting (DB not ready, migrations not run), see **docs/troubleshooting.md**.

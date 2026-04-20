@@ -1,8 +1,8 @@
-# Warrant
+# Flywheel
 
 ## What it is
 
-Warrant is a **work queue plus shared context** for software projects, built so **AI agents and people** can use the same system. You organize work in **organizations** and **projects**, and each project carries a **context pack** (conventions, file hints, system prompt) so agents know *how* you want work done not just *what* ticket text says.
+Flywheel is a **work queue plus shared context** for software projects, built so **AI agents and people** can use the same system. You organize work in **organizations** and **projects**, and each project carries a **context pack** (conventions, file hints, system prompt) so agents know *how* you want work done not just *what* ticket text says.
 
 Work is tracked as **tickets** with an objective. Tickets move from a project **queue** → claimed → in progress → **submitted for review**.
 
@@ -68,7 +68,7 @@ Everything lives in `.env.example` with comments. The usual suspects: `PORT`, `D
 
 ## How this project was built
 
-Warrant was developed using **agentic engineering**: ideation, architecture, and review were led by an experienced engineer, the system is **heavily tested**, and most of the **implementation was written by large language models** working in that loop. We state this for transparency—evaluate the code and tests the same way you would any other dependency you ship.
+Flywheel was developed using **agentic engineering**: ideation, architecture, and review were led by an experienced engineer, the system is **heavily tested**, and most of the **implementation was written by large language models** working in that loop. We state this for transparency—evaluate the code and tests the same way you would any other dependency you ship.
 
 ## License
 

@@ -20,7 +20,7 @@ varlock-validate:
 
 # For Docker Compose, migrations run in the server container. Use this for hosted/non-Docker deploys.
 migrate:
-	migrate -path db/migrations -database "$${DATABASE_URL:-postgres://warrant:warrant@localhost:5433/warrant?sslmode=disable}" up
+	migrate -path db/migrations -database "$${DATABASE_URL:-postgres://flywheel:flywheel@localhost:5433/flywheel?sslmode=disable}" up
 
 build-flywheel-git:
 	go build -o flywheel-git ./cmd/flywheel-git
@@ -29,7 +29,7 @@ build-flywheel-mcp:
 	go build -o flywheel-mcp ./cmd/mcp
 
 migrate-down:
-	migrate -path db/migrations -database "$${DATABASE_URL:-postgres://warrant:warrant@localhost:5433/warrant?sslmode=disable}" down 1
+	migrate -path db/migrations -database "$${DATABASE_URL:-postgres://flywheel:flywheel@localhost:5433/flywheel?sslmode=disable}" down 1
 
 test:
 	go test $$(go list ./... | grep -v 'node_modules')

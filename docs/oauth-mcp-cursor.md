@@ -4,17 +4,17 @@ When you add an **HTTP/SSE MCP server by URL** (not stdio), Cursor can **start t
 
 ## How it works
 
-1. **User adds Warrant MCP in Cursor** with a **URL** (e.g. `https://warrant.example.com/mcp` or `http://localhost:8080/mcp`), not a `command`.
+1. **User adds Flywheel MCP in Cursor** with a **URL** (e.g. `https://flywheel.example.com/mcp` or `http://localhost:8080/mcp`), not a `command`.
 2. **Cursor connects** to that URL (no token yet).
-3. **Warrant MCP server** responds with **401 Unauthorized** and:
+3. **Flywheel MCP server** responds with **401 Unauthorized** and:
    ```http
-   WWW-Authenticate: Bearer resource_metadata="https://warrant.example.com/.well-known/oauth-protected-resource"
+   WWW-Authenticate: Bearer resource_metadata="https://flywheel.example.com/.well-known/oauth-protected-resource"
    ```
 4. **Cursor** fetches that `resource_metadata` URL and gets a **Protected Resource Metadata (PRM)** JSON (RFC 9728) with:
    - `resource` – the MCP endpoint URL
    - `authorization_servers` – URL of the auth server (us)
-   - `scopes_supported` – e.g. `["warrant:mcp"]`
-5. **Cursor** fetches the **authorization server metadata** (RFC 8414) at e.g. `https://warrant.example.com/.well-known/oauth-authorization-server` and gets:
+   - `scopes_supported` – e.g. `["flywheel:mcp"]`
+5. **Cursor** fetches the **authorization server metadata** (RFC 8414) at e.g. `https://flywheel.example.com/.well-known/oauth-authorization-server` and gets:
    - `authorization_endpoint` – where to send the user (we redirect to GitHub)
    - `token_endpoint` – where Cursor exchanges the code for a token
    - Optional: `registration_endpoint` for Dynamic Client Registration
