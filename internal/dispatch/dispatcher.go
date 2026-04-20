@@ -24,6 +24,12 @@ type ProjectGetter interface {
 	GetProject(ctx context.Context, id string) (*project.Project, error)
 }
 
+// LeaseReleaser releases a ticket's lease and transitions it back to draft.
+// This is Layer 1 of failure recovery: immediate cleanup on worker process exit.
+type LeaseReleaser interface {
+	ForceReleaseLease(ctx context.Context, ticketID string) error
+}
+
 // Config holds dispatcher settings.
 type Config struct {
 	MaxWorkers   int
@@ -46,12 +52,13 @@ type Config struct {
 
 // Dispatcher listens for ticket events and spawns workers.
 type Dispatcher struct {
-	cfg       Config
-	bus       events.Bus
-	tickets   TicketGetter
-	projects  ProjectGetter
-	worker    Worker
-	worktrees *WorktreeManager
+	cfg           Config
+	bus           events.Bus
+	tickets       TicketGetter
+	projects      ProjectGetter
+	worker        Worker
+	worktrees     *WorktreeManager
+	leaseReleaser LeaseReleaser // nil-safe: if nil, worker exit does not release lease (Layer 2 TTL handles it)
 
 	mu       sync.Mutex
 	active   map[string]context.CancelFunc // ticketID → cancel
@@ -128,6 +135,12 @@ func (d *Dispatcher) Stop() {
 	d.mu.Unlock()
 	d.wg.Wait()
 	log.Println("dispatch: stopped")
+}
+
+// SetLeaseReleaser configures the lease releaser for immediate cleanup on worker exit.
+// Call this after construction to wire the queue service without circular imports.
+func (d *Dispatcher) SetLeaseReleaser(lr LeaseReleaser) {
+	d.leaseReleaser = lr
 }
 
 func (d *Dispatcher) scanPending(ctx context.Context) {
@@ -314,6 +327,11 @@ func (d *Dispatcher) spawn(ctx context.Context, t *ticket.Ticket) {
 		if err := d.runWorker(workerCtx, t); err != nil {
 			log.Printf("dispatch: worker %s failed: %v", t.ID, err)
 		}
+
+		// Layer 1 failure recovery: if the worker exited without submitting or
+		// escalating, immediately release the lease so the ticket returns to
+		// draft (pending) for retry. This avoids waiting for TTL expiry (Layer 2).
+		d.handleWorkerExit(t.ID)
 	}()
 
 	log.Printf("dispatch: spawned worker for %s (%d/%d active)", t.ID, d.activeCount(), d.cfg.MaxWorkers)
@@ -379,6 +397,46 @@ func (d *Dispatcher) runWorker(ctx context.Context, t *ticket.Ticket) error {
 	}
 
 	return nil
+}
+
+// handleWorkerExit is Layer 1 of failure recovery. When a worker process exits
+// (success or failure), this checks whether the ticket is still in a state that
+// indicates the worker didn't complete its work (planning or executing). If so,
+// it immediately releases the lease via ForceReleaseLease, which:
+//   - Removes the Redis lease key (invalidating the token — fencing preserved)
+//   - Transitions the ticket back to draft (= pending, retriable)
+//
+// This is a no-op if:
+//   - leaseReleaser is nil (graceful degradation; Layer 2 TTL will handle it)
+//   - The ticket already transitioned to a terminal/advanced state (submitted, escalated, etc.)
+//   - The ticket is not found (already cleaned up)
+func (d *Dispatcher) handleWorkerExit(ticketID string) {
+	if d.leaseReleaser == nil {
+		return
+	}
+
+	// Use a background context: the worker context may be cancelled, but we
+	// still want to clean up the lease.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Check current ticket state. Only release if still in planning or executing —
+	// these are the states where the worker holds the lease but hasn't completed.
+	t, err := d.tickets.GetTicket(ctx, ticketID)
+	if err != nil || t == nil {
+		return
+	}
+
+	// If the ticket moved past the worker's responsibility (submitted, escalated,
+	// awaiting_input, awaiting_validation, etc.), don't release.
+	if t.State != ticket.StatePlanning && t.State != ticket.StateExecuting {
+		return
+	}
+
+	log.Printf("dispatch: worker %s exited without completing — releasing lease (state=%s)", ticketID, t.State)
+	if err := d.leaseReleaser.ForceReleaseLease(ctx, ticketID); err != nil {
+		log.Printf("dispatch: failed to release lease for %s: %v", ticketID, err)
+	}
 }
 
 func (d *Dispatcher) activeCount() int {
