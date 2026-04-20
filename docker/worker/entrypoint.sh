@@ -48,5 +48,10 @@ if [ ! -f "$CLAUDE_HOME/.claude.json" ]; then
   chown claude:claude "$CLAUDE_HOME/.claude.json"
 fi
 
-# Drop to claude user and exec the command (preserve environment for API keys)
-exec su -p -s /bin/bash claude -c "$*"
+# Fix ownership of .claude dir (volume mounts create as root)
+chown -R claude:claude "$CLAUDE_HOME/.claude" 2>/dev/null || true
+
+# Drop to claude user and exec the command.
+# Use su -m to preserve env (for ANTHROPIC_API_KEY), but override HOME.
+export HOME=/home/claude
+exec su -m -s /bin/bash claude -c "$*"
