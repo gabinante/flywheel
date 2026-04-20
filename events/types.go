@@ -44,6 +44,15 @@ const (
 	EventRateLimitHit      = "cost.rate_limit_hit"     // provider rate-limited
 	EventRateLimitResumed  = "cost.rate_limit_resumed" // rate limit cleared, resuming
 	EventCostCallRecorded  = "cost.call_recorded"      // LLM call cost attributed
+
+	// --- Plan lifecycle events ---
+	EventPlanCreated    = "plan.created"
+	EventPlanSubmitted  = "plan.submitted"
+	EventPlanClassified = "plan.classified"
+	EventPlanApproved   = "plan.approved"
+	EventPlanApplied    = "plan.applied"
+	EventPlanRejected   = "plan.rejected"
+	EventPlanSuperseded = "plan.superseded"
 )
 
 // Event carries type and typed payload for the bus.

@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS plan_versions;
+DROP TABLE IF EXISTS plans;

@@ -20,6 +20,7 @@ import (
 	"github.com/gabinante/flywheel/internal/dispatch"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/org"
+	"github.com/gabinante/flywheel/internal/plan"
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
 	"github.com/gabinante/flywheel/internal/review"
@@ -92,6 +93,8 @@ func main() {
 	execSvc := execution.NewService(execStore, leaseValidator)
 	reviewStore := review.NewStore(pool)
 	reviewSvc := review.NewService(reviewStore, ticketSvc, bus)
+	planStore := plan.NewStore(pool)
+	planSvc := plan.NewService(planStore, bus)
 	userStore := user.NewStore(pool)
 
 	// Cost management service (budget tracking, rate-limit handling, model routing).
@@ -206,6 +209,7 @@ func main() {
 		MCPSSEHandler:   mcpSSEHandler,
 		AgentsHandler:   &rest.AgentsHandler{AgentSvc: agentSvc},
 		DispatchHandler: &rest.DispatchHandler{Dispatcher: dispatcher},
+		PlansHandler:    &rest.PlansHandler{PlanSvc: planSvc},
 		WebDist:         cfg.Server.WebDist,
 	})
 
