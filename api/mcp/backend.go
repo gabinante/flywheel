@@ -20,7 +20,7 @@ type Backend struct {
 	Trace      *execution.Service
 	Review     *review.Service
 	Org        *org.Service
-	AgentStore *agent.Store
+	AgentStore agent.AgentStore
 
 	// DefaultAgentID is used as a fallback when agent_id is not passed in args
 	// and not available from HTTP auth context (e.g. stdio mode with FLYWHEEL_TOKEN).

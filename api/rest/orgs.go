@@ -14,7 +14,7 @@ import (
 type OrgsHandler struct {
 	OrgSvc     *org.Service
 	ProjectSvc *project.Service
-	AgentStore *agent.Store
+	AgentStore agent.AgentStore
 }
 
 func (h *OrgsHandler) createOrg(w http.ResponseWriter, r *http.Request) {

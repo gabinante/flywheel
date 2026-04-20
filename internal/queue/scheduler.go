@@ -11,7 +11,7 @@ import (
 
 // Scheduler runs background jobs: expire leases and react to ticket.done for unblocked.
 type Scheduler struct {
-	redis       *RedisStore
+	leases      LeaseStore
 	ticketSvc   TicketTransitioner
 	ticketList  TicketListerForQueue
 	bus         events.Bus
@@ -19,13 +19,13 @@ type Scheduler struct {
 	batchSize   int64
 }
 
-// NewScheduler returns a new Scheduler.
-func NewScheduler(redis *RedisStore, ticketSvc TicketTransitioner, ticketList TicketListerForQueue, bus events.Bus, pollInterval time.Duration) *Scheduler {
+// NewScheduler returns a new Scheduler. The leases parameter accepts any LeaseStore implementation.
+func NewScheduler(leases LeaseStore, ticketSvc TicketTransitioner, ticketList TicketListerForQueue, bus events.Bus, pollInterval time.Duration) *Scheduler {
 	if pollInterval <= 0 {
 		pollInterval = 30 * time.Second
 	}
 	return &Scheduler{
-		redis:        redis,
+		leases:       leases,
 		ticketSvc:     ticketSvc,
 		ticketList:    ticketList,
 		bus:           bus,
@@ -50,7 +50,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 }
 
 func (s *Scheduler) expireLeases(ctx context.Context) {
-	ids, err := s.redis.GetExpiredLeaseTicketIDs(ctx, s.batchSize)
+	ids, err := s.leases.GetExpiredLeaseTicketIDs(ctx, s.batchSize)
 	if err != nil {
 		log.Printf("queue/scheduler: get expired leases: %v", err)
 		return
@@ -61,7 +61,7 @@ func (s *Scheduler) expireLeases(ctx context.Context) {
 			log.Printf("queue/scheduler: transition lease_expired %s: %v", id, err)
 			continue
 		}
-		if err := s.redis.RemoveExpired(ctx, id); err != nil {
+		if err := s.leases.RemoveExpired(ctx, id); err != nil {
 			log.Printf("queue/scheduler: remove expired lease %s: %v", id, err)
 		}
 	}

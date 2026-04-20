@@ -16,7 +16,7 @@ type TicketsHandler struct {
 	TicketSvc   *ticket.Service
 	ProjectSvc  *project.Service
 	OrgSvc      *org.Service
-	AgentStore  *agent.Store
+	AgentStore  agent.AgentStore
 }
 
 func (h *TicketsHandler) createTicket(w http.ResponseWriter, r *http.Request) {

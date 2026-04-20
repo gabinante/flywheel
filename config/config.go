@@ -21,6 +21,8 @@ import (
 func Load() *Config {
 	port := getEnv("PORT", "8080")
 	baseURL := getEnv("BASE_URL", "http://localhost:"+port)
+	storageMode := getEnv("STORAGE_MODE", "")
+	embeddedEnabled := storageMode == "embedded"
 	cfg := &Config{
 		Mirror: MirrorConfig{
 			Enabled:      getEnvBool("MIRROR_ENABLED", false),
@@ -28,6 +30,10 @@ func Load() *Config {
 			JiraBaseURL:  getEnv("MIRROR_JIRA_BASE_URL", ""),
 			JiraEmail:    getEnv("MIRROR_JIRA_EMAIL", ""),
 			JiraAPIToken: getEnv("MIRROR_JIRA_API_TOKEN", ""),
+		},
+		Embedded: EmbeddedConfig{
+			Enabled: embeddedEnabled,
+			DataDir: getEnv("WARRANT_DATA_DIR", ""),
 		},
 		Dispatch: DispatchConfig{
 			Enabled:      getEnvBool("DISPATCH_ENABLED", false),
@@ -123,6 +129,7 @@ type Config struct {
 	Dispatch                  DispatchConfig
 	Cost                      CostConfig
 	Mirror                    MirrorConfig
+	Embedded                  EmbeddedConfig
 	RunAcceptanceTestOnSubmit bool
 }
 
@@ -149,6 +156,13 @@ type MirrorConfig struct {
 	JiraBaseURL  string // Jira instance base URL
 	JiraEmail    string // Jira API user email
 	JiraAPIToken string // Jira API token
+}
+
+// EmbeddedConfig controls zero-config embedded mode (SQLite + in-memory Redis).
+// When Enabled is true, Postgres and Redis are not required.
+type EmbeddedConfig struct {
+	Enabled bool   // STORAGE_MODE=embedded or auto-detected
+	DataDir string // directory for SQLite DB and findings (default: ~/.warrant/data)
 }
 
 type DispatchConfig struct {

@@ -17,7 +17,7 @@ type ProjectGetter interface {
 
 // Service provides ticket operations.
 type Service struct {
-	store             *Store
+	store             TicketStore
 	sm                *StateMachine
 	bus               events.Bus
 	project           ProjectGetter
@@ -25,8 +25,9 @@ type Service struct {
 	autoApproveOnPass bool
 }
 
-// NewService returns a new Service.
-func NewService(store *Store, bus events.Bus, project ProjectGetter) *Service {
+// NewService returns a new Service. The store parameter accepts any TicketStore
+// implementation (Postgres *Store, embedded SQLite, etc.).
+func NewService(store TicketStore, bus events.Bus, project ProjectGetter) *Service {
 	return &Service{
 		store:   store,
 		sm:      NewStateMachine(),

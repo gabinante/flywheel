@@ -18,7 +18,7 @@ type QueueHandler struct {
 	TicketSvc   *ticket.Service
 	ProjectSvc  *project.Service
 	OrgSvc      *org.Service
-	AgentStore  *agent.Store
+	AgentStore  agent.AgentStore
 }
 
 func (h *QueueHandler) claim(w http.ResponseWriter, r *http.Request) {

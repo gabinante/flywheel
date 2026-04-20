@@ -35,7 +35,7 @@ type StrictServer struct {
 	QueueSvc      *queue.Service
 	TraceSvc      *execution.Service
 	ReviewSvc     *review.Service
-	AgentStore    *agent.Store
+	AgentStore    agent.AgentStore
 	CostSvc       *cost.Service
 }
 
@@ -811,7 +811,7 @@ func (s *StrictServer) ReleaseLease(ctx context.Context, req generated.ReleaseLe
 
 // Helpers
 
-func requireAgent(ctx context.Context, store *agent.Store) *apierrors.StructuredError {
+func requireAgent(ctx context.Context, store agent.AgentStore) *apierrors.StructuredError {
 	agentID := GetAgentID(ctx)
 	if agentID == "" {
 		return apierrors.New(apierrors.CodeUnauthorized, "authentication required", false)
@@ -823,7 +823,7 @@ func requireAgent(ctx context.Context, store *agent.Store) *apierrors.Structured
 	return nil
 }
 
-func requireOAuthAgent(ctx context.Context, store *agent.Store) *apierrors.StructuredError {
+func requireOAuthAgent(ctx context.Context, store agent.AgentStore) *apierrors.StructuredError {
 	if err := requireAgent(ctx, store); err != nil {
 		return err
 	}
