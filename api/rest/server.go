@@ -11,13 +11,14 @@ import (
 
 // RouterConfig configures the main HTTP router (std net/http only).
 type RouterConfig struct {
-	StrictServer   *StrictServer
-	AuthMiddleware func(http.Handler) http.Handler
-	AuthHandler    *AuthHandler
-	OAuthHandler   *OAuthHandler
-	MCPHandler     http.Handler
-	MCPSSEHandler  http.Handler // SSE transport for older MCP clients
-	AgentsHandler  *AgentsHandler
+	StrictServer    *StrictServer
+	AuthMiddleware  func(http.Handler) http.Handler
+	AuthHandler     *AuthHandler
+	OAuthHandler    *OAuthHandler
+	MCPHandler      http.Handler
+	MCPSSEHandler   http.Handler // SSE transport for older MCP clients
+	AgentsHandler   *AgentsHandler
+	EntitiesHandler *EntitiesHandler
 	// WebDist is the Vite outDir (contains index.html and assets/). Empty skips SPA routes.
 	WebDist string
 }
@@ -85,6 +86,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		agents := cfg.AgentsHandler
 		mux.HandleFunc("POST /agents", agents.register)
 		mux.HandleFunc("GET /agents/{agentID}", agents.getAgent)
+	}
+	if cfg.EntitiesHandler != nil {
+		cfg.EntitiesHandler.Register(mux)
 	}
 
 	h := http.Handler(mux)

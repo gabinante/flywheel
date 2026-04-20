@@ -13,6 +13,7 @@ import (
 
 	"github.com/gabinante/flywheel/api/generated"
 	"github.com/gabinante/flywheel/internal/agent"
+	"github.com/gabinante/flywheel/internal/entity"
 	apierrors "github.com/gabinante/flywheel/internal/errors"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/gitnotes"
@@ -34,6 +35,7 @@ type StrictServer struct {
 	QueueSvc      *queue.Service
 	TraceSvc      *execution.Service
 	ReviewSvc     *review.Service
+	EntitySvc     *entity.Service
 	AgentStore    *agent.Store
 }
 

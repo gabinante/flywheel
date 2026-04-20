@@ -17,6 +17,7 @@ import (
 	"github.com/gabinante/flywheel/internal/agent"
 	"github.com/gabinante/flywheel/internal/auth"
 	"github.com/gabinante/flywheel/internal/dispatch"
+	"github.com/gabinante/flywheel/internal/entity"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/project"
@@ -91,6 +92,8 @@ func main() {
 	execSvc := execution.NewService(execStore, leaseValidator)
 	reviewStore := review.NewStore(pool)
 	reviewSvc := review.NewService(reviewStore, ticketSvc, bus)
+	entityStore := entity.NewStore(pool)
+	entitySvc := entity.NewService(entityStore, bus)
 	userStore := user.NewStore(pool)
 
 	strictServer := &rest.StrictServer{
@@ -101,6 +104,7 @@ func main() {
 		QueueSvc:      queueSvc,
 		TraceSvc:      execSvc,
 		ReviewSvc:     reviewSvc,
+		EntitySvc:     entitySvc,
 		AgentStore:    agentStore,
 	}
 
@@ -137,6 +141,7 @@ func main() {
 			Trace:      execSvc,
 			Review:     reviewSvc,
 			Org:        orgSvc,
+			Entity:     entitySvc,
 			AgentStore: agentStore,
 		})
 		if err != nil {
@@ -159,14 +164,15 @@ func main() {
 	}
 
 	router := rest.NewRouter(rest.RouterConfig{
-		StrictServer:   strictServer,
-		AuthMiddleware: authMiddleware,
-		AuthHandler:    authHandler,
-		OAuthHandler:   oauthHandler,
-		MCPHandler:     mcpHandler,
-		MCPSSEHandler:  mcpSSEHandler,
-		AgentsHandler:  &rest.AgentsHandler{AgentSvc: agentSvc},
-		WebDist:        cfg.Server.WebDist,
+		StrictServer:    strictServer,
+		AuthMiddleware:  authMiddleware,
+		AuthHandler:     authHandler,
+		OAuthHandler:    oauthHandler,
+		MCPHandler:      mcpHandler,
+		MCPSSEHandler:   mcpSSEHandler,
+		AgentsHandler:   &rest.AgentsHandler{AgentSvc: agentSvc},
+		EntitiesHandler: &rest.EntitiesHandler{EntitySvc: entitySvc},
+		WebDist:         cfg.Server.WebDist,
 	})
 
 	// Start dispatcher if enabled.
