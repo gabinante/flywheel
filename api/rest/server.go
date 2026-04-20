@@ -33,7 +33,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("# Warrant metrics\n# Expose Prometheus or other metrics here when needed.\n"))
+		w.Write([]byte("# Flywheel metrics\n# Expose Prometheus or other metrics here when needed.\n"))
 	})
 
 	// Spec-generated API (healthz + all spec routes) — registers onto mux

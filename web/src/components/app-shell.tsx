@@ -18,7 +18,7 @@ export function AppShell() {
                 to="/"
                 className="text-foreground font-medium tracking-tight hover:underline"
               >
-                Warrant
+                Flywheel
               </Link>
               {token ? (
                 <>

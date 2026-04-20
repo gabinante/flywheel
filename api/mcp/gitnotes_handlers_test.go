@@ -47,10 +47,10 @@ func getResultJSON(t *testing.T, res *mcpsdk.CallToolResult) string {
 	return ""
 }
 
-func TestWarrantAddGitNote_MissingMessage(t *testing.T) {
+func TestFlywheelAddGitNote_MissingMessage(t *testing.T) {
 	b := &Backend{}
 	ctx := context.Background()
-	res, _, err := warrantAddGitNoteHandler(b, ctx, map[string]any{"type": "decision"})
+	res, _, err := flywheelAddGitNoteHandler(b, ctx, map[string]any{"type": "decision"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -64,10 +64,10 @@ func TestWarrantAddGitNote_MissingMessage(t *testing.T) {
 	}
 }
 
-func TestWarrantAddGitNote_InvalidType(t *testing.T) {
+func TestFlywheelAddGitNote_InvalidType(t *testing.T) {
 	b := &Backend{}
 	ctx := context.Background()
-	res, _, err := warrantAddGitNoteHandler(b, ctx, map[string]any{"message": "x", "type": "invalid"})
+	res, _, err := flywheelAddGitNoteHandler(b, ctx, map[string]any{"message": "x", "type": "invalid"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -76,10 +76,10 @@ func TestWarrantAddGitNote_InvalidType(t *testing.T) {
 	}
 }
 
-func TestWarrantAddGitNote_NoRepoPath_ReturnsCommands(t *testing.T) {
+func TestFlywheelAddGitNote_NoRepoPath_ReturnsCommands(t *testing.T) {
 	b := &Backend{}
 	ctx := context.Background()
-	res, _, err := warrantAddGitNoteHandler(b, ctx, map[string]any{
+	res, _, err := flywheelAddGitNoteHandler(b, ctx, map[string]any{
 		"message": "hello",
 		"type":    "decision",
 	})
@@ -103,12 +103,12 @@ func TestWarrantAddGitNote_NoRepoPath_ReturnsCommands(t *testing.T) {
 	}
 }
 
-func TestWarrantAddGitNote_WithRepoPath_AddsNote(t *testing.T) {
+func TestFlywheelAddGitNote_WithRepoPath_AddsNote(t *testing.T) {
 	requireGit(t)
 	dir := makeTempGitRepoForMCP(t)
 	b := &Backend{}
 	ctx := context.Background()
-	res, _, err := warrantAddGitNoteHandler(b, ctx, map[string]any{
+	res, _, err := flywheelAddGitNoteHandler(b, ctx, map[string]any{
 		"message":   "mcp test note",
 		"type":      "decision",
 		"repo_path": dir,
@@ -127,10 +127,10 @@ func TestWarrantAddGitNote_WithRepoPath_AddsNote(t *testing.T) {
 	}
 }
 
-func TestWarrantShowGitNotes_InvalidType_ReturnsError(t *testing.T) {
+func TestFlywheelShowGitNotes_InvalidType_ReturnsError(t *testing.T) {
 	b := &Backend{}
 	ctx := context.Background()
-	res, _, err := warrantShowGitNotesHandler(b, ctx, map[string]any{
+	res, _, err := flywheelShowGitNotesHandler(b, ctx, map[string]any{
 		"type":       "invalid",
 		"repo_path": "/tmp",
 	})
@@ -142,10 +142,10 @@ func TestWarrantShowGitNotes_InvalidType_ReturnsError(t *testing.T) {
 	}
 }
 
-func TestWarrantShowGitNotes_NoRepoPath_ReturnsCommands(t *testing.T) {
+func TestFlywheelShowGitNotes_NoRepoPath_ReturnsCommands(t *testing.T) {
 	b := &Backend{}
 	ctx := context.Background()
-	res, _, err := warrantShowGitNotesHandler(b, ctx, map[string]any{"commit_sha": "HEAD"})
+	res, _, err := flywheelShowGitNotesHandler(b, ctx, map[string]any{"commit_sha": "HEAD"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -160,16 +160,16 @@ func TestWarrantShowGitNotes_NoRepoPath_ReturnsCommands(t *testing.T) {
 	}
 }
 
-func TestWarrantShowGitNotes_WithRepoPath_ReturnsBody(t *testing.T) {
+func TestFlywheelShowGitNotes_WithRepoPath_ReturnsBody(t *testing.T) {
 	requireGit(t)
 	dir := makeTempGitRepoForMCP(t)
 	// Add a note via handler first
-	warrantAddGitNoteHandler(&Backend{}, context.Background(), map[string]any{
+	flywheelAddGitNoteHandler(&Backend{}, context.Background(), map[string]any{
 		"message":   "show test",
 		"type":      "decision",
 		"repo_path": dir,
 	})
-	res, _, err := warrantShowGitNotesHandler(&Backend{}, context.Background(), map[string]any{
+	res, _, err := flywheelShowGitNotesHandler(&Backend{}, context.Background(), map[string]any{
 		"repo_path":  dir,
 		"type":       "decision",
 		"commit_sha": "HEAD",
@@ -188,10 +188,10 @@ func TestWarrantShowGitNotes_WithRepoPath_ReturnsBody(t *testing.T) {
 	}
 }
 
-func TestWarrantLogGitNotes_InvalidType_ReturnsError(t *testing.T) {
+func TestFlywheelLogGitNotes_InvalidType_ReturnsError(t *testing.T) {
 	b := &Backend{}
 	ctx := context.Background()
-	res, _, err := warrantLogGitNotesHandler(b, ctx, map[string]any{"type": "bad"})
+	res, _, err := flywheelLogGitNotesHandler(b, ctx, map[string]any{"type": "bad"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -200,10 +200,10 @@ func TestWarrantLogGitNotes_InvalidType_ReturnsError(t *testing.T) {
 	}
 }
 
-func TestWarrantLogGitNotes_NoRepoPath_ReturnsCommands(t *testing.T) {
+func TestFlywheelLogGitNotes_NoRepoPath_ReturnsCommands(t *testing.T) {
 	b := &Backend{}
 	ctx := context.Background()
-	res, _, err := warrantLogGitNotesHandler(b, ctx, map[string]any{"limit": 5})
+	res, _, err := flywheelLogGitNotesHandler(b, ctx, map[string]any{"limit": 5})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -218,10 +218,10 @@ func TestWarrantLogGitNotes_NoRepoPath_ReturnsCommands(t *testing.T) {
 	}
 }
 
-func TestWarrantDiffGitNotes_MissingBase_ReturnsError(t *testing.T) {
+func TestFlywheelDiffGitNotes_MissingBase_ReturnsError(t *testing.T) {
 	b := &Backend{}
 	ctx := context.Background()
-	res, _, err := warrantDiffGitNotesHandler(b, ctx, map[string]any{"head": "HEAD"})
+	res, _, err := flywheelDiffGitNotesHandler(b, ctx, map[string]any{"head": "HEAD"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -230,10 +230,10 @@ func TestWarrantDiffGitNotes_MissingBase_ReturnsError(t *testing.T) {
 	}
 }
 
-func TestWarrantDiffGitNotes_NoRepoPath_ReturnsCommands(t *testing.T) {
+func TestFlywheelDiffGitNotes_NoRepoPath_ReturnsCommands(t *testing.T) {
 	b := &Backend{}
 	ctx := context.Background()
-	res, _, err := warrantDiffGitNotesHandler(b, ctx, map[string]any{
+	res, _, err := flywheelDiffGitNotesHandler(b, ctx, map[string]any{
 		"base": "main",
 		"head": "HEAD",
 	})
@@ -251,10 +251,10 @@ func TestWarrantDiffGitNotes_NoRepoPath_ReturnsCommands(t *testing.T) {
 	}
 }
 
-func TestWarrantSyncGitNotes_ReturnsCommands(t *testing.T) {
+func TestFlywheelSyncGitNotes_ReturnsCommands(t *testing.T) {
 	b := &Backend{}
 	ctx := context.Background()
-	res, _, err := warrantSyncGitNotesHandler(b, ctx, map[string]any{"direction": "push"})
+	res, _, err := flywheelSyncGitNotesHandler(b, ctx, map[string]any{"direction": "push"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

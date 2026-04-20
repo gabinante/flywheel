@@ -1,8 +1,8 @@
-# Warrant
+# Flywheel
 
 ## What it is
 
-Warrant is a **work queue plus shared context** for software projects, built so **AI agents and people** can use the same system. You organize work in **organizations** and **projects**, and each project carries a **context pack** (conventions, file hints, system prompt) so agents know *how* you want work done not just *what* ticket text says.
+Flywheel is a **work queue plus shared context** for software projects, built so **AI agents and people** can use the same system. You organize work in **organizations** and **projects**, and each project carries a **context pack** (conventions, file hints, system prompt) so agents know *how* you want work done not just *what* ticket text says.
 
 Work is tracked as **tickets** with an objective. Tickets move from a project **queue** → claimed → in progress → **submitted for review**.
 
@@ -23,10 +23,10 @@ You need **Docker** with the **Compose v2 plugin**, and a [GitHub OAuth app](htt
 **Option A — setup script** (creates `.env`, asks for secrets when possible, starts the stack):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gabinante/flywheel/main/scripts/warrant-docker-setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/gabinante/flywheel/main/scripts/flywheel-docker-setup.sh | bash
 ```
 
-That clones into `$HOME/warrant` when you run it from `curl`. If you already have the repo: `./scripts/warrant-docker-setup.sh` from the project root (symlinks are fine).
+That clones into `$HOME/flywheel` when you run it from `curl`. If you already have the repo: `./scripts/flywheel-docker-setup.sh` from the project root (symlinks are fine).
 
 Script flags: `--ghcr` (use the published image instead of building), `--no-build`. In CI (no terminal), it generates `JWT_SECRET` and leaves GitHub OAuth blank.
 
@@ -63,12 +63,12 @@ Everything lives in `.env.example` with comments. The usual suspects: `PORT`, `D
 ## API surface
 
 - **REST** — [api/openapi.yaml](api/openapi.yaml); `make generate` after edits. Errors: [docs/structured-errors.md](docs/structured-errors.md).
-- **MCP** — [docs/cursor-mcp.md](docs/cursor-mcp.md), [docs/interacting.md](docs/interacting.md); resource `warrant://docs/agent-guide` for in-app help.
-- **Git notes** — [docs/git-notes.md](docs/git-notes.md), [docs/git-integration-design.md](docs/git-integration-design.md). Builds: `make build-warrant-git` → `./warrant-git`, `make build-warrant-mcp` → `./warrant-mcp`.
+- **MCP** — [docs/cursor-mcp.md](docs/cursor-mcp.md), [docs/interacting.md](docs/interacting.md); resource `flywheel://docs/agent-guide` for in-app help.
+- **Git notes** — [docs/git-notes.md](docs/git-notes.md), [docs/git-integration-design.md](docs/git-integration-design.md). Builds: `make build-flywheel-git` → `./flywheel-git`, `make build-flywheel-mcp` → `./flywheel-mcp`.
 
 ## How this project was built
 
-Warrant was developed using **agentic engineering**: ideation, architecture, and review were led by an experienced engineer, the system is **heavily tested**, and most of the **implementation was written by large language models** working in that loop. We state this for transparency—evaluate the code and tests the same way you would any other dependency you ship.
+Flywheel was developed using **agentic engineering**: ideation, architecture, and review were led by an experienced engineer, the system is **heavily tested**, and most of the **implementation was written by large language models** working in that loop. We state this for transparency—evaluate the code and tests the same way you would any other dependency you ship.
 
 ## License
 

@@ -1,10 +1,10 @@
 # Ticket dependencies in UI
 
-Work stream: `ticket-dependencies-ui` (Warrant project **Warrant**). Branch: `feature/ticket-dependencies-ui`.
+Work stream: `ticket-dependencies-ui` (Flywheel project **Flywheel**). Branch: `feature/ticket-dependencies-ui`.
 
 ## Goal
 
-Surface **dependency relationships** between tickets (`depends_on`) in the Warrant web app so humans can see what blocks what without reading raw JSON or leaving the UI.
+Surface **dependency relationships** between tickets (`depends_on`) in the Flywheel web app so humans can see what blocks what without reading raw JSON or leaving the UI.
 
 ## Background
 
@@ -26,7 +26,7 @@ Surface **dependency relationships** between tickets (`depends_on`) in the Warra
 - Full graph visualization (optional later).
 - Dedicated API for reverse lookups — derive **Blocks** client-side from `GET /projects/{id}/tickets` on ticket detail.
 
-## Implementation tickets (Warrant)
+## Implementation tickets (Flywheel)
 
 Tracked as separate tickets in the **ticket-dependencies-ui** work stream:
 

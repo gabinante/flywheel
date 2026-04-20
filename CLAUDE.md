@@ -2,7 +2,7 @@
 
 ## What this is
 
-Warrant is a **work queue plus shared context** for software projects — AI agents and humans use the same ticket system. The one-liner: **"Adderall for coding agents."** Agents without structure thrash; agents with structure ship.
+Flywheel is a **work queue plus shared context** for software projects — AI agents and humans use the same ticket system. The one-liner: **"Adderall for coding agents."** Agents without structure thrash; agents with structure ship.
 
 ## Tech stack
 

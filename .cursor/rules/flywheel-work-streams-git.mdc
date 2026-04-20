@@ -1,10 +1,10 @@
 ---
-description: Work streams with Git — branch sync for Warrant MCP agents
+description: Work streams with Git — branch sync for Flywheel MCP agents
 ---
 
-# Work streams and Git (Warrant)
+# Work streams and Git (Flywheel)
 
-When a Warrant **project** has **repo_url** and you use **work streams**:
+When a Flywheel **project** has **repo_url** and you use **work streams**:
 
 ## Required checklist (do not skip step 2–3)
 

@@ -93,7 +93,7 @@ Without these steps, **get_trace** returns an empty list and reviewers cannot se
 
 ## Git notes after submit
 
-When you complete work and call **submit_ticket**, if the user's repo is the project repo (or you have a repo_path), add a **git note** so the commit records what was done. Use **warrant_add_git_note** with type **decision**, message = one-line summary of the work, and optional ticket_id/project_id. If the server cannot access the repo, the tool returns commands to run **flywheel-git note add** locally—surface those to the user or run them in the workspace. That way refs/notes/flywheel/decision (and optionally trace/intent) stay in sync with completed work.
+When you complete work and call **submit_ticket**, if the user's repo is the project repo (or you have a repo_path), add a **git note** so the commit records what was done. Use **flywheel_add_git_note** with type **decision**, message = one-line summary of the work, and optional ticket_id/project_id. If the server cannot access the repo, the tool returns commands to run **flywheel-git note add** locally—surface those to the user or run them in the workspace. That way refs/notes/flywheel/decision (and optionally trace/intent) stay in sync with completed work.
 
 ## Work streams and Git branches
 

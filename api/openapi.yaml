@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
-  title: Warrant API
-  description: REST API for Warrant ticketing (orgs, projects, tickets, reviews, queue).
+  title: Flywheel API
+  description: REST API for Flywheel ticketing (orgs, projects, tickets, reviews, queue).
   version: 0.1.0
 servers:
   - url: http://localhost:8080

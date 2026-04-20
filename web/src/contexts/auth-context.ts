@@ -1,12 +1,12 @@
 import { createContext } from 'react'
 
-import { createWarrantClient } from '@/lib/api/client'
+import { createFlywheelClient } from '@/lib/api/client'
 
-export type WarrantClient = ReturnType<typeof createWarrantClient>
+export type FlywheelClient = ReturnType<typeof createFlywheelClient>
 
 export type AuthContextValue = {
   token: string | null
-  client: WarrantClient
+  client: FlywheelClient
   signOut: () => void
   refreshTokenFromStorage: () => void
 }

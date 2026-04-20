@@ -1,6 +1,7 @@
 .env
-/warrant
-/warrant-mcp
+/flywheel
+/flywheel-mcp
+/flywheel-git
 /dist
 web/node_modules
 web/dist

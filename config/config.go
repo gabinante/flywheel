@@ -63,7 +63,7 @@ func Load() *Config {
 			WebDist: getEnv("WEB_DIST", "web/dist"),
 		},
 		DB: DBConfig{
-			URL: getEnv("DATABASE_URL", "postgres://warrant:warrant@localhost:5433/warrant?sslmode=disable"),
+			URL: getEnv("DATABASE_URL", "postgres://flywheel:flywheel@localhost:5433/flywheel?sslmode=disable"),
 		},
 		Redis: RedisConfig{
 			URL: getEnv("REDIS_URL", "redis://localhost:6379/0"),

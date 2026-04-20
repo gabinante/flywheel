@@ -1,6 +1,6 @@
-# Interacting with Warrant
+# Interacting with Flywheel
 
-Warrant is built for **agents** (Cursor, Claude Code, Claude Teams, CI) as first-class users. Humans use the REST API for setup and review. This doc describes both flows.
+Flywheel is built for **agents** (Cursor, Claude Code, Claude Teams, CI) as first-class users. Humans use the REST API for setup and review. This doc describes both flows.
 
 ---
 
@@ -74,10 +74,10 @@ For a full **operations runbook** (run locally, migrations, DB/Redis inspection,
 
 ## 2. MCP (agents in IDE / Claude)
 
-Agents talk to Warrant via **MCP** so they can list projects, get a full ticket (objective + context pack + dependency outputs), claim work, log steps, submit or escalate, and renew leases—all as tools.
+Agents talk to Flywheel via **MCP** so they can list projects, get a full ticket (objective + context pack + dependency outputs), claim work, log steps, submit or escalate, and renew leases—all as tools.
 
 **MCP over HTTP (recommended for Cursor)**  
-When the Warrant REST server is running with GitHub OAuth configured, MCP is also exposed at **`/mcp`**. Point Cursor at `"url": "http://localhost:8080/mcp"` (or your deployed base URL + `/mcp`). On first connect, Cursor gets a 401, discovers our OAuth metadata, and opens a browser for GitHub sign-in; after that it stores the token and uses it automatically. No manual token copy; `agent_id` is inferred from the token for tools like `claim_ticket` and `start_ticket`. See **docs/cursor-mcp.md** and **docs/oauth-mcp-cursor.md**.
+When the Flywheel REST server is running with GitHub OAuth configured, MCP is also exposed at **`/mcp`**. Point Cursor at `"url": "http://localhost:8080/mcp"` (or your deployed base URL + `/mcp`). On first connect, Cursor gets a 401, discovers our OAuth metadata, and opens a browser for GitHub sign-in; after that it stores the token and uses it automatically. No manual token copy; `agent_id` is inferred from the token for tools like `claim_ticket` and `start_ticket`. See **docs/cursor-mcp.md** and **docs/oauth-mcp-cursor.md**.
 
 **Run the MCP server (stdio)**
 
@@ -135,7 +135,7 @@ with env: `DATABASE_URL`, `REDIS_URL` (same as REST).
 
 3. **Sign in:** Open `GET /auth/github` in a browser (or redirect the user there). After authorizing on GitHub, you’re redirected back; the callback creates your user + agent and redirects to **`BASE_URL/`** with **`#token=<jwt>`** for the web UI (or your `AUTH_SUCCESS_REDIRECT_URL` with the same fragment). The **TUI** still uses `?token=...` on a localhost `redirect_uri`; **MCP** uses the OAuth `code` exchange—those flows are unchanged.
 
-4. **Use the token:** For **MCP over URL**, Cursor uses the token automatically after you complete the in-browser sign-in. For **MCP over stdio**, set the Bearer token (e.g. `WARRANT_TOKEN` env) to that JWT. Same token works for REST: `Authorization: Bearer <token>`.
+4. **Use the token:** For **MCP over URL**, Cursor uses the token automatically after you complete the in-browser sign-in. For **MCP over stdio**, set the Bearer token (e.g. `FLYWHEEL_TOKEN` env) to that JWT. Same token works for REST: `Authorization: Bearer <token>`.
 
 **API keys** still work for headless/CI: create an agent via `POST /agents` (no OAuth), get an `api_key`, and use `X-API-Key` header. For humans and IDE agents, use GitHub OAuth and the JWT.
 
