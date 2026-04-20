@@ -19,6 +19,7 @@ type RouterConfig struct {
 	MCPSSEHandler   http.Handler // SSE transport for older MCP clients
 	AgentsHandler   *AgentsHandler
 	DispatchHandler *DispatchHandler
+	PlansHandler    *PlansHandler
 	// WebDist is the Vite outDir (contains index.html and assets/). Empty skips SPA routes.
 	WebDist string
 }
@@ -89,6 +90,16 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	if cfg.DispatchHandler != nil {
 		mux.HandleFunc("GET /api/dispatch/status", cfg.DispatchHandler.getStatus)
+	}
+	if cfg.PlansHandler != nil {
+		plans := cfg.PlansHandler
+		mux.HandleFunc("POST /plans", plans.create)
+		mux.HandleFunc("GET /plans/{planID}", plans.get)
+		mux.HandleFunc("PUT /plans/{planID}/content", plans.updateContent)
+		mux.HandleFunc("POST /plans/{planID}/transition", plans.transition)
+		mux.HandleFunc("GET /plans/{planID}/versions", plans.versions)
+		mux.HandleFunc("GET /plans/{planID}/freshness", plans.freshness)
+		mux.HandleFunc("GET /tickets/{ticketID}/plans", plans.listByTicket)
 	}
 
 	h := http.Handler(mux)

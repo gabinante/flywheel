@@ -928,6 +928,178 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StructuredError'
+  # --- Plan endpoints (first-class plan entity) ---
+  /plans:
+    post:
+      operationId: CreatePlan
+      summary: Create a typed execution plan for a ticket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePlanRequest'
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Plan'
+        "400":
+          description: Bad request (validation failure — e.g., invalid DDL)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /plans/{planID}:
+    get:
+      operationId: GetPlan
+      summary: Get a plan by ID
+      parameters:
+        - name: planID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Plan'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /plans/{planID}/content:
+    put:
+      operationId: UpdatePlanContent
+      summary: Update plan content (draft state only, re-validates against backend schema)
+      parameters:
+        - name: planID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePlanContentRequest'
+      responses:
+        "204":
+          description: Updated
+        "400":
+          description: Validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /plans/{planID}/transition:
+    post:
+      operationId: TransitionPlan
+      summary: Transition plan state (submit, classify, approve, apply, reject)
+      parameters:
+        - name: planID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [submit, classify, approve, apply, reject]
+      responses:
+        "200":
+          description: Transitioned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Plan'
+        "400":
+          description: Invalid transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /plans/{planID}/versions:
+    get:
+      operationId: ListPlanVersions
+      summary: List version history of a plan
+      parameters:
+        - name: planID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlanVersion'
+  /plans/{planID}/freshness:
+    get:
+      operationId: CheckPlanFreshness
+      summary: Check if a plan is still fresh (not expired for re-plan-before-apply)
+      parameters:
+        - name: planID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan_id:
+                    type: string
+                  fresh:
+                    type: boolean
+  /tickets/{ticketID}/plans:
+    get:
+      operationId: ListPlansByTicket
+      summary: List all plans linked to a ticket
+      parameters:
+        - name: ticketID
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: backend
+          in: query
+          description: Filter by backend type
+          schema:
+            type: string
+            enum: [database, terraform, code, shell, deploy]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Plan'
 components:
   securitySchemes:
     BearerAuth:
@@ -1409,3 +1581,243 @@ components:
         expires_at:
           type: string
           format: date-time
+    # --- Plan schemas ---
+    Plan:
+      type: object
+      properties:
+        id:
+          type: string
+        ticket_id:
+          type: string
+        backend:
+          type: string
+          enum: [database, terraform, code, shell, deploy]
+        state:
+          type: string
+          enum: [draft, submitted, classified, approved, applied, superseded, rejected]
+        version:
+          type: integer
+        content:
+          $ref: '#/components/schemas/PlanContent'
+        freshness_stamp:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PlanContent:
+      type: object
+      description: >
+        Union type — exactly one backend sub-schema is populated.
+        No untyped escape hatch; agent cannot express classification-evading content.
+      properties:
+        database:
+          $ref: '#/components/schemas/DatabasePlan'
+        terraform:
+          $ref: '#/components/schemas/TerraformPlan'
+        code:
+          $ref: '#/components/schemas/CodePlan'
+        shell:
+          $ref: '#/components/schemas/ShellPlan'
+        deploy:
+          $ref: '#/components/schemas/DeployPlan'
+    DatabasePlan:
+      type: object
+      required: [migration_name, ddl, direction]
+      description: Database migration plan. DDL must be valid SQL — prose fails validation.
+      properties:
+        migration_name:
+          type: string
+        ddl:
+          type: string
+          description: Must be valid SQL DDL (validated at submission)
+        rollback_ddl:
+          type: string
+        direction:
+          type: string
+          enum: [up, down]
+        database_name:
+          type: string
+        schema_version:
+          type: string
+    TerraformPlan:
+      type: object
+      required: [plan_json, provider]
+      description: Terraform plan output (JSON).
+      properties:
+        plan_json:
+          type: string
+          description: Must be valid JSON
+        resource_changes:
+          type: array
+          items:
+            type: object
+            properties:
+              address:
+                type: string
+              type:
+                type: string
+              name:
+                type: string
+              change_action:
+                type: string
+                enum: [create, update, delete, replace, no-op]
+        provider:
+          type: string
+        workspace:
+          type: string
+        state_version:
+          type: integer
+    CodePlan:
+      type: object
+      required: [file_path, language, hunks]
+      description: AST diff representation for code changes.
+      properties:
+        file_path:
+          type: string
+        language:
+          type: string
+        before_hash:
+          type: string
+        after_hash:
+          type: string
+        hunks:
+          type: array
+          items:
+            type: object
+            required: [content, operation]
+            properties:
+              start_line:
+                type: integer
+              end_line:
+                type: integer
+              content:
+                type: string
+              operation:
+                type: string
+                enum: [add, remove, modify]
+    ShellPlan:
+      type: object
+      required: [commands, side_effect_manifest]
+      description: Shell commands with explicit side-effect manifest. No untyped prose allowed.
+      properties:
+        commands:
+          type: array
+          items:
+            type: object
+            required: [command]
+            properties:
+              command:
+                type: string
+              description:
+                type: string
+              idempotent:
+                type: boolean
+              timeout:
+                type: string
+        working_dir:
+          type: string
+        environment:
+          type: object
+          additionalProperties:
+            type: string
+        side_effect_manifest:
+          type: object
+          properties:
+            files_created:
+              type: array
+              items:
+                type: string
+            files_modified:
+              type: array
+              items:
+                type: string
+            files_deleted:
+              type: array
+              items:
+                type: string
+            network_access:
+              type: array
+              items:
+                type: string
+            processes_spawned:
+              type: array
+              items:
+                type: string
+            env_vars_set:
+              type: array
+              items:
+                type: string
+    DeployPlan:
+      type: object
+      required: [artifact_hash, target, deploy_strategy]
+      description: Deploy plan referencing specific artifact hash and target.
+      properties:
+        artifact_hash:
+          type: string
+        artifact_url:
+          type: string
+        target:
+          type: string
+        deploy_strategy:
+          type: string
+          enum: [rolling, blue-green, canary, recreate]
+        health_check_url:
+          type: string
+        rollback_hash:
+          type: string
+        replicas:
+          type: integer
+    PlanVersion:
+      type: object
+      properties:
+        id:
+          type: string
+        plan_id:
+          type: string
+        version:
+          type: integer
+        content:
+          $ref: '#/components/schemas/PlanContent'
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    CreatePlanRequest:
+      type: object
+      required: [ticket_id, backend, content]
+      properties:
+        ticket_id:
+          type: string
+        backend:
+          type: string
+          enum: [database, terraform, code, shell, deploy]
+        content:
+          description: Backend-specific content object (must match backend type schema)
+          type: object
+        created_by:
+          type: string
+        freshness_stamp:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+    UpdatePlanContentRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          description: New backend-specific content (re-validated against schema)
+          type: object
+        updated_by:
+          type: string
