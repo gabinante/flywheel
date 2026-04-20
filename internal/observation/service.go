@@ -357,6 +357,7 @@ func (s *Service) GetSource(name string) SignalSource {
 	return s.sources.Get(name)
 }
 
+
 // severityMeetsThreshold returns true if the signal severity is at or above the threshold.
 func severityMeetsThreshold(signal, threshold Severity) bool {
 	return severityRank(signal) >= severityRank(threshold)
