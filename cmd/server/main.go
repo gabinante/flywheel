@@ -25,6 +25,7 @@ import (
 	"github.com/gabinante/flywheel/internal/observation"
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/plan"
+	"github.com/gabinante/flywheel/internal/policy"
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
 	"github.com/gabinante/flywheel/internal/review"
@@ -99,6 +100,8 @@ func main() {
 	reviewSvc := review.NewService(reviewStore, ticketSvc, bus)
 	planStore := plan.NewStore(pool)
 	planSvc := plan.NewService(planStore, bus)
+	policyStore := policy.NewStore(pool)
+	policySvc := policy.NewService(policyStore, bus)
 	userStore := user.NewStore(pool)
 
 	// Cost management service (budget tracking, rate-limit handling, model routing).
@@ -235,7 +238,13 @@ func main() {
 		DispatchHandler:    &rest.DispatchHandler{Dispatcher: dispatcher},
 		PlansHandler:       &rest.PlansHandler{PlanSvc: planSvc},
 		ObservationHandler: &rest.ObservationHandler{Svc: obsSvc},
-		WebDist:            cfg.Server.WebDist,
+		PoliciesHandler: &rest.PoliciesHandler{
+			PolicySvc:  policySvc,
+			ProjectSvc: projectSvc,
+			OrgSvc:     orgSvc,
+			AgentStore: agentStore,
+		},
+		WebDist: cfg.Server.WebDist,
 	})
 
 	srv := &http.Server{
