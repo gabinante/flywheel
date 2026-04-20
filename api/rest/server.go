@@ -11,15 +11,16 @@ import (
 
 // RouterConfig configures the main HTTP router (std net/http only).
 type RouterConfig struct {
-	StrictServer    *StrictServer
-	AuthMiddleware  func(http.Handler) http.Handler
-	AuthHandler     *AuthHandler
-	OAuthHandler    *OAuthHandler
-	MCPHandler      http.Handler
-	MCPSSEHandler   http.Handler // SSE transport for older MCP clients
-	AgentsHandler   *AgentsHandler
-	DispatchHandler *DispatchHandler
-	PlansHandler    *PlansHandler
+	StrictServer       *StrictServer
+	AuthMiddleware     func(http.Handler) http.Handler
+	AuthHandler        *AuthHandler
+	OAuthHandler       *OAuthHandler
+	MCPHandler         http.Handler
+	MCPSSEHandler      http.Handler // SSE transport for older MCP clients
+	AgentsHandler      *AgentsHandler
+	DispatchHandler    *DispatchHandler
+	PlansHandler       *PlansHandler
+	ObservationHandler *ObservationHandler
 	// WebDist is the Vite outDir (contains index.html and assets/). Empty skips SPA routes.
 	WebDist string
 }
@@ -100,6 +101,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		mux.HandleFunc("GET /plans/{planID}/versions", plans.versions)
 		mux.HandleFunc("GET /plans/{planID}/freshness", plans.freshness)
 		mux.HandleFunc("GET /tickets/{ticketID}/plans", plans.listByTicket)
+	}
+	if cfg.ObservationHandler != nil {
+		cfg.ObservationHandler.RegisterRoutes(mux)
 	}
 
 	h := http.Handler(mux)
