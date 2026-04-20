@@ -13,6 +13,7 @@ import (
 
 	"github.com/gabinante/flywheel/api/generated"
 	"github.com/gabinante/flywheel/internal/agent"
+	"github.com/gabinante/flywheel/internal/cost"
 	apierrors "github.com/gabinante/flywheel/internal/errors"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/gitnotes"
@@ -35,6 +36,7 @@ type StrictServer struct {
 	TraceSvc      *execution.Service
 	ReviewSvc     *review.Service
 	AgentStore    *agent.Store
+	CostSvc       *cost.Service
 }
 
 func (s *StrictServer) GetHealthz(ctx context.Context, req generated.GetHealthzRequestObject) (generated.GetHealthzResponseObject, error) {

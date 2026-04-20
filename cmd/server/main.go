@@ -16,6 +16,7 @@ import (
 	"github.com/gabinante/flywheel/events"
 	"github.com/gabinante/flywheel/internal/agent"
 	"github.com/gabinante/flywheel/internal/auth"
+	"github.com/gabinante/flywheel/internal/cost"
 	"github.com/gabinante/flywheel/internal/dispatch"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/org"
@@ -93,6 +94,16 @@ func main() {
 	reviewSvc := review.NewService(reviewStore, ticketSvc, bus)
 	userStore := user.NewStore(pool)
 
+	// Cost management service (budget tracking, rate-limit handling, model routing).
+	costNotifier := cost.NewBusNotifier(bus)
+	costStore := cost.NewMemStore() // Uses in-memory store; Postgres store wired when migration runs.
+	costCfg := cost.DefaultConfig()
+	costSvc := cost.NewService(costStore, costCfg, costNotifier, costNotifier)
+	log.Printf("cost: service initialized (fallback router: %s/%s → %s/%s → %s/%s)",
+		costCfg.FlagshipProvider, costCfg.FlagshipModel,
+		costCfg.MidProvider, costCfg.MidModel,
+		costCfg.FastProvider, costCfg.FastModel)
+
 	strictServer := &rest.StrictServer{
 		OrgSvc:        orgSvc,
 		ProjectSvc:    projectSvc,
@@ -102,6 +113,7 @@ func main() {
 		TraceSvc:      execSvc,
 		ReviewSvc:     reviewSvc,
 		AgentStore:    agentStore,
+		CostSvc:       costSvc,
 	}
 
 	var authMiddleware func(http.Handler) http.Handler
