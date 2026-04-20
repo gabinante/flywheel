@@ -3,6 +3,7 @@ package dispatch
 import (
 	"context"
 	"log"
+	"os/exec"
 	"sync"
 	"time"
 
@@ -100,13 +101,16 @@ func (d *Dispatcher) Start(ctx context.Context) {
 		d.handleTicketReady(ctx, e)
 	})
 	d.bus.Subscribe(events.EventTicketRejected, func(_ context.Context, e events.Event) {
-		d.handleTicketReady(ctx, e)
+		d.handleTicketRejected(ctx, e)
+	})
+	d.bus.Subscribe(events.EventTicketSubmitted, func(_ context.Context, e events.Event) {
+		d.handleTicketSubmitted(ctx, e)
 	})
 	d.bus.Subscribe(events.EventTicketDone, func(_ context.Context, e events.Event) {
-		d.handleTicketDone(e)
+		d.handleTicketDone(ctx, e)
 	})
 	d.bus.Subscribe(events.EventTicketApproved, func(_ context.Context, e events.Event) {
-		d.handleTicketDone(e)
+		d.handleTicketDone(ctx, e)
 	})
 
 	log.Printf("dispatch: started (max_workers=%d, worktree_dir=%s, project=%s)", d.cfg.MaxWorkers, d.cfg.WorktreeDir, d.cfg.ProjectID)
@@ -166,6 +170,29 @@ func (d *Dispatcher) handleTicketReady(ctx context.Context, e events.Event) {
 	d.tryDispatch(ctx, t)
 }
 
+// handleTicketRejected re-spawns a worker when a reviewer rejects a ticket.
+// The ticket is in executing state (the reject transition goes awaiting_review → executing),
+// so the worker can pick it up with prior_attempts context.
+func (d *Dispatcher) handleTicketRejected(ctx context.Context, e events.Event) {
+	ticketID, _ := e.Payload["ticket_id"].(string)
+	if ticketID == "" {
+		return
+	}
+	t, err := d.tickets.GetTicket(ctx, ticketID)
+	if err != nil {
+		log.Printf("dispatch: rejected get ticket %s: %v", ticketID, err)
+		return
+	}
+	if d.cfg.ProjectID != "" && t.ProjectID != d.cfg.ProjectID {
+		return
+	}
+	if t.State != ticket.StateExecuting {
+		return
+	}
+	log.Printf("dispatch: ticket %s rejected, re-spawning worker for iteration", ticketID)
+	d.spawn(ctx, t)
+}
+
 func (d *Dispatcher) tryDispatch(ctx context.Context, t *ticket.Ticket) {
 	if t.State != ticket.StatePending {
 		return
@@ -200,19 +227,48 @@ func (d *Dispatcher) tryDispatch(ctx context.Context, t *ticket.Ticket) {
 	d.spawn(ctx, t)
 }
 
-func (d *Dispatcher) handleTicketDone(e events.Event) {
+// handleTicketSubmitted fires when a worker submits a ticket (→ awaiting_review).
+// It spawns a reviewer agent to check the PR and approve or reject.
+func (d *Dispatcher) handleTicketSubmitted(ctx context.Context, e events.Event) {
+	ticketID, _ := e.Payload["ticket_id"].(string)
+	if ticketID == "" {
+		return
+	}
+	t, err := d.tickets.GetTicket(ctx, ticketID)
+	if err != nil || t == nil {
+		log.Printf("dispatch: reviewer get ticket %s: %v", ticketID, err)
+		return
+	}
+	if d.cfg.ProjectID != "" && t.ProjectID != d.cfg.ProjectID {
+		return
+	}
+	if t.State != ticket.StateAwaitingReview {
+		return
+	}
+	d.spawnReviewer(ctx, t)
+}
+
+func (d *Dispatcher) handleTicketDone(ctx context.Context, e events.Event) {
 	ticketID, _ := e.Payload["ticket_id"].(string)
 	if ticketID == "" {
 		return
 	}
 
-	// Clean up worktree.
+	// Cancel any active worker/reviewer for this ticket.
 	d.mu.Lock()
 	if cancel, ok := d.active[ticketID]; ok {
 		cancel()
 		delete(d.active, ticketID)
 	}
 	d.mu.Unlock()
+
+	// Auto-merge the PR if outputs contain a pr_url.
+	t, err := d.tickets.GetTicket(ctx, ticketID)
+	if err == nil && t != nil {
+		if prURL, ok := t.Outputs["pr_url"].(string); ok && prURL != "" {
+			d.autoMergePR(t, prURL)
+		}
+	}
 
 	if err := d.worktrees.Remove(ticketID); err != nil {
 		log.Printf("dispatch: worktree cleanup %s: %v", ticketID, err)
@@ -298,7 +354,8 @@ func (d *Dispatcher) runWorker(ctx context.Context, t *ticket.Ticket) error {
 	}
 
 	// Spawn worker.
-	result, err := d.worker.Spawn(ctx, t.ID, t.ProjectID, prompt, workDir, d.cfg.ServerURL)
+	taskMsg := buildTaskPrompt(t.ID, t.ProjectID)
+	result, err := d.worker.Spawn(ctx, t.ID, t.ProjectID, prompt, taskMsg, workDir, d.cfg.ServerURL)
 	if err != nil {
 		return err
 	}
@@ -316,4 +373,95 @@ func (d *Dispatcher) activeCount() int {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return len(d.active)
+}
+
+// spawnReviewer launches a reviewer agent for a ticket in awaiting_review.
+// Reviewers count against the worker capacity limit.
+func (d *Dispatcher) spawnReviewer(ctx context.Context, t *ticket.Ticket) {
+	reviewKey := "review:" + t.ID
+
+	d.mu.Lock()
+	if len(d.active) >= d.cfg.MaxWorkers {
+		d.mu.Unlock()
+		log.Printf("dispatch: at capacity, deferring review of %s", t.ID)
+		return
+	}
+	if _, running := d.active[reviewKey]; running {
+		d.mu.Unlock()
+		return
+	}
+	d.mu.Unlock()
+
+	workerCtx, cancel := context.WithCancel(ctx)
+	d.mu.Lock()
+	d.active[reviewKey] = cancel
+	d.mu.Unlock()
+
+	d.wg.Add(1)
+	go func() {
+		defer d.wg.Done()
+		defer func() {
+			d.mu.Lock()
+			delete(d.active, reviewKey)
+			d.mu.Unlock()
+			go d.scanPending(ctx)
+		}()
+
+		if err := d.runReviewer(workerCtx, t); err != nil {
+			log.Printf("dispatch: reviewer %s failed: %v", t.ID, err)
+		}
+	}()
+
+	log.Printf("dispatch: spawned reviewer for %s (%d/%d active)", t.ID, d.activeCount(), d.cfg.MaxWorkers)
+}
+
+// runReviewer spawns a claude session that reviews the ticket's PR and approves or rejects.
+func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
+	proj, err := d.projects.GetProject(ctx, t.ProjectID)
+	if err != nil {
+		return err
+	}
+
+	prompt := AssembleReviewerPrompt(proj, t, d.cfg.ServerURL, d.cfg.AgentID)
+
+	// Reviewer works in the repo dir (needs access to the code for `gh` and `make test`).
+	// Use the existing worktree if available (the worker's branch), otherwise the main repo.
+	workDir := d.worktrees.Path(t.ID)
+	if workDir == "" {
+		workDir = d.cfg.RepoDir
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	taskMsg := buildReviewerTaskPrompt(t.ID)
+	result, err := d.worker.Spawn(ctx, t.ID, t.ProjectID, prompt, taskMsg, workDir, d.cfg.ServerURL)
+	if err != nil {
+		return err
+	}
+
+	if !result.Success {
+		log.Printf("dispatch: reviewer %s completed with error: %s\nOutput: %s", t.ID, result.Error, result.Output)
+	} else {
+		log.Printf("dispatch: reviewer %s completed successfully", t.ID)
+	}
+
+	return nil
+}
+
+// autoMergePR merges the PR after a ticket is approved.
+func (d *Dispatcher) autoMergePR(t *ticket.Ticket, prURL string) {
+	// Extract PR number or use the URL directly with gh.
+	// gh pr merge works with URLs.
+	cmd := exec.Command("gh", "pr", "merge", prURL, "--squash", "--delete-branch")
+	cmd.Dir = d.cfg.RepoDir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("dispatch: auto-merge %s failed: %v\n%s", t.ID, err, string(out))
+	} else {
+		log.Printf("dispatch: auto-merged PR for %s", t.ID)
+	}
 }

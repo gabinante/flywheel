@@ -55,6 +55,15 @@ func (m *WorktreeManager) Remove(ticketID string) error {
 	return nil
 }
 
+// Path returns the worktree directory for a ticket if it exists, or empty string.
+func (m *WorktreeManager) Path(ticketID string) string {
+	dir := m.worktreePath(ticketID)
+	if _, err := os.Stat(dir); err == nil {
+		return dir
+	}
+	return ""
+}
+
 func (m *WorktreeManager) worktreePath(ticketID string) string {
 	// Sanitize ticket ID for filesystem use (e.g. "proj-42" → "proj-42").
 	safe := strings.ReplaceAll(ticketID, "/", "-")

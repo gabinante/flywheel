@@ -103,30 +103,32 @@ type mockWorker struct {
 	calls     []mockWorkerCall
 	result    *WorkerResult
 	err       error
-	spawnFunc func(ctx context.Context, ticketID, projectID, systemPrompt, workDir, serverURL string) (*WorkerResult, error)
+	spawnFunc func(ctx context.Context, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL string) (*WorkerResult, error)
 }
 
 type mockWorkerCall struct {
 	TicketID     string
 	ProjectID    string
 	SystemPrompt string
+	TaskMessage  string
 	WorkDir      string
 	ServerURL    string
 }
 
-func (w *mockWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt, workDir, serverURL string) (*WorkerResult, error) {
+func (w *mockWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL string) (*WorkerResult, error) {
 	w.mu.Lock()
 	w.calls = append(w.calls, mockWorkerCall{
 		TicketID:     ticketID,
 		ProjectID:    projectID,
 		SystemPrompt: systemPrompt,
+		TaskMessage:  taskMessage,
 		WorkDir:      workDir,
 		ServerURL:    serverURL,
 	})
 	w.mu.Unlock()
 
 	if w.spawnFunc != nil {
-		return w.spawnFunc(ctx, ticketID, projectID, systemPrompt, workDir, serverURL)
+		return w.spawnFunc(ctx, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL)
 	}
 	if w.err != nil {
 		return nil, w.err
@@ -478,7 +480,7 @@ func TestHandleTicketDone(t *testing.T) {
 	d.active["t-1"] = cancel
 	d.mu.Unlock()
 
-	d.handleTicketDone(events.Event{
+	d.handleTicketDone(context.Background(), events.Event{
 		Type:    events.EventTicketDone,
 		Payload: map[string]any{"ticket_id": "t-1"},
 	})
@@ -497,7 +499,7 @@ func TestHandleTicketDoneEmptyPayload(t *testing.T) {
 	d := New(cfg, bus, tg, pg)
 
 	// Should not panic with empty payload.
-	d.handleTicketDone(events.Event{
+	d.handleTicketDone(context.Background(), events.Event{
 		Type:    events.EventTicketDone,
 		Payload: map[string]any{},
 	})
@@ -512,7 +514,7 @@ func TestHandleTicketDoneUnknownTicket(t *testing.T) {
 	d := New(cfg, bus, tg, pg)
 
 	// Should handle gracefully when ticket is not in active map.
-	d.handleTicketDone(events.Event{
+	d.handleTicketDone(context.Background(), events.Event{
 		Type:    events.EventTicketDone,
 		Payload: map[string]any{"ticket_id": "unknown"},
 	})
@@ -571,7 +573,7 @@ func TestSpawnDuplicatePrevented(t *testing.T) {
 
 	blockCh := make(chan struct{})
 	worker := &mockWorker{
-		spawnFunc: func(ctx context.Context, _, _, _, _, _ string) (*WorkerResult, error) {
+		spawnFunc: func(ctx context.Context, _, _, _, _, _, _ string) (*WorkerResult, error) {
 			<-blockCh // block until released
 			return &WorkerResult{Success: true}, nil
 		},
@@ -591,11 +593,11 @@ func TestSpawnDuplicatePrevented(t *testing.T) {
 
 	// First spawn.
 	d.spawn(ctx, tk)
-	time.Sleep(50 * time.Millisecond) // let goroutine start
+	time.Sleep(50 * time.Millisecond) // let goroutine register in active map
 
-	// Second spawn of same ticket should be rejected.
+	// Second spawn of same ticket should be rejected (already in active).
 	d.spawn(ctx, tk)
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond) // wait past the 100ms startup delay in runWorker
 
 	// Only 1 call should have been made.
 	if worker.callCount() != 1 {
