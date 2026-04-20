@@ -5,6 +5,7 @@ import { AuthProvider } from '@/contexts/auth-provider'
 import { useAuth } from '@/contexts/use-auth'
 import { HomePage } from '@/pages/home-page'
 import { OrgsPage } from '@/pages/orgs-page'
+import { PolicyHealthPage } from '@/pages/policy-health-page'
 import { ProjectPage } from '@/pages/project-page'
 import { ProjectsPage } from '@/pages/projects-page'
 import { ReviewsPage } from '@/pages/reviews-page'
@@ -53,6 +54,10 @@ export default function App() {
               <Route
                 path="/orgs/:orgId/projects/:projectId/reviews"
                 element={<ReviewsPage />}
+              />
+              <Route
+                path="/orgs/:orgId/projects/:projectId/policies"
+                element={<PolicyHealthPage />}
               />
               <Route
                 path="/orgs/:orgId/projects/:projectId/work-streams/new"

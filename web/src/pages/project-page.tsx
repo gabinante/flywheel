@@ -118,6 +118,11 @@ export function ProjectPage() {
             Pending reviews
           </Link>
         </Button>
+        <Button asChild variant="secondary">
+          <Link to={`/orgs/${orgId}/projects/${projectId}/policies`}>
+            Policy Health
+          </Link>
+        </Button>
       </div>
 
       <Card>
