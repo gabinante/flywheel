@@ -112,12 +112,16 @@ func AssembleWorkerPrompt(proj *project.Project, t *ticket.Ticket, depOutputs ma
 
 	// Workflow instructions
 	b.WriteString("## Workflow\n\n")
-	b.WriteString("1. `claim_ticket` with project_id and your ticket ID\n")
-	b.WriteString("2. `start_ticket` to move to executing\n")
-	b.WriteString("3. Do the work. Call `log_step` after each significant action.\n")
-	b.WriteString("4. `submit_ticket` with your outputs when done.\n")
-	b.WriteString("5. If blocked, use `escalate_ticket` to ask for human help.\n\n")
+	b.WriteString("Follow these steps exactly using the warrant MCP tools:\n\n")
+	b.WriteString(fmt.Sprintf("1. Call `claim_ticket` with `project_id: \"%s\"` — this returns `ticket_id` and `lease_token` in the response.\n", proj.ID))
+	b.WriteString("2. Call `start_ticket` with the `ticket_id` and `lease_token` from step 1.\n")
+	b.WriteString("3. Do the work. Call `log_step` with `ticket_id`, `lease_token`, and `step_type` after each significant action.\n")
+	b.WriteString("4. Commit your changes to the current git branch.\n")
+	b.WriteString("5. Call `submit_ticket` with `ticket_id`, `lease_token`, and `outputs` (a JSON object string, e.g. `{\"summary\":\"what you did\"}`).\n")
+	b.WriteString("6. If blocked, use `escalate_ticket` to ask for human help.\n\n")
+	b.WriteString("**IMPORTANT:** You MUST call claim_ticket first before doing any work. Every subsequent tool call requires the lease_token from claim_ticket.\n\n")
 
+	b.WriteString(fmt.Sprintf("**Project ID:** %s\n", proj.ID))
 	b.WriteString(fmt.Sprintf("**Server URL:** %s\n", serverURL))
 	b.WriteString(fmt.Sprintf("**Agent ID:** %s\n", agentID))
 

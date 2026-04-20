@@ -4,11 +4,37 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
+
+// readClaudeOAuthToken reads the Claude Code OAuth access token from the macOS
+// keychain. This lets dispatch workers use the operator's Claude Code
+// subscription instead of burning API credits via ANTHROPIC_API_KEY.
+// Returns empty string on any failure (non-macOS, no keychain entry, etc.).
+func readClaudeOAuthToken() string {
+	if runtime.GOOS != "darwin" {
+		return ""
+	}
+	out, err := exec.Command("security", "find-generic-password", "-s", "Claude Code-credentials", "-w").Output()
+	if err != nil {
+		return ""
+	}
+	var creds struct {
+		ClaudeAiOauth struct {
+			AccessToken string `json:"accessToken"`
+			ExpiresAt   int64  `json:"expiresAt"`
+		} `json:"claudeAiOauth"`
+	}
+	if err := json.Unmarshal(out, &creds); err != nil {
+		return ""
+	}
+	return creds.ClaudeAiOauth.AccessToken
+}
 
 // WorkerResult is the outcome of a worker execution.
 type WorkerResult struct {
@@ -19,7 +45,7 @@ type WorkerResult struct {
 
 // Worker spawns a Claude Code session for a ticket.
 type Worker interface {
-	Spawn(ctx context.Context, ticketID, systemPrompt, workDir, serverURL string) (*WorkerResult, error)
+	Spawn(ctx context.Context, ticketID, projectID, systemPrompt, workDir, serverURL string) (*WorkerResult, error)
 }
 
 // mcpConfig is the MCP configuration file structure for Claude Code.
@@ -45,12 +71,15 @@ func buildMCPConfig(serverURL, apiKey string) mcpConfig {
 	}
 }
 
-func buildTaskPrompt(ticketID string) string {
+func buildTaskPrompt(ticketID, projectID string) string {
 	return fmt.Sprintf(
-		"Execute the warrant ticket %s. Follow the workflow in your system prompt: "+
-			"claim the ticket, start it, do the work with log_step calls, then submit with outputs. "+
-			"Commit your changes to the current branch before submitting.",
-		ticketID,
+		"Execute warrant ticket %s. "+
+			"FIRST: call the claim_ticket MCP tool with project_id \"%s\". "+
+			"This returns ticket_id and lease_token — use these for all subsequent MCP calls. "+
+			"THEN: call start_ticket, do the implementation work (call log_step for each step), "+
+			"commit your changes to the current branch, and call submit_ticket with outputs. "+
+			"You MUST use the warrant MCP tools — do not skip any steps.",
+		ticketID, projectID,
 	)
 }
 
@@ -61,7 +90,7 @@ type CLIWorker struct {
 }
 
 // Spawn starts a claude CLI process with the given system prompt and MCP config.
-func (w *CLIWorker) Spawn(ctx context.Context, ticketID, systemPrompt, workDir, serverURL string) (*WorkerResult, error) {
+func (w *CLIWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt, workDir, serverURL string) (*WorkerResult, error) {
 	claudePath := w.ClaudePath
 	if claudePath == "" {
 		claudePath = "claude"
@@ -80,8 +109,9 @@ func (w *CLIWorker) Spawn(ctx context.Context, ticketID, systemPrompt, workDir, 
 
 	args := []string{
 		"--print",
+		"--dangerously-skip-permissions",
 		"--system-prompt", systemPrompt,
-		buildTaskPrompt(ticketID),
+		buildTaskPrompt(ticketID, projectID),
 		"--mcp-config", mcpCfgPath,
 	}
 
@@ -89,10 +119,11 @@ func (w *CLIWorker) Spawn(ctx context.Context, ticketID, systemPrompt, workDir, 
 	cmd.Dir = workDir
 
 	// Build a clean environment: inherit parent env but remove CLAUDECODE
-	// (which prevents nested claude sessions).
+	// (which prevents nested claude sessions) and ANTHROPIC_API_KEY (so the
+	// CLI uses the operator's logged-in OAuth session instead of burning API credits).
 	var env []string
 	for _, e := range os.Environ() {
-		if strings.HasPrefix(e, "CLAUDECODE=") {
+		if strings.HasPrefix(e, "CLAUDECODE=") || strings.HasPrefix(e, "ANTHROPIC_API_KEY=") {
 			continue
 		}
 		env = append(env, e)
@@ -136,7 +167,7 @@ type DockerWorker struct {
 }
 
 // Spawn runs a claude CLI process inside a Docker container.
-func (w *DockerWorker) Spawn(ctx context.Context, ticketID, systemPrompt, workDir, serverURL string) (*WorkerResult, error) {
+func (w *DockerWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt, workDir, serverURL string) (*WorkerResult, error) {
 	image := w.Image
 	if image == "" {
 		image = "warrant-worker"
@@ -190,8 +221,19 @@ func (w *DockerWorker) Spawn(ctx context.Context, ticketID, systemPrompt, workDi
 
 	// Write the task prompt to a file (shell escaping is fragile with long prompts).
 	taskPromptPath := filepath.Join(tmpDir, "task-prompt.txt")
-	if err := os.WriteFile(taskPromptPath, []byte(buildTaskPrompt(ticketID)), 0o644); err != nil {
+	if err := os.WriteFile(taskPromptPath, []byte(buildTaskPrompt(ticketID, projectID)), 0o644); err != nil {
 		return nil, fmt.Errorf("write task prompt: %w", err)
+	}
+
+	// Resolve the Anthropic API key: prefer OAuth token from the operator's
+	// Claude Code session (uses their subscription), fall back to the static
+	// ANTHROPIC_API_KEY from config (uses API credits).
+	anthropicKey := w.AnthropicKey
+	if token := readClaudeOAuthToken(); token != "" {
+		log.Printf("dispatch: using Claude Code OAuth token for worker %s", ticketID)
+		anthropicKey = token
+	} else if anthropicKey != "" {
+		log.Printf("dispatch: using static ANTHROPIC_API_KEY for worker %s (OAuth token not available)", ticketID)
 	}
 
 	branch := "ticket/" + ticketID
@@ -213,7 +255,7 @@ func (w *DockerWorker) Spawn(ctx context.Context, ticketID, systemPrompt, workDi
 		// Persistent claude CLI state.
 		"-v", claudeDataDir + ":/home/claude/.claude:delegated",
 		// Environment.
-		"-e", "ANTHROPIC_API_KEY=" + w.AnthropicKey,
+		"-e", "ANTHROPIC_API_KEY=" + anthropicKey,
 		// Host access for MCP server.
 		"--add-host", "host.docker.internal:host-gateway",
 	}

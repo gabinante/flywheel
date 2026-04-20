@@ -112,9 +112,7 @@ func (d *Dispatcher) Start(ctx context.Context) {
 	log.Printf("dispatch: started (max_workers=%d, worktree_dir=%s, project=%s)", d.cfg.MaxWorkers, d.cfg.WorktreeDir, d.cfg.ProjectID)
 
 	// Scan for existing pending tickets on startup.
-	if d.cfg.ProjectID != "" {
-		go d.scanPending(ctx)
-	}
+	go d.scanPending(ctx)
 }
 
 // Stop waits for all active workers to finish.
@@ -240,6 +238,9 @@ func (d *Dispatcher) spawn(ctx context.Context, t *ticket.Ticket) {
 			d.mu.Lock()
 			delete(d.active, t.ID)
 			d.mu.Unlock()
+
+			// Re-scan for pending tickets to fill the freed slot.
+			go d.scanPending(ctx)
 		}()
 
 		if err := d.runWorker(workerCtx, t); err != nil {
@@ -297,7 +298,7 @@ func (d *Dispatcher) runWorker(ctx context.Context, t *ticket.Ticket) error {
 	}
 
 	// Spawn worker.
-	result, err := d.worker.Spawn(ctx, t.ID, prompt, workDir, d.cfg.ServerURL)
+	result, err := d.worker.Spawn(ctx, t.ID, t.ProjectID, prompt, workDir, d.cfg.ServerURL)
 	if err != nil {
 		return err
 	}
