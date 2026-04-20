@@ -2,8 +2,10 @@ package dispatch
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -186,6 +188,26 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 		}
 	}
 
+	// Scan for validated tickets with unmerged PRs — try merge or spawn resolver.
+	validated, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, ticket.StateValidated)
+	if err != nil {
+		log.Printf("dispatch: scan validated: %v", err)
+	} else {
+		for _, t := range validated {
+			prURL, ok := t.Outputs["pr_url"].(string)
+			if !ok || prURL == "" {
+				continue
+			}
+			d.mu.Lock()
+			_, resolving := d.active["resolve:"+t.ID]
+			d.mu.Unlock()
+			if resolving {
+				continue
+			}
+			d.autoMergePR(ctx, t, prURL)
+		}
+	}
+
 	pending, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, ticket.StatePending)
 	if err != nil {
 		log.Printf("dispatch: scan pending: %v", err)
@@ -266,7 +288,7 @@ func (d *Dispatcher) tryDispatch(ctx context.Context, t *ticket.Ticket) {
 			return
 		}
 		for _, dep := range deps {
-			if dep.State != ticket.StateDone {
+			if dep.State != ticket.StateDone && dep.State != ticket.StateValidated {
 				return
 			}
 		}
@@ -314,7 +336,7 @@ func (d *Dispatcher) handleTicketDone(ctx context.Context, e events.Event) {
 	t, err := d.tickets.GetTicket(ctx, ticketID)
 	if err == nil && t != nil {
 		if prURL, ok := t.Outputs["pr_url"].(string); ok && prURL != "" {
-			d.autoMergePR(t, prURL)
+			d.autoMergePR(ctx, t, prURL)
 		}
 	}
 
@@ -546,16 +568,109 @@ func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
 }
 
 // autoMergePR merges the PR after a ticket is approved.
-func (d *Dispatcher) autoMergePR(t *ticket.Ticket, prURL string) {
-	// Clean up the worktree first so gh can delete the local branch.
+// If the merge fails due to conflicts, it spawns a conflict resolver worker.
+func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL string) {
 	_ = d.worktrees.Remove(t.ID)
 
-	cmd := exec.Command("gh", "pr", "merge", prURL, "--squash", "--delete-branch")
+	cmd := exec.Command("gh", "pr", "merge", prURL, "--squash")
 	cmd.Dir = d.cfg.RepoDir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("dispatch: auto-merge %s failed: %v\n%s", t.ID, err, string(out))
+		output := string(out)
+		log.Printf("dispatch: auto-merge %s failed: %v\n%s", t.ID, err, output)
+		if strings.Contains(output, "not mergeable") || strings.Contains(output, "CONFLICT") || strings.Contains(output, "cannot be cleanly created") {
+			d.spawnConflictResolver(ctx, t, prURL)
+		}
 	} else {
 		log.Printf("dispatch: auto-merged PR for %s", t.ID)
+		// Delete remote branch (best-effort).
+		branch := "ticket/" + t.ID
+		delCmd := exec.Command("git", "push", "origin", "--delete", branch)
+		delCmd.Dir = d.cfg.RepoDir
+		_ = delCmd.Run()
 	}
+}
+
+// spawnConflictResolver launches a worker to rebase a PR branch onto main and resolve conflicts.
+func (d *Dispatcher) spawnConflictResolver(ctx context.Context, t *ticket.Ticket, prURL string) {
+	resolveKey := "resolve:" + t.ID
+
+	d.mu.Lock()
+	if len(d.active) >= d.cfg.MaxWorkers {
+		d.mu.Unlock()
+		log.Printf("dispatch: at capacity, deferring conflict resolution for %s", t.ID)
+		return
+	}
+	if _, running := d.active[resolveKey]; running {
+		d.mu.Unlock()
+		return
+	}
+	d.mu.Unlock()
+
+	workerCtx, cancel := context.WithCancel(ctx)
+	d.mu.Lock()
+	d.active[resolveKey] = cancel
+	d.mu.Unlock()
+
+	d.wg.Add(1)
+	go func() {
+		defer d.wg.Done()
+		defer func() {
+			d.mu.Lock()
+			delete(d.active, resolveKey)
+			d.mu.Unlock()
+			go d.scanPending(ctx)
+		}()
+
+		if err := d.runConflictResolver(workerCtx, t, prURL); err != nil {
+			log.Printf("dispatch: conflict resolver %s failed: %v", t.ID, err)
+		}
+	}()
+
+	log.Printf("dispatch: spawned conflict resolver for %s (%d/%d active)", t.ID, d.activeCount(), d.cfg.MaxWorkers)
+}
+
+// runConflictResolver rebases a ticket's branch onto main and retries the merge.
+func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, prURL string) error {
+	branch := "ticket/" + t.ID
+
+	workDir, err := d.worktrees.Create(t.ID, branch)
+	if err != nil {
+		return fmt.Errorf("create worktree: %w", err)
+	}
+
+	prompt := assembleConflictResolverPrompt(t, prURL, branch)
+	taskMsg := fmt.Sprintf(
+		"Rebase branch %s onto main and resolve any merge conflicts. "+
+			"Then force-push the result. The goal is to make PR %s mergeable.",
+		branch, prURL,
+	)
+
+	result, err := d.worker.Spawn(ctx, t.ID, t.ProjectID, prompt, taskMsg, workDir, d.cfg.ServerURL)
+	if err != nil {
+		return err
+	}
+
+	if !result.Success {
+		log.Printf("dispatch: conflict resolver %s failed: %s\nOutput: %s", t.ID, result.Error, result.Output)
+		return fmt.Errorf("resolver failed: %s", result.Error)
+	}
+
+	log.Printf("dispatch: conflict resolver %s completed, retrying merge", t.ID)
+
+	_ = d.worktrees.Remove(t.ID)
+	cmd := exec.Command("gh", "pr", "merge", prURL, "--squash")
+	cmd.Dir = d.cfg.RepoDir
+	out, mergeErr := cmd.CombinedOutput()
+	if mergeErr != nil {
+		log.Printf("dispatch: retry merge %s still failed: %v\n%s", t.ID, mergeErr, string(out))
+		return fmt.Errorf("retry merge: %w", mergeErr)
+	}
+
+	log.Printf("dispatch: auto-merged PR for %s (after conflict resolution)", t.ID)
+	// Delete remote branch (best-effort).
+	delCmd := exec.Command("git", "push", "origin", "--delete", branch)
+	delCmd.Dir = d.cfg.RepoDir
+	_ = delCmd.Run()
+	return nil
 }
