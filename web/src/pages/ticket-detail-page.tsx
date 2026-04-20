@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
+import { ExecutionTraceCard } from '@/components/execution-trace-card'
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { ReviewQueueCelebration } from '@/components/review-queue-celebration'
 import { TicketOutputsCard } from '@/components/ticket-outputs'
@@ -315,6 +316,8 @@ export function TicketDetailPage() {
       )}
 
       <TicketOutputsCard outputs={ticket.outputs} />
+
+      <ExecutionTraceCard ticketId={ticketId} ticketState={ticket.state} />
 
       {reviewBanner?.kind === 'reopened' ? (
         <Card className="border-primary/20 bg-primary/5">
