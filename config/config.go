@@ -1,7 +1,6 @@
 package config
 
 import (
-	"bufio"
 	"fmt"
 	"log"
 	"os"
@@ -10,10 +9,16 @@ import (
 	"strings"
 )
 
-// Load reads configuration from environment with sensible defaults.
-// If a .env file exists in the current directory, it is loaded first (values already in env are not overwritten).
+// Load reads configuration from environment variables with sensible defaults.
+//
+// Environment variables should be populated by varlock before the server starts:
+//
+//	varlock run -- ./warrant          (production / Docker)
+//	varlock run -- go run ./cmd/server (local dev)
+//
+// varlock validates variables against .env.schema and ensures sensitive values
+// are never logged. See scripts/varlock and .env.schema for details.
 func Load() *Config {
-	loadEnvFile(".env")
 	port := getEnv("PORT", "8080")
 	baseURL := getEnv("BASE_URL", "http://localhost:"+port)
 	cfg := &Config{
@@ -177,35 +182,6 @@ func getEnv(key, defaultVal string) string {
 		return v
 	}
 	return defaultVal
-}
-
-// loadEnvFile sets env vars from a file (KEY=VALUE per line). Only sets vars not already in os.Environ().
-func loadEnvFile(path string) {
-	f, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	s := bufio.NewScanner(f)
-	for s.Scan() {
-		line := strings.TrimSpace(s.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		i := strings.Index(line, "=")
-		if i <= 0 {
-			continue
-		}
-		key := strings.TrimSpace(line[:i])
-		val := strings.TrimSpace(line[i+1:])
-		if key == "" {
-			continue
-		}
-		if os.Getenv(key) != "" {
-			continue
-		}
-		_ = os.Setenv(key, val)
-	}
 }
 
 func getEnvInt(key string, defaultVal int) int {

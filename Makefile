@@ -1,4 +1,6 @@
-.PHONY: run run-mcp migrate migrate-down test generate docker-up docker-down build-warrant-git build-warrant-mcp web-build
+.PHONY: run run-mcp migrate migrate-down test generate docker-up docker-down build-warrant-git build-warrant-mcp web-build varlock-validate
+
+VARLOCK := ./scripts/varlock
 
 generate:
 	go generate ./api/...
@@ -7,10 +9,14 @@ web-build:
 	cd web && npm ci && npm run build
 
 run:
-	go run ./cmd/server
+	$(VARLOCK) run -- go run ./cmd/server
 
 run-mcp:
-	go run ./cmd/mcp
+	$(VARLOCK) run -- go run ./cmd/mcp
+
+# Validate .env against .env.schema without starting anything.
+varlock-validate:
+	$(VARLOCK) validate
 
 # For Docker Compose, migrations run in the server container. Use this for hosted/non-Docker deploys.
 migrate:
