@@ -73,12 +73,12 @@ func buildMCPConfig(serverURL, apiKey string) mcpConfig {
 
 func buildTaskPrompt(ticketID, projectID string) string {
 	return fmt.Sprintf(
-		"Execute flywheel ticket %s. "+
+		"Execute Flywheel ticket %s. "+
 			"FIRST: call the claim_ticket MCP tool with project_id \"%s\". "+
 			"This returns ticket_id and lease_token — use these for all subsequent MCP calls. "+
 			"THEN: call start_ticket, do the implementation work (call log_step for each step), "+
 			"commit your changes to the current branch, and call submit_ticket with outputs. "+
-			"You MUST use the flywheel MCP tools — do not skip any steps.",
+			"You MUST use the Flywheel MCP tools — do not skip any steps.",
 		ticketID, projectID,
 	)
 }
@@ -87,7 +87,7 @@ func buildTaskPrompt(ticketID, projectID string) string {
 // It delegates agent-specific behavior (CLI flags, env vars) to the AgentDriver.
 type CLIWorker struct {
 	Driver AgentDriver // agent-specific behavior
-	APIKey string      // flywheel API key for MCP authentication
+	APIKey string      // Flywheel API key for MCP authentication
 }
 
 // Spawn starts an agent process with the given system prompt and MCP config.
@@ -167,7 +167,7 @@ func (w *CLIWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt
 type DockerWorker struct {
 	Driver       AgentDriver // agent-specific behavior
 	Image        string      // Docker image (overrides driver's DockerImage if set)
-	APIKey       string      // flywheel API key for MCP authentication
+	APIKey       string      // Flywheel API key for MCP authentication
 	RepoDir      string      // host path to the git repository to mount
 	AnthropicKey string      // static API key for agent inside the container
 	Memory       string      // container memory limit (default: "4g")

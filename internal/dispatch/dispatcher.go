@@ -36,9 +36,9 @@ type Config struct {
 	ClaudePath   string
 	WorktreeDir  string
 	RepoDir      string // path to the main git repository
-	ServerURL    string // flywheel server URL for MCP connections
+	ServerURL    string // Flywheel server URL for MCP connections
 	AgentID      string // agent identity for workers
-	APIKey       string // flywheel API key for worker MCP authentication
+	APIKey       string // Flywheel API key for worker MCP authentication
 	ProjectID    string // only dispatch tickets for this project (empty = all)
 	AutoApprove  bool   // auto-approve tickets when acceptance tests pass
 	// Agent driver selection.

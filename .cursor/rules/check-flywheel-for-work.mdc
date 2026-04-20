@@ -11,4 +11,4 @@ When the user asks to "do work", "do the rest of the work", or what to do next:
 
 2. **Then** – Claim or pick a ticket from that list, implement what the ticket asks for, and use **log_step** and **submit_ticket** as you go. If the user asked to "do the rest", iterate over remaining tickets from Flywheel.
 
-3. **Work streams + Git** – If the project has **repo_url** and tickets use a **work_stream**, ensure the work stream's **branch** is set: after creating or checking out the Git branch locally, call **update_work_stream** with **branch** (`git branch --show-current`). **update_work_stream_plan** does **not** set the branch—do not skip **update_work_stream** after **create_work_stream**.
+3. **Work streams + Git** – If the project has **repo_url** and tickets use a **work_stream**, ensure the work stream’s **branch** is set: after creating or checking out the Git branch locally, call **update_work_stream** with **branch** (`git branch --show-current`). **update_work_stream_plan** does **not** set the branch—do not skip **update_work_stream** after **create_work_stream**.

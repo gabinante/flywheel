@@ -15,7 +15,7 @@ if [ "$FLYWHEEL_FIREWALL" = "true" ]; then
   iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
   iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
 
-  # Allow host.docker.internal (for MCP -> flywheel server)
+  # Allow host.docker.internal (for MCP -> Flywheel server)
   if getent hosts host.docker.internal > /dev/null 2>&1; then
     HOST_IP=$(getent hosts host.docker.internal | awk '{print $1}')
     iptables -A OUTPUT -d "$HOST_IP" -j ACCEPT

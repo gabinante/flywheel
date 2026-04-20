@@ -13,7 +13,7 @@ import (
 func AssembleReviewerPrompt(proj *project.Project, t *ticket.Ticket, serverURL, agentID string) string {
 	var b strings.Builder
 
-	b.WriteString("You are a code reviewer for a flywheel ticket. ")
+	b.WriteString("You are a code reviewer for a Flywheel ticket. ")
 	b.WriteString("Your job is to review the pull request, check the code, and approve or reject.\n\n")
 
 	// Project context
@@ -90,10 +90,10 @@ func AssembleReviewerPrompt(proj *project.Project, t *ticket.Ticket, serverURL, 
 // buildReviewerTaskPrompt returns the user-turn prompt for the reviewer agent.
 func buildReviewerTaskPrompt(ticketID string) string {
 	return fmt.Sprintf(
-		"Review flywheel ticket %s. "+
+		"Review Flywheel ticket %s. "+
 			"Read the PR diff, check code quality and correctness against the ticket objectives, "+
 			"run tests if applicable, then either approve_ticket or reject_ticket with notes. "+
-			"You MUST use the flywheel MCP tools to approve or reject.",
+			"You MUST use the Flywheel MCP tools to approve or reject.",
 		ticketID,
 	)
 }

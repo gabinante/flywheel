@@ -86,11 +86,11 @@ The server listens for **SIGTERM** and **SIGINT**. On receipt it stops accepting
 
 ### Postgres backup & restore
 
-- **Backup:** Use `pg_dump` (or your provider’s backup). Example for a single database:  
-  `pg_dump -U flywheel -d flywheel -Fc -f flywheel_backup.dump`  
+- **Backup:** Use `pg_dump` (or your provider’s backup). Example for a single database:
+  `pg_dump -U flywheel -d flywheel -Fc -f flywheel_backup.dump`
   With Docker: `docker compose exec postgres pg_dump -U flywheel -d flywheel -Fc > flywheel_backup.dump`
-- **Restore:** Use `pg_restore` (or provider restore). Example:  
-  `pg_restore -U flywheel -d flywheel --clean --if-exists flywheel_backup.dump`  
+- **Restore:** Use `pg_restore` (or provider restore). Example:
+  `pg_restore -U flywheel -d flywheel --clean --if-exists flywheel_backup.dump`
   Run against an empty or existing DB as needed; for production, follow your provider’s restore and point-in-time recovery docs.
 
 For local troubleshooting (DB not ready, migrations not run), see **docs/troubleshooting.md**.
