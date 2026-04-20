@@ -43,12 +43,12 @@ type WorkerResult struct {
 	Error   string
 }
 
-// Worker spawns a Claude Code session for a ticket.
+// Worker spawns an agent session for a ticket.
 type Worker interface {
 	Spawn(ctx context.Context, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL string) (*WorkerResult, error)
 }
 
-// mcpConfig is the MCP configuration file structure for Claude Code.
+// mcpConfig is the MCP configuration file structure.
 type mcpConfig struct {
 	MCPServers map[string]mcpServerConfig `json:"mcpServers"`
 }
@@ -83,18 +83,17 @@ func buildTaskPrompt(ticketID, projectID string) string {
 	)
 }
 
-// CLIWorker spawns a claude CLI subprocess directly on the host.
+// CLIWorker spawns an agent subprocess directly on the host.
+// It delegates agent-specific behavior (CLI flags, env vars) to the AgentDriver.
 type CLIWorker struct {
-	ClaudePath string // path to the claude binary (default: "claude")
-	APIKey     string // warrant API key for MCP authentication
+	Driver AgentDriver // agent-specific behavior
+	APIKey string      // warrant API key for MCP authentication
 }
 
-// Spawn starts a claude CLI process with the given system prompt and MCP config.
+// Spawn starts an agent process with the given system prompt and MCP config.
 func (w *CLIWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL string) (*WorkerResult, error) {
-	claudePath := w.ClaudePath
-	if claudePath == "" {
-		claudePath = "claude"
-	}
+	// Apply driver's prompt formatting.
+	systemPrompt = w.Driver.FormatPrompt(systemPrompt)
 
 	// Write temporary MCP config file for this worker.
 	mcpCfgPath := filepath.Join(workDir, ".warrant-mcp-config.json")
@@ -107,28 +106,40 @@ func (w *CLIWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt
 	}
 	defer os.Remove(mcpCfgPath)
 
-	args := []string{
-		"--print",
-		"--dangerously-skip-permissions",
-		"--system-prompt", systemPrompt,
-		taskMessage,
-		"--mcp-config", mcpCfgPath,
-	}
+	// Get executable and arguments from the driver.
+	exe, args := w.Driver.BuildCLIArgs(systemPrompt, taskMessage, mcpCfgPath)
 
-	cmd := exec.CommandContext(ctx, claudePath, args...)
+	cmd := exec.CommandContext(ctx, exe, args...)
 	cmd.Dir = workDir
 
-	// Build a clean environment: inherit parent env but remove CLAUDECODE
-	// (which prevents nested claude sessions) and ANTHROPIC_API_KEY (so the
-	// CLI uses the operator's logged-in OAuth session instead of burning API credits).
+	// Build environment: start with parent env, apply driver's filters and additions.
+	driverEnv := w.Driver.Env()
 	var env []string
 	for _, e := range os.Environ() {
-		if strings.HasPrefix(e, "CLAUDECODE=") || strings.HasPrefix(e, "ANTHROPIC_API_KEY=") {
-			continue
+		filtered := false
+		for _, prefix := range driverEnv.FilterPrefixes {
+			if strings.HasPrefix(e, prefix) {
+				filtered = true
+				break
+			}
 		}
-		env = append(env, e)
+		if !filtered {
+			env = append(env, e)
+		}
 	}
-	env = append(env, "CLAUDE_CODE_ENTRYPOINT=warrant-dispatch")
+	for k, v := range driverEnv.Set {
+		env = append(env, k+"="+v)
+	}
+
+	// For generic drivers, inject prompt info via environment.
+	if w.Driver.Name() == "generic" {
+		env = append(env,
+			"WARRANT_SYSTEM_PROMPT="+systemPrompt,
+			"WARRANT_TASK_MESSAGE="+taskMessage,
+			"WARRANT_MCP_CONFIG_PATH="+mcpCfgPath,
+		)
+	}
+
 	cmd.Env = env
 
 	out, err := cmd.CombinedOutput()
@@ -149,31 +160,36 @@ func (w *CLIWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt
 }
 
 // DockerWorker spawns workers inside Docker containers for full isolation.
-// Each worker gets a fresh container with claude CLI, the repo cloned into its
-// own workspace, and resource limits enforced. This avoids the nested-session
-// problem (no CLAUDECODE env var in the container) and provides filesystem,
-// network, and resource isolation following the friendslist pattern.
+// Each worker gets a fresh container with the agent, the repo cloned into its
+// own workspace, and resource limits enforced.
 type DockerWorker struct {
-	Image        string // Docker image (default: "warrant-worker")
-	APIKey       string // warrant API key for MCP authentication
-	RepoDir      string // host path to the git repository to mount
-	AnthropicKey string // ANTHROPIC_API_KEY for claude CLI inside the container
-	ClaudeDataDir string // host path for persistent claude config (default: ~/.warrant/claude-data)
-	Memory       string // container memory limit (default: "4g")
-	CPUs         string // container CPU limit (default: "2")
-	PIDsLimit    string // container PID limit (default: "256")
-	Firewall     bool   // enable default-deny firewall with allowlist
-	AllowedHosts string // comma-separated hosts for firewall allowlist
+	Driver       AgentDriver // agent-specific behavior
+	Image        string      // Docker image (overrides driver's DockerImage if set)
+	APIKey       string      // warrant API key for MCP authentication
+	RepoDir      string      // host path to the git repository to mount
+	AnthropicKey string      // static API key for agent inside the container
+	Memory       string      // container memory limit (default: "4g")
+	CPUs         string      // container CPU limit (default: "2")
+	PIDsLimit    string      // container PID limit (default: "256")
+	Firewall     bool        // enable default-deny firewall with allowlist
+	AllowedHosts string      // comma-separated hosts for firewall allowlist
 }
 
-// Spawn runs a claude CLI process inside a Docker container.
+// Spawn runs an agent process inside a Docker container.
 func (w *DockerWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL string) (*WorkerResult, error) {
-	image := w.Image
+	// Apply driver's prompt formatting.
+	systemPrompt = w.Driver.FormatPrompt(systemPrompt)
+
+	// Determine image: driver preference, then worker config, then default.
+	image := w.Driver.DockerImage()
+	if image == "" {
+		image = w.Image
+	}
 	if image == "" {
 		image = "warrant-worker"
 	}
 
-	// Write MCP config and system prompt to a temp dir on host.
+	// Write MCP config and prompts to a temp dir on host.
 	tmpDir, err := os.MkdirTemp("", "warrant-worker-*")
 	if err != nil {
 		return nil, fmt.Errorf("worker tmpdir: %w", err)
@@ -198,13 +214,11 @@ func (w *DockerWorker) Spawn(ctx context.Context, ticketID, projectID, systemPro
 		return nil, fmt.Errorf("write system prompt: %w", err)
 	}
 
-	// Ensure claude data dir exists.
-	claudeDataDir := w.ClaudeDataDir
-	if claudeDataDir == "" {
-		home, _ := os.UserHomeDir()
-		claudeDataDir = filepath.Join(home, ".warrant", "claude-data")
+	// Task prompt: write to file.
+	taskPromptPath := filepath.Join(tmpDir, "task-prompt.txt")
+	if err := os.WriteFile(taskPromptPath, []byte(taskMessage), 0o644); err != nil {
+		return nil, fmt.Errorf("write task prompt: %w", err)
 	}
-	_ = os.MkdirAll(claudeDataDir, 0o755)
 
 	memory := w.Memory
 	if memory == "" {
@@ -219,21 +233,14 @@ func (w *DockerWorker) Spawn(ctx context.Context, ticketID, projectID, systemPro
 		pidsLimit = "256"
 	}
 
-	// Write the task prompt to a file (shell escaping is fragile with long prompts).
-	taskPromptPath := filepath.Join(tmpDir, "task-prompt.txt")
-	if err := os.WriteFile(taskPromptPath, []byte(taskMessage), 0o644); err != nil {
-		return nil, fmt.Errorf("write task prompt: %w", err)
-	}
-
-	// Resolve the Anthropic API key: prefer OAuth token from the operator's
-	// Claude Code session (uses their subscription), fall back to the static
-	// ANTHROPIC_API_KEY from config (uses API credits).
-	anthropicKey := w.AnthropicKey
-	if token := readClaudeOAuthToken(); token != "" {
-		log.Printf("dispatch: using Claude Code OAuth token for worker %s", ticketID)
-		anthropicKey = token
-	} else if anthropicKey != "" {
-		log.Printf("dispatch: using static ANTHROPIC_API_KEY for worker %s (OAuth token not available)", ticketID)
+	// Resolve the API credential via the driver (e.g., OAuth token for Claude).
+	credential := w.Driver.ResolveCredential(w.AnthropicKey)
+	if credential != "" {
+		if credential != w.AnthropicKey {
+			log.Printf("dispatch: using dynamic credential for worker %s", ticketID)
+		} else {
+			log.Printf("dispatch: using static credential for worker %s", ticketID)
+		}
 	}
 
 	branch := "ticket/" + ticketID
@@ -252,13 +259,23 @@ func (w *DockerWorker) Spawn(ctx context.Context, ticketID, projectID, systemPro
 		"-v", mcpCfgPath + ":/tmp/mcp-config.json:ro",
 		"-v", promptPath + ":/tmp/system-prompt.txt:ro",
 		"-v", taskPromptPath + ":/tmp/task-prompt.txt:ro",
-		// Persistent claude CLI state.
-		"-v", claudeDataDir + ":/home/claude/.claude:delegated",
-		// Environment.
-		"-e", "ANTHROPIC_API_KEY=" + anthropicKey,
 		// Host access for MCP server.
 		"--add-host", "host.docker.internal:host-gateway",
 	}
+
+	// Add credential as environment variable if available.
+	if credential != "" {
+		args = append(args, "-e", "ANTHROPIC_API_KEY="+credential)
+	}
+
+	// Add driver-specific environment variables.
+	driverEnv := w.Driver.Env()
+	for k, v := range driverEnv.Set {
+		args = append(args, "-e", k+"="+v)
+	}
+
+	// Add driver-specific Docker arguments (e.g., volume mounts).
+	args = append(args, w.Driver.ExtraDockerArgs()...)
 
 	// Firewall: default-deny with allowlist.
 	if w.Firewall {
@@ -277,17 +294,9 @@ func (w *DockerWorker) Spawn(ctx context.Context, ticketID, projectID, systemPro
 	// Image (must come after all -v/-e flags, before the command).
 	args = append(args, image)
 
-	// The entrypoint runs as root (for firewall), then drops to claude user.
-	// All long inputs are read from mounted files to avoid shell escaping issues.
-	claudeCmd := fmt.Sprintf(
-		`set -e
-git clone /repo /workspace 2>/dev/null
-cd /workspace
-git checkout -b %s 2>/dev/null || git checkout %s
-claude --print --dangerously-skip-permissions --system-prompt "$(cat /tmp/system-prompt.txt)" "$(cat /tmp/task-prompt.txt)" --mcp-config /tmp/mcp-config.json`,
-		branch, branch,
-	)
-	args = append(args, claudeCmd)
+	// Get the agent-specific command from the driver.
+	agentCmd := w.Driver.BuildDockerCmd(branch)
+	args = append(args, agentCmd)
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	out, err := cmd.CombinedOutput()

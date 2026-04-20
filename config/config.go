@@ -22,6 +22,8 @@ func Load() *Config {
 			APIKey:       getEnv("DISPATCH_API_KEY", ""),
 			ProjectID:    getEnv("DISPATCH_PROJECT_ID", ""),
 			AutoApproveOnAcceptancePass: getEnvBool("AUTO_APPROVE_ON_ACCEPTANCE_PASS", false),
+			AgentDriver:   getEnv("DISPATCH_AGENT_DRIVER", "claude"),
+			AgentCLIPath:  getEnv("DISPATCH_AGENT_CMD", ""),
 			DockerEnabled:  getEnvBool("DISPATCH_DOCKER_ENABLED", false),
 			DockerImage:    getEnv("DISPATCH_DOCKER_IMAGE", "warrant-worker"),
 			DockerMemory:   getEnv("DISPATCH_DOCKER_MEMORY", "4g"),
@@ -66,11 +68,14 @@ type Config struct {
 type DispatchConfig struct {
 	Enabled      bool
 	MaxWorkers   int
-	ClaudePath   string   // path to claude CLI binary (host mode)
+	ClaudePath   string   // path to claude CLI binary (host mode, backward compat)
 	WorktreeDir  string   // base directory for git worktrees (host mode)
 	APIKey       string   // warrant API key for worker MCP authentication
 	ProjectID    string   // only dispatch tickets for this project (empty = all)
 	AutoApproveOnAcceptancePass bool
+	// Agent driver settings.
+	AgentDriver  string   // driver name: "claude" (default), "generic", or custom registered driver
+	AgentCLIPath string   // override CLI path for the agent binary (DISPATCH_AGENT_CMD)
 	// Docker isolation settings.
 	DockerEnabled  bool
 	DockerImage    string // worker image name (default: "warrant-worker")
