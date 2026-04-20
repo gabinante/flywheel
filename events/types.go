@@ -37,6 +37,13 @@ const (
 	// --- Deprecated aliases (backward compat for existing subscribers) ---
 	EventTicketDone      = EventTicketClosed // alias: done → closed
 	EventTicketUnblocked = "ticket.unblocked"
+
+	// --- Cost & budget events ---
+	EventBudgetAlert       = "cost.budget_alert"       // budget threshold crossed
+	EventBudgetExceeded    = "cost.budget_exceeded"    // spend exceeds limit
+	EventRateLimitHit      = "cost.rate_limit_hit"     // provider rate-limited
+	EventRateLimitResumed  = "cost.rate_limit_resumed" // rate limit cleared, resuming
+	EventCostCallRecorded  = "cost.call_recorded"      // LLM call cost attributed
 )
 
 // Event carries type and typed payload for the bus.

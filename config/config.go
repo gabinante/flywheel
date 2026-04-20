@@ -34,6 +34,18 @@ func Load() *Config {
 			DockerFirewall: getEnvBool("DISPATCH_DOCKER_FIREWALL", true),
 			AnthropicKey:   getEnv("ANTHROPIC_API_KEY", ""),
 		},
+		Cost: CostConfig{
+			Enabled:                    getEnvBool("COST_TRACKING_ENABLED", true),
+			DefaultMonthlyBudgetDollars: getEnvFloat("COST_DEFAULT_MONTHLY_BUDGET", 0),
+			DefaultTicketBudgetDollars:  getEnvFloat("COST_DEFAULT_TICKET_BUDGET", 0),
+			WarnAtFraction:             getEnvFloat("COST_WARN_AT_FRACTION", 0.8),
+			FlagshipProvider:           getEnv("COST_FLAGSHIP_PROVIDER", "anthropic"),
+			FlagshipModel:              getEnv("COST_FLAGSHIP_MODEL", "claude-opus-4-20250514"),
+			MidProvider:                getEnv("COST_MID_PROVIDER", "anthropic"),
+			MidModel:                   getEnv("COST_MID_MODEL", "claude-sonnet-4-20250514"),
+			FastProvider:               getEnv("COST_FAST_PROVIDER", "anthropic"),
+			FastModel:                  getEnv("COST_FAST_MODEL", "claude-haiku-3-20250307"),
+		},
 		Server: ServerConfig{
 			Port:    port,
 			WebDist: getEnv("WEB_DIST", "web/dist"),
@@ -97,7 +109,22 @@ type Config struct {
 	Queue                     QueueConfig
 	Auth                      AuthConfig
 	Dispatch                  DispatchConfig
+	Cost                      CostConfig
 	RunAcceptanceTestOnSubmit bool
+}
+
+// CostConfig holds cost and rate-limit management settings.
+type CostConfig struct {
+	Enabled                     bool    // enable cost tracking (default: true)
+	DefaultMonthlyBudgetDollars float64 // 0 = no default budget
+	DefaultTicketBudgetDollars  float64 // 0 = no default budget
+	WarnAtFraction              float64 // fraction (0-1) at which to warn (default: 0.8)
+	FlagshipProvider            string  // provider for flagship tier (e.g. "anthropic")
+	FlagshipModel               string  // model name for flagship tier
+	MidProvider                 string  // provider for mid tier
+	MidModel                    string  // model name for mid tier
+	FastProvider                string  // provider for fast/cheap tier
+	FastModel                   string  // model name for fast tier
 }
 
 type DispatchConfig struct {
@@ -185,6 +212,15 @@ func getEnvInt(key string, defaultVal int) int {
 	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			return n
+		}
+	}
+	return defaultVal
+}
+
+func getEnvFloat(key string, defaultVal float64) float64 {
+	if v := os.Getenv(key); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
 		}
 	}
 	return defaultVal
