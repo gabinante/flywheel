@@ -34,6 +34,6 @@ archives:
 
 release:
   github:
-    owner: '{{ envOrDefault "GITHUB_REPOSITORY_OWNER" "matt0x6f" }}'
-    name: warrant
+    owner: '{{ envOrDefault "GITHUB_REPOSITORY_OWNER" "gabinante" }}'
+    name: flywheel
   name_template: "{{ .Tag }}"
