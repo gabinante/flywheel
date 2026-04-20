@@ -143,6 +143,12 @@ func (s *Service) ListByWorkStream(ctx context.Context, projectID string, workSt
 	return s.store.GetByProject(ctx, projectID, workStreamID, "")
 }
 
+// ListStaleTickets returns tickets in the given states whose updated_at is older
+// than the staleness threshold. Used by the DB staleness sweep (Layer 3 recovery).
+func (s *Service) ListStaleTickets(ctx context.Context, states []State, threshold time.Duration) ([]*Ticket, error) {
+	return s.store.ListStaleTickets(ctx, states, threshold)
+}
+
 // UpdateDependsOn sets the dependency list for a ticket. Caller must ensure dep IDs are valid and in the same project; no cycle check.
 func (s *Service) UpdateDependsOn(ctx context.Context, ticketID string, dependsOn []string) error {
 	if dependsOn == nil {

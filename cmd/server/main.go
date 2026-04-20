@@ -103,6 +103,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	queueRedis := queue.NewRedisStore(redisClient, leaseTTL)
 	queueSvc := queue.NewService(ticketSvc, ticketSvc, queueRedis)
 	scheduler := queue.NewScheduler(queueRedis, ticketSvc, ticketSvc, bus, 30*time.Second)
+	scheduler.EnableStalenessSweep(ticketSvc, 0) // default: 2x lease TTL
 	go scheduler.Run(ctx)
 
 	// Lease validator for execution trace: validate token and return agent ID
@@ -310,6 +311,7 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 	queueRedis := queue.NewRedisStore(redisClient, leaseTTL)
 	queueSvc := queue.NewService(ticketSvc, ticketSvc, queueRedis)
 	scheduler := queue.NewScheduler(queueRedis, ticketSvc, ticketSvc, bus, 30*time.Second)
+	scheduler.EnableStalenessSweep(ticketSvc, 0) // default: 2x lease TTL
 	go scheduler.Run(ctx)
 
 	leaseValidator := &leaseValidatorAdapter{leases: queueRedis}
