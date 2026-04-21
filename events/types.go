@@ -34,6 +34,10 @@ const (
 	EventTicketReopened  = "ticket.reopened"  // closed → draft
 	EventLeaseExpired    = "lease.expired"    // planning/executing → draft
 
+	// --- CI/merge events ---
+	EventTestsFailed = "ticket.tests_failed" // CI checks failed on PR before merge
+	EventTestsPassed = "ticket.tests_passed" // CI checks passed on PR
+
 	// --- Deprecated aliases (backward compat for existing subscribers) ---
 	EventTicketDone      = EventTicketClosed // alias: done → closed
 	EventTicketUnblocked = "ticket.unblocked"

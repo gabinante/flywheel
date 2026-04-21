@@ -145,6 +145,9 @@ func (d *Dispatcher) Start(ctx context.Context) {
 	d.bus.Subscribe(events.EventTicketApproved, func(_ context.Context, e events.Event) {
 		d.handleTicketDone(ctx, e)
 	})
+	d.bus.Subscribe(events.EventTestsFailed, func(_ context.Context, e events.Event) {
+		d.handleTestsFailed(ctx, e)
+	})
 
 	log.Printf("dispatch: started (max_workers=%d, worktree_dir=%s, project=%s)", d.cfg.MaxWorkers, d.cfg.WorktreeDir, d.cfg.ProjectID)
 
@@ -262,6 +265,29 @@ func (d *Dispatcher) handleTicketRejected(ctx context.Context, e events.Event) {
 	}
 	log.Printf("dispatch: ticket %s rejected, re-spawning worker for iteration", ticketID)
 	d.spawn(ctx, t)
+}
+
+// handleTestsFailed is called when CI checks fail on a validated ticket's PR.
+// It logs the failure for visibility. The ticket remains in validated state —
+// the next scan cycle will retry after the branch is fixed.
+func (d *Dispatcher) handleTestsFailed(ctx context.Context, e events.Event) {
+	ticketID, _ := e.Payload["ticket_id"].(string)
+	prURL, _ := e.Payload["pr_url"].(string)
+	output, _ := e.Payload["output"].(string)
+	log.Printf("dispatch: TESTS FAILED for ticket %s (PR: %s)\n%s", ticketID, prURL, output)
+
+	// Spawn a conflict resolver to fix the build — the branch likely needs
+	// a rebase or build fix after main diverged.
+	if ticketID == "" {
+		return
+	}
+	t, err := d.tickets.GetTicket(ctx, ticketID)
+	if err != nil || t == nil {
+		return
+	}
+	if prURL != "" {
+		d.spawnConflictResolver(ctx, t, prURL)
+	}
 }
 
 func (d *Dispatcher) tryDispatch(ctx context.Context, t *ticket.Ticket) {
@@ -605,9 +631,15 @@ func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
 }
 
 // autoMergePR merges the PR after a ticket is approved.
-// If the merge fails due to conflicts, it spawns a conflict resolver worker.
+// It first validates that CI checks pass, then merges. If the merge fails due
+// to conflicts, it spawns a conflict resolver worker.
 func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL string) {
 	_ = d.worktrees.Remove(t.ID)
+
+	// Validate CI checks before attempting merge.
+	if !d.validatePRChecks(ctx, t, prURL) {
+		return
+	}
 
 	cmd := exec.Command("gh", "pr", "merge", prURL, "--squash")
 	cmd.Dir = d.cfg.RepoDir
@@ -626,6 +658,51 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 		delCmd.Dir = d.cfg.RepoDir
 		_ = delCmd.Run()
 	}
+}
+
+// validatePRChecks verifies CI checks pass on the PR before merging.
+// Returns true if checks pass (or no checks exist), false if failing/pending.
+// Emits EventTestsFailed when checks fail.
+func (d *Dispatcher) validatePRChecks(ctx context.Context, t *ticket.Ticket, prURL string) bool {
+	// Use `gh pr checks` to get CI status.
+	cmd := exec.Command("gh", "pr", "checks", prURL)
+	cmd.Dir = d.cfg.RepoDir
+	out, err := cmd.CombinedOutput()
+	output := string(out)
+
+	if err != nil {
+		// gh pr checks exits non-zero if any check failed or is pending.
+		if strings.Contains(output, "fail") || strings.Contains(output, "X") {
+			log.Printf("dispatch: CI checks failed for %s, emitting tests_failed event", t.ID)
+			_ = d.bus.Publish(ctx, events.Event{
+				Type: events.EventTestsFailed,
+				Payload: map[string]any{
+					"ticket_id":  t.ID,
+					"project_id": t.ProjectID,
+					"pr_url":     prURL,
+					"output":     truncate(output, 1000),
+				},
+			})
+			return false
+		}
+		// Checks still pending — skip for now, will retry on next scan.
+		if strings.Contains(output, "pending") || strings.Contains(output, "-") {
+			log.Printf("dispatch: CI checks pending for %s, will retry later", t.ID)
+			return false
+		}
+		// No checks configured or other error — allow merge.
+		log.Printf("dispatch: gh pr checks %s: %v (proceeding with merge)", t.ID, err)
+	}
+
+	return true
+}
+
+// truncate returns s truncated to maxLen characters.
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen]
 }
 
 // spawnConflictResolver launches a worker to rebase a PR branch onto main and resolve conflicts.

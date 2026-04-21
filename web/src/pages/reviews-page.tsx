@@ -33,7 +33,7 @@ async function loadPendingReviews(
 }
 
 async function loadTrace(
-  client: WarrantClient,
+  client: FlywheelClient,
   ticketId: string,
 ): Promise<TraceStep[] | null> {
   const { data, response } = await client.GET('/tickets/{ticketID}/trace', {
