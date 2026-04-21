@@ -49,6 +49,10 @@ func Load() *Config {
 			JiraEmail:    getEnv("MIRROR_JIRA_EMAIL", ""),
 			JiraAPIToken: getEnv("MIRROR_JIRA_API_TOKEN", ""),
 		},
+		Notification: NotificationConfig{
+			Enabled:         getEnvBool("NOTIFICATION_ENABLED", true),
+			SlackWebhookURL: getEnv("NOTIFICATION_SLACK_WEBHOOK_URL", ""),
+		},
 		Embedded: EmbeddedConfig{
 			Enabled: embeddedEnabled,
 			DataDir: getEnv("WARRANT_DATA_DIR", ""),
@@ -152,6 +156,7 @@ type Config struct {
 	Dispatch                  DispatchConfig
 	Cost                      CostConfig
 	Mirror                    MirrorConfig
+	Notification              NotificationConfig
 	Embedded                  EmbeddedConfig
 	Findings                  FindingsConfig
 	RunAcceptanceTestOnSubmit bool
@@ -187,6 +192,15 @@ type MirrorConfig struct {
 	JiraBaseURL  string // Jira instance base URL
 	JiraEmail    string // Jira API user email
 	JiraAPIToken string // Jira API token
+}
+
+// NotificationConfig holds configuration for the notification push layer.
+// Channel adapters (Slack, email, SMS) are pluggable — defaults are registered
+// when their credentials are configured. Per-project settings are stored in the
+// notification_preferences table.
+type NotificationConfig struct {
+	Enabled         bool   // master switch: enable the notification service
+	SlackWebhookURL string // default Slack incoming webhook URL (per-project overrides via preferences)
 }
 
 // EmbeddedConfig controls zero-config embedded mode (SQLite + in-memory Redis).

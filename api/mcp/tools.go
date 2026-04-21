@@ -18,6 +18,7 @@ import (
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/gitnotes"
 	investigationPkg "github.com/gabinante/flywheel/internal/investigation"
+	"github.com/gabinante/flywheel/internal/notification"
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
@@ -417,6 +418,42 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"additionalProperties": false,
 		}}, wrap(detectClaimConflictsHandler))
 	}
+
+	// --- Notification tools ---
+	mcp.AddTool(s, &mcp.Tool{Name: "get_notification_preferences", Description: "Get notification preferences for a project. Returns channel routing (per urgency), digest settings, push threshold, and configured channels (Slack webhook URL, email, SMS). If no preferences are set, returns defaults.", InputSchema: map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"project_id": map[string]any{"type": "string", "description": "Project ID"},
+		},
+		"required":             []string{"project_id"},
+		"additionalProperties": false,
+	}}, wrap(getNotificationPreferencesHandler))
+	mcp.AddTool(s, &mcp.Tool{Name: "set_notification_preferences", Description: "Set notification preferences for a project. Controls which channel is used per urgency level (critical/high/medium/low), digest settings, push threshold, and channel configuration (Slack webhook URL, email address, SMS number). Unset fields keep their defaults.", InputSchema: map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"project_id":       map[string]any{"type": "string", "description": "Project ID"},
+			"critical_channel": map[string]any{"type": "string", "description": "Channel for critical urgency", "enum": []string{"slack", "email", "sms"}},
+			"high_channel":     map[string]any{"type": "string", "description": "Channel for high urgency", "enum": []string{"slack", "email", "sms"}},
+			"medium_channel":   map[string]any{"type": "string", "description": "Channel for medium urgency", "enum": []string{"slack", "email", "sms"}},
+			"low_channel":      map[string]any{"type": "string", "description": "Channel for low urgency", "enum": []string{"slack", "email", "sms"}},
+			"digest_enabled":   map[string]any{"type": "boolean", "description": "Enable digest batching for below-threshold notifications"},
+			"digest_interval":  map[string]any{"type": "string", "description": "Digest interval (e.g. '1h', '30m')"},
+			"push_threshold":   map[string]any{"type": "string", "description": "Urgency at or above which notifications are pushed immediately", "enum": []string{"critical", "high", "medium", "low"}},
+			"slack_webhook_url": map[string]any{"type": "string", "description": "Slack incoming webhook URL"},
+			"email_address":    map[string]any{"type": "string", "description": "Email address for notifications"},
+			"sms_number":       map[string]any{"type": "string", "description": "SMS number for notifications"},
+		},
+		"required":             []string{"project_id"},
+		"additionalProperties": false,
+	}}, wrap(setNotificationPreferencesHandler))
+	mcp.AddTool(s, &mcp.Tool{Name: "get_dismissal_rates", Description: "Get notification dismissal rates per classifier for a project. Used for tuning notification classifiers — high dismissal rates suggest notifications are too noisy.", InputSchema: map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"project_id": map[string]any{"type": "string", "description": "Project ID"},
+		},
+		"required":             []string{"project_id"},
+		"additionalProperties": false,
+	}}, wrap(getDismissalRatesHandler))
 }
 
 func requireString(args map[string]any, key string) (string, error) {
@@ -1958,4 +1995,105 @@ func detectClaimConflictsHandler(b *Backend, ctx context.Context, args map[strin
 	}
 
 	return jsonResult(result)
+}
+
+// --- Notification handlers ---
+
+func getNotificationPreferencesHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
+	if b.Notification == nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInternal, "notification service not enabled", false))
+	}
+	projectID, err := requireString(args, "project_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	prefs, err := b.Notification.GetPreferences(ctx, projectID)
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	return jsonResult(prefs)
+}
+
+func setNotificationPreferencesHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
+	if b.Notification == nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInternal, "notification service not enabled", false))
+	}
+	projectID, err := requireString(args, "project_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+
+	// Load existing preferences (or defaults) and merge updates.
+	prefs, err := b.Notification.GetPreferences(ctx, projectID)
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+
+	if v := getString(args, "critical_channel", ""); v != "" {
+		prefs.CriticalChannel = notification.Channel(v)
+	}
+	if v := getString(args, "high_channel", ""); v != "" {
+		prefs.HighChannel = notification.Channel(v)
+	}
+	if v := getString(args, "medium_channel", ""); v != "" {
+		prefs.MediumChannel = notification.Channel(v)
+	}
+	if v := getString(args, "low_channel", ""); v != "" {
+		prefs.LowChannel = notification.Channel(v)
+	}
+	if v := getString(args, "digest_interval", ""); v != "" {
+		prefs.DigestInterval = v
+	}
+	if v := getString(args, "push_threshold", ""); v != "" {
+		prefs.PushThreshold = notification.Urgency(v)
+	}
+	if v := getString(args, "slack_webhook_url", ""); v != "" {
+		prefs.SlackWebhookURL = v
+	}
+	if v := getString(args, "email_address", ""); v != "" {
+		prefs.EmailAddress = v
+	}
+	if v := getString(args, "sms_number", ""); v != "" {
+		prefs.SMSNumber = v
+	}
+	// Handle boolean fields.
+	if v, ok := args["digest_enabled"]; ok {
+		if b, isBool := v.(bool); isBool {
+			prefs.DigestEnabled = b
+		}
+	}
+
+	if err := b.Notification.SetPreferences(ctx, prefs); err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	return jsonResult(prefs)
+}
+
+func getDismissalRatesHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
+	if b.Notification == nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInternal, "notification service not enabled", false))
+	}
+	projectID, err := requireString(args, "project_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	rates, err := b.Notification.GetDismissalRates(ctx, projectID)
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	// Enrich with computed rates.
+	results := make([]map[string]any, 0, len(rates))
+	for _, r := range rates {
+		results = append(results, map[string]any{
+			"classifier":       r.Classifier,
+			"project_id":       r.ProjectID,
+			"total_sent":       r.TotalSent,
+			"total_dismissed":  r.TotalDismissed,
+			"dismissal_rate":   r.Rate(),
+			"window_sent":      r.WindowSent,
+			"window_dismissed": r.WindowDismissed,
+			"window_rate":      r.WindowRate(),
+		})
+	}
+	return jsonResult(map[string]any{"rates": results})
 }
