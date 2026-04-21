@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"github.com/gabinante/flywheel/internal/agent"
+	"github.com/gabinante/flywheel/internal/claims"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/investigation"
 	"github.com/gabinante/flywheel/internal/org"
@@ -23,6 +24,7 @@ type Backend struct {
 	Org        *org.Service
 	AgentStore    agent.AgentStore
 	Investigation *investigation.Service
+	Claims        *claims.Service
 
 	// DefaultAgentID is used as a fallback when agent_id is not passed in args
 	// and not available from HTTP auth context (e.g. stdio mode with FLYWHEEL_TOKEN).

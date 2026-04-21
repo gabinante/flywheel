@@ -60,6 +60,12 @@ const (
 	EventPlanApplied    = "plan.applied"
 	EventPlanRejected   = "plan.rejected"
 	EventPlanSuperseded = "plan.superseded"
+
+	// --- Claims registry events (spec v0.2 §4.3) ---
+	EventClaimRegistered  = "claim.registered"
+	EventClaimReleased    = "claim.released"
+	EventConflictDetected = "claim.conflict_detected"
+	EventConflictResolved = "claim.conflict_resolved"
 )
 
 // Event carries type and typed payload for the bus.

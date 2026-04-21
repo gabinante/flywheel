@@ -22,6 +22,7 @@ type RouterConfig struct {
 	PlansHandler       *PlansHandler
 	ObservationHandler *ObservationHandler
 	PoliciesHandler    *PoliciesHandler // Policy calibration feedback loop (not in OpenAPI spec yet)
+	ClaimsHandler      *ClaimsHandler   // Claims registry for concurrency control (spec v0.2 §4.3)
 	// WebDist is the Vite outDir (contains index.html and assets/). Empty skips SPA routes.
 	WebDist string
 }
@@ -108,6 +109,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	if cfg.PoliciesHandler != nil {
 		cfg.PoliciesHandler.RegisterRoutes(mux)
+	}
+	if cfg.ClaimsHandler != nil {
+		cfg.ClaimsHandler.RegisterRoutes(mux)
 	}
 
 	h := http.Handler(mux)
