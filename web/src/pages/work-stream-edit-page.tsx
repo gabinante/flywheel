@@ -1,10 +1,16 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
+import { PlanMarkdown } from '@/components/plan-markdown'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
 import { formatApiError } from '@/lib/api/client'
@@ -29,6 +35,7 @@ export function WorkStreamEditPage() {
   const [formErr, setFormErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
   const projectLabel = useProjectBreadcrumbLabel(projectId)
 
   useEffect(() => {
@@ -111,7 +118,7 @@ export function WorkStreamEditPage() {
     return <p className="text-destructive text-sm">{err}</p>
   }
   if (stream === undefined) {
-    return <p className="text-muted-foreground text-sm">Loading…</p>
+    return <p className="text-muted-foreground text-sm">Loading...</p>
   }
   if (!stream) {
     return <p className="text-muted-foreground text-sm">Work stream not found.</p>
@@ -165,7 +172,7 @@ export function WorkStreamEditPage() {
         </Button>
       </div>
 
-      <Card>
+      <Card className="bg-white/[0.03] backdrop-blur-md border-white/10">
         <CardHeader>
           <CardTitle className="text-sm">Edit work stream</CardTitle>
           <CardDescription>
@@ -174,65 +181,120 @@ export function WorkStreamEditPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form className="flex flex-col gap-4" onSubmit={handleSave}>
-            {formErr ? (
-              <p className="text-destructive text-sm">{formErr}</p>
-            ) : null}
-            {saved ? (
-              <p className="text-muted-foreground text-sm">Saved.</p>
-            ) : null}
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-muted-foreground">Name</span>
-              <input
-                className="border-input bg-background h-8 rounded-md border px-2 text-sm disabled:opacity-50"
+          <form className="flex flex-col gap-5" onSubmit={handleSave}>
+            <AnimatePresence>
+              {formErr ? (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive backdrop-blur-sm">
+                    {formErr}
+                  </div>
+                </motion.div>
+              ) : null}
+              {saved ? (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm text-primary backdrop-blur-sm">
+                    Changes saved successfully.
+                  </div>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+
+            <Label>
+              <span>Name</span>
+              <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 disabled={busy}
                 required
               />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-muted-foreground">Plan (Markdown)</span>
-              <span className="text-muted-foreground text-xs">
+            </Label>
+
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <Label className="flex-row items-center gap-0" htmlFor="plan-edit-field">
+                  <span>Plan (Markdown)</span>
+                </Label>
+                {plan.trim() ? (
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors duration-150"
+                    onClick={() => setShowPreview(!showPreview)}
+                  >
+                    {showPreview ? 'Edit' : 'Preview'}
+                  </button>
+                ) : null}
+              </div>
+              <p className="text-muted-foreground text-xs">
                 GFM, fenced code with a language for highlighting,{' '}
-                <code className="font-mono">{'```mermaid'}</code> for diagrams.
-                Leave empty to clear.
-              </span>
-              <textarea
-                className="border-input bg-background font-mono min-h-[200px] rounded-md border px-2 py-2 text-sm disabled:opacity-50"
-                value={plan}
-                onChange={(e) => setPlan(e.target.value)}
-                disabled={busy}
-                rows={12}
-                spellCheck={false}
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-muted-foreground">Branch</span>
-              <input
-                className="border-input bg-background h-8 rounded-md border px-2 font-mono text-sm disabled:opacity-50"
+                <code className="font-mono text-[10px] rounded bg-white/10 px-1 py-0.5">
+                  {'```mermaid'}
+                </code>{' '}
+                for diagrams. Leave empty to clear.
+              </p>
+              {showPreview && plan.trim() ? (
+                <div className="min-h-[200px] rounded-lg border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm">
+                  <PlanMarkdown markdown={plan} />
+                </div>
+              ) : (
+                <Textarea
+                  id="plan-edit-field"
+                  className="font-mono min-h-[200px]"
+                  value={plan}
+                  onChange={(e) => setPlan(e.target.value)}
+                  disabled={busy}
+                  rows={12}
+                  spellCheck={false}
+                />
+              )}
+            </div>
+
+            <Label>
+              <span>Branch</span>
+              <Input
                 value={branch}
                 onChange={(e) => setBranch(e.target.value)}
                 disabled={busy}
                 placeholder="e.g. feature/my-stream"
+                className="font-mono"
               />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-muted-foreground">Status</span>
-              <select
-                className="border-input bg-background h-8 rounded-md border px-2 text-sm disabled:opacity-50"
-                value={status}
-                onChange={(e) =>
-                  setStatus(e.target.value as 'active' | 'closed')
-                }
-                disabled={busy}
-              >
-                <option value="active">active</option>
-                <option value="closed">closed</option>
-              </select>
-            </label>
-            <Button type="submit" disabled={busy}>
-              {busy ? 'Saving…' : 'Save changes'}
+            </Label>
+
+            <div className="flex flex-col gap-2">
+              <span className="text-sm font-medium text-muted-foreground">Status</span>
+              <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3 backdrop-blur-sm">
+                <Switch
+                  id="status-switch"
+                  checked={status === 'active'}
+                  onCheckedChange={(checked) =>
+                    setStatus(checked ? 'active' : 'closed')
+                  }
+                  disabled={busy}
+                />
+                <label htmlFor="status-switch" className="flex flex-col gap-0.5 cursor-pointer">
+                  <span className={`text-sm font-medium ${status === 'active' ? 'text-primary' : 'text-muted-foreground'}`}>
+                    {status === 'active' ? 'Active' : 'Closed'}
+                  </span>
+                  <span className="text-xs text-muted-foreground/70">
+                    {status === 'active'
+                      ? 'Tickets can be assigned and dispatched'
+                      : 'Stream is archived, no new work'}
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            <Button type="submit" disabled={busy} className="self-start">
+              {busy ? 'Saving...' : 'Save changes'}
             </Button>
           </form>
         </CardContent>

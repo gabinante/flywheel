@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { Badge } from '@/components/ui/badge'
@@ -11,17 +12,158 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Progress } from '@/components/ui/progress'
+import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/contexts/use-auth'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 
 type Project = components['schemas']['Project']
 type WorkStream = components['schemas']['WorkStream']
+type Ticket = components['schemas']['Ticket']
 type StreamStatusFilter = 'active' | 'closed' | 'all'
 
 function parseStatusFilter(raw: string | null): StreamStatusFilter {
   if (raw === 'closed' || raw === 'all') return raw
   return 'active'
+}
+
+type TicketStats = {
+  total: number
+  done: number
+  executing: number
+  pending: number
+  other: number
+}
+
+function computeStats(tickets: Ticket[]): TicketStats {
+  let done = 0
+  let executing = 0
+  let pending = 0
+  let other = 0
+  for (const t of tickets) {
+    const s = t.state
+    if (s === 'done') done++
+    else if (s === 'executing' || s === 'claimed') executing++
+    else if (s === 'pending') pending++
+    else other++
+  }
+  return { total: tickets.length, done, executing, pending, other }
+}
+
+type StreamCardProps = {
+  ws: WorkStream
+  orgId: string
+  projectId: string
+  tickets: Ticket[]
+  onToggleStatus: (ws: WorkStream, newStatus: 'active' | 'closed') => void
+  toggling: boolean
+}
+
+function StreamCard({ ws, orgId, projectId, tickets, onToggleStatus, toggling }: StreamCardProps) {
+  if (!ws.id) return null
+
+  const stats = computeStats(tickets)
+  const isActive = ws.status === 'active'
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      transition={{ duration: 0.2 }}
+    >
+      <Card className="overflow-hidden bg-white/[0.03] backdrop-blur-md border-white/10 hover:bg-white/[0.05] transition-colors duration-200">
+        <div className="flex flex-col gap-3 p-4">
+          {/* Header row */}
+          <div className="flex items-start justify-between gap-3">
+            <Link
+              to={`/orgs/${orgId}/projects/${projectId}/tickets?work_stream_id=${encodeURIComponent(ws.id)}`}
+              className="group flex min-w-0 flex-1 flex-col gap-1"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors duration-150">
+                  {ws.name ?? ws.slug ?? ws.id}
+                </span>
+                {ws.slug ? (
+                  <Badge variant="muted" className="font-mono text-[10px]">
+                    {ws.slug}
+                  </Badge>
+                ) : null}
+              </div>
+              {ws.branch ? (
+                <span className="text-muted-foreground font-mono text-xs flex items-center gap-1.5">
+                  <svg className="h-3 w-3 shrink-0 opacity-60" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.492 2.492 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Z" />
+                  </svg>
+                  {ws.branch}
+                </span>
+              ) : null}
+            </Link>
+
+            <div className="flex items-center gap-3 shrink-0">
+              {/* Status toggle */}
+              <div className="flex items-center gap-2">
+                <span className={`text-xs ${isActive ? 'text-primary/80' : 'text-muted-foreground'}`}>
+                  {isActive ? 'Active' : 'Closed'}
+                </span>
+                <Switch
+                  checked={isActive}
+                  onCheckedChange={(checked) =>
+                    onToggleStatus(ws, checked ? 'active' : 'closed')
+                  }
+                  disabled={toggling}
+                />
+              </div>
+
+              <Button asChild variant="outline" size="sm" className="border-white/10 bg-white/5 hover:bg-white/10">
+                <Link
+                  to={`/orgs/${orgId}/projects/${projectId}/work-streams/${ws.id}`}
+                >
+                  Manage
+                </Link>
+              </Button>
+            </div>
+          </div>
+
+          {/* Progress section */}
+          {stats.total > 0 ? (
+            <div className="flex flex-col gap-2">
+              <Progress value={stats.done} max={stats.total} />
+              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                <span>
+                  <span className="font-medium text-foreground">{stats.done}</span>
+                  <span className="opacity-60">/{stats.total}</span>
+                  {' '}done
+                </span>
+                {stats.executing > 0 ? (
+                  <span className="flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400/70" />
+                    {stats.executing} in progress
+                  </span>
+                ) : null}
+                {stats.pending > 0 ? (
+                  <span className="flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-white/30" />
+                    {stats.pending} pending
+                  </span>
+                ) : null}
+                {stats.other > 0 ? (
+                  <span className="flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50" />
+                    {stats.other} other
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground/60">No tickets yet</p>
+          )}
+        </div>
+      </Card>
+    </motion.div>
+  )
 }
 
 export function WorkStreamsPage() {
@@ -37,6 +179,8 @@ export function WorkStreamsPage() {
   const [projectErr, setProjectErr] = useState<string | null>(null)
   const [streams, setStreams] = useState<WorkStream[] | null>(null)
   const [streamsErr, setStreamsErr] = useState<string | null>(null)
+  const [ticketsByStream, setTicketsByStream] = useState<Record<string, Ticket[]>>({})
+  const [toggling, setToggling] = useState(false)
 
   const setFilter = useCallback(
     (next: StreamStatusFilter) => {
@@ -86,7 +230,27 @@ export function WorkStreamsPage() {
       return
     }
     setStreamsErr(null)
-    setStreams(data ?? [])
+    const streamList = data ?? []
+    setStreams(streamList)
+
+    // Load tickets for each stream to show progress
+    const ticketMap: Record<string, Ticket[]> = {}
+    await Promise.all(
+      streamList.map(async (ws) => {
+        if (!ws.id) return
+        const { data: tickets } = await client.GET(
+          '/projects/{projectID}/tickets',
+          {
+            params: {
+              path: { projectID: projectId },
+              query: { work_stream_id: ws.id },
+            },
+          },
+        )
+        ticketMap[ws.id] = tickets ?? []
+      }),
+    )
+    setTicketsByStream(ticketMap)
   }, [client, projectId, statusFilter])
 
   useEffect(() => {
@@ -95,6 +259,27 @@ export function WorkStreamsPage() {
     })
   }, [loadStreams])
 
+  const handleToggleStatus = useCallback(
+    async (ws: WorkStream, newStatus: 'active' | 'closed') => {
+      if (!projectId || !ws.id) return
+      setToggling(true)
+      const { response } = await client.PATCH(
+        '/projects/{projectID}/work-streams/{workStreamID}',
+        {
+          params: {
+            path: { projectID: projectId, workStreamID: ws.id },
+          },
+          body: { status: newStatus },
+        },
+      )
+      setToggling(false)
+      if (response.ok) {
+        void loadStreams()
+      }
+    },
+    [client, projectId, loadStreams],
+  )
+
   if (!orgId || !projectId) {
     return <p className="text-destructive text-sm">Missing route params.</p>
   }
@@ -102,7 +287,7 @@ export function WorkStreamsPage() {
     return <p className="text-destructive text-sm">{projectErr}</p>
   }
   if (project === undefined) {
-    return <p className="text-muted-foreground text-sm">Loading…</p>
+    return <p className="text-muted-foreground text-sm">Loading...</p>
   }
   if (!project) {
     return <p className="text-muted-foreground text-sm">Project not found.</p>
@@ -141,7 +326,7 @@ export function WorkStreamsPage() {
         </Button>
       </div>
 
-      <Card>
+      <Card className="bg-white/[0.02] backdrop-blur-md border-white/10">
         <CardHeader className="flex flex-col gap-3">
           <div className="space-y-1.5">
             <CardTitle className="text-sm">All streams in this project</CardTitle>
@@ -151,7 +336,7 @@ export function WorkStreamsPage() {
             </CardDescription>
           </div>
           <div
-            className="flex flex-wrap gap-2"
+            className="flex flex-wrap gap-1.5"
             role="tablist"
             aria-label="Filter by status"
           >
@@ -166,25 +351,37 @@ export function WorkStreamsPage() {
                 key={value}
                 type="button"
                 size="sm"
-                variant={statusFilter === value ? 'default' : 'outline'}
+                variant={statusFilter === value ? 'default' : 'ghost'}
                 onClick={() => setFilter(value)}
                 role="tab"
                 aria-selected={statusFilter === value}
+                className={
+                  statusFilter === value
+                    ? ''
+                    : 'text-muted-foreground hover:text-foreground'
+                }
               >
                 {label}
               </Button>
             ))}
           </div>
         </CardHeader>
-        <CardContent className="flex flex-col gap-4">
+        <CardContent className="flex flex-col gap-3">
           {streamsErr ? (
             <p className="text-destructive text-sm">{streamsErr}</p>
           ) : null}
 
           {!streamsErr && streams === null ? (
-            <p className="text-muted-foreground text-sm">Loading…</p>
+            <div className="flex flex-col gap-3">
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="h-24 animate-pulse rounded-xl bg-white/5"
+                />
+              ))}
+            </div>
           ) : !streamsErr && streams?.length === 0 ? (
-            <p className="text-muted-foreground text-sm">
+            <p className="text-muted-foreground text-sm py-4 text-center">
               {statusFilter === 'active'
                 ? 'No active work streams. Create one or check the Closed tab.'
                 : statusFilter === 'closed'
@@ -192,43 +389,19 @@ export function WorkStreamsPage() {
                   : 'No work streams yet.'}
             </p>
           ) : !streamsErr && streams && streams.length > 0 ? (
-            <ul className="flex flex-col gap-2">
-              {streams.map((ws) => {
-                if (!ws.id) return null
-                return (
-                  <li
-                    key={ws.id}
-                    className="border-border flex flex-wrap items-stretch gap-2 rounded-lg border p-2"
-                  >
-                    <Link
-                      to={`/orgs/${orgId}/projects/${projectId}/tickets?work_stream_id=${encodeURIComponent(ws.id)}`}
-                      className="hover:bg-muted/40 flex min-w-[200px] flex-1 flex-col justify-center gap-1 rounded-md px-2 py-1 transition-colors"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-medium">
-                          {ws.name ?? ws.slug ?? ws.id}
-                        </span>
-                        {ws.status ? (
-                          <Badge variant="outline">{ws.status}</Badge>
-                        ) : null}
-                      </div>
-                      {ws.branch ? (
-                        <span className="text-muted-foreground font-mono text-xs">
-                          {ws.branch}
-                        </span>
-                      ) : null}
-                    </Link>
-                    <Button asChild variant="outline" size="sm" className="self-center">
-                      <Link
-                        to={`/orgs/${orgId}/projects/${projectId}/work-streams/${ws.id}`}
-                      >
-                        Manage
-                      </Link>
-                    </Button>
-                  </li>
-                )
-              })}
-            </ul>
+            <AnimatePresence mode="popLayout">
+              {streams.map((ws) => (
+                <StreamCard
+                  key={ws.id}
+                  ws={ws}
+                  orgId={orgId}
+                  projectId={projectId}
+                  tickets={ws.id ? (ticketsByStream[ws.id] ?? []) : []}
+                  onToggleStatus={handleToggleStatus}
+                  toggling={toggling}
+                />
+              ))}
+            </AnimatePresence>
           ) : null}
         </CardContent>
       </Card>
