@@ -103,6 +103,11 @@ func Load() *Config {
 			SuccessRedirectURL: getEnv("AUTH_SUCCESS_REDIRECT_URL", ""),
 			JWTSecret:          getEnv("JWT_SECRET", ""),
 		},
+		Findings: FindingsConfig{
+			WeaviateURL:        getEnv("WEAVIATE_URL", ""),
+			WeaviateAPIKey:     getEnv("WEAVIATE_API_KEY", ""),
+			WeaviateVectorizer: getEnv("WEAVIATE_VECTORIZER", "text2vec-openai"),
+		},
 	}
 
 	for _, w := range cfg.Validate() {
@@ -148,7 +153,15 @@ type Config struct {
 	Cost                      CostConfig
 	Mirror                    MirrorConfig
 	Embedded                  EmbeddedConfig
+	Findings                  FindingsConfig
 	RunAcceptanceTestOnSubmit bool
+}
+
+// FindingsConfig holds configuration for the findings layer (Layer 4).
+type FindingsConfig struct {
+	WeaviateURL        string // Weaviate server URL. Empty = use in-memory fallback.
+	WeaviateAPIKey     string // Weaviate API key for authentication (optional).
+	WeaviateVectorizer string // Vectorizer module name (default: "text2vec-openai").
 }
 
 // CostConfig holds cost and rate-limit management settings.

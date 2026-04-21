@@ -22,6 +22,7 @@ func NewServer(b *Backend) (*mcp.Server, error) {
 	}, nil)
 	RegisterTools(server, b)
 	RegisterCodeIntelTools(server, b)
+	RegisterFindingsTools(server, b)
 	registerResources(server)
 	return server, nil
 }

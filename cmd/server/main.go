@@ -170,6 +170,21 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	go gapDetector.Start(ctx)
 	log.Println("hooks: change event library initialized with gap detection")
 
+	// Findings layer (Layer 4): semantic findings store.
+	// Uses Weaviate if configured, otherwise falls back to in-memory store.
+	var findingsProvider mcp.FindingsProvider
+	if cfg.Findings.WeaviateURL != "" {
+		findingsProvider = mcp.NewWeaviateFindingsStore(mcp.WeaviateFindingsConfig{
+			URL:        cfg.Findings.WeaviateURL,
+			APIKey:     cfg.Findings.WeaviateAPIKey,
+			Vectorizer: cfg.Findings.WeaviateVectorizer,
+		})
+		log.Printf("findings: Weaviate backend at %s", cfg.Findings.WeaviateURL)
+	} else {
+		findingsProvider = mcp.NewMemoryFindingsStore()
+		log.Println("findings: in-memory backend (set WEAVIATE_URL for production)")
+	}
+
 	strictServer := &rest.StrictServer{
 		OrgSvc:        orgSvc,
 		ProjectSvc:    projectSvc,
@@ -237,6 +252,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			Investigation: investigationSvc,
 			Claims:        claimsSvc,
 			CodeIntel:     codeIntel,
+			Findings:      findingsProvider,
 		})
 		if err != nil {
 			log.Fatalf("mcp server: %v", err)
@@ -409,6 +425,18 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 	// Code intelligence: bundled default for embedded mode.
 	embeddedCodeIntel := mcp.NewTreeSitterCodeIntel()
 
+	// Findings layer for embedded mode: always in-memory (no Weaviate dependency).
+	var embeddedFindingsProvider mcp.FindingsProvider
+	if cfg.Findings.WeaviateURL != "" {
+		embeddedFindingsProvider = mcp.NewWeaviateFindingsStore(mcp.WeaviateFindingsConfig{
+			URL:        cfg.Findings.WeaviateURL,
+			APIKey:     cfg.Findings.WeaviateAPIKey,
+			Vectorizer: cfg.Findings.WeaviateVectorizer,
+		})
+	} else {
+		embeddedFindingsProvider = mcp.NewMemoryFindingsStore()
+	}
+
 	// In embedded mode, set up MCP with API key auth (no OAuth required).
 	authMiddleware := rest.AuthMiddleware(jwtSecret, agentSvc)
 	mcpSrv, err := mcp.NewServer(&mcp.Backend{
@@ -421,6 +449,7 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		Org:        orgSvc,
 		AgentStore: agentSt,
 		CodeIntel:  embeddedCodeIntel,
+		Findings:   embeddedFindingsProvider,
 	})
 	if err != nil {
 		log.Fatalf("mcp server: %v", err)
