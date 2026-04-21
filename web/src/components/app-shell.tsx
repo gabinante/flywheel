@@ -13,7 +13,7 @@ export function AppShell() {
   return (
     <RightRailProvider railContent={token ? <RightRailWidgets /> : undefined}>
       <div className="flex min-h-screen flex-col">
-        <header className="border-border border-b bg-background/80 backdrop-blur">
+        <header className="border-b border-white/10 bg-background/70 backdrop-blur-md">
           <div className="flex h-12 items-center justify-between gap-4 px-4">
             <nav className="flex items-center gap-3 text-sm">
               <Link

@@ -163,7 +163,7 @@ function ActiveTicketsWidget({
             <li key={t.id}>
               <Link
                 to={`/orgs/${orgId}/projects/${projectId}/tickets/${t.id}`}
-                className="group flex flex-col gap-0.5 rounded-lg bg-white/[0.03] px-2.5 py-2 transition-colors hover:bg-white/[0.06]"
+                className="group flex flex-col gap-0.5 rounded-xl border border-white/[0.06] bg-white/[0.03] px-2.5 py-2 backdrop-blur-sm transition-colors hover:bg-white/[0.06]"
               >
                 <div className="flex items-center gap-1.5">
                   <Badge
@@ -230,7 +230,7 @@ function PendingApprovalsWidget({
             <li key={t.id}>
               <Link
                 to={`/orgs/${orgId}/projects/${projectId}/reviews`}
-                className="group flex flex-col gap-0.5 rounded-lg bg-white/[0.03] px-2.5 py-2 transition-colors hover:bg-white/[0.06]"
+                className="group flex flex-col gap-0.5 rounded-xl border border-white/[0.06] bg-white/[0.03] px-2.5 py-2 backdrop-blur-sm transition-colors hover:bg-white/[0.06]"
               >
                 <span className="truncate text-xs font-medium text-foreground group-hover:underline">
                   {t.title ?? t.id}
@@ -289,7 +289,7 @@ function ActivityFeedWidget({
             <li key={item.id ?? i}>
               <Link
                 to={`/orgs/${orgId}/projects/${projectId}/tickets/${item.ticketId}`}
-                className="group flex items-start gap-1.5 rounded px-1.5 py-1 text-[11px] transition-colors hover:bg-white/[0.04]"
+                className="group flex items-start gap-1.5 rounded-lg px-1.5 py-1 text-[11px] transition-colors hover:bg-white/[0.04]"
               >
                 <span className="mt-px shrink-0 text-muted-foreground" aria-hidden>
                   {stepIcon(item.type)}
@@ -438,7 +438,7 @@ export function RightRailWidgets() {
         projectId={projectId}
       />
 
-      <div className="border-t border-border" />
+      <div className="border-t border-white/[0.06]" />
 
       <PendingApprovalsWidget
         tickets={pendingReviews}
@@ -447,7 +447,7 @@ export function RightRailWidgets() {
         projectId={projectId}
       />
 
-      <div className="border-t border-border" />
+      <div className="border-t border-white/[0.06]" />
 
       <ActivityFeedWidget
         items={activityItems}

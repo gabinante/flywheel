@@ -71,7 +71,7 @@ export function WorkStreamSummaryCard({
           </p>
         ) : null}
         {stream.plan ? (
-          <div className="border-border rounded-md border bg-card/50 p-2">
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm">
             <PlanMarkdown markdown={stream.plan} />
           </div>
         ) : null}
