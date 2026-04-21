@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/gabinante/flywheel/internal/agent"
+	"github.com/gabinante/flywheel/internal/environment"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/project"
@@ -1005,6 +1006,130 @@ func (s *ReviewStore) GetEscalationByID(_ context.Context, id string) (*review.E
 	}
 	e.CreatedAt, _ = time.Parse(time.RFC3339Nano, ts)
 	return &e, nil
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// EnvironmentStore (implements environment.EnvironmentStore)
+// ────────────────────────────────────────────────────────────────────────────
+
+type EnvironmentStore struct{ db *sql.DB }
+
+func NewEnvironmentStore(db *sql.DB) *EnvironmentStore { return &EnvironmentStore{db: db} }
+
+func (s *EnvironmentStore) Create(_ context.Context, env *environment.Environment) error {
+	_, err := s.db.Exec(
+		`INSERT INTO environments (id, project_id, name, slug, infrastructure, data_tenancy, integration_mode, is_default, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		env.ID, env.ProjectID, env.Name, env.Slug,
+		string(env.Infrastructure), string(env.DataTenancy), string(env.IntegrationMode),
+		boolToInt(env.IsDefault), env.CreatedAt.UTC().Format(time.RFC3339), env.UpdatedAt.UTC().Format(time.RFC3339))
+	return err
+}
+
+func (s *EnvironmentStore) GetByID(_ context.Context, id string) (*environment.Environment, error) {
+	return s.scanEnvironment(`SELECT id, project_id, name, slug, infrastructure, data_tenancy, integration_mode, is_default, created_at, updated_at
+		 FROM environments WHERE id = ?`, id)
+}
+
+func (s *EnvironmentStore) GetBySlug(_ context.Context, projectID, slug string) (*environment.Environment, error) {
+	return s.scanEnvironment(`SELECT id, project_id, name, slug, infrastructure, data_tenancy, integration_mode, is_default, created_at, updated_at
+		 FROM environments WHERE project_id = ? AND slug = ?`, projectID, slug)
+}
+
+func (s *EnvironmentStore) ListByProject(_ context.Context, projectID string) ([]*environment.Environment, error) {
+	rows, err := s.db.Query(
+		`SELECT id, project_id, name, slug, infrastructure, data_tenancy, integration_mode, is_default, created_at, updated_at
+		 FROM environments WHERE project_id = ? ORDER BY is_default DESC, name ASC`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return s.scanEnvironmentRows(rows)
+}
+
+func (s *EnvironmentStore) CountByProject(_ context.Context, projectID string) (int, error) {
+	var count int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM environments WHERE project_id = ?`, projectID).Scan(&count)
+	return count, err
+}
+
+func (s *EnvironmentStore) Update(_ context.Context, env *environment.Environment) error {
+	res, err := s.db.Exec(
+		`UPDATE environments SET name = ?, slug = ?, infrastructure = ?, data_tenancy = ?, integration_mode = ?, is_default = ?, updated_at = datetime('now')
+		 WHERE id = ?`,
+		env.Name, env.Slug, string(env.Infrastructure), string(env.DataTenancy), string(env.IntegrationMode),
+		boolToInt(env.IsDefault), env.ID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return environment.ErrNotFound
+	}
+	return nil
+}
+
+func (s *EnvironmentStore) Delete(_ context.Context, id string) error {
+	res, err := s.db.Exec(`DELETE FROM environments WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return environment.ErrNotFound
+	}
+	return nil
+}
+
+func (s *EnvironmentStore) ClearDefault(_ context.Context, projectID string) error {
+	_, err := s.db.Exec(`UPDATE environments SET is_default = 0 WHERE project_id = ?`, projectID)
+	return err
+}
+
+func (s *EnvironmentStore) scanEnvironment(query string, args ...any) (*environment.Environment, error) {
+	var env environment.Environment
+	var isDefault int
+	var createdAt, updatedAt string
+	err := s.db.QueryRow(query, args...).
+		Scan(&env.ID, &env.ProjectID, &env.Name, &env.Slug,
+			&env.Infrastructure, &env.DataTenancy, &env.IntegrationMode,
+			&isDefault, &createdAt, &updatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, environment.ErrNotFound
+		}
+		return nil, err
+	}
+	env.IsDefault = isDefault != 0
+	env.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	env.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+	return &env, nil
+}
+
+func (s *EnvironmentStore) scanEnvironmentRows(rows *sql.Rows) ([]*environment.Environment, error) {
+	var list []*environment.Environment
+	for rows.Next() {
+		var env environment.Environment
+		var isDefault int
+		var createdAt, updatedAt string
+		if err := rows.Scan(&env.ID, &env.ProjectID, &env.Name, &env.Slug,
+			&env.Infrastructure, &env.DataTenancy, &env.IntegrationMode,
+			&isDefault, &createdAt, &updatedAt); err != nil {
+			return nil, err
+		}
+		env.IsDefault = isDefault != 0
+		env.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		env.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+		list = append(list, &env)
+	}
+	return list, rows.Err()
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // ────────────────────────────────────────────────────────────────────────────

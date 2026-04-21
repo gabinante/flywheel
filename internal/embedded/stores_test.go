@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/gabinante/flywheel/internal/agent"
+	"github.com/gabinante/flywheel/internal/environment"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/project"
@@ -176,6 +177,177 @@ func TestAgentStore(t *testing.T) {
 	}
 	if got.Name != "test-agent" {
 		t.Errorf("expected name 'test-agent', got %q", got.Name)
+	}
+}
+
+func TestEnvironmentStore(t *testing.T) {
+	dbPath := t.TempDir() + "/test.db"
+	db, err := OpenDB(dbPath)
+	if err != nil {
+		t.Fatalf("OpenDB: %v", err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+
+	// Create org and project first.
+	orgStore := NewOrgStore(db)
+	orgID := uuid.Must(uuid.NewV7()).String()
+	_ = orgStore.Create(ctx, &org.Org{ID: orgID, Name: "test", Slug: "test", CreatedAt: time.Now().UTC()})
+
+	projStore := NewProjectStore(db)
+	projID := uuid.Must(uuid.NewV7()).String()
+	_ = projStore.Create(ctx, &project.Project{
+		ID: projID, OrgID: orgID, Name: "testproj", Slug: "testproj",
+		Status: "active", CreatedAt: time.Now().UTC(),
+	})
+
+	store := NewEnvironmentStore(db)
+
+	// Create dev environment.
+	devEnv := &environment.Environment{
+		ID:              uuid.Must(uuid.NewV7()).String(),
+		ProjectID:       projID,
+		Name:            "Development",
+		Slug:            "dev",
+		Infrastructure:  environment.InfraDev,
+		DataTenancy:     environment.DataSynthetic,
+		IntegrationMode: environment.IntegrationSandbox,
+		IsDefault:       true,
+		CreatedAt:       time.Now().UTC(),
+		UpdatedAt:       time.Now().UTC(),
+	}
+	if err := store.Create(ctx, devEnv); err != nil {
+		t.Fatalf("Create dev: %v", err)
+	}
+
+	// Create staging environment.
+	stagingEnv := &environment.Environment{
+		ID:              uuid.Must(uuid.NewV7()).String(),
+		ProjectID:       projID,
+		Name:            "Staging",
+		Slug:            "staging",
+		Infrastructure:  environment.InfraStaging,
+		DataTenancy:     environment.DataAnonymized,
+		IntegrationMode: environment.IntegrationTest,
+		IsDefault:       false,
+		CreatedAt:       time.Now().UTC(),
+		UpdatedAt:       time.Now().UTC(),
+	}
+	if err := store.Create(ctx, stagingEnv); err != nil {
+		t.Fatalf("Create staging: %v", err)
+	}
+
+	// GetByID.
+	got, err := store.GetByID(ctx, devEnv.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.Name != "Development" {
+		t.Errorf("expected name 'Development', got %q", got.Name)
+	}
+	if got.Infrastructure != environment.InfraDev {
+		t.Errorf("expected infra dev, got %s", got.Infrastructure)
+	}
+	if got.DataTenancy != environment.DataSynthetic {
+		t.Errorf("expected data synthetic, got %s", got.DataTenancy)
+	}
+	if got.IntegrationMode != environment.IntegrationSandbox {
+		t.Errorf("expected mode sandbox, got %s", got.IntegrationMode)
+	}
+	if !got.IsDefault {
+		t.Error("expected is_default true")
+	}
+
+	// GetBySlug.
+	got2, err := store.GetBySlug(ctx, projID, "staging")
+	if err != nil {
+		t.Fatalf("GetBySlug: %v", err)
+	}
+	if got2.ID != stagingEnv.ID {
+		t.Errorf("expected ID %s, got %s", stagingEnv.ID, got2.ID)
+	}
+
+	// GetBySlug not found.
+	_, err = store.GetBySlug(ctx, projID, "nonexistent")
+	if err != environment.ErrNotFound {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+
+	// ListByProject.
+	list, err := store.ListByProject(ctx, projID)
+	if err != nil {
+		t.Fatalf("ListByProject: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("expected 2 environments, got %d", len(list))
+	}
+	// Default should come first.
+	if list[0].Slug != "dev" {
+		t.Errorf("expected dev first (default), got %s", list[0].Slug)
+	}
+
+	// CountByProject.
+	count, err := store.CountByProject(ctx, projID)
+	if err != nil {
+		t.Fatalf("CountByProject: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("expected count 2, got %d", count)
+	}
+
+	// Update.
+	got.Name = "Dev Updated"
+	got.Infrastructure = environment.InfraProd
+	if err := store.Update(ctx, got); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	updated, _ := store.GetByID(ctx, devEnv.ID)
+	if updated.Name != "Dev Updated" {
+		t.Errorf("expected updated name, got %q", updated.Name)
+	}
+	if updated.Infrastructure != environment.InfraProd {
+		t.Errorf("expected infra prod after update, got %s", updated.Infrastructure)
+	}
+
+	// ClearDefault.
+	if err := store.ClearDefault(ctx, projID); err != nil {
+		t.Fatalf("ClearDefault: %v", err)
+	}
+	cleared, _ := store.GetByID(ctx, devEnv.ID)
+	if cleared.IsDefault {
+		t.Error("expected is_default false after ClearDefault")
+	}
+
+	// Create a third environment then delete it.
+	prodEnv := &environment.Environment{
+		ID:              uuid.Must(uuid.NewV7()).String(),
+		ProjectID:       projID,
+		Name:            "Production",
+		Slug:            "prod",
+		Infrastructure:  environment.InfraProd,
+		DataTenancy:     environment.DataReal,
+		IntegrationMode: environment.IntegrationLive,
+		IsDefault:       false,
+		CreatedAt:       time.Now().UTC(),
+		UpdatedAt:       time.Now().UTC(),
+	}
+	if err := store.Create(ctx, prodEnv); err != nil {
+		t.Fatalf("Create prod: %v", err)
+	}
+
+	if err := store.Delete(ctx, prodEnv.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	_, err = store.GetByID(ctx, prodEnv.ID)
+	if err != environment.ErrNotFound {
+		t.Errorf("expected ErrNotFound after delete, got %v", err)
+	}
+
+	// Delete not found.
+	err = store.Delete(ctx, "nonexistent")
+	if err != environment.ErrNotFound {
+		t.Errorf("expected ErrNotFound on bad delete, got %v", err)
 	}
 }
 

@@ -22,6 +22,7 @@ import (
 	"github.com/gabinante/flywheel/internal/cost"
 	"github.com/gabinante/flywheel/internal/dispatch"
 	"github.com/gabinante/flywheel/internal/embedded"
+	"github.com/gabinante/flywheel/internal/environment"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/mirror"
 	"github.com/gabinante/flywheel/internal/mirror/jira"
@@ -114,6 +115,8 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	execSvc := execution.NewService(execStore, leaseValidator)
 	reviewStore := review.NewStore(pool)
 	reviewSvc := review.NewService(reviewStore, ticketSvc, bus)
+	envStore := environment.NewStore(pool)
+	envSvc := environment.NewService(envStore, bus)
 	planStore := plan.NewStore(pool)
 	planSvc := plan.NewService(planStore, bus)
 	policyStore := policy.NewStore(pool)
@@ -261,6 +264,12 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			OrgSvc:     orgSvc,
 			AgentStore: agentStore,
 		},
+		EnvironmentsHandler: &rest.EnvironmentsHandler{
+			EnvSvc:     envSvc,
+			ProjectSvc: projectSvc,
+			OrgSvc:     orgSvc,
+			AgentStore: agentStore,
+		},
 		WebDist: cfg.Server.WebDist,
 	})
 
@@ -321,6 +330,8 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 	execSvc := execution.NewService(execSt, leaseValidator)
 	reviewSt := embedded.NewReviewStore(sqliteDB)
 	reviewSvc := review.NewService(reviewSt, ticketSvc, bus)
+	envSt := embedded.NewEnvironmentStore(sqliteDB)
+	envSvc := environment.NewService(envSt, bus)
 
 	// Run first-run wizard if no data exists yet.
 	firstRun := bootstrap.IsFirstRun(dataDir)
@@ -395,7 +406,13 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		MCPHandler:     mcpHandler,
 		MCPSSEHandler:  mcpSSEHandler,
 		AgentsHandler:  &rest.AgentsHandler{AgentSvc: agentSvc},
-		WebDist:        cfg.Server.WebDist,
+		EnvironmentsHandler: &rest.EnvironmentsHandler{
+			EnvSvc:     envSvc,
+			ProjectSvc: projectSvc,
+			OrgSvc:     orgSvc,
+			AgentStore: agentSt,
+		},
+		WebDist: cfg.Server.WebDist,
 	})
 
 	serve(ctx, cfg, router, nil)

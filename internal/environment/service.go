@@ -12,12 +12,13 @@ import (
 
 // Service provides environment CRUD operations with business rules.
 type Service struct {
-	store *Store
+	store EnvironmentStore
 	bus   events.Bus
 }
 
-// NewService returns a new environment Service.
-func NewService(store *Store, bus events.Bus) *Service {
+// NewService returns a new environment Service. The store parameter accepts any
+// EnvironmentStore implementation (Postgres *Store, embedded SQLite, etc.).
+func NewService(store EnvironmentStore, bus events.Bus) *Service {
 	return &Service{store: store, bus: bus}
 }
 
