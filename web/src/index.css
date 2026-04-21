@@ -129,6 +129,29 @@
   html {
     @apply font-sans;
   }
+
+  /* Global hover/focus transitions for interactive elements (150-300ms) */
+  a,
+  button,
+  [role="button"],
+  input,
+  select,
+  textarea,
+  [tabindex]:not([tabindex="-1"]) {
+    transition: color 200ms ease-out,
+                background-color 200ms ease-out,
+                border-color 200ms ease-out,
+                box-shadow 200ms ease-out,
+                opacity 200ms ease-out,
+                transform 150ms ease-out;
+  }
+
+  /* Badge hover transitions */
+  [data-slot="badge"] {
+    transition: color 200ms ease-out,
+                background-color 200ms ease-out,
+                border-color 200ms ease-out;
+  }
 }
 
 /* Pending reviews page — queue cleared celebration */
