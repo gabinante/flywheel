@@ -13,6 +13,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/gabinante/flywheel/api/rest"
 	"github.com/gabinante/flywheel/internal/auth"
+	"github.com/gabinante/flywheel/internal/claims"
 	apierrors "github.com/gabinante/flywheel/internal/errors"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/gitnotes"
@@ -394,6 +395,28 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		},
 		"additionalProperties": false,
 	}}, wrap(flywheelSyncGitNotesHandler))
+
+	// --- Claims registry tools (spec v0.2 §4.3) ---
+	if b.Claims != nil {
+		mcp.AddTool(s, &mcp.Tool{Name: "query_active_claims", Description: "Query active claims in the claims registry. Use to check what resources are currently claimed before starting execution. Filter by ticket_id, entity_id+environment, or environment alone. Returns claims with their types, metadata, and the tickets holding them.", InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"ticket_id":   map[string]any{"type": "string", "description": "Filter by ticket ID (returns all active claims for that ticket)"},
+				"entity_id":   map[string]any{"type": "string", "description": "Filter by entity ID (requires environment)"},
+				"environment": map[string]any{"type": "string", "description": "Filter by environment (required with entity_id, optional alone for all claims in env)"},
+			},
+			"additionalProperties": false,
+		}}, wrap(queryActiveClaimsHandler))
+		mcp.AddTool(s, &mcp.Tool{Name: "detect_claim_conflicts", Description: "Run conflict detection for a set of planned touches without registering claims. Use at ticket creation time or before dispatch to check if execution would conflict with active work. Returns conflict classification: hard (must serialize), soft (advisory), or parallel-safe.", InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"ticket_id": map[string]any{"type": "string", "description": "Ticket ID to check conflicts for"},
+				"touches":   map[string]any{"type": "string", "description": "JSON array of touch objects: [{entity_id, environment, claim_type, metadata}]"},
+			},
+			"required":             []string{"ticket_id", "touches"},
+			"additionalProperties": false,
+		}}, wrap(detectClaimConflictsHandler))
+	}
 }
 
 func requireString(args map[string]any, key string) (string, error) {
@@ -1875,4 +1898,64 @@ func flywheelSyncGitNotesHandler(b *Backend, ctx context.Context, args map[strin
 		"commands": []string{fmt.Sprintf("flywheel-git sync %s", direction)},
 		"hint":     "Run in your repo to push/pull refs/notes/flywheel/*.",
 	})
+}
+
+// --- Claims registry MCP handlers ---
+
+func queryActiveClaimsHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
+	ticketID := getString(args, "ticket_id", "")
+	entityID := getString(args, "entity_id", "")
+	environment := getString(args, "environment", "")
+
+	if ticketID != "" {
+		active, err := b.Claims.GetActiveClaims(ctx, ticketID)
+		if err != nil {
+			return toolErrTriple(apierrors.New(apierrors.CodeInternal, "failed to query claims: "+err.Error(), true))
+		}
+		return jsonResult(map[string]any{"claims": active, "count": len(active), "filter": "ticket_id", "ticket_id": ticketID})
+	}
+
+	if entityID != "" {
+		active, err := b.Claims.GetActiveClaimsByEntity(ctx, entityID, environment)
+		if err != nil {
+			return toolErrTriple(apierrors.New(apierrors.CodeInternal, "failed to query claims: "+err.Error(), true))
+		}
+		return jsonResult(map[string]any{"claims": active, "count": len(active), "filter": "entity", "entity_id": entityID, "environment": environment})
+	}
+
+	if environment != "" {
+		active, err := b.Claims.GetActiveClaimsByEnvironment(ctx, environment)
+		if err != nil {
+			return toolErrTriple(apierrors.New(apierrors.CodeInternal, "failed to query claims: "+err.Error(), true))
+		}
+		return jsonResult(map[string]any{"claims": active, "count": len(active), "filter": "environment", "environment": environment})
+	}
+
+	return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, "at least one filter required: ticket_id, entity_id+environment, or environment", false))
+}
+
+func detectClaimConflictsHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
+	ticketID, err := requireString(args, "ticket_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	touchesJSON, err := requireString(args, "touches")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+
+	var touches []claims.Touch
+	if err := json.Unmarshal([]byte(touchesJSON), &touches); err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, "invalid touches JSON: "+err.Error(), false))
+	}
+	if len(touches) == 0 {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, "touches array must not be empty", false))
+	}
+
+	result, err := b.Claims.DetectConflicts(ctx, ticketID, touches)
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInternal, "conflict detection failed: "+err.Error(), true))
+	}
+
+	return jsonResult(result)
 }
