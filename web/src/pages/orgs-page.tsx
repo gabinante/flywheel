@@ -48,7 +48,7 @@ export function OrgsPage() {
         {orgs.map((o) => (
           <StaggerItem key={o.id}>
             <Link to={`/orgs/${o.id}/projects`}>
-              <Card className="hover:bg-muted/40">
+              <Card className="transition-colors hover:bg-white/[0.06]">
                 <CardHeader>
                   <div className="flex flex-wrap items-center gap-2">
                     <CardTitle>{o.name ?? o.slug ?? o.id}</CardTitle>

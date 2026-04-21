@@ -333,7 +333,7 @@ export function TicketsPage() {
             <Link
               to={`/orgs/${orgId}/projects/${projectId}/tickets/${t.id}`}
             >
-              <Card className="hover:bg-muted/40">
+              <Card className="transition-colors hover:bg-white/[0.06]">
                 <CardHeader>
                   <div className="flex flex-wrap items-center gap-2">
                     <CardTitle className="text-base">{t.title ?? t.id}</CardTitle>

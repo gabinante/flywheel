@@ -204,11 +204,11 @@ export function WorkStreamsPage() {
                 return (
                   <StaggerItem
                     key={ws.id}
-                    className="border-border flex flex-wrap items-stretch gap-2 rounded-lg border p-2 transition-all duration-200 hover:border-primary/20"
+                    className="flex flex-wrap items-stretch gap-2 rounded-xl border border-white/10 bg-white/[0.02] p-2 backdrop-blur-sm transition-all duration-200 hover:border-primary/20"
                   >
                     <Link
                       to={`/orgs/${orgId}/projects/${projectId}/tickets?work_stream_id=${encodeURIComponent(ws.id)}`}
-                      className="hover:bg-muted/40 flex min-w-[200px] flex-1 flex-col justify-center gap-1 rounded-md px-2 py-1 transition-colors"
+                      className="flex min-w-[200px] flex-1 flex-col justify-center gap-1 rounded-lg px-2 py-1 transition-colors hover:bg-white/[0.04]"
                     >
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-medium">
