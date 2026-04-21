@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Load reads configuration from environment with sensible defaults.
@@ -72,7 +73,8 @@ func Load() *Config {
 			DockerMemory:   getEnv("DISPATCH_DOCKER_MEMORY", "4g"),
 			DockerCPUs:     getEnv("DISPATCH_DOCKER_CPUS", "2"),
 			DockerFirewall: getEnvBool("DISPATCH_DOCKER_FIREWALL", true),
-			AnthropicKey:   getEnv("ANTHROPIC_API_KEY", ""),
+			AnthropicKey:      getEnv("ANTHROPIC_API_KEY", ""),
+			ReconcileInterval: getEnvDuration("DISPATCH_RECONCILE_INTERVAL", 60*time.Second),
 		},
 		Cost: CostConfig{
 			Enabled:                    getEnvBool("COST_TRACKING_ENABLED", true),
@@ -226,8 +228,9 @@ type DispatchConfig struct {
 	DockerImage    string // worker image name (default: "flywheel-worker")
 	DockerMemory   string // memory limit per worker (default: "4g")
 	DockerCPUs     string // CPU limit per worker (default: "2")
-	DockerFirewall bool   // enable default-deny firewall with allowlist
-	AnthropicKey   string // ANTHROPIC_API_KEY passed to docker workers
+	DockerFirewall    bool          // enable default-deny firewall with allowlist
+	AnthropicKey      string        // ANTHROPIC_API_KEY passed to docker workers
+	ReconcileInterval time.Duration // periodic reconciliation interval (default: 60s)
 }
 
 type ServerConfig struct {
@@ -316,6 +319,18 @@ func getEnvBool(key string, defaultVal bool) bool {
 			return true
 		case "0", "false", "no":
 			return false
+		}
+	}
+	return defaultVal
+}
+
+func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+		if n, err := strconv.Atoi(v); err == nil {
+			return time.Duration(n) * time.Second
 		}
 	}
 	return defaultVal

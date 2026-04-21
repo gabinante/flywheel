@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gabinante/flywheel/events"
@@ -50,7 +51,8 @@ type Config struct {
 	AgentID      string // agent identity for workers
 	APIKey       string // Flywheel API key for worker MCP authentication
 	ProjectID    string // only dispatch tickets for this project (empty = all)
-	AutoApprove  bool   // auto-approve tickets when acceptance tests pass
+	AutoApprove        bool          // auto-approve tickets when acceptance tests pass
+	ReconcileInterval  time.Duration  // periodic reconciliation interval (default: 60s)
 	// Agent driver selection.
 	AgentDriver  string // driver name: "claude" (default), "generic", or custom
 	AgentCLIPath string // override CLI path for the agent binary
@@ -76,9 +78,11 @@ type Dispatcher struct {
 	repoResolver  RepoResolver            // nil-safe: only used for multi-repo projects
 	leaseReleaser LeaseReleaser           // nil-safe: if nil, worker exit does not release lease (Layer 2 TTL handles it)
 
-	mu       sync.Mutex
-	active   map[string]context.CancelFunc // ticketID → cancel
-	wg       sync.WaitGroup
+	mu         sync.Mutex
+	active     map[string]context.CancelFunc // ticketID → cancel
+	wg         sync.WaitGroup
+	scanning   int32              // atomic CAS guard for reconcile
+	stopCancel context.CancelFunc // cancels the internal context on Stop()
 }
 
 // New creates a dispatcher that subscribes to the event bus.
@@ -137,6 +141,10 @@ func New(cfg Config, bus events.Bus, tickets TicketGetter, projects ProjectGette
 
 // Start subscribes to events and begins dispatching. Call Stop to shut down.
 func (d *Dispatcher) Start(ctx context.Context) {
+	// Derive an internal context so Stop() can cancel background goroutines
+	// even if the caller's context is still alive.
+	ctx, d.stopCancel = context.WithCancel(ctx)
+
 	d.bus.Subscribe(events.EventTicketCreated, func(_ context.Context, e events.Event) {
 		d.handleTicketReady(ctx, e)
 	})
@@ -162,11 +170,35 @@ func (d *Dispatcher) Start(ctx context.Context) {
 	log.Printf("dispatch: started (max_workers=%d, worktree_dir=%s, project=%s)", d.cfg.MaxWorkers, d.cfg.WorktreeDir, d.cfg.ProjectID)
 
 	// Scan for existing pending tickets on startup.
-	go d.scanPending(ctx)
+	go d.reconcile(ctx)
+
+	// Periodic reconciliation: retry validated tickets with pending CI, pick up
+	// any tickets that fell through the cracks between events.
+	reconcileInterval := d.cfg.ReconcileInterval
+	if reconcileInterval <= 0 {
+		reconcileInterval = 60 * time.Second
+	}
+	d.wg.Add(1)
+	go func() {
+		defer d.wg.Done()
+		ticker := time.NewTicker(reconcileInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				d.reconcile(ctx)
+			}
+		}
+	}()
 }
 
-// Stop waits for all active workers to finish.
+// Stop cancels all active workers and background goroutines, then waits for completion.
 func (d *Dispatcher) Stop() {
+	if d.stopCancel != nil {
+		d.stopCancel()
+	}
 	d.mu.Lock()
 	for _, cancel := range d.active {
 		cancel()
@@ -186,6 +218,16 @@ func (d *Dispatcher) SetLeaseReleaser(lr LeaseReleaser) {
 // target_repo are resolved to the correct repository for worktree creation.
 func (d *Dispatcher) SetRepoResolver(rr RepoResolver) {
 	d.repoResolver = rr
+}
+
+// reconcile wraps scanPending with an atomic CAS to prevent concurrent runs.
+func (d *Dispatcher) reconcile(ctx context.Context) bool {
+	if !atomic.CompareAndSwapInt32(&d.scanning, 0, 1) {
+		return false
+	}
+	defer atomic.StoreInt32(&d.scanning, 0)
+	d.scanPending(ctx)
+	return true
 }
 
 func (d *Dispatcher) scanPending(ctx context.Context) {
@@ -445,7 +487,7 @@ func (d *Dispatcher) spawn(ctx context.Context, t *ticket.Ticket) {
 			d.mu.Unlock()
 
 			// Re-scan for pending tickets to fill the freed slot.
-			go d.scanPending(ctx)
+			go d.reconcile(ctx)
 		}()
 
 		if err := d.runWorker(workerCtx, t); err != nil {
@@ -642,7 +684,7 @@ func (d *Dispatcher) spawnReviewer(ctx context.Context, t *ticket.Ticket) {
 			d.mu.Lock()
 			delete(d.active, reviewKey)
 			d.mu.Unlock()
-			go d.scanPending(ctx)
+			go d.reconcile(ctx)
 		}()
 
 		if err := d.runReviewer(workerCtx, t); err != nil {
@@ -797,7 +839,7 @@ func (d *Dispatcher) spawnConflictResolver(ctx context.Context, t *ticket.Ticket
 			d.mu.Lock()
 			delete(d.active, resolveKey)
 			d.mu.Unlock()
-			go d.scanPending(ctx)
+			go d.reconcile(ctx)
 		}()
 
 		if err := d.runConflictResolver(workerCtx, t, prURL); err != nil {
