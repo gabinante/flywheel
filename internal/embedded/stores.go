@@ -762,16 +762,21 @@ func (s *ExecutionStepStore) AppendStep(_ context.Context, ticketID, agentID str
 	if step.ID == "" {
 		step.ID = mustUUID()
 	}
+	// Include worker_type column (nullable) for worker type tracking.
+	var workerType *string
+	if step.WorkerType != "" {
+		workerType = &step.WorkerType
+	}
 	_, err := s.db.Exec(
-		`INSERT INTO execution_steps (id, ticket_id, agent_id, type, payload, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		step.ID, ticketID, agentID, string(step.Type), string(payloadJSON),
+		`INSERT INTO execution_steps (id, ticket_id, agent_id, type, payload, worker_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		step.ID, ticketID, agentID, string(step.Type), string(payloadJSON), workerType,
 		step.CreatedAt.UTC().Format(time.RFC3339Nano))
 	return err
 }
 
 func (s *ExecutionStepStore) GetStepsByTicketID(_ context.Context, ticketID string) ([]execution.Step, error) {
 	rows, err := s.db.Query(
-		`SELECT id, type, payload, created_at FROM execution_steps WHERE ticket_id = ? ORDER BY created_at`, ticketID)
+		`SELECT id, type, payload, worker_type, created_at FROM execution_steps WHERE ticket_id = ? ORDER BY created_at`, ticketID)
 	if err != nil {
 		return nil, err
 	}
@@ -780,11 +785,15 @@ func (s *ExecutionStepStore) GetStepsByTicketID(_ context.Context, ticketID stri
 	for rows.Next() {
 		var st execution.Step
 		var payloadJSON, ts string
-		if err := rows.Scan(&st.ID, &st.Type, &payloadJSON, &ts); err != nil {
+		var workerType *string
+		if err := rows.Scan(&st.ID, &st.Type, &payloadJSON, &workerType, &ts); err != nil {
 			return nil, err
 		}
 		st.Payload = make(map[string]any)
 		_ = json.Unmarshal([]byte(payloadJSON), &st.Payload)
+		if workerType != nil {
+			st.WorkerType = *workerType
+		}
 		st.CreatedAt, _ = time.Parse(time.RFC3339Nano, ts)
 		steps = append(steps, st)
 	}

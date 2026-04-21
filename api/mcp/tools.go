@@ -232,6 +232,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"lease_token": map[string]any{"type": "string", "description": "Lease token from claim_ticket"},
 			"step_type":   map[string]any{"type": "string", "description": "Step type: tool_call, observation, thought, or error", "enum": []string{"tool_call", "observation", "thought", "error"}},
 			"payload":     map[string]any{"type": "object", "description": "Step payload as a JSON object (or JSON string)"},
+			"worker_type": map[string]any{"type": "string", "description": "Worker type that produced this step (planner, executor, validator, deployer, investigator). Optional — auto-recorded from dispatch context.", "enum": []string{"planner", "executor", "validator", "deployer", "investigator"}},
 		},
 		"required":             []string{"ticket_id", "lease_token", "step_type"},
 		"additionalProperties": false,
@@ -1399,6 +1400,10 @@ func logStepHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.
 		}
 		payload := getPayloadMap(args, "payload")
 		step := execution.Step{Type: execution.StepType(stepType), Payload: payload}
+		// Record worker type in the step if provided.
+		if wt := getString(args, "worker_type", ""); wt != "" {
+			step.WorkerType = wt
+		}
 		if err := b.Trace.LogStep(ctx, ticketID, leaseToken, step); err != nil {
 			return toolErrTriple(apierrors.MapError(err))
 		}

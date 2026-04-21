@@ -47,10 +47,18 @@ func (s *Service) GetTrace(ctx context.Context, ticketID string) (*ExecutionTrac
 		return nil, err
 	}
 	agentID := ""
+	workerType := ""
 	if len(steps) > 0 {
 		agentID, _ = s.store.GetAgentIDByTicketID(ctx, ticketID)
+		// Derive worker type from the first step that has it set.
+		for _, step := range steps {
+			if step.WorkerType != "" {
+				workerType = step.WorkerType
+				break
+			}
+		}
 	}
-	return &ExecutionTrace{TicketID: ticketID, AgentID: agentID, Steps: steps}, nil
+	return &ExecutionTrace{TicketID: ticketID, AgentID: agentID, WorkerType: workerType, Steps: steps}, nil
 }
 
 // SummarizeTrace produces an AttemptSummary for the latest run (for prior_attempts context injection).

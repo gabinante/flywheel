@@ -139,12 +139,13 @@ func migrate(db *sql.DB) error {
 		)`,
 		// Execution steps
 		`CREATE TABLE IF NOT EXISTS execution_steps (
-			id         TEXT PRIMARY KEY,
-			ticket_id  TEXT NOT NULL,
-			agent_id   TEXT NOT NULL,
-			type       TEXT NOT NULL,
-			payload    TEXT NOT NULL DEFAULT '{}',
-			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+			id          TEXT PRIMARY KEY,
+			ticket_id   TEXT NOT NULL,
+			agent_id    TEXT NOT NULL,
+			type        TEXT NOT NULL,
+			payload     TEXT NOT NULL DEFAULT '{}',
+			worker_type TEXT,
+			created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 		)`,
 		// Reviews
 		`CREATE TABLE IF NOT EXISTS reviews (
@@ -180,5 +181,16 @@ func migrate(db *sql.DB) error {
 			return fmt.Errorf("exec %q: %w", s[:min(len(s), 60)], err)
 		}
 	}
+
+	// Additive migrations for existing databases.
+	alterStmts := []string{
+		// Add worker_type column if not present (added in worker type differentiation).
+		`ALTER TABLE execution_steps ADD COLUMN worker_type TEXT`,
+	}
+	for _, s := range alterStmts {
+		// Ignore errors from ALTER — column may already exist.
+		_, _ = db.Exec(s)
+	}
+
 	return nil
 }
