@@ -21,6 +21,7 @@ type RouterConfig struct {
 	DispatchHandler    *DispatchHandler
 	PlansHandler       *PlansHandler
 	ObservationHandler *ObservationHandler
+	StreamsHandler     *StreamsHandler  // Foundational streams (entity, state, change) per spec v0.2 section 2.2
 	PoliciesHandler    *PoliciesHandler // Policy calibration feedback loop (not in OpenAPI spec yet)
 	// WebDist is the Vite outDir (contains index.html and assets/). Empty skips SPA routes.
 	WebDist string
@@ -105,6 +106,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	if cfg.ObservationHandler != nil {
 		cfg.ObservationHandler.RegisterRoutes(mux)
+	}
+	if cfg.StreamsHandler != nil {
+		cfg.StreamsHandler.RegisterRoutes(mux)
 	}
 	if cfg.PoliciesHandler != nil {
 		cfg.PoliciesHandler.RegisterRoutes(mux)

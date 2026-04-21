@@ -33,6 +33,7 @@ import (
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
 	"github.com/gabinante/flywheel/internal/review"
+	"github.com/gabinante/flywheel/internal/stream"
 	"github.com/gabinante/flywheel/internal/ticket"
 	"github.com/gabinante/flywheel/internal/user"
 	"github.com/gabinante/flywheel/internal/workstream"
@@ -151,6 +152,18 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	obsStore := observation.NewPostgresStore(pool)
 	obsSvc := observation.NewService(obsStore, bus)
 
+	// Foundational streams (entity, state, change) per spec v0.2 section 2.2.
+	streamStore := stream.NewPostgresStore(pool)
+	streamSvc := stream.NewService(streamStore, bus)
+	// Bridge existing ticket events to the change stream.
+	streamSvc.SubscribeToTicketEvents(func(ticketID string) string {
+		t, err := ticketSvc.GetTicket(ctx, ticketID)
+		if err != nil || t == nil {
+			return ""
+		}
+		return t.ProjectID
+	})
+
 	strictServer := &rest.StrictServer{
 		OrgSvc:        orgSvc,
 		ProjectSvc:    projectSvc,
@@ -255,6 +268,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		DispatchHandler:    &rest.DispatchHandler{Dispatcher: dispatcher},
 		PlansHandler:       &rest.PlansHandler{PlanSvc: planSvc},
 		ObservationHandler: &rest.ObservationHandler{Svc: obsSvc},
+		StreamsHandler:     &rest.StreamsHandler{Svc: streamSvc},
 		PoliciesHandler: &rest.PoliciesHandler{
 			PolicySvc:  policySvc,
 			ProjectSvc: projectSvc,
@@ -389,12 +403,24 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		AgentSvc:  agentSvc,
 	}
 
+	// Foundational streams (in-memory store for embedded mode).
+	streamMemStore := stream.NewMemoryStore()
+	streamSvc := stream.NewService(streamMemStore, bus)
+	streamSvc.SubscribeToTicketEvents(func(ticketID string) string {
+		t, err := ticketSvc.GetTicket(ctx, ticketID)
+		if err != nil || t == nil {
+			return ""
+		}
+		return t.ProjectID
+	})
+
 	router := rest.NewRouter(rest.RouterConfig{
 		StrictServer:   strictServer,
 		AuthMiddleware: authMiddleware,
 		MCPHandler:     mcpHandler,
 		MCPSSEHandler:  mcpSSEHandler,
 		AgentsHandler:  &rest.AgentsHandler{AgentSvc: agentSvc},
+		StreamsHandler: &rest.StreamsHandler{Svc: streamSvc},
 		WebDist:        cfg.Server.WebDist,
 	})
 
