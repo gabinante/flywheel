@@ -23,6 +23,7 @@ func NewServer(b *Backend) (*mcp.Server, error) {
 	RegisterTools(server, b)
 	RegisterCodeIntelTools(server, b)
 	RegisterFindingsTools(server, b)
+	RegisterCatalogTools(server, b)
 	registerResources(server)
 	return server, nil
 }

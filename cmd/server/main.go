@@ -20,6 +20,7 @@ import (
 	"github.com/gabinante/flywheel/internal/agent"
 	"github.com/gabinante/flywheel/internal/auth"
 	"github.com/gabinante/flywheel/internal/bootstrap"
+	"github.com/gabinante/flywheel/internal/catalog"
 	"github.com/gabinante/flywheel/internal/claims"
 	"github.com/gabinante/flywheel/internal/cost"
 	"github.com/gabinante/flywheel/internal/dispatch"
@@ -200,6 +201,11 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		log.Println("findings: in-memory backend (set WEAVIATE_URL for production)")
 	}
 
+	// Catalog service (Layer 14 project map).
+	catalogStore := catalog.NewPostgresStore(pool)
+	catalogSvc := catalog.NewService(catalogStore)
+	catalogScanner := catalog.NewScanner()
+
 	strictServer := &rest.StrictServer{
 		OrgSvc:        orgSvc,
 		ProjectSvc:    projectSvc,
@@ -256,19 +262,21 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			JWTExpirySec: 604800, // 7 days in seconds for token response
 		}
 		mcpSrv, err := mcp.NewServer(&mcp.Backend{
-			Project:       projectSvc,
-			WorkStream:    workStreamSvc,
-			Ticket:        ticketSvc,
-			Queue:         queueSvc,
-			Trace:         execSvc,
-			Review:        reviewSvc,
-			Org:           orgSvc,
-			AgentStore:    agentStore,
-			Investigation: investigationSvc,
-			Claims:        claimsSvc,
-			CodeIntel:     codeIntel,
-			Findings:      findingsProvider,
-			Notification:  notifySvc,
+			Project:        projectSvc,
+			WorkStream:     workStreamSvc,
+			Ticket:         ticketSvc,
+			Queue:          queueSvc,
+			Trace:          execSvc,
+			Review:         reviewSvc,
+			Org:            orgSvc,
+			AgentStore:     agentStore,
+			Investigation:  investigationSvc,
+			Claims:         claimsSvc,
+			CodeIntel:      codeIntel,
+			Findings:       findingsProvider,
+			Notification:   notifySvc,
+			Catalog:        catalogSvc,
+			CatalogScanner: catalogScanner,
 		})
 		if err != nil {
 			log.Fatalf("mcp server: %v", err)
@@ -327,6 +335,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		DispatchHandler:    &rest.DispatchHandler{Dispatcher: dispatcher},
 		PlansHandler:       &rest.PlansHandler{PlanSvc: planSvc},
 		ObservationHandler: &rest.ObservationHandler{Svc: obsSvc},
+		CatalogHandler:     &rest.CatalogHandler{Svc: catalogSvc, Scanner: catalogScanner},
 		PoliciesHandler: &rest.PoliciesHandler{
 			PolicySvc:  policySvc,
 			ProjectSvc: projectSvc,
@@ -401,6 +410,11 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 	gapDetector := hooks.NewGapDetector(bus, hooksClient)
 	go gapDetector.Start(ctx)
 
+	// Catalog service (Layer 14 project map).
+	catalogSt := catalog.NewSQLiteStore(sqliteDB)
+	catalogSvc := catalog.NewService(catalogSt)
+	catalogScanner := catalog.NewScanner()
+
 	// Run first-run wizard if no data exists yet.
 	firstRun := bootstrap.IsFirstRun(dataDir)
 	if firstRun {
@@ -456,16 +470,18 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 	// In embedded mode, set up MCP with API key auth (no OAuth required).
 	authMiddleware := rest.AuthMiddleware(jwtSecret, agentSvc)
 	mcpSrv, err := mcp.NewServer(&mcp.Backend{
-		Project:    projectSvc,
-		WorkStream: workStreamSvc,
-		Ticket:     ticketSvc,
-		Queue:      queueSvc,
-		Trace:      execSvc,
-		Review:     reviewSvc,
-		Org:        orgSvc,
-		AgentStore: agentSt,
-		CodeIntel:  embeddedCodeIntel,
-		Findings:   embeddedFindingsProvider,
+		Project:        projectSvc,
+		WorkStream:     workStreamSvc,
+		Ticket:         ticketSvc,
+		Queue:          queueSvc,
+		Trace:          execSvc,
+		Review:         reviewSvc,
+		Org:            orgSvc,
+		AgentStore:     agentSt,
+		CodeIntel:      embeddedCodeIntel,
+		Findings:       embeddedFindingsProvider,
+		Catalog:        catalogSvc,
+		CatalogScanner: catalogScanner,
 	})
 	if err != nil {
 		log.Fatalf("mcp server: %v", err)
@@ -492,6 +508,7 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		MCPSSEHandler:  mcpSSEHandler,
 		AgentsHandler:  &rest.AgentsHandler{AgentSvc: agentSvc},
 		HooksHandler:   &rest.HooksHandler{Client: hooksClient},
+		CatalogHandler: &rest.CatalogHandler{Svc: catalogSvc, Scanner: catalogScanner},
 		WebDist:        cfg.Server.WebDist,
 	})
 

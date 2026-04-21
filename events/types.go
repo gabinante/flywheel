@@ -52,6 +52,14 @@ const (
 	// --- Work stream events ---
 	EventWorkStreamCompleted = "work_stream.completed" // all tickets in stream are closed
 
+	// --- Catalog (Layer 14) events ---
+	EventCatalogEntityCreated = "catalog.entity_created"
+	EventCatalogEntityUpdated = "catalog.entity_updated"
+	EventCatalogEntityDeleted = "catalog.entity_deleted"
+	EventCatalogEdgeCreated   = "catalog.edge_created"
+	EventCatalogEdgeDeleted   = "catalog.edge_deleted"
+	EventCatalogScanCompleted = "catalog.scan_completed"
+
 	// --- Plan lifecycle events ---
 	EventPlanCreated    = "plan.created"
 	EventPlanSubmitted  = "plan.submitted"

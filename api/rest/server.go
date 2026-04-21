@@ -21,6 +21,7 @@ type RouterConfig struct {
 	DispatchHandler    *DispatchHandler
 	PlansHandler       *PlansHandler
 	ObservationHandler *ObservationHandler
+	CatalogHandler     *CatalogHandler // Layer 14 project map
 	PoliciesHandler    *PoliciesHandler // Policy calibration feedback loop (not in OpenAPI spec yet)
 	ClaimsHandler      *ClaimsHandler   // Claims registry for concurrency control (spec v0.2 §4.3)
 	HooksHandler       *HooksHandler    // Change event webhook receiver (spec v0.2 §2.4)
@@ -109,6 +110,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	if cfg.ObservationHandler != nil {
 		cfg.ObservationHandler.RegisterRoutes(mux)
+	}
+	if cfg.CatalogHandler != nil {
+		cfg.CatalogHandler.RegisterRoutes(mux)
 	}
 	if cfg.PoliciesHandler != nil {
 		cfg.PoliciesHandler.RegisterRoutes(mux)

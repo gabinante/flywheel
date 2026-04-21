@@ -175,6 +175,44 @@ func migrate(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_reviews_ticket ON reviews(ticket_id, created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_org_members_user ON org_members(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_work_streams_project ON work_streams(project_id)`,
+		// Catalog (Layer 14: Project Map)
+		`CREATE TABLE IF NOT EXISTS catalog_entities (
+			id          TEXT PRIMARY KEY,
+			project_id  TEXT NOT NULL REFERENCES projects(id),
+			type        TEXT NOT NULL,
+			name        TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			labels      TEXT NOT NULL DEFAULT '{}',
+			metadata    TEXT NOT NULL DEFAULT '{}',
+			source      TEXT NOT NULL DEFAULT 'declared',
+			created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_catalog_entities_project ON catalog_entities(project_id, type)`,
+		`CREATE INDEX IF NOT EXISTS idx_catalog_entities_name ON catalog_entities(project_id, name)`,
+		`CREATE TABLE IF NOT EXISTS catalog_edges (
+			id         TEXT PRIMARY KEY,
+			project_id TEXT NOT NULL REFERENCES projects(id),
+			from_id    TEXT NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+			to_id      TEXT NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+			type       TEXT NOT NULL,
+			metadata   TEXT NOT NULL DEFAULT '{}',
+			source     TEXT NOT NULL DEFAULT 'declared',
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			UNIQUE (project_id, from_id, to_id, type)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_catalog_edges_from ON catalog_edges(project_id, from_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_catalog_edges_to ON catalog_edges(project_id, to_id)`,
+		`CREATE TABLE IF NOT EXISTS catalog_deployments (
+			service_id     TEXT NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+			environment_id TEXT NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+			project_id     TEXT NOT NULL REFERENCES projects(id),
+			version        TEXT NOT NULL DEFAULT '',
+			source         TEXT NOT NULL DEFAULT 'declared',
+			observed_at    TEXT NOT NULL DEFAULT (datetime('now')),
+			PRIMARY KEY (service_id, environment_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_catalog_deployments_project ON catalog_deployments(project_id)`,
 	}
 	for _, s := range stmts {
 		if _, err := db.Exec(s); err != nil {
