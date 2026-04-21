@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import {
+  Calendar,
+  Clock,
+  Hash,
+  Target,
+  User,
+} from 'lucide-react'
 
 import { ExecutionTraceCard } from '@/components/execution-trace-card'
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { ReviewQueueCelebration } from '@/components/review-queue-celebration'
+import { TicketLifecycle } from '@/components/ticket-lifecycle'
 import { TicketOutputsCard } from '@/components/ticket-outputs'
 import { TicketRelationshipsCard } from '@/components/ticket-relationships-card'
 import { TicketReopenPanel } from '@/components/ticket-reopen-panel'
@@ -15,6 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
 import { formatApiError } from '@/lib/api/client'
+import { cn } from '@/lib/utils'
 import type { components } from '@/lib/api/v1'
 
 type Ticket = components['schemas']['Ticket']
@@ -27,6 +36,34 @@ type ReviewBanner =
   | { kind: 'project-empty'; decision: 'approved' | 'rejected' }
   | { kind: 'simple'; decision: 'approved' | 'rejected' }
   | { kind: 'followup-error'; message: string; decision: 'approved' | 'rejected' }
+
+const TYPE_STYLES: Record<string, string> = {
+  task: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
+  bug: 'bg-red-500/15 text-red-300 border-red-500/30',
+  spike: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+  review: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
+}
+
+const PRIORITY_LABELS: Record<number, { label: string; className: string }> = {
+  0: { label: 'P0 Critical', className: 'text-red-400' },
+  1: { label: 'P1 High', className: 'text-orange-400' },
+  2: { label: 'P2 Normal', className: 'text-muted-foreground' },
+  3: { label: 'P3 Low', className: 'text-muted-foreground/60' },
+}
+
+function formatDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return iso
+  }
+}
 
 export function TicketDetailPage() {
   const { orgId, projectId, ticketId } = useParams<{
@@ -200,7 +237,18 @@ export function TicketDetailPage() {
     return <p className="text-destructive text-sm">{err}</p>
   }
   if (ticket === undefined) {
-    return <p className="text-muted-foreground text-sm">Loading…</p>
+    return (
+      <div className="flex flex-col gap-4">
+        {/* Skeleton loading */}
+        <div className="flex flex-col gap-2">
+          <div className="h-3 w-48 animate-pulse rounded bg-muted/30" />
+          <div className="h-6 w-72 animate-pulse rounded bg-muted/30" />
+          <div className="h-3 w-32 animate-pulse rounded bg-muted/30" />
+        </div>
+        <div className="h-8 w-full animate-pulse rounded-lg bg-muted/20" />
+        <div className="h-32 w-full animate-pulse rounded-xl bg-muted/20" />
+      </div>
+    )
   }
   if (!ticket) {
     return <p className="text-muted-foreground text-sm">Ticket not found.</p>
@@ -217,9 +265,15 @@ export function TicketDetailPage() {
   const workStreamCrumbLabel =
     workStream?.name ?? workStream?.slug ?? workStream?.id ?? null
 
+  const ticketType = ticket.type ?? 'task'
+  const typeStyle = TYPE_STYLES[ticketType] ?? TYPE_STYLES.task
+  const priority = PRIORITY_LABELS[ticket.priority ?? 2] ?? PRIORITY_LABELS[2]
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-6">
+      {/* ── Header section ─────────────────────────────── */}
+      <div className="flex flex-col gap-3">
+        {/* Breadcrumbs */}
         <p className="text-muted-foreground text-xs">
           <OrgProjectCrumbs
             orgId={orgId}
@@ -239,88 +293,106 @@ export function TicketDetailPage() {
             Tickets
           </Link>
         </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-xl font-semibold tracking-tight">
-            {ticket.title ?? ticket.id}
-          </h1>
-          {ticket.state ? (
-            <Badge variant="secondary">{ticket.state}</Badge>
-          ) : null}
+
+        {/* Title row */}
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="text-xl font-semibold tracking-tight">
+              {ticket.title ?? ticket.id}
+            </h1>
+            <Badge
+              variant="outline"
+              className={cn('text-[10px] uppercase', typeStyle)}
+            >
+              {ticketType}
+            </Badge>
+          </div>
+
+          {/* Meta row */}
+          <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1 font-mono">
+              <Hash className="size-3" />
+              {ticket.id}
+            </span>
+            <span className={cn('flex items-center gap-1', priority.className)}>
+              <Target className="size-3" />
+              {priority.label}
+            </span>
+            {ticket.assigned_to ? (
+              <span className="flex items-center gap-1">
+                <User className="size-3" />
+                {ticket.assigned_to}
+              </span>
+            ) : null}
+            {ticket.created_at ? (
+              <span className="flex items-center gap-1">
+                <Calendar className="size-3" />
+                {formatDate(ticket.created_at)}
+              </span>
+            ) : null}
+            {ticket.updated_at && ticket.updated_at !== ticket.created_at ? (
+              <span className="flex items-center gap-1 text-muted-foreground/60">
+                <Clock className="size-3" />
+                Updated {formatDate(ticket.updated_at)}
+              </span>
+            ) : null}
+          </div>
         </div>
-        <p className="text-muted-foreground font-mono text-xs">{ticket.id}</p>
+
+        {/* Lifecycle state visualization */}
+        <TicketLifecycle currentState={ticket.state} />
       </div>
 
+      {/* ── Objective section ──────────────────────────── */}
       {obj?.description ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Objective</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Target className="size-4 text-muted-foreground" />
+              Objective
+            </CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground whitespace-pre-wrap text-sm">
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-muted-foreground whitespace-pre-wrap text-sm leading-relaxed">
               {obj.description}
             </p>
             {obj.success_criteria && obj.success_criteria.length > 0 ? (
-              <ul className="mt-3 list-inside list-disc text-sm">
-                {obj.success_criteria.map((c, i) => (
-                  <li key={i}>{c}</li>
-                ))}
-              </ul>
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[11px] font-medium tracking-wide uppercase text-muted-foreground/60">
+                  Success Criteria
+                </p>
+                <ul className="flex flex-col gap-1">
+                  {obj.success_criteria.map((c, i) => (
+                    <li
+                      key={i}
+                      className="flex items-start gap-2 text-sm"
+                    >
+                      <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500/40" />
+                      <span className="text-muted-foreground">{c}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {obj.acceptance_test ? (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[11px] font-medium tracking-wide uppercase text-muted-foreground/60">
+                  Acceptance Test
+                </p>
+                <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2">
+                  <code className="font-mono text-xs text-muted-foreground">
+                    {obj.acceptance_test}
+                  </code>
+                </div>
+              </div>
             ) : null}
           </CardContent>
         </Card>
       ) : null}
 
-      <TicketRelationshipsCard
-        orgId={orgId}
-        projectId={projectId}
-        ticket={ticket}
-        projectTickets={projectTickets}
-        projectTicketsError={projectTicketsErr}
-      />
-
-      {ticket.work_stream_id ? (
-        workStreamErr ? (
-          <WorkStreamSummaryCard stream={null} errorMessage={workStreamErr} />
-        ) : (
-          <div className="flex flex-col gap-2">
-            <WorkStreamSummaryCard stream={workStream ?? null} />
-            {workStream?.id ? (
-              <div className="flex flex-wrap gap-3 text-sm">
-                <Link
-                  className="text-primary hover:underline"
-                  to={`/orgs/${orgId}/projects/${projectId}/work-streams/${workStream.id}`}
-                >
-                  Manage work stream
-                </Link>
-                <Link
-                  className="text-primary hover:underline"
-                  to={`/orgs/${orgId}/projects/${projectId}/tickets?work_stream_id=${encodeURIComponent(workStream.id)}`}
-                >
-                  View tickets in this stream
-                </Link>
-              </div>
-            ) : null}
-          </div>
-        )
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Work stream</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground text-sm">
-              This ticket is not associated with a work stream.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      <TicketOutputsCard outputs={ticket.outputs} />
-
-      <ExecutionTraceCard ticketId={ticketId} ticketState={ticket.state} />
-
+      {/* ── Review banner (after review action) ────────── */}
       {reviewBanner?.kind === 'reopened' ? (
-        <Card className="border-primary/20 bg-primary/5">
+        <Card className="border-primary/20 bg-primary/[0.04]">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">Back in review queue</CardTitle>
           </CardHeader>
@@ -363,8 +435,8 @@ export function TicketDetailPage() {
           className={
             reviewBanner.decision === 'rejected' &&
             (reviewBanner.kind === 'simple' || reviewBanner.kind === 'followup-error')
-              ? 'border-destructive/30 bg-destructive/5'
-              : 'border-primary/20 bg-primary/5'
+              ? 'border-destructive/20 bg-destructive/[0.04]'
+              : 'border-primary/20 bg-primary/[0.04]'
           }
         >
           <CardHeader className="pb-2">
@@ -426,10 +498,54 @@ export function TicketDetailPage() {
         </Card>
       ) : null}
 
+      {/* ── Review panel (awaiting_review state) ───────── */}
       {ticket.state === 'awaiting_review' && ticketId ? (
         <TicketReviewPanel ticketId={ticketId} onReviewed={handleAfterReview} />
       ) : null}
 
+      {/* ── Relationships ──────────────────────────────── */}
+      <TicketRelationshipsCard
+        orgId={orgId}
+        projectId={projectId}
+        ticket={ticket}
+        projectTickets={projectTickets}
+        projectTicketsError={projectTicketsErr}
+      />
+
+      {/* ── Work stream ────────────────────────────────── */}
+      {ticket.work_stream_id ? (
+        workStreamErr ? (
+          <WorkStreamSummaryCard stream={null} errorMessage={workStreamErr} />
+        ) : (
+          <div className="flex flex-col gap-2">
+            <WorkStreamSummaryCard stream={workStream ?? null} />
+            {workStream?.id ? (
+              <div className="flex flex-wrap gap-3 text-sm">
+                <Link
+                  className="text-primary hover:underline transition-colors"
+                  to={`/orgs/${orgId}/projects/${projectId}/work-streams/${workStream.id}`}
+                >
+                  Manage work stream
+                </Link>
+                <Link
+                  className="text-primary hover:underline transition-colors"
+                  to={`/orgs/${orgId}/projects/${projectId}/tickets?work_stream_id=${encodeURIComponent(workStream.id)}`}
+                >
+                  View tickets in this stream
+                </Link>
+              </div>
+            ) : null}
+          </div>
+        )
+      ) : null}
+
+      {/* ── Outputs ────────────────────────────────────── */}
+      <TicketOutputsCard outputs={ticket.outputs} />
+
+      {/* ── Execution trace ────────────────────────────── */}
+      <ExecutionTraceCard ticketId={ticketId} ticketState={ticket.state} />
+
+      {/* ── Reopen panel (done state) ──────────────────── */}
       {ticket.state === 'done' && ticketId ? (
         <TicketReopenPanel ticketId={ticketId} onReopened={handleAfterReopen} />
       ) : null}

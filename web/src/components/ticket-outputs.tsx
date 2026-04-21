@@ -1,7 +1,143 @@
+import { useState } from 'react'
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import {
+  ChevronDown,
+  ChevronRight,
+  Code2,
+  ExternalLink,
+  FileText,
+} from 'lucide-react'
+
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v)
+}
+
+/** Detect if a string looks like a URL. */
+function isUrl(s: string): boolean {
+  return /^https?:\/\/\S+/.test(s.trim())
+}
+
+/** Detect if a string looks like JSON. */
+function looksLikeJson(s: string): boolean {
+  const trimmed = s.trim()
+  return (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  )
+}
+
+function SyntaxBlock({ content, language }: { content: string; language: string }) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-white/[0.06]">
+      <SyntaxHighlighter
+        language={language}
+        style={vscDarkPlus}
+        PreTag="div"
+        customStyle={{
+          margin: 0,
+          borderRadius: 0,
+          fontSize: '0.75rem',
+          lineHeight: 1.6,
+          background: 'rgba(255,255,255,0.02)',
+          padding: '0.75rem 1rem',
+        }}
+        codeTagProps={{
+          className: 'font-mono',
+        }}
+      >
+        {content}
+      </SyntaxHighlighter>
+    </div>
+  )
+}
+
+function CollapsibleOutput({
+  label,
+  children,
+  defaultOpen = true,
+}: {
+  label: string
+  children: React.ReactNode
+  defaultOpen?: boolean
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  return (
+    <div className="flex flex-col gap-2">
+      <button
+        type="button"
+        className="flex items-center gap-1.5 text-left transition-colors hover:text-foreground"
+        onClick={() => setOpen(!open)}
+      >
+        {open ? (
+          <ChevronDown className="text-muted-foreground size-3" />
+        ) : (
+          <ChevronRight className="text-muted-foreground size-3" />
+        )}
+        <h3 className="text-foreground text-xs font-medium tracking-wide uppercase">
+          {label}
+        </h3>
+      </button>
+      {open ? children : null}
+    </div>
+  )
+}
+
+function OutputValue({ value }: { value: unknown }) {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+
+    // URL detection
+    if (isUrl(trimmed)) {
+      return (
+        <a
+          href={trimmed}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+        >
+          {trimmed}
+          <ExternalLink className="size-3" />
+        </a>
+      )
+    }
+
+    // JSON detection
+    if (looksLikeJson(trimmed)) {
+      try {
+        const formatted = JSON.stringify(JSON.parse(trimmed), null, 2)
+        return <SyntaxBlock content={formatted} language="json" />
+      } catch {
+        // Not valid JSON, fall through
+      }
+    }
+
+    // Multi-line code block
+    if (trimmed.includes('\n') && (trimmed.includes('  ') || trimmed.includes('\t'))) {
+      return <SyntaxBlock content={trimmed} language="plaintext" />
+    }
+
+    // Plain text
+    return (
+      <p className="text-muted-foreground whitespace-pre-wrap text-sm leading-relaxed">
+        {trimmed}
+      </p>
+    )
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return (
+      <span className="font-mono text-sm text-emerald-400">{String(value)}</span>
+    )
+  }
+
+  // Objects and arrays
+  const formatted = JSON.stringify(value, null, 2)
+  return <SyntaxBlock content={formatted} language="json" />
 }
 
 function formatArtifactItem(item: unknown): string {
@@ -25,6 +161,8 @@ export function TicketOutputsCard({ outputs }: TicketOutputsCardProps) {
 
   const summaryVal = outputs.summary
   const artifactsVal = outputs.artifacts
+  const prUrl = outputs.pr_url
+  const filesChanged = outputs.files_changed
 
   const summaryText =
     typeof summaryVal === 'string' && summaryVal.trim() !== ''
@@ -32,16 +170,14 @@ export function TicketOutputsCard({ outputs }: TicketOutputsCardProps) {
       : null
 
   const artifactsItems = Array.isArray(artifactsVal) ? artifactsVal : null
+  const filesChangedItems = Array.isArray(filesChanged) ? filesChanged : null
 
   const otherEntries = Object.entries(outputs).filter(([k, v]) => {
-    if (k === 'summary') {
-      return !(typeof v === 'string' && v.trim() !== '')
-    }
-    if (k === 'artifacts') {
-      if (Array.isArray(v)) return false
-      if (v !== undefined && v !== null && !Array.isArray(v)) return false
+    if (k === 'summary' && typeof v === 'string' && v.trim() !== '') return false
+    if (k === 'artifacts' && (Array.isArray(v) || v === undefined || v === null))
       return false
-    }
+    if (k === 'pr_url') return false
+    if (k === 'files_changed' && Array.isArray(v)) return false
     return true
   })
 
@@ -52,6 +188,8 @@ export function TicketOutputsCard({ outputs }: TicketOutputsCardProps) {
 
   const hasVisibleBody =
     !!summaryText ||
+    !!prUrl ||
+    !!filesChangedItems ||
     !!(artifactsItems && artifactsItems.length > 0) ||
     hasArtifactsFallback ||
     otherEntries.length > 0
@@ -61,77 +199,111 @@ export function TicketOutputsCard({ outputs }: TicketOutputsCardProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm">Outputs</CardTitle>
+        <div className="flex items-center gap-2">
+          <FileText className="text-muted-foreground size-4" />
+          <CardTitle className="text-sm">Outputs</CardTitle>
+        </div>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      <CardContent className="flex flex-col gap-5">
+        {/* PR URL - prominent link */}
+        {typeof prUrl === 'string' && prUrl.trim() ? (
+          <a
+            href={prUrl.trim()}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/[0.06] px-3 py-2 transition-colors hover:bg-blue-500/[0.1]"
+          >
+            <ExternalLink className="size-3.5 text-blue-400" />
+            <span className="text-sm font-medium text-blue-400 group-hover:text-blue-300">
+              Pull Request
+            </span>
+            <span className="ml-auto truncate font-mono text-xs text-muted-foreground">
+              {prUrl.trim().replace(/^https?:\/\/github\.com\//, '')}
+            </span>
+          </a>
+        ) : null}
+
         {summaryText ? (
-          <div>
-            <h3 className="text-foreground mb-1.5 text-xs font-medium tracking-wide uppercase">
-              Summary
-            </h3>
-            <p className="text-muted-foreground whitespace-pre-wrap text-sm">
+          <CollapsibleOutput label="Summary">
+            <p className="text-muted-foreground whitespace-pre-wrap text-sm leading-relaxed">
               {summaryText}
             </p>
-          </div>
+          </CollapsibleOutput>
+        ) : null}
+
+        {filesChangedItems && filesChangedItems.length > 0 ? (
+          <CollapsibleOutput label="Files Changed" defaultOpen={false}>
+            <div className="flex flex-wrap gap-1.5">
+              {filesChangedItems.map((file, i) => (
+                <span
+                  key={i}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-md border border-white/[0.06] bg-white/[0.03] px-2 py-0.5 font-mono text-[11px] text-muted-foreground',
+                  )}
+                >
+                  <Code2 className="size-2.5 shrink-0 text-muted-foreground/50" />
+                  {String(file)}
+                </span>
+              ))}
+            </div>
+          </CollapsibleOutput>
         ) : null}
 
         {artifactsItems && artifactsItems.length > 0 ? (
-          <div>
-            <h3 className="text-foreground mb-1.5 text-xs font-medium tracking-wide uppercase">
-              Artifacts
-            </h3>
-            <ul className="border-border flex flex-col gap-1 rounded-md border bg-muted/30 px-3 py-2">
+          <CollapsibleOutput label="Artifacts">
+            <div className="flex flex-col gap-1 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
               {artifactsItems.map((item, i) => (
-                <li
+                <div
                   key={i}
-                  className="text-foreground font-mono text-xs break-all"
+                  className="text-foreground font-mono text-xs break-all leading-relaxed"
                 >
-                  {formatArtifactItem(item)}
-                </li>
+                  {typeof item === 'string' && isUrl(item) ? (
+                    <a
+                      href={item}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 transition-colors"
+                    >
+                      {item}
+                      <ExternalLink className="size-2.5" />
+                    </a>
+                  ) : (
+                    formatArtifactItem(item)
+                  )}
+                </div>
               ))}
-            </ul>
-          </div>
+            </div>
+          </CollapsibleOutput>
         ) : null}
 
         {hasArtifactsFallback ? (
-          <div>
-            <h3 className="text-foreground mb-1.5 text-xs font-medium tracking-wide uppercase">
-              Artifacts
-            </h3>
-            <pre className="bg-muted max-h-48 overflow-auto rounded-md p-3 font-mono text-xs">
-              {typeof artifactsVal === 'string'
-                ? artifactsVal
-                : JSON.stringify(artifactsVal, null, 2)}
-            </pre>
-          </div>
+          <CollapsibleOutput label="Artifacts">
+            <SyntaxBlock
+              content={
+                typeof artifactsVal === 'string'
+                  ? artifactsVal
+                  : JSON.stringify(artifactsVal, null, 2)
+              }
+              language="json"
+            />
+          </CollapsibleOutput>
         ) : null}
 
         {otherEntries.length > 0 ? (
-          <div>
-            <h3 className="text-foreground mb-1.5 text-xs font-medium tracking-wide uppercase">
-              Other
-            </h3>
-            <dl className="flex flex-col gap-2 text-sm">
+          <CollapsibleOutput label="Details" defaultOpen={otherEntries.length <= 5}>
+            <dl className="flex flex-col gap-3 text-sm">
               {otherEntries.map(([key, val]) => (
-                <div key={key}>
-                  <dt className="text-muted-foreground font-mono text-xs">
+                <div key={key} className="flex flex-col gap-1">
+                  <dt className="text-muted-foreground/60 font-mono text-xs">
                     {key}
                   </dt>
-                  <dd className="mt-0.5">
-                    {typeof val === 'string' || typeof val === 'number' ? (
-                      <span className="text-foreground whitespace-pre-wrap">
-                        {String(val)}
-                      </span>
-                    ) : (
-                      <pre className="bg-muted mt-1 max-h-40 overflow-auto rounded-md p-2 font-mono text-xs">
-                        {JSON.stringify(val, null, 2)}
-                      </pre>
-                    )}
+                  <dd>
+                    <OutputValue value={val} />
                   </dd>
                 </div>
               ))}
             </dl>
-          </div>
+          </CollapsibleOutput>
         ) : null}
       </CardContent>
     </Card>
