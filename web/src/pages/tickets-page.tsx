@@ -17,12 +17,10 @@ import {
   AlertTriangle,
   PauseCircle,
   Inbox,
-  ArrowRight,
   Search,
 } from 'lucide-react'
 
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
-import { Badge } from '@/components/ui/badge'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { StyledSelect } from '@/components/ui/styled-select'
 import { useAuth } from '@/contexts/use-auth'
@@ -39,26 +37,17 @@ type WorkStream = components['schemas']['WorkStream']
 // Constants & helpers
 // ---------------------------------------------------------------------------
 
-const ALL_STATES = [
-  'draft',
-  'specced',
-  'planning',
-  'executing',
-  'awaiting_validation',
-  'validated',
-  'deploying',
-  'observing',
-  'closed',
-  'awaiting_input',
-  // Legacy states kept for compatibility
+/** All states from the generated OpenAPI TicketState type. */
+const ALL_STATES: readonly TicketState[] = [
   'pending',
   'claimed',
+  'executing',
   'awaiting_review',
   'done',
   'blocked',
   'needs_human',
   'failed',
-] as const satisfies readonly TicketState[]
+] as const
 
 type CategoryId =
   | 'open'
@@ -79,7 +68,7 @@ const CATEGORY_OPTIONS: { id: CategoryId; label: string }[] = [
   { id: 'blocked', label: 'Blocked / needs input' },
 ]
 
-const DONE_STATES: TicketState[] = ['done', 'closed']
+const DONE_STATES: TicketState[] = ['done']
 
 /** Everything except done states — default "open work" view. */
 const OPEN_STATES = ALL_STATES.filter((s) => !DONE_STATES.includes(s))
@@ -91,15 +80,15 @@ function statesInCategory(cat: CategoryId): readonly TicketState[] | null {
     case 'all':
       return null
     case 'backlog':
-      return ['pending', 'draft', 'specced']
+      return ['pending']
     case 'in_progress':
-      return ['claimed', 'executing', 'planning', 'deploying', 'observing']
+      return ['claimed', 'executing']
     case 'awaiting_review':
-      return ['awaiting_review', 'awaiting_validation', 'validated']
+      return ['awaiting_review']
     case 'done':
-      return ['done', 'closed']
+      return ['done']
     case 'blocked':
-      return ['blocked', 'needs_human', 'failed', 'awaiting_input']
+      return ['blocked', 'needs_human', 'failed']
     default:
       return null
   }
@@ -134,17 +123,15 @@ type StateColorKey =
   | 'purple'  // planning
   | 'gray'    // draft/pending
 
-function stateColorKey(state: TicketState | undefined): StateColorKey {
+/** Map state string → semantic color key. Accepts any string for runtime
+ *  flexibility (the backend may introduce states before the OpenAPI spec is
+ *  regenerated). Unknown states fall through to 'gray'. */
+function stateColorKey(state: string | undefined): StateColorKey {
   if (!state) return 'gray'
   switch (state) {
     case 'done':
-    case 'closed':
-    case 'validated':
       return 'green'
     case 'awaiting_review':
-    case 'awaiting_validation':
-    case 'awaiting_input':
-    case 'observing':
       return 'amber'
     case 'blocked':
     case 'needs_human':
@@ -152,13 +139,8 @@ function stateColorKey(state: TicketState | undefined): StateColorKey {
       return 'red'
     case 'executing':
     case 'claimed':
-    case 'deploying':
       return 'blue'
-    case 'planning':
-    case 'specced':
-      return 'purple'
     case 'pending':
-    case 'draft':
     default:
       return 'gray'
   }
@@ -186,35 +168,22 @@ const STATE_BADGE_CLASSES: Record<StateColorKey, string> = {
 // State icons
 // ---------------------------------------------------------------------------
 
-function StateIcon({ state, className }: { state: TicketState | undefined; className?: string }) {
+function StateIcon({ state, className }: { state: string | undefined; className?: string }) {
   const cls = cn('size-4', className)
   switch (state) {
-    case 'draft':
     case 'pending':
       return <Clock className={cls} />
-    case 'specced':
-      return <FileText className={cls} />
-    case 'planning':
-      return <Lightbulb className={cls} />
     case 'executing':
     case 'claimed':
       return <Play className={cls} />
     case 'awaiting_review':
-    case 'awaiting_validation':
       return <Eye className={cls} />
-    case 'validated':
     case 'done':
-    case 'closed':
       return <CheckCircle2 className={cls} />
-    case 'deploying':
-      return <ArrowRight className={cls} />
-    case 'observing':
-      return <Search className={cls} />
     case 'blocked':
     case 'failed':
       return <XCircle className={cls} />
     case 'needs_human':
-    case 'awaiting_input':
       return <AlertTriangle className={cls} />
     default:
       return <PauseCircle className={cls} />
