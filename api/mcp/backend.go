@@ -5,6 +5,7 @@ import (
 	"github.com/gabinante/flywheel/internal/claims"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/investigation"
+	"github.com/gabinante/flywheel/internal/notification"
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
@@ -25,6 +26,7 @@ type Backend struct {
 	AgentStore    agent.AgentStore
 	Investigation *investigation.Service
 	Claims        *claims.Service
+	Notification  *notification.Service
 
 	// CodeIntel is the pluggable code intelligence provider (Layer 3).
 	// When nil, code_* tools are not registered. Set via PluginRegistry.

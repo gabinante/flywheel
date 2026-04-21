@@ -77,6 +77,13 @@ const (
 	EventPlanRePlanTriggered = "plan.replan_triggered"  // re-plan was triggered before apply
 	EventPlanRePlanIdentical = "plan.replan_identical"  // re-plan produced identical content (auto-proceed)
 	EventPlanRePlanDiverged  = "plan.replan_diverged"   // re-plan produced different content (route to review)
+
+	// --- Notification events ---
+	EventNotificationCreated    = "notification.created"     // notification queued or pushed
+	EventNotificationSent       = "notification.sent"        // notification delivered successfully
+	EventNotificationFailed     = "notification.failed"      // notification delivery failed
+	EventNotificationDismissed  = "notification.dismissed"   // operator dismissed notification
+	EventNotificationDigestSent = "notification.digest_sent" // digest batch delivered
 )
 
 // Event carries type and typed payload for the bus.

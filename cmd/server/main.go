@@ -29,6 +29,10 @@ import (
 	"github.com/gabinante/flywheel/internal/mirror"
 	"github.com/gabinante/flywheel/internal/mirror/jira"
 	"github.com/gabinante/flywheel/internal/mirror/linear"
+	"github.com/gabinante/flywheel/internal/notification"
+	notifyemail "github.com/gabinante/flywheel/internal/notification/email"
+	notifyslack "github.com/gabinante/flywheel/internal/notification/slack"
+	notifysms "github.com/gabinante/flywheel/internal/notification/sms"
 	"github.com/gabinante/flywheel/internal/observation"
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/plan"
@@ -149,6 +153,17 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		log.Println("mirror: service started")
 	}
 
+	// Notification service: policy-driven async push to operators (Layer 12).
+	// Adapters are pluggable; Slack is the default, email/SMS are stubs.
+	var notifySvc *notification.Service
+	if cfg.Notification.Enabled {
+		notifyStore := notification.NewPostgresStore(pool)
+		notifySvc = notification.NewService(notifyStore, bus)
+		notifySvc.RegisterAdapter(notification.ChannelSlack, notifyslack.NewAdapter())
+		notifySvc.RegisterAdapter(notification.ChannelEmail, notifyemail.NewAdapter())
+		notifySvc.RegisterAdapter(notification.ChannelSMS, notifysms.NewAdapter())
+		log.Println("notification: service started")
+	}
 
 	// Claims registry for concurrency control (spec v0.2 §4.3).
 	claimsStore := claims.NewStore(pool)
@@ -253,6 +268,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			Claims:        claimsSvc,
 			CodeIntel:     codeIntel,
 			Findings:      findingsProvider,
+			Notification:  notifySvc,
 		})
 		if err != nil {
 			log.Fatalf("mcp server: %v", err)
