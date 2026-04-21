@@ -5,6 +5,7 @@ import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { PolicyHealthSkeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
 
@@ -171,7 +172,7 @@ export function PolicyHealthPage() {
     return <p className="text-destructive text-sm">{err}</p>
   }
   if (!health) {
-    return <p className="text-muted-foreground text-sm">Loading…</p>
+    return <PolicyHealthSkeleton />
   }
 
   const totalDecisions = health.reduce(

@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
+import { TicketsPageSkeleton } from '@/components/ui/skeleton'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 
@@ -213,7 +214,7 @@ export function TicketsPage() {
     return <p className="text-destructive text-sm">{err}</p>
   }
   if (!tickets) {
-    return <p className="text-muted-foreground text-sm">Loading…</p>
+    return <TicketsPageSkeleton />
   }
 
   return (

@@ -1,6 +1,7 @@
 import { PlanMarkdown } from '@/components/plan-markdown'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import type { components } from '@/lib/api/v1'
 
 type WorkStream = components['schemas']['WorkStream']
@@ -35,7 +36,11 @@ export function WorkStreamSummaryCard({
           <CardTitle className="text-sm">Work stream</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-muted-foreground text-sm">Loading…</p>
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-4 w-48" />
+            <Skeleton className="h-3 w-32" />
+            <Skeleton className="h-3 w-64" />
+          </div>
         </CardContent>
       </Card>
     )

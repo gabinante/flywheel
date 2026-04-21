@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { useAuth } from '@/contexts/use-auth'
+import { Skeleton, WorkStreamsPageSkeleton } from '@/components/ui/skeleton'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 
@@ -103,7 +104,7 @@ export function WorkStreamsPage() {
     return <p className="text-destructive text-sm">{projectErr}</p>
   }
   if (project === undefined) {
-    return <p className="text-muted-foreground text-sm">Loading…</p>
+    return <WorkStreamsPageSkeleton />
   }
   if (!project) {
     return <p className="text-muted-foreground text-sm">Project not found.</p>
@@ -183,7 +184,11 @@ export function WorkStreamsPage() {
           ) : null}
 
           {!streamsErr && streams === null ? (
-            <p className="text-muted-foreground text-sm">Loading…</p>
+            <div className="flex flex-col gap-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-14 w-full rounded-lg" />
+              ))}
+            </div>
           ) : !streamsErr && streams?.length === 0 ? (
             <p className="text-muted-foreground text-sm">
               {statusFilter === 'active'

@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { FlywheelClient } from '@/contexts/auth-context'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
+import { ReviewsPageSkeleton, Skeleton } from '@/components/ui/skeleton'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 
@@ -390,7 +391,7 @@ export function ReviewsPage() {
     return <p className="text-destructive text-sm">{err}</p>
   }
   if (!tickets) {
-    return <p className="text-muted-foreground text-sm">Loading…</p>
+    return <ReviewsPageSkeleton />
   }
 
   return (
@@ -536,9 +537,10 @@ export function ReviewsPage() {
                         Execution trace
                       </h3>
                       {trace === undefined ? (
-                        <p className="text-muted-foreground text-xs italic">
-                          Loading trace…
-                        </p>
+                        <div className="flex flex-col gap-1.5">
+                          <Skeleton className="h-3 w-full" />
+                          <Skeleton className="h-3 w-3/4" />
+                        </div>
                       ) : (
                         <TraceSummary steps={trace} />
                       )}

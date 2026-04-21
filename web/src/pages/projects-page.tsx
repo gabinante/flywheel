@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import { StaggerItem, StaggerList } from '@/components/stagger-list'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ListPageSkeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/contexts/use-auth'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
@@ -55,7 +56,7 @@ export function ProjectsPage() {
     return <p className="text-destructive text-sm">{err}</p>
   }
   if (!projects) {
-    return <p className="text-muted-foreground text-sm">Loading…</p>
+    return <ListPageSkeleton />
   }
 
   return (
