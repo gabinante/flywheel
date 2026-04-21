@@ -25,6 +25,7 @@ type RouterConfig struct {
 	PoliciesHandler    *PoliciesHandler // Policy calibration feedback loop (not in OpenAPI spec yet)
 	ClaimsHandler      *ClaimsHandler   // Claims registry for concurrency control (spec v0.2 §4.3)
 	HooksHandler       *HooksHandler    // Change event webhook receiver (spec v0.2 §2.4)
+	PillarsHandler     *PillarsHandler  // Pillar and strategy layer (Layer 15)
 	// WebDist is the Vite outDir (contains index.html and assets/). Empty skips SPA routes.
 	WebDist string
 }
@@ -122,6 +123,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	if cfg.HooksHandler != nil {
 		cfg.HooksHandler.RegisterRoutes(mux)
+	}
+	if cfg.PillarsHandler != nil {
+		cfg.PillarsHandler.RegisterRoutes(mux)
 	}
 
 	h := http.Handler(mux)

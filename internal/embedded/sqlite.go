@@ -225,6 +225,49 @@ func migrate(db *sql.DB) error {
 			PRIMARY KEY (service_id, environment_id)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_catalog_deployments_project ON catalog_deployments(project_id)`,
+
+		// Pillar entries (Layer 15)
+		`CREATE TABLE IF NOT EXISTS pillar_entries (
+			id              TEXT PRIMARY KEY,
+			project_id      TEXT NOT NULL REFERENCES projects(id),
+			entity_id       TEXT NOT NULL,
+			entity_type     TEXT NOT NULL,
+			pillar_type     TEXT NOT NULL,
+			strategy        TEXT NOT NULL DEFAULT '',
+			gaps            TEXT NOT NULL DEFAULT '[]',
+			review_cadence  TEXT NOT NULL DEFAULT 'monthly',
+			last_reviewed_at TEXT,
+			next_review_at  TEXT,
+			version         INTEGER NOT NULL DEFAULT 1,
+			created_by      TEXT NOT NULL,
+			created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+			UNIQUE (project_id, entity_id, pillar_type)
+		)`,
+		`CREATE TABLE IF NOT EXISTS pillar_claims (
+			id               TEXT PRIMARY KEY,
+			pillar_entry_id  TEXT NOT NULL REFERENCES pillar_entries(id),
+			statement        TEXT NOT NULL,
+			entity_ref_id    TEXT NOT NULL,
+			entity_ref_type  TEXT NOT NULL,
+			evidence         TEXT NOT NULL DEFAULT '',
+			status           TEXT NOT NULL DEFAULT 'unverified',
+			last_evaluated_at TEXT,
+			created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE TABLE IF NOT EXISTS pillar_evaluations (
+			id               TEXT PRIMARY KEY,
+			pillar_entry_id  TEXT NOT NULL REFERENCES pillar_entries(id),
+			check_type       TEXT NOT NULL,
+			outcome          TEXT NOT NULL,
+			details          TEXT NOT NULL DEFAULT '',
+			evaluated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_pillar_entries_project ON pillar_entries(project_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_pillar_entries_entity ON pillar_entries(entity_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_pillar_claims_entry ON pillar_claims(pillar_entry_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_pillar_evaluations_entry ON pillar_evaluations(pillar_entry_id)`,
 	}
 	for _, s := range stmts {
 		if _, err := db.Exec(s); err != nil {
