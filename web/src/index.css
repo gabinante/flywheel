@@ -165,3 +165,54 @@
     transform: rotate(6deg) scale(1.12);
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Landing page — floating orbs                                       */
+/* ------------------------------------------------------------------ */
+
+@keyframes landing-drift {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(30px, -20px) scale(1.05);
+  }
+  66% {
+    transform: translate(-20px, 15px) scale(0.97);
+  }
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+.landing-orb {
+  will-change: transform;
+  animation: landing-drift 20s ease-in-out infinite;
+}
+.landing-orb-1 {
+  animation-duration: 22s;
+}
+.landing-orb-2 {
+  animation-duration: 26s;
+  animation-delay: -8s;
+}
+.landing-orb-3 {
+  animation-duration: 30s;
+  animation-delay: -14s;
+}
+
+/* Hero heading entrance */
+.landing-hero-heading {
+  animation: landing-heading-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes landing-heading-in {
+  0% {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
