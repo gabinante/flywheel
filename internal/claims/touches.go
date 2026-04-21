@@ -1,6 +1,9 @@
 package claims
 
 import (
+	"path/filepath"
+	"strings"
+
 	"github.com/gabinante/flywheel/internal/plan"
 )
 
@@ -37,18 +40,84 @@ func extractCodeTouches(c plan.Content, env string) []Touch {
 	}
 	var touches []Touch
 	for _, d := range c.Code.Diffs {
+		lang := resolveLanguage(d.Language, c.Code.Language, d.FilePath)
 		touches = append(touches, Touch{
 			EntityID:    d.FilePath,
 			Environment: env,
 			ClaimType:   ClaimFileWrite,
 			Metadata: map[string]any{
-				"language":    c.Code.Language,
+				"language":    lang,
 				"before_hash": d.BeforeHash,
 				"after_hash":  d.AfterHash,
 			},
 		})
 	}
 	return touches
+}
+
+// resolveLanguage picks the best language value: per-diff first, then plan-level,
+// then derives from the file extension as a last resort.
+func resolveLanguage(diffLang, planLang, filePath string) string {
+	if diffLang != "" {
+		return diffLang
+	}
+	if planLang != "" {
+		return planLang
+	}
+	return languageFromExtension(filePath)
+}
+
+// languageFromExtension maps common file extensions to language names.
+func languageFromExtension(filePath string) string {
+	ext := strings.TrimPrefix(filepath.Ext(filePath), ".")
+	switch ext {
+	case "go":
+		return "go"
+	case "py":
+		return "python"
+	case "js":
+		return "javascript"
+	case "ts":
+		return "typescript"
+	case "tsx":
+		return "typescript"
+	case "jsx":
+		return "javascript"
+	case "rb":
+		return "ruby"
+	case "rs":
+		return "rust"
+	case "java":
+		return "java"
+	case "c":
+		return "c"
+	case "cpp", "cc", "cxx":
+		return "cpp"
+	case "h", "hpp":
+		return "cpp"
+	case "cs":
+		return "csharp"
+	case "swift":
+		return "swift"
+	case "kt":
+		return "kotlin"
+	case "scala":
+		return "scala"
+	case "sh", "bash":
+		return "shell"
+	case "yaml", "yml":
+		return "yaml"
+	case "json":
+		return "json"
+	case "sql":
+		return "sql"
+	case "tf":
+		return "terraform"
+	case "proto":
+		return "protobuf"
+	default:
+		return ext
+	}
 }
 
 // extractDatabaseTouches generates schema touches from database plan DDL.
