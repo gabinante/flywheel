@@ -216,9 +216,10 @@ Use these patterns for common ticket types:
 
 **Add database migration:**
 - type: task
-- success_criteria: ["migration file created in db/migrations/", "up creates table/columns correctly", "down reverses cleanly"]
+- success_criteria: ["migration file created in db/migrations/ with timestamp prefix (YYYYMMDDHHmmss)", "up creates table/columns correctly", "down reverses cleanly"]
 - acceptance_test: "go run ./cmd/migrate up && go run ./cmd/migrate down"
 - relevant_files: ["db/migrations/"]
+- naming: Use timestamp prefix — generate with ` + "`date -u +%Y%m%d%H%M%S`" + ` or ` + "`make migrate-create NAME=description`" + `. NEVER use sequential numbers.
 
 **Add MCP tool:**
 - type: task
