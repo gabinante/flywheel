@@ -392,6 +392,87 @@ type NotificationExtended interface {
 }
 
 // --------------------------------------------------------------------------
+// Layer 4: Findings — Semantic findings store
+// --------------------------------------------------------------------------
+
+// Finding represents a semantic finding: a claim with provenance, symbol-level
+// references, and ticket references. Findings are the output of agent analysis,
+// test results, or review comments. They support semantic retrieval and
+// structural navigation and can be invalidated when underlying code changes.
+type Finding struct {
+	ID                 string   `json:"id"`
+	ProjectID          string   `json:"project_id"`
+	Claim              string   `json:"claim"`
+	FindingType        string   `json:"finding_type"` // code_quality, architecture, security, performance, design_pattern, investigation
+	Confidence         float64  `json:"confidence"`   // 0.0–1.0
+	CommitSHA          string   `json:"commit_sha"`
+	FunctionBodyHash   string   `json:"function_body_hash,omitempty"`
+	SourceType         string   `json:"source_type"`          // agent_analysis, test_result, review_comment
+	SourceTicketID     string   `json:"source_ticket_id,omitempty"`
+	SourceAgentID      string   `json:"source_agent_id,omitempty"`
+	SymbolRefs         []string `json:"symbol_refs,omitempty"`
+	TicketRefs         []string `json:"ticket_refs,omitempty"`
+	FileRefs           []string `json:"file_refs,omitempty"`
+	Tags               []string `json:"tags,omitempty"`
+	Summary            string   `json:"summary"`
+	Valid              bool     `json:"valid"`
+	InvalidatedAt      string   `json:"invalidated_at,omitempty"`
+	InvalidationReason string   `json:"invalidation_reason,omitempty"`
+	CreatedAt          string   `json:"created_at"`
+}
+
+// FindingsQueryOpts holds optional parameters for findings queries.
+type FindingsQueryOpts struct {
+	FindingType string // Filter by finding type
+	SymbolRef   string // Filter by symbol reference
+	FileRef     string // Filter by file reference
+	ValidOnly   bool   // Return only valid (non-invalidated) findings
+	Limit       int    // Max results (default 20)
+}
+
+// FindingsProvider is the Go interface for Layer 4 (Findings) plugins.
+// Implementations provide semantic findings storage with provenance tracking,
+// semantic retrieval, structural navigation, and invalidation on code changes.
+//
+// Required methods: SaveFinding, QueryFindings, FindingsBySymbol, FindingsByTicket,
+// InvalidateFindings, GetFinding.
+// Optional methods are in FindingsExtended.
+type FindingsProvider interface {
+	// ContractVersion returns the contract version this provider implements.
+	ContractVersion() ContractVersion
+
+	// SaveFinding persists a finding with provenance and returns it with generated ID.
+	SaveFinding(ctx context.Context, finding Finding) (*Finding, error)
+
+	// QueryFindings performs semantic retrieval: natural language query → relevant findings.
+	QueryFindings(ctx context.Context, projectID, query string, opts FindingsQueryOpts) ([]Finding, error)
+
+	// FindingsBySymbol returns findings associated with a given symbol reference.
+	FindingsBySymbol(ctx context.Context, projectID, symbolRef string, limit int) ([]Finding, error)
+
+	// FindingsByTicket returns findings associated with a given ticket reference.
+	FindingsByTicket(ctx context.Context, projectID, ticketRef string, limit int) ([]Finding, error)
+
+	// InvalidateFindings invalidates findings whose provenance references changed files
+	// at a given commit SHA. Returns the count of invalidated findings.
+	InvalidateFindings(ctx context.Context, projectID, commitSHA string, changedFiles []string) (int, error)
+
+	// GetFinding returns a single finding by ID.
+	GetFinding(ctx context.Context, projectID, findingID string) (*Finding, error)
+}
+
+// FindingsExtended provides optional capabilities beyond the required contract.
+type FindingsExtended interface {
+	FindingsProvider
+
+	// DeleteFinding permanently removes a finding.
+	DeleteFinding(ctx context.Context, projectID, findingID string) error
+
+	// FindingsByFile returns findings whose file references include the given path.
+	FindingsByFile(ctx context.Context, projectID, filePath string, limit int) ([]Finding, error)
+}
+
+// --------------------------------------------------------------------------
 // Plugin Registry
 // --------------------------------------------------------------------------
 
@@ -402,6 +483,7 @@ type PluginRegistry struct {
 	stateIndex   StateIndexProvider
 	signals      SignalIngestionProvider
 	notification NotificationProvider
+	findings     FindingsProvider
 }
 
 // NewPluginRegistry creates a new empty plugin registry.
@@ -473,3 +555,16 @@ func (r *PluginRegistry) SignalIngestion() SignalIngestionProvider { return r.si
 
 // Notification returns the registered notification provider, or nil.
 func (r *PluginRegistry) Notification() NotificationProvider { return r.notification }
+
+// RegisterFindings registers a findings provider after version check.
+func (r *PluginRegistry) RegisterFindings(p FindingsProvider) error {
+	if !FindingsContract.Version.Compatible(p.ContractVersion()) {
+		return fmt.Errorf("findings provider version %s incompatible with contract %s",
+			p.ContractVersion(), FindingsContract.Version)
+	}
+	r.findings = p
+	return nil
+}
+
+// Findings returns the registered findings provider, or nil.
+func (r *PluginRegistry) Findings() FindingsProvider { return r.findings }

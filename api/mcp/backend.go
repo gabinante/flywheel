@@ -30,6 +30,11 @@ type Backend struct {
 	// When nil, code_* tools are not registered. Set via PluginRegistry.
 	CodeIntel CodeIntelligenceProvider
 
+	// Findings is the pluggable findings provider (Layer 4).
+	// When non-nil, findings_* MCP tools are registered.
+	// Default: Weaviate backend; alternatives: pgvector, Qdrant, in-memory.
+	Findings FindingsProvider
+
 	// DefaultAgentID is used as a fallback when agent_id is not passed in args
 	// and not available from HTTP auth context (e.g. stdio mode with FLYWHEEL_TOKEN).
 	DefaultAgentID string

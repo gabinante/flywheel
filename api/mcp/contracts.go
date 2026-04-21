@@ -797,12 +797,182 @@ var NotificationContract = PluginContract{
 	},
 }
 
+// --------------------------------------------------------------------------
+// Layer 4: Findings
+// --------------------------------------------------------------------------
+
+// FindingsContract defines the MCP contract for Layer 4 (Findings).
+// Implementations provide a semantic findings store for claims with provenance,
+// symbol-level summaries, and investigation outputs. Supports semantic retrieval
+// (natural language query → relevant findings) and structural navigation
+// (findings about this symbol/ticket). Findings track provenance and are
+// invalidated when underlying code changes via commit SHA + function-body hash.
+//
+// Required capabilities: save, query, by-symbol, by-ticket, invalidate, get.
+// Optional capabilities: delete, by-file.
+//
+// Bundled default: Weaviate vector store (see findings_weaviate.go).
+// Alternative backends: pgvector, Qdrant.
+var FindingsContract = PluginContract{
+	Name:    "findings",
+	Version: ContractVersion{Major: 1, Minor: 0, Patch: 0},
+	Layer:   4,
+	Description: "Semantic findings store: claims with provenance, symbol-level " +
+		"summaries, and investigation outputs. Supports semantic retrieval " +
+		"(natural language → findings) and structural navigation (findings " +
+		"about a symbol or ticket). Provenance tracks commit SHA and function " +
+		"body hash for automatic invalidation on code changes.",
+	Tools: []ToolSpec{
+		{
+			Name:        "findings_save",
+			Description: "Save a semantic finding with provenance. A finding is a claim about code (quality, architecture, security, performance) with tracked origin and symbol/ticket references.",
+			Required:    true,
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"project_id":         map[string]any{"type": "string", "description": "Project ID"},
+					"claim":              map[string]any{"type": "string", "description": "The finding's claim text (e.g., 'This function has O(n²) complexity due to nested loops')"},
+					"finding_type":       map[string]any{"type": "string", "description": "Category of finding", "enum": []string{"code_quality", "architecture", "security", "performance", "design_pattern", "investigation"}},
+					"confidence":         map[string]any{"type": "number", "description": "Confidence score 0.0–1.0", "minimum": 0, "maximum": 1},
+					"commit_sha":         map[string]any{"type": "string", "description": "Git commit SHA when finding was made"},
+					"function_body_hash": map[string]any{"type": "string", "description": "Hash of the function body for invalidation (optional)"},
+					"source_type":        map[string]any{"type": "string", "description": "How the finding was produced", "enum": []string{"agent_analysis", "test_result", "review_comment"}},
+					"source_ticket_id":   map[string]any{"type": "string", "description": "Ticket that produced this finding (optional)"},
+					"source_agent_id":    map[string]any{"type": "string", "description": "Agent that produced this finding (optional)"},
+					"symbol_refs":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Symbol IDs this finding relates to (optional)"},
+					"ticket_refs":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Ticket IDs this finding relates to (optional)"},
+					"file_refs":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "File paths this finding relates to (optional)"},
+					"tags":               map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Free-form tags (optional)"},
+					"summary":            map[string]any{"type": "string", "description": "Short summary of the finding"},
+				},
+				"required":             []string{"project_id", "claim", "finding_type", "confidence", "commit_sha", "source_type", "summary"},
+				"additionalProperties": false,
+			},
+		},
+		{
+			Name:        "findings_query",
+			Description: "Semantic query for findings. Uses natural language to find relevant findings via vector similarity search.",
+			Required:    true,
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"project_id":   map[string]any{"type": "string", "description": "Project ID"},
+					"query":        map[string]any{"type": "string", "description": "Natural language query (e.g., 'performance issues in the API layer')"},
+					"finding_type": map[string]any{"type": "string", "description": "Filter by finding type (optional)", "enum": []string{"code_quality", "architecture", "security", "performance", "design_pattern", "investigation"}},
+					"valid_only":   map[string]any{"type": "boolean", "description": "Return only valid (non-invalidated) findings (default true)"},
+					"limit":        map[string]any{"type": "integer", "description": "Max results (default 20)", "minimum": 1, "maximum": 100},
+				},
+				"required":             []string{"project_id", "query"},
+				"additionalProperties": false,
+			},
+		},
+		{
+			Name:        "findings_by_symbol",
+			Description: "Get findings associated with a specific code symbol. Structural navigation for understanding what's known about a symbol.",
+			Required:    true,
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"project_id": map[string]any{"type": "string", "description": "Project ID"},
+					"symbol_ref": map[string]any{"type": "string", "description": "Symbol ID or name to find findings for"},
+					"limit":      map[string]any{"type": "integer", "description": "Max results (default 20)", "minimum": 1, "maximum": 100},
+				},
+				"required":             []string{"project_id", "symbol_ref"},
+				"additionalProperties": false,
+			},
+		},
+		{
+			Name:        "findings_by_ticket",
+			Description: "Get findings associated with a specific ticket. Structural navigation for understanding what a ticket discovered or relates to.",
+			Required:    true,
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"project_id": map[string]any{"type": "string", "description": "Project ID"},
+					"ticket_ref": map[string]any{"type": "string", "description": "Ticket ID to find findings for"},
+					"limit":      map[string]any{"type": "integer", "description": "Max results (default 20)", "minimum": 1, "maximum": 100},
+				},
+				"required":             []string{"project_id", "ticket_ref"},
+				"additionalProperties": false,
+			},
+		},
+		{
+			Name:        "findings_invalidate",
+			Description: "Invalidate findings when underlying code changes. Marks findings as stale based on commit SHA and changed file paths.",
+			Required:    true,
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"project_id":    map[string]any{"type": "string", "description": "Project ID"},
+					"commit_sha":    map[string]any{"type": "string", "description": "New commit SHA that changed the code"},
+					"changed_files": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "File paths that changed in this commit"},
+				},
+				"required":             []string{"project_id", "commit_sha", "changed_files"},
+				"additionalProperties": false,
+			},
+		},
+		{
+			Name:        "findings_get",
+			Description: "Get a specific finding by ID. Returns full finding details with provenance.",
+			Required:    true,
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"project_id": map[string]any{"type": "string", "description": "Project ID"},
+					"finding_id": map[string]any{"type": "string", "description": "Finding ID"},
+				},
+				"required":             []string{"project_id", "finding_id"},
+				"additionalProperties": false,
+			},
+		},
+		{
+			Name:        "findings_delete",
+			Description: "Permanently delete a finding.",
+			Required:    false,
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"project_id": map[string]any{"type": "string", "description": "Project ID"},
+					"finding_id": map[string]any{"type": "string", "description": "Finding ID to delete"},
+				},
+				"required":             []string{"project_id", "finding_id"},
+				"additionalProperties": false,
+			},
+		},
+		{
+			Name:        "findings_by_file",
+			Description: "Get findings associated with a specific file path.",
+			Required:    false,
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"project_id": map[string]any{"type": "string", "description": "Project ID"},
+					"file_path":  map[string]any{"type": "string", "description": "File path to find findings for"},
+					"limit":      map[string]any{"type": "integer", "description": "Max results (default 20)", "minimum": 1, "maximum": 100},
+				},
+				"required":             []string{"project_id", "file_path"},
+				"additionalProperties": false,
+			},
+		},
+	},
+	Resources: []ResourceSpec{
+		{
+			URIPattern:  "flywheel://findings/{project_id}/summary",
+			Name:        "Findings summary",
+			Description: "Summary of findings counts by type, validity status, and recent activity.",
+			Required:    true,
+			MIMEType:    "application/json",
+		},
+	},
+}
+
 // AllContracts returns all defined plugin contracts.
 func AllContracts() []PluginContract {
 	return []PluginContract{
 		CodeIntelligenceContract,
 		CatalogContract,
 		StateIndexContract,
+		FindingsContract,
 		SignalIngestionContract,
 		NotificationContract,
 	}
