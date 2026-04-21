@@ -21,6 +21,7 @@ func NewServer(b *Backend) (*mcp.Server, error) {
 		Version: "0.1.0",
 	}, nil)
 	RegisterTools(server, b)
+	RegisterStateIndexTools(server, b.StateIndex)
 	registerResources(server)
 	return server, nil
 }

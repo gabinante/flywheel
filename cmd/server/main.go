@@ -28,6 +28,7 @@ import (
 	"github.com/gabinante/flywheel/internal/mirror/linear"
 	"github.com/gabinante/flywheel/internal/observation"
 	"github.com/gabinante/flywheel/internal/org"
+	"github.com/gabinante/flywheel/internal/stateindex"
 	"github.com/gabinante/flywheel/internal/plan"
 	"github.com/gabinante/flywheel/internal/policy"
 	"github.com/gabinante/flywheel/internal/project"
@@ -151,6 +152,10 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	obsStore := observation.NewPostgresStore(pool)
 	obsSvc := observation.NewService(obsStore, bus)
 
+	// State index service (spec v0.2 Layer 10): observed infrastructure state.
+	stateIndexStore := stateindex.NewPostgresStore(pool)
+	stateIndexSvc := stateindex.NewService(stateIndexStore, bus)
+
 	strictServer := &rest.StrictServer{
 		OrgSvc:        orgSvc,
 		ProjectSvc:    projectSvc,
@@ -197,6 +202,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			Review:     reviewSvc,
 			Org:        orgSvc,
 			AgentStore: agentStore,
+			StateIndex: stateIndexSvc,
 		})
 		if err != nil {
 			log.Fatalf("mcp server: %v", err)
@@ -255,6 +261,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		DispatchHandler:    &rest.DispatchHandler{Dispatcher: dispatcher},
 		PlansHandler:       &rest.PlansHandler{PlanSvc: planSvc},
 		ObservationHandler: &rest.ObservationHandler{Svc: obsSvc},
+		StateIndexHandler:  &rest.StateIndexHandler{Svc: stateIndexSvc},
 		PoliciesHandler: &rest.PoliciesHandler{
 			PolicySvc:  policySvc,
 			ProjectSvc: projectSvc,
