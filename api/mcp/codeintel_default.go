@@ -384,7 +384,14 @@ func (t *TreeSitterCodeIntel) IndexDirectory(ctx context.Context, projectID, roo
 
 		ext := filepath.Ext(path)
 		switch ext {
-		case ".go", ".py", ".ts", ".tsx", ".rs":
+		case ".go":
+			// Use Go AST for accurate symbol/call-edge extraction.
+			symbols, edges, imports := parseGoAST(path, rootPath)
+			idx.symbols = append(idx.symbols, symbols...)
+			idx.edges = append(idx.edges, edges...)
+			idx.imports = append(idx.imports, imports...)
+		case ".py", ".ts", ".tsx", ".rs":
+			// Regex-based extraction for other languages.
 			symbols, imports := t.parseFile(path, rootPath, ext)
 			idx.symbols = append(idx.symbols, symbols...)
 			idx.imports = append(idx.imports, imports...)

@@ -8,9 +8,9 @@ import (
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
-	"github.com/gabinante/flywheel/internal/workstream"
 	"github.com/gabinante/flywheel/internal/review"
 	"github.com/gabinante/flywheel/internal/ticket"
+	"github.com/gabinante/flywheel/internal/workstream"
 )
 
 // Backend holds the services needed by MCP tools. Set by the server that runs MCP.
@@ -25,6 +25,10 @@ type Backend struct {
 	AgentStore    agent.AgentStore
 	Investigation *investigation.Service
 	Claims        *claims.Service
+
+	// CodeIntel is the pluggable code intelligence provider (Layer 3).
+	// When nil, code_* tools are not registered. Set via PluginRegistry.
+	CodeIntel CodeIntelligenceProvider
 
 	// DefaultAgentID is used as a fallback when agent_id is not passed in args
 	// and not available from HTTP auth context (e.g. stdio mode with FLYWHEEL_TOKEN).

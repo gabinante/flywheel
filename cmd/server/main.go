@@ -159,6 +159,10 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	obsStore := observation.NewPostgresStore(pool)
 	obsSvc := observation.NewService(obsStore, bus)
 
+	// Code intelligence: bundled Tree-sitter/Go-AST default (Layer 3).
+	codeIntel := mcp.NewTreeSitterCodeIntel()
+	log.Println("code-intel: bundled default initialized (Tree-sitter + Go AST)")
+
 	strictServer := &rest.StrictServer{
 		OrgSvc:        orgSvc,
 		ProjectSvc:    projectSvc,
@@ -225,6 +229,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			AgentStore:    agentStore,
 			Investigation: investigationSvc,
 			Claims:        claimsSvc,
+			CodeIntel:     codeIntel,
 		})
 		if err != nil {
 			log.Fatalf("mcp server: %v", err)
@@ -388,6 +393,9 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		AgentStore:    agentSt,
 	}
 
+	// Code intelligence: bundled default for embedded mode.
+	embeddedCodeIntel := mcp.NewTreeSitterCodeIntel()
+
 	// In embedded mode, set up MCP with API key auth (no OAuth required).
 	authMiddleware := rest.AuthMiddleware(jwtSecret, agentSvc)
 	mcpSrv, err := mcp.NewServer(&mcp.Backend{
@@ -399,6 +407,7 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		Review:     reviewSvc,
 		Org:        orgSvc,
 		AgentStore: agentSt,
+		CodeIntel:  embeddedCodeIntel,
 	})
 	if err != nil {
 		log.Fatalf("mcp server: %v", err)
