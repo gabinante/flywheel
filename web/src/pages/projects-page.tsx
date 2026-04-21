@@ -81,6 +81,15 @@ export function ProjectsPage() {
                     {p.status ? (
                       <Badge variant="outline">{p.status}</Badge>
                     ) : null}
+                    {p.dispatch_enabled !== false ? (
+                      <Badge variant="default" className="bg-emerald-600/80 text-xs">
+                        Dispatch on
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="text-muted-foreground text-xs">
+                        Dispatch off
+                      </Badge>
+                    )}
                   </div>
                   <CardDescription className="font-mono text-xs">
                     {p.id}

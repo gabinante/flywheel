@@ -246,6 +246,9 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 		log.Printf("dispatch: scan awaiting_review: %v", err)
 	} else {
 		for _, t := range reviewing {
+			if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
+				continue
+			}
 			d.spawnReviewer(ctx, t)
 		}
 	}
@@ -256,6 +259,9 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 		log.Printf("dispatch: scan validated: %v", err)
 	} else {
 		for _, t := range validated {
+			if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
+				continue
+			}
 			prURL, ok := t.Outputs["pr_url"].(string)
 			if !ok || prURL == "" {
 				continue
@@ -277,8 +283,22 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 	}
 	log.Printf("dispatch: scan found %d pending tickets", len(pending))
 	for _, t := range pending {
+		if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
+			continue
+		}
 		d.tryDispatch(ctx, t)
 	}
+}
+
+// isProjectDispatchEnabled checks whether dispatch is enabled for a project.
+// Returns true if the project cannot be found (fail-open for backward compat
+// with the legacy DISPATCH_PROJECT_ID single-project approach).
+func (d *Dispatcher) isProjectDispatchEnabled(ctx context.Context, projectID string) bool {
+	proj, err := d.projects.GetProject(ctx, projectID)
+	if err != nil || proj == nil {
+		return true // fail-open: don't block dispatch if project lookup fails
+	}
+	return proj.DispatchEnabled
 }
 
 func (d *Dispatcher) handleTicketReady(ctx context.Context, e events.Event) {
@@ -294,8 +314,13 @@ func (d *Dispatcher) handleTicketReady(ctx context.Context, e events.Event) {
 		return
 	}
 
-	// Filter by project if configured.
+	// Filter by project if configured (legacy env var approach).
 	if d.cfg.ProjectID != "" && t.ProjectID != d.cfg.ProjectID {
+		return
+	}
+
+	// Check per-project dispatch toggle.
+	if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
 		return
 	}
 
@@ -316,6 +341,9 @@ func (d *Dispatcher) handleTicketRejected(ctx context.Context, e events.Event) {
 		return
 	}
 	if d.cfg.ProjectID != "" && t.ProjectID != d.cfg.ProjectID {
+		return
+	}
+	if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
 		return
 	}
 	if t.State != ticket.StateExecuting {
@@ -395,6 +423,9 @@ func (d *Dispatcher) handleTicketSubmitted(ctx context.Context, e events.Event) 
 		return
 	}
 	if d.cfg.ProjectID != "" && t.ProjectID != d.cfg.ProjectID {
+		return
+	}
+	if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
 		return
 	}
 	if t.State != ticket.StateAwaitingReview {
