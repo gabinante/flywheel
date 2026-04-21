@@ -126,10 +126,25 @@ func migrate(db *sql.DB) error {
 			outputs         TEXT NOT NULL DEFAULT '{}',
 			depends_on      TEXT NOT NULL DEFAULT '[]',
 			work_stream_id  TEXT,
+			environment_id  TEXT,
 			assigned_to     TEXT,
 			created_by      TEXT NOT NULL,
 			created_at      TEXT NOT NULL DEFAULT (datetime('now')),
 			updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		// Environments (compound tuple: infrastructure × data_tenancy × integration_mode)
+		`CREATE TABLE IF NOT EXISTS environments (
+			id               TEXT PRIMARY KEY,
+			project_id       TEXT NOT NULL REFERENCES projects(id),
+			name             TEXT NOT NULL,
+			slug             TEXT NOT NULL,
+			infrastructure   TEXT NOT NULL,
+			data_tenancy     TEXT NOT NULL,
+			integration_mode TEXT NOT NULL,
+			is_default       INTEGER NOT NULL DEFAULT 0,
+			created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at       TEXT NOT NULL DEFAULT (datetime('now')),
+			UNIQUE (project_id, slug)
 		)`,
 		`CREATE TABLE IF NOT EXISTS idempotency_creates (
 			project_id      TEXT NOT NULL,

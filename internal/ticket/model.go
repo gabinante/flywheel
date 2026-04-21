@@ -81,7 +81,8 @@ func MapLegacyState(s State) State {
 }
 
 // Environment represents the deployment environment scope for state transitions (spec 4.1).
-// The state machine is environment-scoped: transitions may have different policies per environment.
+// This is the environment ID (references environments table). The full compound tuple
+// (infrastructure, data_tenancy, integration_mode) lives in the environment model.
 type Environment string
 
 const (
@@ -89,6 +90,28 @@ const (
 	EnvStaging     Environment = "staging"
 	EnvProduction  Environment = "production"
 )
+
+// EnvironmentQualifiedState returns a state string qualified by environment slug.
+// Example: "executing-dev", "validated-staging".
+func EnvironmentQualifiedState(state State, envSlug string) string {
+	if envSlug == "" {
+		return string(state)
+	}
+	return string(state) + "-" + envSlug
+}
+
+// ParseQualifiedState extracts state and environment slug from a qualified state string.
+// Returns the state and env slug. If not qualified, envSlug is empty.
+func ParseQualifiedState(qualified string) (State, string) {
+	// Try to match against known states from longest to shortest.
+	for _, s := range AllStates() {
+		prefix := string(s) + "-"
+		if len(qualified) > len(prefix) && qualified[:len(prefix)] == prefix {
+			return s, qualified[len(prefix):]
+		}
+	}
+	return State(qualified), ""
+}
 
 // TicketType is the kind of work.
 type TicketType string
@@ -148,22 +171,23 @@ type Lease struct {
 
 // Ticket is the core entity.
 type Ticket struct {
-	ID           string         `json:"id"`
-	ProjectID    string         `json:"project_id"`
-	Title        string         `json:"title"`
-	Type         TicketType     `json:"type"`
-	Priority     Priority       `json:"priority"`
-	State        State          `json:"state"`
-	Environment  Environment    `json:"environment,omitempty"` // environment scope per spec 4.1
-	Version      int            `json:"version"`
-	Objective    Objective      `json:"objective"`
-	Context      TicketContext  `json:"ticket_context"`
-	Inputs       map[string]any `json:"inputs"`
-	Outputs      map[string]any `json:"outputs"`
-	DependsOn    []string       `json:"depends_on"`
-	WorkStreamID string         `json:"work_stream_id,omitempty"`
-	AssignedTo   string         `json:"assigned_to,omitempty"`
-	CreatedBy    string         `json:"created_by"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
+	ID            string         `json:"id"`
+	ProjectID     string         `json:"project_id"`
+	Title         string         `json:"title"`
+	Type          TicketType     `json:"type"`
+	Priority      Priority       `json:"priority"`
+	State         State          `json:"state"`
+	Environment   Environment    `json:"environment,omitempty"`    // legacy simple environment scope
+	EnvironmentID string         `json:"environment_id,omitempty"` // compound environment ID (spec 4.1)
+	Version       int            `json:"version"`
+	Objective     Objective      `json:"objective"`
+	Context       TicketContext  `json:"ticket_context"`
+	Inputs        map[string]any `json:"inputs"`
+	Outputs       map[string]any `json:"outputs"`
+	DependsOn     []string       `json:"depends_on"`
+	WorkStreamID  string         `json:"work_stream_id,omitempty"`
+	AssignedTo    string         `json:"assigned_to,omitempty"`
+	CreatedBy     string         `json:"created_by"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
 }

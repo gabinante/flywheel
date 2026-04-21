@@ -60,6 +60,11 @@ const (
 	EventPlanApplied    = "plan.applied"
 	EventPlanRejected   = "plan.rejected"
 	EventPlanSuperseded = "plan.superseded"
+
+	// --- Environment lifecycle events ---
+	EventEnvironmentCreated = "environment.created"
+	EventEnvironmentUpdated = "environment.updated"
+	EventEnvironmentDeleted = "environment.deleted"
 )
 
 // Event carries type and typed payload for the bus.

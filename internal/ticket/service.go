@@ -162,6 +162,11 @@ func (s *Service) UpdateWorkStreamID(ctx context.Context, ticketID string, workS
 	return s.store.UpdateWorkStreamID(ctx, ticketID, workStreamID)
 }
 
+// UpdateEnvironmentID sets the environment_id for a ticket. Caller must validate environment exists and belongs to ticket's project.
+func (s *Service) UpdateEnvironmentID(ctx context.Context, ticketID string, environmentID string) error {
+	return s.store.UpdateEnvironmentID(ctx, ticketID, environmentID)
+}
+
 // PatchTicketMetadata merges optional title and objective fields into a ticket. Only non-nil patch fields from objective are applied.
 func (s *Service) PatchTicketMetadata(ctx context.Context, ticketID string, title *string, desc *string, successCriteria *[]string, acceptanceTest *string) error {
 	t, err := s.store.GetByID(ctx, ticketID)
