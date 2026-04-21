@@ -211,6 +211,11 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	catalogSvc := catalog.NewService(catalogStore)
 	catalogScanner := catalog.NewScanner()
 
+	// Coordinator learning loop: auto-generate feedback findings on ticket
+	// rejection, failure, replan, and invalidation events.
+	_ = mcp.NewCoordinatorFeedbackSubscriber(bus, findingsProvider, ticketSvc)
+	log.Println("coordinator-feedback: learning loop subscriber active")
+
 	strictServer := &rest.StrictServer{
 		OrgSvc:        orgSvc,
 		ProjectSvc:    projectSvc,
@@ -475,6 +480,10 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 	} else {
 		embeddedFindingsProvider = mcp.NewMemoryFindingsStore()
 	}
+
+	// Coordinator learning loop for embedded mode.
+	_ = mcp.NewCoordinatorFeedbackSubscriber(bus, embeddedFindingsProvider, ticketSvc)
+	log.Println("coordinator-feedback: learning loop subscriber active (embedded)")
 
 	// In embedded mode, set up MCP with API key auth (no OAuth required).
 	authMiddleware := rest.AuthMiddleware(jwtSecret, agentSvc)

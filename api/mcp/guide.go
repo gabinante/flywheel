@@ -69,6 +69,9 @@ Shapes:
 | reject_ticket | Reject a ticket with required notes; returns to executing so the agent can fix and resubmit. |
 | reopen_ticket | Move a ticket from **done** back to **awaiting_review** (e.g. mistaken approval). Optional **notes**. Use **only** when the user explicitly asks to reopen or return a completed ticket for review. |
 | dispatch_investigation | **(Coordinator only)** Dispatch a scoped research investigation to a subagent. Returns structured findings (claims with citations, negative space, open questions). Use during the investigate phase before authoring tickets. One level deep — subagents cannot dispatch further investigations. |
+| coordinator_get_history | **(Coordinator only)** Query prior ticket history and feedback findings for a project. Call at the start of every coordinator session for cross-session continuity. |
+| coordinator_calibration | **(Coordinator only)** Surface calibration metrics: success rate, common failure patterns, authoring quality trends. Use to self-improve. |
+| coordinator_record_feedback | **(Coordinator only)** Record a coordinator-feedback finding with category and analysis. Use to capture lessons from ticket outcomes. |
 
 ## Ticket states
 
@@ -159,12 +162,14 @@ The coordinator follows a four-phase loop:
 2. Ask clarifying questions. Confirm scope boundaries, constraints, and non-goals.
 3. Identify what you already know vs what needs investigation.
 
-**Phase 2: Investigate — gather facts**
+**Phase 2: Investigate — gather facts (including prior history)**
 
-4. Read relevant files directly (source code, configs, schemas, tests).
-5. Search the codebase for related patterns, existing implementations, or prior art.
-6. If the investigation is complex, dispatch a subagent (investigation worker) to explore a specific area and report findings. Keep the coordinator session focused on orchestration.
-7. Review dependency outputs from previously completed tickets if this goal builds on prior work.
+4. **coordinator_get_history** (project_id) — **Always call this first.** Loads prior ticket outcomes, coordinator-feedback findings, and history stats. This is your cross-session memory: you see what was tried before, what failed, and why. Never start a coordinator session without it.
+5. Read relevant files directly (source code, configs, schemas, tests).
+6. Search the codebase for related patterns, existing implementations, or prior art.
+7. If the investigation is complex, dispatch a subagent (investigation worker) to explore a specific area and report findings. Keep the coordinator session focused on orchestration.
+8. Review dependency outputs from previously completed tickets if this goal builds on prior work.
+9. **coordinator_calibration** (project_id, optional agent_id) — Check your authoring track record. If many tickets were rejected or failed, tighten acceptance criteria or decompose more granularly before authoring new work.
 
 **Phase 3: Crystallize — design the ticket DAG**
 
@@ -248,6 +253,33 @@ Use these patterns for common ticket types:
 **Diamond:** A → {B, C} → D (B and C depend on A; D depends on both B and C)
 
 When designing a DAG, sketch it mentally, then verify: can each ticket be completed by a worker who only sees its own context + dependency outputs?
+
+### Coordinator learning loop
+
+The coordinator sharpens over time by learning from ticket outcomes. This happens automatically and via explicit tools:
+
+**Automatic feedback capture:** When a ticket is **rejected**, **fails**, is **replanned**, or **invalidated**, the system automatically creates a coordinator-feedback finding in the findings layer. These findings include the ticket context and failure reason, tagged with categories like rejection, failure, replan, or invalidation.
+
+**Cross-session continuity:** Every coordinator session should start with **coordinator_get_history** to load prior work context. You are not starting fresh — you inherit the project's full ticket history and feedback findings.
+
+**Calibration self-check:** Use **coordinator_calibration** periodically to see your authoring quality metrics: success rate, rejection count, common failure categories, average attempts per close. When the calibration shows patterns (e.g. "3 rejections due to acceptance_ambiguity"), adjust your decomposition approach.
+
+**Manual feedback recording:** Use **coordinator_record_feedback** to capture nuanced lessons that automated feedback misses. For example: "Ticket X failed because the acceptance test didn't account for the database migration ordering."
+
+**Learning loop tools:**
+
+| Tool | When to use |
+|------|------------|
+| coordinator_get_history | Start of every coordinator session — loads prior tickets and feedback |
+| coordinator_calibration | Before authoring new tickets — check your track record |
+| coordinator_record_feedback | After reviewing outcomes — capture specific lessons learned |
+
+**Feedback categories:**
+- **acceptance_ambiguity** — Success criteria or acceptance tests were vague or misleading.
+- **scope_too_large** — Ticket tried to do too much in one unit.
+- **missing_dependency** — Ticket needed work done by another ticket first but dependency was not declared.
+- **wrong_decomposition** — The way work was split didn't match reality.
+- **missing_context** — Worker lacked crucial information that should have been in the ticket.
 
 ## Worker mode (ticket execution)
 
