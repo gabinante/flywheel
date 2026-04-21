@@ -53,11 +53,13 @@ func TestLifecycleHandler_OnTicketStarted_RegistersClaims(t *testing.T) {
 					State:   plan.StateApproved,
 					Content: plan.Content{
 						Code: &plan.CodePlan{
-							FilePath:   "src/handler.go",
-							Language:   "go",
-							BeforeHash: "aaa",
-							AfterHash:  "bbb",
-							Hunks:      []plan.CodeHunk{{StartLine: 1, EndLine: 10, Content: "x", Operation: "modify"}},
+							Diffs: []plan.CodeDiff{{
+								FilePath:   "src/handler.go",
+								Language:   "go",
+								BeforeHash: "aaa",
+								AfterHash:  "bbb",
+								Hunks:      []plan.CodeHunk{{StartLine: 1, EndLine: 10, Content: "x", Operation: "modify"}},
+							}},
 						},
 					},
 				},
@@ -112,7 +114,7 @@ func TestLifecycleHandler_OnTicketStarted_SkipsRejectedPlans(t *testing.T) {
 					Backend: plan.BackendCode,
 					State:   plan.StateRejected,
 					Content: plan.Content{
-						Code: &plan.CodePlan{FilePath: "src/old.go", Language: "go", BeforeHash: "a", AfterHash: "b"},
+						Code: &plan.CodePlan{Diffs: []plan.CodeDiff{{FilePath: "src/old.go", Language: "go", BeforeHash: "a", AfterHash: "b"}}},
 					},
 				},
 				{
@@ -320,11 +322,13 @@ func TestLifecycleHandler_OnTicketStarted_DetectsConflicts(t *testing.T) {
 					State:   plan.StateApproved,
 					Content: plan.Content{
 						Code: &plan.CodePlan{
-							FilePath:   "src/shared.go",
-							Language:   "go",
-							BeforeHash: "xxx",
-							AfterHash:  "yyy",
-							Hunks:      []plan.CodeHunk{{StartLine: 5, EndLine: 15, Content: "conflict", Operation: "modify"}},
+							Diffs: []plan.CodeDiff{{
+								FilePath:   "src/shared.go",
+								Language:   "go",
+								BeforeHash: "xxx",
+								AfterHash:  "yyy",
+								Hunks:      []plan.CodeHunk{{StartLine: 5, EndLine: 15, Content: "conflict", Operation: "modify"}},
+							}},
 						},
 					},
 				},
@@ -378,7 +382,7 @@ func TestLifecycleHandler_OnTicketStarted_MultiplePlans(t *testing.T) {
 					Backend: plan.BackendCode,
 					State:   plan.StateApproved,
 					Content: plan.Content{
-						Code: &plan.CodePlan{FilePath: "src/api.go", Language: "go", BeforeHash: "a", AfterHash: "b"},
+						Code: &plan.CodePlan{Diffs: []plan.CodeDiff{{FilePath: "src/api.go", Language: "go", BeforeHash: "a", AfterHash: "b"}}},
 					},
 				},
 				{

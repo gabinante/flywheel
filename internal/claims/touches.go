@@ -30,6 +30,7 @@ func ExtractTouches(p *plan.Plan, environment string) []Touch {
 }
 
 // extractCodeTouches generates file_write touches from code plan diffs.
+// Each diff in the CodePlan represents a file being changed.
 func extractCodeTouches(c plan.Content, env string) []Touch {
 	if c.Code == nil {
 		return nil

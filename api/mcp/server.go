@@ -25,6 +25,7 @@ func NewServer(b *Backend) (*mcp.Server, error) {
 	RegisterFindingsTools(server, b)
 	RegisterCatalogTools(server, b)
 	RegisterRepoTools(server, b)
+	RegisterCoordinatorLearningTools(server, b)
 	registerResources(server)
 	return server, nil
 }

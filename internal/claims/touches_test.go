@@ -18,13 +18,15 @@ func TestExtractTouches_CodePlan(t *testing.T) {
 		Backend: plan.BackendCode,
 		Content: plan.Content{
 			Code: &plan.CodePlan{
-				FilePath:   "src/main.go",
-				Language:   "go",
-				BeforeHash: "abc123",
-				AfterHash:  "def456",
-				Hunks: []plan.CodeHunk{
-					{StartLine: 10, EndLine: 20, Content: "new code", Operation: "modify"},
-				},
+				Diffs: []plan.CodeDiff{{
+					FilePath:   "src/main.go",
+					Language:   "go",
+					BeforeHash: "abc123",
+					AfterHash:  "def456",
+					Hunks: []plan.CodeHunk{
+						{StartLine: 10, EndLine: 20, Content: "new code", Operation: "modify"},
+					},
+				}},
 			},
 		},
 	}
