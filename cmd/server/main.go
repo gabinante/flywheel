@@ -33,6 +33,7 @@ import (
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
 	"github.com/gabinante/flywheel/internal/review"
+	"github.com/gabinante/flywheel/internal/rollback"
 	"github.com/gabinante/flywheel/internal/ticket"
 	"github.com/gabinante/flywheel/internal/user"
 	"github.com/gabinante/flywheel/internal/workstream"
@@ -147,6 +148,10 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	}
 
 
+	// Rollback service for stage-specific rollback behavior.
+	rollbackSvc := rollback.NewService(ticketSvc, ticketSvc, bus)
+	rollbackSvc.SetLeaseRemover(queueSvc)
+
 	// Observation service for production signal tracking and attribution.
 	obsStore := observation.NewPostgresStore(pool)
 	obsSvc := observation.NewService(obsStore, bus)
@@ -197,6 +202,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			Review:     reviewSvc,
 			Org:        orgSvc,
 			AgentStore: agentStore,
+			Rollback:   rollbackSvc,
 		})
 		if err != nil {
 			log.Fatalf("mcp server: %v", err)
@@ -241,6 +247,11 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			AnthropicKey:   cfg.Dispatch.AnthropicKey,
 		}, bus, ticketSvc, projectSvc)
 		dispatcher.SetLeaseReleaser(queueSvc)
+		// Wire worktree cleanup for rollback when dispatcher manages worktrees.
+		rollbackSvc.SetWorktreeRemover(&dispatch.WorktreeManager{
+			BaseDir: cfg.Dispatch.WorktreeDir,
+			RepoDir: repoDir,
+		})
 		dispatcher.Start(ctx)
 	}
 
@@ -322,6 +333,10 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 	reviewSt := embedded.NewReviewStore(sqliteDB)
 	reviewSvc := review.NewService(reviewSt, ticketSvc, bus)
 
+	// Rollback service for embedded mode.
+	rollbackSvcEmbed := rollback.NewService(ticketSvc, ticketSvc, bus)
+	rollbackSvcEmbed.SetLeaseRemover(queueSvc)
+
 	// Run first-run wizard if no data exists yet.
 	firstRun := bootstrap.IsFirstRun(dataDir)
 	if firstRun {
@@ -370,6 +385,7 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		Review:     reviewSvc,
 		Org:        orgSvc,
 		AgentStore: agentSt,
+		Rollback:   rollbackSvcEmbed,
 	})
 	if err != nil {
 		log.Fatalf("mcp server: %v", err)

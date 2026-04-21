@@ -6,6 +6,7 @@ import (
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
+	"github.com/gabinante/flywheel/internal/rollback"
 	"github.com/gabinante/flywheel/internal/workstream"
 	"github.com/gabinante/flywheel/internal/review"
 	"github.com/gabinante/flywheel/internal/ticket"
@@ -21,6 +22,8 @@ type Backend struct {
 	Review     *review.Service
 	Org        *org.Service
 	AgentStore agent.AgentStore
+
+	Rollback   *rollback.Service
 
 	// DefaultAgentID is used as a fallback when agent_id is not passed in args
 	// and not available from HTTP auth context (e.g. stdio mode with FLYWHEEL_TOKEN).

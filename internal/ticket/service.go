@@ -211,7 +211,7 @@ func (s *Service) TransitionTicket(ctx context.Context, id string, trigger strin
 			assignedTo = aid
 		}
 	}
-	if trigger == TriggerLeaseExpired || trigger == TriggerReject {
+	if trigger == TriggerLeaseExpired || trigger == TriggerReject || trigger == TriggerRollback {
 		assignedTo = ""
 	}
 	if err := s.store.UpdateState(ctx, id, t.Version, newState, assignedTo); err != nil {
@@ -361,6 +361,8 @@ func triggerToEventType(trigger string, newState State) string {
 		return events.EventTicketInvalidated
 	case TriggerReject:
 		return events.EventTicketRejected
+	case TriggerRollback:
+		return events.EventTicketRolledBack
 	case TriggerCancel:
 		return events.EventTicketCancelled
 	case TriggerFail:
