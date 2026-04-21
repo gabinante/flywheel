@@ -16,6 +16,7 @@ import (
 	apierrors "github.com/gabinante/flywheel/internal/errors"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/gitnotes"
+	investigationPkg "github.com/gabinante/flywheel/internal/investigation"
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
@@ -292,6 +293,23 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"required":             []string{"ticket_id"},
 		"additionalProperties": false,
 	}}, wrap(getTraceHandler))
+	mcp.AddTool(s, &mcp.Tool{Name: "dispatch_investigation", Description: "Dispatch a scoped investigation to a subagent. The coordinator uses this to gather facts before designing tickets. Returns structured findings: claims with file:line citations, negative space (what was NOT found), and open questions. Investigations are read-only, one level deep (subagents cannot dispatch further investigations), and token-budget constrained. Use during the 'investigate' phase of coordinator workflow.", InputSchema: map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"project_id":       map[string]any{"type": "string", "description": "Project ID"},
+			"question":         map[string]any{"type": "string", "description": "The specific research question to investigate"},
+			"files":            map[string]any{"type": "string", "description": "JSON array of file glob patterns to scope the investigation (optional)"},
+			"symbols":          map[string]any{"type": "string", "description": "JSON array of symbol names to investigate (optional)"},
+			"packages":         map[string]any{"type": "string", "description": "JSON array of package/directory paths to scope (optional)"},
+			"exclude_files":    map[string]any{"type": "string", "description": "JSON array of file patterns to exclude (optional)"},
+			"constraints":      map[string]any{"type": "string", "description": "JSON array of natural language constraints (optional)"},
+			"token_budget":     map[string]any{"type": "integer", "description": "Maximum tokens for the response (default: 4000, max: 16000)", "minimum": 100, "maximum": 16000},
+			"parent_ticket_id": map[string]any{"type": "string", "description": "Ticket ID that triggered this investigation (for tracing, optional)"},
+			"agent_id":         map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+		},
+		"required":             []string{"project_id", "question"},
+		"additionalProperties": false,
+	}}, wrap(dispatchInvestigationHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "approve_ticket", Description: "Approve a ticket in awaiting_review. Moves it to done. Call when the user says to approve, ship it, looks good, etc. reviewer_id is inferred from OAuth.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -1563,6 +1581,70 @@ func getTraceHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp
 			return toolErrTriple(apierrors.MapError(err))
 		}
 		return jsonResult(trace)
+}
+
+func dispatchInvestigationHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
+	if b.Investigation == nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInternal, "investigation service not configured", false))
+	}
+
+	projectID, err := requireString(args, "project_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	question, err := requireString(args, "question")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+
+	// Build the investigation request.
+	req := &investigationPkg.Request{
+		ProjectID:      projectID,
+		Question:       question,
+		TokenBudget:    getInt(args, "token_budget", 0),
+		ParentTicketID: getString(args, "parent_ticket_id", ""),
+		RequestedBy:    getString(args, "agent_id", ""),
+	}
+
+	// Parse optional scope arrays.
+	if filesStr := getString(args, "files", ""); filesStr != "" {
+		var files []string
+		if json.Unmarshal([]byte(filesStr), &files) == nil {
+			req.Scope.Files = files
+		}
+	}
+	if symbolsStr := getString(args, "symbols", ""); symbolsStr != "" {
+		var symbols []string
+		if json.Unmarshal([]byte(symbolsStr), &symbols) == nil {
+			req.Scope.Symbols = symbols
+		}
+	}
+	if packagesStr := getString(args, "packages", ""); packagesStr != "" {
+		var packages []string
+		if json.Unmarshal([]byte(packagesStr), &packages) == nil {
+			req.Scope.Packages = packages
+		}
+	}
+	if excludeStr := getString(args, "exclude_files", ""); excludeStr != "" {
+		var excludeFiles []string
+		if json.Unmarshal([]byte(excludeStr), &excludeFiles) == nil {
+			req.Scope.ExcludeFiles = excludeFiles
+		}
+	}
+	if constraintsStr := getString(args, "constraints", ""); constraintsStr != "" {
+		var constraints []string
+		if json.Unmarshal([]byte(constraintsStr), &constraints) == nil {
+			req.Scope.Constraints = constraints
+		}
+	}
+
+	// Dispatch the investigation (synchronous).
+	resp, err := b.Investigation.Dispatch(ctx, req)
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInternal, "investigation dispatch failed: "+err.Error(), true))
+	}
+
+	return jsonResult(resp)
 }
 
 func approveTicketHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {

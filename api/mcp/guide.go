@@ -68,6 +68,7 @@ Shapes:
 | approve_ticket | Approve a ticket in awaiting_review (moves to done). Use **only** when the user explicitly says to approve, ship it, looks good, etc. Do not approve to "sync status" without their say-so. |
 | reject_ticket | Reject a ticket with required notes; returns to executing so the agent can fix and resubmit. |
 | reopen_ticket | Move a ticket from **done** back to **awaiting_review** (e.g. mistaken approval). Optional **notes**. Use **only** when the user explicitly asks to reopen or return a completed ticket for review. |
+| dispatch_investigation | **(Coordinator only)** Dispatch a scoped research investigation to a subagent. Returns structured findings (claims with citations, negative space, open questions). Use during the investigate phase before authoring tickets. One level deep — subagents cannot dispatch further investigations. |
 
 ## Ticket states
 

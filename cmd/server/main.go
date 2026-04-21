@@ -23,6 +23,7 @@ import (
 	"github.com/gabinante/flywheel/internal/dispatch"
 	"github.com/gabinante/flywheel/internal/embedded"
 	"github.com/gabinante/flywheel/internal/execution"
+	"github.com/gabinante/flywheel/internal/investigation"
 	"github.com/gabinante/flywheel/internal/mirror"
 	"github.com/gabinante/flywheel/internal/mirror/jira"
 	"github.com/gabinante/flywheel/internal/mirror/linear"
@@ -163,6 +164,24 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		CostSvc:       costSvc,
 	}
 
+	// Investigation service: uses the same worker infrastructure as dispatch.
+	// Configured when dispatch is enabled; nil-safe in the MCP tool handler.
+	var investigationSvc *investigation.Service
+	if cfg.Dispatch.Enabled {
+		repoDir, _ := os.Getwd()
+		invWorker := dispatch.NewInvestigationWorker(dispatch.Config{
+			ClaudePath:   cfg.Dispatch.ClaudePath,
+			AgentDriver:  cfg.Dispatch.AgentDriver,
+			AgentCLIPath: cfg.Dispatch.AgentCLIPath,
+			APIKey:       cfg.Dispatch.APIKey,
+			RepoDir:      repoDir,
+		})
+		investigationSvc = investigation.NewService(invWorker, investigation.Config{
+			ServerURL: cfg.Auth.BaseURL,
+			WorkDir:   repoDir,
+		})
+	}
+
 	var authMiddleware func(http.Handler) http.Handler
 	var authHandler *rest.AuthHandler
 	var oauthHandler *rest.OAuthHandler
@@ -189,14 +208,15 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			JWTExpirySec: 604800, // 7 days in seconds for token response
 		}
 		mcpSrv, err := mcp.NewServer(&mcp.Backend{
-			Project:    projectSvc,
-			WorkStream: workStreamSvc,
-			Ticket:     ticketSvc,
-			Queue:      queueSvc,
-			Trace:      execSvc,
-			Review:     reviewSvc,
-			Org:        orgSvc,
-			AgentStore: agentStore,
+			Project:       projectSvc,
+			WorkStream:    workStreamSvc,
+			Ticket:        ticketSvc,
+			Queue:         queueSvc,
+			Trace:         execSvc,
+			Review:        reviewSvc,
+			Org:           orgSvc,
+			AgentStore:    agentStore,
+			Investigation: investigationSvc,
 		})
 		if err != nil {
 			log.Fatalf("mcp server: %v", err)
