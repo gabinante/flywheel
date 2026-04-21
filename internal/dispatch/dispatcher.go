@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -25,6 +26,12 @@ type TicketGetter interface {
 // ProjectGetter retrieves projects.
 type ProjectGetter interface {
 	GetProject(ctx context.Context, id string) (*project.Project, error)
+}
+
+// RepoResolver resolves the repository URL and local path for a ticket's target repo.
+// Returns repoURL, defaultBranch, error. Used for multi-repo project support.
+type RepoResolver interface {
+	ResolveRepo(ctx context.Context, projectID, targetRepo string) (repoURL, defaultBranch string, err error)
 }
 
 // LeaseReleaser releases a ticket's lease and transitions it back to draft.
@@ -65,7 +72,9 @@ type Dispatcher struct {
 	projects      ProjectGetter
 	worker        Worker
 	worktrees     *WorktreeManager
-	leaseReleaser LeaseReleaser // nil-safe: if nil, worker exit does not release lease (Layer 2 TTL handles it)
+	clones        *MultiRepoCloneManager // nil-safe: only used for multi-repo projects
+	repoResolver  RepoResolver            // nil-safe: only used for multi-repo projects
+	leaseReleaser LeaseReleaser           // nil-safe: if nil, worker exit does not release lease (Layer 2 TTL handles it)
 
 	mu       sync.Mutex
 	active   map[string]context.CancelFunc // ticketID → cancel
@@ -120,6 +129,7 @@ func New(cfg Config, bus events.Bus, tickets TicketGetter, projects ProjectGette
 			BaseDir: cfg.WorktreeDir,
 			RepoDir: cfg.RepoDir,
 		},
+		clones: NewMultiRepoCloneManager(filepath.Join(cfg.WorktreeDir, ".clones")),
 		active: make(map[string]context.CancelFunc),
 	}
 	return d
@@ -170,6 +180,12 @@ func (d *Dispatcher) Stop() {
 // Call this after construction to wire the queue service without circular imports.
 func (d *Dispatcher) SetLeaseReleaser(lr LeaseReleaser) {
 	d.leaseReleaser = lr
+}
+
+// SetRepoResolver configures multi-repo resolution. When set, tickets with
+// target_repo are resolved to the correct repository for worktree creation.
+func (d *Dispatcher) SetRepoResolver(rr RepoResolver) {
+	d.repoResolver = rr
 }
 
 func (d *Dispatcher) scanPending(ctx context.Context) {
@@ -495,15 +511,30 @@ func (d *Dispatcher) runTypedWorker(ctx context.Context, t *ticket.Ticket, wt Wo
 	prompt := AssembleTypedWorkerPrompt(wt, proj, t, depOutputs, d.cfg.ServerURL, d.cfg.AgentID)
 
 	// Determine working directory.
+	// Multi-repo: if the ticket targets a specific repo, resolve and clone it.
 	var workDir string
+	repoDir := d.cfg.RepoDir
+	if t.TargetRepo != "" && d.repoResolver != nil && d.clones != nil {
+		repoURL, _, resolveErr := d.repoResolver.ResolveRepo(ctx, t.ProjectID, t.TargetRepo)
+		if resolveErr != nil {
+			log.Printf("dispatch: resolve repo %s for %s: %v (falling back to primary)", t.TargetRepo, t.ID, resolveErr)
+		} else if repoURL != "" {
+			cloneDir, cloneErr := d.clones.EnsureClone(repoURL, t.ProjectID+"/"+t.TargetRepo)
+			if cloneErr != nil {
+				return fmt.Errorf("clone repo %s: %w", t.TargetRepo, cloneErr)
+			}
+			repoDir = cloneDir
+		}
+	}
+
 	if d.cfg.DockerEnabled {
 		// Docker mode: container handles its own workspace; pass repo dir for context.
-		workDir = d.cfg.RepoDir
+		workDir = repoDir
 	} else {
 		// Host mode: create git worktree for isolation.
 		branch := "ticket/" + t.ID
 		var err error
-		workDir, err = d.worktrees.Create(t.ID, branch)
+		workDir, err = d.worktrees.CreateFromRepo(t.ID, branch, repoDir)
 		if err != nil {
 			return err
 		}
