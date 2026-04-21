@@ -129,39 +129,4 @@
   }
 }
 
-/* Pending reviews page — queue cleared celebration */
-@keyframes reviews-confetti-fall {
-  0% {
-    transform: translate3d(0, 0, 0) rotate(0deg);
-    opacity: 1;
-  }
-  100% {
-    transform: translate3d(0, 22rem, 0) rotate(720deg);
-    opacity: 0;
-  }
-}
-
-@keyframes reviews-celebrate-pop {
-  0% {
-    transform: scale(0.5);
-    opacity: 0;
-  }
-  65% {
-    transform: scale(1.06);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-@keyframes reviews-sparkle {
-  0%,
-  100% {
-    transform: rotate(-6deg) scale(1);
-  }
-  50% {
-    transform: rotate(6deg) scale(1.12);
-  }
-}
+/* Pending reviews page — animations now handled by framer-motion */
