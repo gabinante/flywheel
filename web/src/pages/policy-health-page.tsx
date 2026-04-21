@@ -317,7 +317,7 @@ function PolicyCard({
   }
 
   return (
-    <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
+    <Card className="border-white/10 bg-card backdrop-blur-md">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -508,7 +508,7 @@ function MetricTile({
           : 'text-foreground'
 
   return (
-    <div className="bg-muted/30 rounded-lg p-3">
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-3 backdrop-blur-sm">
       <p className="text-muted-foreground text-xs">{label}</p>
       <p className={`text-lg font-semibold ${colorClass}`}>{value}</p>
     </div>

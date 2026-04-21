@@ -46,7 +46,7 @@ export function OrgsPage() {
         {orgs.map((o) => (
           <li key={o.id}>
             <Link to={`/orgs/${o.id}/projects`}>
-              <Card className="transition-colors hover:bg-muted/40">
+              <Card className="transition-colors hover:bg-white/[0.06]">
                 <CardHeader>
                   <div className="flex flex-wrap items-center gap-2">
                     <CardTitle>{o.name ?? o.slug ?? o.id}</CardTitle>

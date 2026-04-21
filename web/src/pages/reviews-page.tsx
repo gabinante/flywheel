@@ -61,17 +61,17 @@ function TraceSummary({ steps }: { steps: TraceStep[] | null }) {
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap gap-2 text-xs">
         {counts.tool_call > 0 && (
-          <span className="bg-muted rounded-md px-2 py-0.5">
+          <span className="rounded-lg border border-white/[0.06] bg-white/[0.04] px-2 py-0.5">
             {counts.tool_call} tool call{counts.tool_call !== 1 ? 's' : ''}
           </span>
         )}
         {counts.observation > 0 && (
-          <span className="bg-muted rounded-md px-2 py-0.5">
+          <span className="rounded-lg border border-white/[0.06] bg-white/[0.04] px-2 py-0.5">
             {counts.observation} observation{counts.observation !== 1 ? 's' : ''}
           </span>
         )}
         {counts.thought > 0 && (
-          <span className="bg-muted rounded-md px-2 py-0.5">
+          <span className="rounded-lg border border-white/[0.06] bg-white/[0.04] px-2 py-0.5">
             {counts.thought} thought{counts.thought !== 1 ? 's' : ''}
           </span>
         )}
@@ -136,7 +136,7 @@ function OutputsSummary({ outputs }: { outputs: unknown }) {
         </a>
       )}
       {!summary && !prUrl && (
-        <pre className="bg-muted max-h-24 overflow-auto rounded-md p-2 font-mono text-xs">
+        <pre className="max-h-24 overflow-auto rounded-xl border border-white/10 bg-white/[0.03] p-2 font-mono text-xs backdrop-blur-sm">
           {JSON.stringify(o, null, 2)}
         </pre>
       )}
@@ -481,7 +481,7 @@ export function ReviewsPage() {
                       className={`inline-flex size-5 items-center justify-center rounded-full text-xs font-medium transition-colors ${
                         isActive
                           ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted text-muted-foreground'
+                          : 'bg-white/[0.06] text-muted-foreground'
                       }`}
                     >
                       {idx + 1}
@@ -547,13 +547,13 @@ export function ReviewsPage() {
                     <label className="flex flex-col gap-1 text-sm">
                       <span className="text-muted-foreground text-xs">
                         Review notes{' '}
-                        <kbd className="bg-muted rounded border border-border px-1 font-mono text-[10px]">
+                        <kbd className="rounded-md border border-white/10 bg-white/[0.06] px-1 font-mono text-[10px]">
                           n
                         </kbd>
                       </span>
                       <textarea
                         ref={(el) => { notesRefs.current[idx] = el }}
-                        className="border-input bg-background min-h-[60px] rounded-md border px-3 py-2 text-sm focus:ring-1 focus:ring-primary/50 focus:outline-none"
+                        className="min-h-[60px] rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm backdrop-blur-sm focus:border-primary/40 focus:outline-none"
                         value={notesById[t.id ?? ''] ?? ''}
                         onChange={(e) =>
                           setNotesById((prev) => ({

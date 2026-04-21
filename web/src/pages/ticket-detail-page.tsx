@@ -320,7 +320,7 @@ export function TicketDetailPage() {
       <ExecutionTraceCard ticketId={ticketId} ticketState={ticket.state} />
 
       {reviewBanner?.kind === 'reopened' ? (
-        <Card className="border-primary/20 bg-primary/5">
+        <Card className="border-primary/20 bg-primary/[0.07] backdrop-blur-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">Back in review queue</CardTitle>
           </CardHeader>
@@ -363,8 +363,8 @@ export function TicketDetailPage() {
           className={
             reviewBanner.decision === 'rejected' &&
             (reviewBanner.kind === 'simple' || reviewBanner.kind === 'followup-error')
-              ? 'border-destructive/30 bg-destructive/5'
-              : 'border-primary/20 bg-primary/5'
+              ? 'border-destructive/20 bg-destructive/[0.07] backdrop-blur-sm'
+              : 'border-primary/20 bg-primary/[0.07] backdrop-blur-sm'
           }
         >
           <CardHeader className="pb-2">

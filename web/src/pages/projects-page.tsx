@@ -74,7 +74,7 @@ export function ProjectsPage() {
         {projects.map((p) => (
           <li key={p.id}>
             <Link to={`/orgs/${orgId}/projects/${p.id}`}>
-              <Card className="transition-colors hover:bg-muted/40">
+              <Card className="transition-colors hover:bg-white/[0.06]">
                 <CardHeader>
                   <div className="flex flex-wrap items-center gap-2">
                     <CardTitle>{p.name ?? p.slug ?? p.id}</CardTitle>
