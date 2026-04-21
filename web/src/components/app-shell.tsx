@@ -1,5 +1,6 @@
 import { Link, Outlet } from 'react-router-dom'
 
+import { DispatchStatusIndicator } from '@/components/dispatch-status-indicator'
 import { RightRail, RightRailToggle } from '@/components/right-rail'
 import { RightRailWidgets } from '@/components/right-rail-widgets'
 import { Button } from '@/components/ui/button'
@@ -33,6 +34,7 @@ export function AppShell() {
               ) : null}
             </nav>
             <div className="flex items-center gap-2">
+              {token ? <DispatchStatusIndicator /> : null}
               <RightRailToggle />
               {token ? (
                 <Button type="button" variant="outline" size="sm" onClick={signOut}>
