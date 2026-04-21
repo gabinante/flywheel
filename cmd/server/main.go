@@ -328,8 +328,9 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			DockerImage:    cfg.Dispatch.DockerImage,
 			DockerMemory:   cfg.Dispatch.DockerMemory,
 			DockerCPUs:     cfg.Dispatch.DockerCPUs,
-			DockerFirewall: cfg.Dispatch.DockerFirewall,
-			AnthropicKey:   cfg.Dispatch.AnthropicKey,
+			DockerFirewall:    cfg.Dispatch.DockerFirewall,
+			AnthropicKey:      cfg.Dispatch.AnthropicKey,
+			ReconcileInterval: cfg.Dispatch.ReconcileInterval,
 		}, bus, ticketSvc, projectSvc)
 		dispatcher.SetLeaseReleaser(queueSvc)
 		dispatcher.Start(ctx)
