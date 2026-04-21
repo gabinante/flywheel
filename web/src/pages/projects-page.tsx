@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
+import { StaggerItem, StaggerList } from '@/components/stagger-list'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/contexts/use-auth'
@@ -70,11 +71,11 @@ export function ProjectsPage() {
           Projects{orgName ? ` — ${orgName}` : ''}
         </h1>
       </div>
-      <ul className="flex flex-col gap-3">
+      <StaggerList className="flex flex-col gap-3">
         {projects.map((p) => (
-          <li key={p.id}>
+          <StaggerItem key={p.id}>
             <Link to={`/orgs/${orgId}/projects/${p.id}`}>
-              <Card className="transition-colors hover:bg-muted/40">
+              <Card className="hover:bg-muted/40">
                 <CardHeader>
                   <div className="flex flex-wrap items-center gap-2">
                     <CardTitle>{p.name ?? p.slug ?? p.id}</CardTitle>
@@ -88,9 +89,9 @@ export function ProjectsPage() {
                 </CardHeader>
               </Card>
             </Link>
-          </li>
+          </StaggerItem>
         ))}
-      </ul>
+      </StaggerList>
       {projects.length === 0 ? (
         <p className="text-muted-foreground text-sm">No projects in this org.</p>
       ) : null}

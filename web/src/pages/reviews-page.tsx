@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import { KeyboardShortcutHelp } from '@/components/keyboard-shortcut-help'
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { ReviewQueueCelebration } from '@/components/review-queue-celebration'
+import { StaggerItem, StaggerList } from '@/components/stagger-list'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -446,14 +447,14 @@ export function ReviewsPage() {
       )}
 
       {/* Ticket list */}
-      <ul className="flex flex-col gap-3" role="listbox" aria-label="Review queue">
+      <StaggerList className="flex flex-col gap-3" role="listbox" aria-label="Review queue">
         {tickets.map((t, idx) => {
           const isActive = idx === activeIndex
           const isExpanded = expandedIds.has(t.id ?? '')
           const trace = traceCache[t.id ?? '']
 
           return (
-            <li
+            <StaggerItem
               key={t.id}
               ref={(el) => { itemRefs.current[idx] = el }}
               role="option"
@@ -604,10 +605,10 @@ export function ReviewsPage() {
                   </CardContent>
                 )}
               </Card>
-            </li>
+            </StaggerItem>
           )
         })}
-      </ul>
+      </StaggerList>
 
       {/* Empty states */}
       {tickets.length === 0 && justEmptiedQueue && (

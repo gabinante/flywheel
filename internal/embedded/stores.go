@@ -570,9 +570,18 @@ func (s *TicketStore) GetByProject(_ context.Context, projectID string, workStre
 }
 
 func (s *TicketStore) ListByState(_ context.Context, projectID string, state ticket.State) ([]*ticket.Ticket, error) {
-	rows, err := s.db.Query(
-		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, target_repo, assigned_to, created_by, created_at, updated_at
-		 FROM tickets WHERE project_id = ? AND state = ? ORDER BY priority, created_at`, projectID, string(state))
+	var q string
+	var args []any
+	if projectID != "" {
+		q = `SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, target_repo, assigned_to, created_by, created_at, updated_at
+		     FROM tickets WHERE project_id = ? AND state = ? ORDER BY priority, created_at`
+		args = []any{projectID, string(state)}
+	} else {
+		q = `SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, target_repo, assigned_to, created_by, created_at, updated_at
+		     FROM tickets WHERE state = ? ORDER BY priority, created_at`
+		args = []any{string(state)}
+	}
+	rows, err := s.db.Query(q, args...)
 	if err != nil {
 		return nil, err
 	}

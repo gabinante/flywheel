@@ -1,5 +1,6 @@
-import { Link, Outlet } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 
+import { AnimatedOutlet } from '@/components/animated-outlet'
 import { RightRail, RightRailToggle } from '@/components/right-rail'
 import { RightRailWidgets } from '@/components/right-rail-widgets'
 import { Button } from '@/components/ui/button'
@@ -49,7 +50,7 @@ export function AppShell() {
         <div className="flex flex-1 overflow-hidden">
           <main className="flex-1 overflow-y-auto">
             <div className="mx-auto w-full max-w-4xl p-4">
-              <Outlet />
+              <AnimatedOutlet />
             </div>
           </main>
           <RightRail />

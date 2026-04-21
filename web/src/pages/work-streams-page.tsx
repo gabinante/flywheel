@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
+import { StaggerItem, StaggerList } from '@/components/stagger-list'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -192,13 +193,13 @@ export function WorkStreamsPage() {
                   : 'No work streams yet.'}
             </p>
           ) : !streamsErr && streams && streams.length > 0 ? (
-            <ul className="flex flex-col gap-2">
+            <StaggerList className="flex flex-col gap-2">
               {streams.map((ws) => {
                 if (!ws.id) return null
                 return (
-                  <li
+                  <StaggerItem
                     key={ws.id}
-                    className="border-border flex flex-wrap items-stretch gap-2 rounded-lg border p-2"
+                    className="border-border flex flex-wrap items-stretch gap-2 rounded-lg border p-2 transition-all duration-200 hover:border-primary/20"
                   >
                     <Link
                       to={`/orgs/${orgId}/projects/${projectId}/tickets?work_stream_id=${encodeURIComponent(ws.id)}`}
@@ -225,10 +226,10 @@ export function WorkStreamsPage() {
                         Manage
                       </Link>
                     </Button>
-                  </li>
+                  </StaggerItem>
                 )
               })}
-            </ul>
+            </StaggerList>
           ) : null}
         </CardContent>
       </Card>
