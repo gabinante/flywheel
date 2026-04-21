@@ -8,6 +8,7 @@ import (
 	"github.com/gabinante/flywheel/internal/investigation"
 	"github.com/gabinante/flywheel/internal/notification"
 	"github.com/gabinante/flywheel/internal/org"
+	"github.com/gabinante/flywheel/internal/pillar"
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
 	"github.com/gabinante/flywheel/internal/review"
@@ -29,6 +30,7 @@ type Backend struct {
 	Claims        *claims.Service
 	Notification  *notification.Service
 	Repos         *project.RepositoryService // nil-safe: multi-repo features disabled when nil
+	Pillar        *pillar.Service
 
 	// CodeIntel is the pluggable code intelligence provider (Layer 3).
 	// When nil, code_* tools are not registered. Set via PluginRegistry.

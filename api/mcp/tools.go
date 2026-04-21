@@ -29,6 +29,9 @@ import (
 
 type sessionContextKey struct{}
 
+// wrapFn is the signature for the wrap closure used when registering tools.
+type wrapFn = func(func(*Backend, context.Context, map[string]any) (*mcp.CallToolResult, any, error)) func(context.Context, *mcp.CallToolRequest, map[string]any) (*mcp.CallToolResult, any, error)
+
 // RegisterTools adds all Flywheel MCP tools to the MCP server (official go-sdk).
 func RegisterTools(s *mcp.Server, b *Backend) {
 	if b == nil {
@@ -455,6 +458,9 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"required":             []string{"project_id"},
 		"additionalProperties": false,
 	}}, wrap(getDismissalRatesHandler))
+
+	// Pillar and strategy layer (Layer 15).
+	registerPillarTools(s, b, wrap)
 }
 
 func requireString(args map[string]any, key string) (string, error) {

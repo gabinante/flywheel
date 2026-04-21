@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/gabinante/flywheel/internal/cost"
+	"github.com/gabinante/flywheel/internal/pillar"
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
 	"github.com/gabinante/flywheel/internal/ticket"
@@ -116,6 +117,16 @@ func MapError(err error) *StructuredError {
 	}
 	if errors.Is(err, cost.ErrInvalidBudget) {
 		return New(CodeInvalidInput, err.Error(), false)
+	}
+	// Pillar layer errors (Layer 15).
+	if errors.Is(err, pillar.ErrEntryNotFound) || errors.Is(err, pillar.ErrClaimNotFound) || errors.Is(err, pillar.ErrEvaluationNotFound) {
+		return New(CodeNotFound, err.Error(), false)
+	}
+	if errors.Is(err, pillar.ErrInvalidPillarType) || errors.Is(err, pillar.ErrInvalidClaimStatus) {
+		return New(CodeInvalidInput, err.Error(), false)
+	}
+	if errors.Is(err, pillar.ErrVersionConflict) {
+		return New(CodeConflict, err.Error(), true)
 	}
 	msg := err.Error()
 	switch {

@@ -36,6 +36,7 @@ import (
 	notifysms "github.com/gabinante/flywheel/internal/notification/sms"
 	"github.com/gabinante/flywheel/internal/observation"
 	"github.com/gabinante/flywheel/internal/org"
+	"github.com/gabinante/flywheel/internal/pillar"
 	"github.com/gabinante/flywheel/internal/plan"
 	"github.com/gabinante/flywheel/internal/policy"
 	"github.com/gabinante/flywheel/internal/project"
@@ -172,6 +173,10 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	// Lifecycle handler: auto-register claims on ticket.started, auto-release on completion.
 	_ = claims.NewLifecycleHandler(bus, claimsSvc, planSvc, ticketSvc)
 
+	// Pillar and strategy layer (Layer 15).
+	pillarStore := pillar.NewPostgresStore(pool)
+	pillarSvc := pillar.NewService(pillarStore)
+
 	// Observation service for production signal tracking and attribution.
 	obsStore := observation.NewPostgresStore(pool)
 	obsSvc := observation.NewService(obsStore, bus)
@@ -277,6 +282,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			Notification:   notifySvc,
 			Catalog:        catalogSvc,
 			CatalogScanner: catalogScanner,
+			Pillar:         pillarSvc,
 		})
 		if err != nil {
 			log.Fatalf("mcp server: %v", err)
@@ -342,9 +348,10 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			OrgSvc:     orgSvc,
 			AgentStore: agentStore,
 		},
-		ClaimsHandler: &rest.ClaimsHandler{ClaimsSvc: claimsSvc},
-		HooksHandler:  &rest.HooksHandler{Client: hooksClient},
-		WebDist:       cfg.Server.WebDist,
+		ClaimsHandler:  &rest.ClaimsHandler{ClaimsSvc: claimsSvc},
+		HooksHandler:   &rest.HooksHandler{Client: hooksClient},
+		PillarsHandler: &rest.PillarsHandler{PillarSvc: pillarSvc},
+		WebDist:        cfg.Server.WebDist,
 	})
 
 	serve(ctx, cfg, router, dispatcher)
@@ -404,6 +411,8 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 	execSvc := execution.NewService(execSt, leaseValidator)
 	reviewSt := embedded.NewReviewStore(sqliteDB)
 	reviewSvc := review.NewService(reviewSt, ticketSvc, bus)
+	pillarSt := embedded.NewPillarStore(sqliteDB)
+	pillarSvc := pillar.NewService(pillarSt)
 
 	// Hooks: change event publication library + gap detection (spec v0.2 §2.4).
 	hooksClient := hooks.NewClient(bus)
@@ -482,6 +491,7 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		Findings:       embeddedFindingsProvider,
 		Catalog:        catalogSvc,
 		CatalogScanner: catalogScanner,
+		Pillar:         pillarSvc,
 	})
 	if err != nil {
 		log.Fatalf("mcp server: %v", err)
@@ -509,6 +519,7 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		AgentsHandler:  &rest.AgentsHandler{AgentSvc: agentSvc},
 		HooksHandler:   &rest.HooksHandler{Client: hooksClient},
 		CatalogHandler: &rest.CatalogHandler{Svc: catalogSvc, Scanner: catalogScanner},
+		PillarsHandler: &rest.PillarsHandler{PillarSvc: pillarSvc},
 		WebDist:        cfg.Server.WebDist,
 	})
 
