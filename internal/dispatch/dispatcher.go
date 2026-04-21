@@ -445,7 +445,32 @@ func (d *Dispatcher) spawn(ctx context.Context, t *ticket.Ticket) {
 	log.Printf("dispatch: spawned worker for %s (%d/%d active)", t.ID, d.activeCount(), d.cfg.MaxWorkers)
 }
 
+// DetermineWorkerType selects the appropriate worker type based on ticket state
+// and context. This is the routing logic that decides what kind of agent to spawn.
+func DetermineWorkerType(t *ticket.Ticket) WorkerType {
+	// Check if the ticket has an explicit worker_type in its inputs.
+	if wt, ok := t.Inputs["worker_type"].(string); ok {
+		parsed := WorkerType(wt)
+		if parsed.IsValid() {
+			return parsed
+		}
+	}
+
+	// Route based on ticket state and type.
+	switch t.State {
+	case ticket.StateAwaitingValidation: // also matches StateAwaitingReview (alias)
+		return WorkerTypeValidator
+	default:
+		// Default to executor for implementation work.
+		return WorkerTypeExecutor
+	}
+}
+
 func (d *Dispatcher) runWorker(ctx context.Context, t *ticket.Ticket) error {
+	return d.runTypedWorker(ctx, t, DetermineWorkerType(t))
+}
+
+func (d *Dispatcher) runTypedWorker(ctx context.Context, t *ticket.Ticket, wt WorkerType) error {
 	// Get project for context pack.
 	proj, err := d.projects.GetProject(ctx, t.ProjectID)
 	if err != nil {
@@ -466,8 +491,8 @@ func (d *Dispatcher) runWorker(ctx context.Context, t *ticket.Ticket) error {
 		}
 	}
 
-	// Assemble prompt.
-	prompt := AssembleWorkerPrompt(proj, t, depOutputs, d.cfg.ServerURL, d.cfg.AgentID)
+	// Assemble type-specific prompt.
+	prompt := AssembleTypedWorkerPrompt(wt, proj, t, depOutputs, d.cfg.ServerURL, d.cfg.AgentID)
 
 	// Determine working directory.
 	var workDir string
@@ -491,17 +516,21 @@ func (d *Dispatcher) runWorker(ctx context.Context, t *ticket.Ticket) error {
 	case <-time.After(100 * time.Millisecond):
 	}
 
+	// Build type-specific task prompt.
+	taskMsg := buildTypedTaskPrompt(wt, t.ID, t.ProjectID)
+
+	log.Printf("dispatch: running %s worker for %s", wt, t.ID)
+
 	// Spawn worker.
-	taskMsg := buildTaskPrompt(t.ID, t.ProjectID)
 	result, err := d.worker.Spawn(ctx, t.ID, t.ProjectID, prompt, taskMsg, workDir, d.cfg.ServerURL)
 	if err != nil {
 		return err
 	}
 
 	if !result.Success {
-		log.Printf("dispatch: worker %s completed with error: %s\nOutput: %s", t.ID, result.Error, result.Output)
+		log.Printf("dispatch: %s worker %s completed with error: %s\nOutput: %s", wt, t.ID, result.Error, result.Output)
 	} else {
-		log.Printf("dispatch: worker %s completed successfully", t.ID)
+		log.Printf("dispatch: %s worker %s completed successfully", wt, t.ID)
 	}
 
 	return nil
@@ -593,14 +622,16 @@ func (d *Dispatcher) spawnReviewer(ctx context.Context, t *ticket.Ticket) {
 	log.Printf("dispatch: spawned reviewer for %s (%d/%d active)", t.ID, d.activeCount(), d.cfg.MaxWorkers)
 }
 
-// runReviewer spawns a claude session that reviews the ticket's PR and approves or rejects.
+// runReviewer spawns a validator worker that reviews the ticket's PR and approves or rejects.
 func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
 	proj, err := d.projects.GetProject(ctx, t.ProjectID)
 	if err != nil {
 		return err
 	}
 
-	prompt := AssembleReviewerPrompt(proj, t, d.cfg.ServerURL, d.cfg.AgentID)
+	// Use the typed validator prompt for consistency.
+	depOutputs := make(map[string]map[string]any)
+	prompt := AssembleTypedWorkerPrompt(WorkerTypeValidator, proj, t, depOutputs, d.cfg.ServerURL, d.cfg.AgentID)
 
 	// Reviewer works in the repo dir (needs access to the code for `gh` and `make test`).
 	// Use the existing worktree if available (the worker's branch), otherwise the main repo.
@@ -615,16 +646,18 @@ func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
 	case <-time.After(100 * time.Millisecond):
 	}
 
-	taskMsg := buildReviewerTaskPrompt(t.ID)
+	log.Printf("dispatch: running validator worker for %s", t.ID)
+
+	taskMsg := buildTypedTaskPrompt(WorkerTypeValidator, t.ID, t.ProjectID)
 	result, err := d.worker.Spawn(ctx, t.ID, t.ProjectID, prompt, taskMsg, workDir, d.cfg.ServerURL)
 	if err != nil {
 		return err
 	}
 
 	if !result.Success {
-		log.Printf("dispatch: reviewer %s completed with error: %s\nOutput: %s", t.ID, result.Error, result.Output)
+		log.Printf("dispatch: validator %s completed with error: %s\nOutput: %s", t.ID, result.Error, result.Output)
 	} else {
-		log.Printf("dispatch: reviewer %s completed successfully", t.ID)
+		log.Printf("dispatch: validator %s completed successfully", t.ID)
 	}
 
 	return nil

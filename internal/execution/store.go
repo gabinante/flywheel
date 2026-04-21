@@ -26,16 +26,21 @@ func (s *Store) AppendStep(ctx context.Context, ticketID, agentID string, step S
 	if step.ID == "" {
 		step.ID = mustUUID()
 	}
+	// Use worker_type if set on the step; column is nullable for backward compat.
+	var workerType *string
+	if step.WorkerType != "" {
+		workerType = &step.WorkerType
+	}
 	_, err := s.pool.Exec(ctx,
-		`INSERT INTO execution_steps (id, ticket_id, agent_id, type, payload, created_at) VALUES ($1, $2, $3, $4, $5, $6)`,
-		step.ID, ticketID, agentID, string(step.Type), payloadJSON, step.CreatedAt)
+		`INSERT INTO execution_steps (id, ticket_id, agent_id, type, payload, worker_type, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		step.ID, ticketID, agentID, string(step.Type), payloadJSON, workerType, step.CreatedAt)
 	return err
 }
 
 // GetStepsByTicketID returns all steps for a ticket in order.
 func (s *Store) GetStepsByTicketID(ctx context.Context, ticketID string) ([]Step, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, type, payload, created_at FROM execution_steps WHERE ticket_id = $1 ORDER BY created_at`,
+		`SELECT id, type, payload, worker_type, created_at FROM execution_steps WHERE ticket_id = $1 ORDER BY created_at`,
 		ticketID)
 	if err != nil {
 		return nil, err
@@ -45,11 +50,15 @@ func (s *Store) GetStepsByTicketID(ctx context.Context, ticketID string) ([]Step
 	for rows.Next() {
 		var st Step
 		var payloadJSON []byte
-		if err := rows.Scan(&st.ID, &st.Type, &payloadJSON, &st.CreatedAt); err != nil {
+		var workerType *string
+		if err := rows.Scan(&st.ID, &st.Type, &payloadJSON, &workerType, &st.CreatedAt); err != nil {
 			return nil, err
 		}
 		st.Payload = make(map[string]any)
 		_ = json.Unmarshal(payloadJSON, &st.Payload)
+		if workerType != nil {
+			st.WorkerType = *workerType
+		}
 		steps = append(steps, st)
 	}
 	return steps, rows.Err()

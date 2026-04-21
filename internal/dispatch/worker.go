@@ -60,7 +60,20 @@ type mcpServerConfig struct {
 }
 
 func buildMCPConfig(serverURL, apiKey string) mcpConfig {
-	serverCfg := mcpServerConfig{Type: "sse", URL: serverURL + "/sse"}
+	return buildMCPConfigForType("", serverURL, apiKey)
+}
+
+// buildMCPConfigForType creates an MCP config with optional tool filtering
+// based on worker type. When workerType is empty, all tools are available.
+func buildMCPConfigForType(workerType WorkerType, serverURL, apiKey string) mcpConfig {
+	// Append worker_type query parameter so the MCP server can enforce
+	// tool access on the server side as well.
+	sseURL := serverURL + "/sse"
+	if workerType != "" && workerType.IsValid() {
+		sseURL += "?worker_type=" + string(workerType)
+	}
+
+	serverCfg := mcpServerConfig{Type: "sse", URL: sseURL}
 	if apiKey != "" {
 		serverCfg.Headers = map[string]string{"X-API-Key": apiKey}
 	}
@@ -72,15 +85,68 @@ func buildMCPConfig(serverURL, apiKey string) mcpConfig {
 }
 
 func buildTaskPrompt(ticketID, projectID string) string {
-	return fmt.Sprintf(
-		"Execute Flywheel ticket %s. "+
-			"FIRST: call the claim_ticket MCP tool with project_id \"%s\". "+
-			"This returns ticket_id and lease_token — use these for all subsequent MCP calls. "+
-			"THEN: call start_ticket, do the implementation work (call log_step for each step), "+
-			"commit your changes to the current branch, and call submit_ticket with outputs. "+
-			"You MUST use the Flywheel MCP tools — do not skip any steps.",
-		ticketID, projectID,
-	)
+	return buildTypedTaskPrompt("", ticketID, projectID)
+}
+
+// buildTypedTaskPrompt returns the user-turn prompt tailored to the worker type.
+func buildTypedTaskPrompt(wt WorkerType, ticketID, projectID string) string {
+	switch wt {
+	case WorkerTypePlanner:
+		return fmt.Sprintf(
+			"Plan Flywheel ticket %s. "+
+				"FIRST: call the claim_ticket MCP tool with project_id \"%s\". "+
+				"This returns ticket_id and lease_token — use these for all subsequent MCP calls. "+
+				"THEN: call start_ticket, investigate the codebase, produce a structured plan, "+
+				"call log_step for each finding, and submit_ticket with the plan in outputs. "+
+				"You MUST use the Flywheel MCP tools — do not skip any steps.",
+			ticketID, projectID,
+		)
+	case WorkerTypeExecutor:
+		return fmt.Sprintf(
+			"Execute Flywheel ticket %s. "+
+				"FIRST: call the claim_ticket MCP tool with project_id \"%s\". "+
+				"This returns ticket_id and lease_token — use these for all subsequent MCP calls. "+
+				"THEN: call start_ticket, do the implementation work (call log_step for each step), "+
+				"commit your changes to the current branch, and call submit_ticket with outputs. "+
+				"You MUST use the Flywheel MCP tools — do not skip any steps.",
+			ticketID, projectID,
+		)
+	case WorkerTypeValidator:
+		return fmt.Sprintf(
+			"Review Flywheel ticket %s. "+
+				"Read the PR diff, check code quality and correctness against the ticket objectives, "+
+				"run tests if applicable, then either approve_ticket or reject_ticket with notes. "+
+				"You MUST use the Flywheel MCP tools to approve or reject.",
+			ticketID,
+		)
+	case WorkerTypeDeployer:
+		return fmt.Sprintf(
+			"Deploy Flywheel ticket %s. "+
+				"FIRST: call the claim_ticket MCP tool with project_id \"%s\". "+
+				"This returns ticket_id and lease_token — use these for all subsequent MCP calls. "+
+				"THEN: call start_ticket, execute the deployment plan, verify health, "+
+				"call log_step for each action, and submit_ticket with deployment status. "+
+				"You MUST use the Flywheel MCP tools — do not skip any steps.",
+			ticketID, projectID,
+		)
+	case WorkerTypeInvestigator:
+		return fmt.Sprintf(
+			"Investigate for Flywheel ticket %s. "+
+				"Read code, search for patterns, and report findings via log_step. "+
+				"You are read-only — do not modify any files or state.",
+			ticketID,
+		)
+	default:
+		return fmt.Sprintf(
+			"Execute Flywheel ticket %s. "+
+				"FIRST: call the claim_ticket MCP tool with project_id \"%s\". "+
+				"This returns ticket_id and lease_token — use these for all subsequent MCP calls. "+
+				"THEN: call start_ticket, do the implementation work (call log_step for each step), "+
+				"commit your changes to the current branch, and call submit_ticket with outputs. "+
+				"You MUST use the Flywheel MCP tools — do not skip any steps.",
+			ticketID, projectID,
+		)
+	}
 }
 
 // CLIWorker spawns an agent subprocess directly on the host.
