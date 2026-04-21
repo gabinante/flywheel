@@ -29,23 +29,25 @@ func ExtractTouches(p *plan.Plan, environment string) []Touch {
 	return touches
 }
 
-// extractCodeTouches generates file_write touches from code plan hunks.
+// extractCodeTouches generates file_write touches from code plan diffs.
 func extractCodeTouches(c plan.Content, env string) []Touch {
 	if c.Code == nil {
 		return nil
 	}
-	return []Touch{
-		{
-			EntityID:    c.Code.FilePath,
+	var touches []Touch
+	for _, d := range c.Code.Diffs {
+		touches = append(touches, Touch{
+			EntityID:    d.FilePath,
 			Environment: env,
 			ClaimType:   ClaimFileWrite,
 			Metadata: map[string]any{
 				"language":    c.Code.Language,
-				"before_hash": c.Code.BeforeHash,
-				"after_hash":  c.Code.AfterHash,
+				"before_hash": d.BeforeHash,
+				"after_hash":  d.AfterHash,
 			},
-		},
+		})
 	}
+	return touches
 }
 
 // extractDatabaseTouches generates schema touches from database plan DDL.

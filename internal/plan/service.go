@@ -18,23 +18,54 @@ const (
 	EventPlanApplied    = "plan.applied"
 	EventPlanRejected   = "plan.rejected"
 	EventPlanSuperseded = "plan.superseded"
+
+	// Freshness lifecycle events (warrant-45).
+	EventPlanFreshnessStale  = "plan.freshness_stale"
+	EventPlanRePlanTriggered = "plan.replan_triggered"
+	EventPlanRePlanIdentical = "plan.replan_identical"
+	EventPlanRePlanDiverged  = "plan.replan_diverged"
 )
 
 // Service provides plan operations with content validation and lifecycle management.
 type Service struct {
-	store *Store
-	bus   events.Bus
+	store          *Store
+	bus            events.Bus
+	stalenessConfig *StalenessConfig
 }
 
 // NewService returns a new plan Service.
 func NewService(store *Store, bus events.Bus) *Service {
-	return &Service{store: store, bus: bus}
+	return &Service{
+		store: store,
+		bus:   bus,
+		stalenessConfig: &StalenessConfig{
+			Thresholds: DefaultStalenessThresholds(),
+		},
+	}
+}
+
+// SetStalenessConfig replaces the per-environment staleness thresholds.
+func (s *Service) SetStalenessConfig(cfg *StalenessConfig) {
+	if cfg != nil {
+		s.stalenessConfig = cfg
+	}
+}
+
+// GetStalenessConfig returns the current staleness configuration.
+func (s *Service) GetStalenessConfig() *StalenessConfig {
+	return s.stalenessConfig
 }
 
 // CreatePlan creates a new plan for a ticket. Content is validated at schema level
 // before persistence — invalid content (e.g., unparseable DDL) fails immediately.
 // If a previous non-terminal plan exists for the same ticket+backend, it is superseded.
 func (s *Service) CreatePlan(ctx context.Context, ticketID string, backend Backend, content Content, createdBy string, freshnessStamp time.Time, expiresAt *time.Time) (*Plan, error) {
+	return s.CreatePlanWithFreshness(ctx, ticketID, backend, content, createdBy, freshnessStamp, expiresAt, nil, "")
+}
+
+// CreatePlanWithFreshness creates a new plan with rich freshness data and environment.
+// This is the full-featured creation path; CreatePlan is the backward-compatible wrapper.
+func (s *Service) CreatePlanWithFreshness(ctx context.Context, ticketID string, backend Backend, content Content, createdBy string, freshnessStamp time.Time, expiresAt *time.Time, freshnessData *FreshnessData, environment string) (*Plan, error) {
 	// Validate backend
 	if !IsValidBackend(backend) {
 		return nil, fmt.Errorf("invalid backend: %s", backend)
@@ -58,7 +89,9 @@ func (s *Service) CreatePlan(ctx context.Context, ticketID string, backend Backe
 		Version:        1,
 		Content:        content,
 		FreshnessStamp: freshnessStamp,
+		FreshnessData:  freshnessData,
 		ExpiresAt:      expiresAt,
+		Environment:    environment,
 		CreatedBy:      createdBy,
 		CreatedAt:      now,
 		UpdatedAt:      now,
@@ -89,6 +122,7 @@ func (s *Service) CreatePlan(ctx context.Context, ticketID string, backend Backe
 
 	_ = s.bus.Publish(ctx, events.Event{Type: EventPlanCreated, Payload: map[string]any{
 		"plan_id": id, "ticket_id": ticketID, "backend": string(backend),
+		"environment": environment,
 	}})
 
 	return p, nil
@@ -208,6 +242,54 @@ func (s *Service) ApplyPlan(ctx context.Context, id string) error {
 	return nil
 }
 
+// CheckFreshnessBeforeApply performs the full re-plan-before-apply evaluation.
+// This is the dispatcher's entry point: given a plan and freshly-captured state,
+// determine whether the plan can proceed, needs re-plan, or must route to review.
+//
+// If newContent is provided (from a re-generated plan), structural comparison is performed.
+// If newContent is nil, the result signals whether re-plan is required.
+func (s *Service) CheckFreshnessBeforeApply(ctx context.Context, planID string, currentState *FreshnessData, newContent *Content, changeClass string) (*RePlanResult, error) {
+	p, err := s.store.GetByID(ctx, planID)
+	if err != nil {
+		return nil, err
+	}
+
+	if p.State != StateApproved {
+		return nil, fmt.Errorf("freshness check is only valid for approved plans (current: %s)", p.State)
+	}
+
+	// Determine environment threshold.
+	env := p.Environment
+	if env == "" {
+		env = "prod" // Conservative default.
+	}
+	threshold := s.stalenessConfig.GetThreshold(env)
+
+	result := EvaluateRePlan(p, currentState, newContent, threshold, changeClass)
+
+	// Emit events based on decision.
+	switch result.Decision {
+	case RePlanNotNeeded:
+		// Fresh — no event needed.
+	case RePlanIdentical:
+		_ = s.bus.Publish(ctx, events.Event{Type: EventPlanRePlanIdentical, Payload: map[string]any{
+			"plan_id": planID, "ticket_id": p.TicketID, "message": result.Message,
+		}})
+	case RePlanDiverged:
+		_ = s.bus.Publish(ctx, events.Event{Type: EventPlanRePlanDiverged, Payload: map[string]any{
+			"plan_id": planID, "ticket_id": p.TicketID, "message": result.Message,
+			"stale_fields": result.FreshnessCheck.StaleFields,
+		}})
+	case RePlanApplyAnyway:
+		_ = s.bus.Publish(ctx, events.Event{Type: EventPlanRePlanDiverged, Payload: map[string]any{
+			"plan_id": planID, "ticket_id": p.TicketID, "message": result.Message,
+			"apply_anyway": true, "policy_override": result.FreshnessCheck.PolicyOverride,
+		}})
+	}
+
+	return &result, nil
+}
+
 // RejectPlan transitions a plan to rejected from any non-terminal state.
 func (s *Service) RejectPlan(ctx context.Context, id string) error {
 	p, err := s.store.GetByID(ctx, id)
@@ -273,12 +355,26 @@ func (s *Service) UpdateFreshness(ctx context.Context, id string, freshnessStamp
 	return s.store.UpdateFreshness(ctx, id, freshnessStamp, expiresAt)
 }
 
+// UpdateFreshnessData updates the rich freshness data for a plan.
+func (s *Service) UpdateFreshnessData(ctx context.Context, id string, freshnessData *FreshnessData) error {
+	p, err := s.store.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if p.State == StateApplied || p.State == StateSuperseded || p.State == StateRejected {
+		return fmt.Errorf("cannot update freshness on terminal plan (state: %s)", p.State)
+	}
+	return s.store.UpdateFreshnessData(ctx, id, freshnessData)
+}
+
 // GetVersions returns the version history for a plan.
 func (s *Service) GetVersions(ctx context.Context, planID string) ([]*PlanVersion, error) {
 	return s.store.ListVersions(ctx, planID)
 }
 
 // IsFresh checks whether a plan's freshness is still valid (not expired).
+// This is the simple time-based check. For full re-plan evaluation, use
+// CheckFreshnessBeforeApply.
 func (s *Service) IsFresh(ctx context.Context, id string) (bool, error) {
 	p, err := s.store.GetByID(ctx, id)
 	if err != nil {

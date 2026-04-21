@@ -27,17 +27,30 @@ func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool}
 }
 
+// planColumns is the column list for SELECT queries.
+const planColumns = `id, ticket_id, backend, state, version, content, freshness_stamp, freshness_data, expires_at, environment, created_by, created_at, updated_at`
+
 // Create inserts a new plan. ID must already be set.
 func (s *Store) Create(ctx context.Context, p *Plan) error {
 	contentJSON, err := json.Marshal(p.Content)
 	if err != nil {
 		return fmt.Errorf("marshal content: %w", err)
 	}
+
+	var freshnessDataJSON []byte
+	if p.FreshnessData != nil {
+		freshnessDataJSON, err = json.Marshal(p.FreshnessData)
+		if err != nil {
+			return fmt.Errorf("marshal freshness_data: %w", err)
+		}
+	}
+
 	_, err = s.pool.Exec(ctx,
-		`INSERT INTO plans (id, ticket_id, backend, state, version, content, freshness_stamp, expires_at, created_by, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		`INSERT INTO plans (id, ticket_id, backend, state, version, content, freshness_stamp, freshness_data, expires_at, environment, created_by, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
 		p.ID, p.TicketID, string(p.Backend), string(p.State), p.Version,
-		contentJSON, p.FreshnessStamp, p.ExpiresAt, p.CreatedBy, p.CreatedAt, p.UpdatedAt)
+		contentJSON, p.FreshnessStamp, freshnessDataJSON, p.ExpiresAt, p.Environment,
+		p.CreatedBy, p.CreatedAt, p.UpdatedAt)
 	return err
 }
 
@@ -45,12 +58,14 @@ func (s *Store) Create(ctx context.Context, p *Plan) error {
 func (s *Store) GetByID(ctx context.Context, id string) (*Plan, error) {
 	var p Plan
 	var contentJSON []byte
+	var freshnessDataJSON []byte
 	var expiresAt *time.Time
+	var environment *string
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, ticket_id, backend, state, version, content, freshness_stamp, expires_at, created_by, created_at, updated_at
-		 FROM plans WHERE id = $1`, id).
+		`SELECT `+planColumns+` FROM plans WHERE id = $1`, id).
 		Scan(&p.ID, &p.TicketID, &p.Backend, &p.State, &p.Version,
-			&contentJSON, &p.FreshnessStamp, &expiresAt, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt)
+			&contentJSON, &p.FreshnessStamp, &freshnessDataJSON, &expiresAt, &environment,
+			&p.CreatedBy, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrPlanNotFound
@@ -58,8 +73,17 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Plan, error) {
 		return nil, err
 	}
 	p.ExpiresAt = expiresAt
+	if environment != nil {
+		p.Environment = *environment
+	}
 	if err := json.Unmarshal(contentJSON, &p.Content); err != nil {
 		return nil, fmt.Errorf("unmarshal content: %w", err)
+	}
+	if len(freshnessDataJSON) > 0 {
+		p.FreshnessData = &FreshnessData{}
+		if err := json.Unmarshal(freshnessDataJSON, p.FreshnessData); err != nil {
+			return nil, fmt.Errorf("unmarshal freshness_data: %w", err)
+		}
 	}
 	return &p, nil
 }
@@ -67,8 +91,7 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Plan, error) {
 // ListByTicket returns all plans for a given ticket, ordered by creation time (newest first).
 func (s *Store) ListByTicket(ctx context.Context, ticketID string) ([]*Plan, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, ticket_id, backend, state, version, content, freshness_stamp, expires_at, created_by, created_at, updated_at
-		 FROM plans WHERE ticket_id = $1 ORDER BY created_at DESC`, ticketID)
+		`SELECT `+planColumns+` FROM plans WHERE ticket_id = $1 ORDER BY created_at DESC`, ticketID)
 	if err != nil {
 		return nil, err
 	}
@@ -79,8 +102,8 @@ func (s *Store) ListByTicket(ctx context.Context, ticketID string) ([]*Plan, err
 // ListByTicketAndBackend returns plans for a ticket filtered by backend.
 func (s *Store) ListByTicketAndBackend(ctx context.Context, ticketID string, backend Backend) ([]*Plan, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, ticket_id, backend, state, version, content, freshness_stamp, expires_at, created_by, created_at, updated_at
-		 FROM plans WHERE ticket_id = $1 AND backend = $2 ORDER BY created_at DESC`, ticketID, string(backend))
+		`SELECT `+planColumns+` FROM plans WHERE ticket_id = $1 AND backend = $2 ORDER BY created_at DESC`,
+		ticketID, string(backend))
 	if err != nil {
 		return nil, err
 	}
@@ -125,6 +148,22 @@ func (s *Store) UpdateFreshness(ctx context.Context, id string, freshnessStamp t
 	_, err := s.pool.Exec(ctx,
 		`UPDATE plans SET freshness_stamp = $1, expires_at = $2, updated_at = now() WHERE id = $3`,
 		freshnessStamp, expiresAt, id)
+	return err
+}
+
+// UpdateFreshnessData sets the rich freshness data (JSONB) for a plan.
+func (s *Store) UpdateFreshnessData(ctx context.Context, id string, freshnessData *FreshnessData) error {
+	var dataJSON []byte
+	var err error
+	if freshnessData != nil {
+		dataJSON, err = json.Marshal(freshnessData)
+		if err != nil {
+			return fmt.Errorf("marshal freshness_data: %w", err)
+		}
+	}
+	_, err = s.pool.Exec(ctx,
+		`UPDATE plans SET freshness_data = $1, updated_at = now() WHERE id = $2`,
+		dataJSON, id)
 	return err
 }
 
@@ -177,13 +216,23 @@ func (s *Store) scanRows(rows pgx.Rows) ([]*Plan, error) {
 	for rows.Next() {
 		var p Plan
 		var contentJSON []byte
+		var freshnessDataJSON []byte
 		var expiresAt *time.Time
+		var environment *string
 		if err := rows.Scan(&p.ID, &p.TicketID, &p.Backend, &p.State, &p.Version,
-			&contentJSON, &p.FreshnessStamp, &expiresAt, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			&contentJSON, &p.FreshnessStamp, &freshnessDataJSON, &expiresAt, &environment,
+			&p.CreatedBy, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		p.ExpiresAt = expiresAt
+		if environment != nil {
+			p.Environment = *environment
+		}
 		_ = json.Unmarshal(contentJSON, &p.Content)
+		if len(freshnessDataJSON) > 0 {
+			p.FreshnessData = &FreshnessData{}
+			_ = json.Unmarshal(freshnessDataJSON, p.FreshnessData)
+		}
 		list = append(list, &p)
 	}
 	return list, rows.Err()
