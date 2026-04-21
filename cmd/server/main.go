@@ -16,6 +16,7 @@ import (
 	"github.com/gabinante/flywheel/config"
 	"github.com/gabinante/flywheel/db"
 	"github.com/gabinante/flywheel/events"
+	"github.com/gabinante/flywheel/events/hooks"
 	"github.com/gabinante/flywheel/internal/agent"
 	"github.com/gabinante/flywheel/internal/auth"
 	"github.com/gabinante/flywheel/internal/bootstrap"
@@ -163,6 +164,12 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	codeIntel := mcp.NewTreeSitterCodeIntel()
 	log.Println("code-intel: bundled default initialized (Tree-sitter + Go AST)")
 
+	// Hooks: change event publication library + gap detection (spec v0.2 §2.4).
+	hooksClient := hooks.NewClient(bus)
+	gapDetector := hooks.NewGapDetector(bus, hooksClient)
+	go gapDetector.Start(ctx)
+	log.Println("hooks: change event library initialized with gap detection")
+
 	strictServer := &rest.StrictServer{
 		OrgSvc:        orgSvc,
 		ProjectSvc:    projectSvc,
@@ -295,7 +302,8 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			AgentStore: agentStore,
 		},
 		ClaimsHandler: &rest.ClaimsHandler{ClaimsSvc: claimsSvc},
-		WebDist: cfg.Server.WebDist,
+		HooksHandler:  &rest.HooksHandler{Client: hooksClient},
+		WebDist:       cfg.Server.WebDist,
 	})
 
 	serve(ctx, cfg, router, dispatcher)
@@ -355,6 +363,11 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 	execSvc := execution.NewService(execSt, leaseValidator)
 	reviewSt := embedded.NewReviewStore(sqliteDB)
 	reviewSvc := review.NewService(reviewSt, ticketSvc, bus)
+
+	// Hooks: change event publication library + gap detection (spec v0.2 §2.4).
+	hooksClient := hooks.NewClient(bus)
+	gapDetector := hooks.NewGapDetector(bus, hooksClient)
+	go gapDetector.Start(ctx)
 
 	// Run first-run wizard if no data exists yet.
 	firstRun := bootstrap.IsFirstRun(dataDir)
@@ -433,6 +446,7 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		MCPHandler:     mcpHandler,
 		MCPSSEHandler:  mcpSSEHandler,
 		AgentsHandler:  &rest.AgentsHandler{AgentSvc: agentSvc},
+		HooksHandler:   &rest.HooksHandler{Client: hooksClient},
 		WebDist:        cfg.Server.WebDist,
 	})
 

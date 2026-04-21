@@ -66,6 +66,11 @@ const (
 	EventClaimReleased    = "claim.released"
 	EventConflictDetected = "claim.conflict_detected"
 	EventConflictResolved = "claim.conflict_resolved"
+
+	// --- Change stream events (spec v0.2 §2.4) ---
+	EventChangePublished    = "change.published"    // change event published via hooks
+	EventChangeUnattributed = "change.unattributed" // auto-generated for unexplained state changes
+	EventStateGapDetected   = "change.gap_detected" // state change without matching change event
 )
 
 // Event carries type and typed payload for the bus.
