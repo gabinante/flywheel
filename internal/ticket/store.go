@@ -120,11 +120,21 @@ func (s *Store) GetByProject(ctx context.Context, projectID string, workStreamID
 	return s.scanRows(rows)
 }
 
-// ListByState returns tickets in a given state for a project (for queue).
+// ListByState returns tickets in a given state. If projectID is empty, returns
+// tickets across all projects (used by the dispatcher when not project-locked).
 func (s *Store) ListByState(ctx context.Context, projectID string, state State) ([]*Ticket, error) {
-	rows, err := s.pool.Query(ctx,
-		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, target_repo, assigned_to, created_by, created_at, updated_at
-		 FROM tickets WHERE project_id = $1 AND state = $2 ORDER BY priority, created_at`, projectID, string(state))
+	var q string
+	var args []any
+	if projectID != "" {
+		q = `SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, target_repo, assigned_to, created_by, created_at, updated_at
+		     FROM tickets WHERE project_id = $1 AND state = $2 ORDER BY priority, created_at`
+		args = []any{projectID, string(state)}
+	} else {
+		q = `SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, target_repo, assigned_to, created_by, created_at, updated_at
+		     FROM tickets WHERE state = $1 ORDER BY priority, created_at`
+		args = []any{string(state)}
+	}
+	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
