@@ -1,6 +1,7 @@
 import { Link, Outlet } from 'react-router-dom'
 
 import { RightRail, RightRailToggle } from '@/components/right-rail'
+import { RightRailWidgets } from '@/components/right-rail-widgets'
 import { Button } from '@/components/ui/button'
 import { RightRailProvider } from '@/contexts/right-rail-provider'
 import { useAuth } from '@/contexts/use-auth'
@@ -9,7 +10,7 @@ export function AppShell() {
   const { token, signOut } = useAuth()
 
   return (
-    <RightRailProvider>
+    <RightRailProvider railContent={token ? <RightRailWidgets /> : undefined}>
       <div className="flex min-h-screen flex-col">
         <header className="border-border border-b bg-background/80 backdrop-blur">
           <div className="flex h-12 items-center justify-between gap-4 px-4">
