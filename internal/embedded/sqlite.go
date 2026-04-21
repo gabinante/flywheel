@@ -126,6 +126,7 @@ func migrate(db *sql.DB) error {
 			outputs         TEXT NOT NULL DEFAULT '{}',
 			depends_on      TEXT NOT NULL DEFAULT '[]',
 			work_stream_id  TEXT,
+			target_repo     TEXT,
 			assigned_to     TEXT,
 			created_by      TEXT NOT NULL,
 			created_at      TEXT NOT NULL DEFAULT (datetime('now')),
@@ -136,6 +137,17 @@ func migrate(db *sql.DB) error {
 			idempotency_key TEXT NOT NULL,
 			ticket_id       TEXT NOT NULL,
 			PRIMARY KEY (project_id, idempotency_key)
+		)`,
+		// Project repositories (multi-repo support)
+		`CREATE TABLE IF NOT EXISTS project_repositories (
+			id              TEXT PRIMARY KEY,
+			project_id      TEXT NOT NULL REFERENCES projects(id),
+			alias           TEXT NOT NULL,
+			repo_url        TEXT NOT NULL,
+			default_branch  TEXT NOT NULL DEFAULT 'main',
+			is_primary      INTEGER NOT NULL DEFAULT 0,
+			created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+			UNIQUE (project_id, alias)
 		)`,
 		// Execution steps
 		`CREATE TABLE IF NOT EXISTS execution_steps (

@@ -118,7 +118,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"required":             []string{"project_id", "work_stream_id", "plan"},
 		"additionalProperties": false,
 	}}, wrap(updateWorkStreamPlanHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "create_ticket", Description: "Create a ticket in a project. Response JSON has **ticket** (the new ticket) and **workflow** (next_steps + note) to remind you to claim → start → log_step → submit. The ticket is created as pending; agents claim via claim_ticket. created_by is set to your agent identity. **work_stream_id:** pass when the work belongs to a stream—otherwise the ticket will not appear in the web UI when that stream is filtered (use **update_ticket** later to attach). If set and project has repo_url, the work stream must already have **branch** set via **update_work_stream** after you create/checkout that branch (plan-only updates do not count). Optional idempotency_key.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "create_ticket", Description: "Create a ticket in a project. Response JSON has **ticket** (the new ticket) and **workflow** (next_steps + note) to remind you to claim → start → log_step → submit. The ticket is created as pending; agents claim via claim_ticket. created_by is set to your agent identity. **work_stream_id:** pass when the work belongs to a stream—otherwise the ticket will not appear in the web UI when that stream is filtered (use **update_ticket** later to attach). If set and project has repo_url, the work stream must already have **branch** set via **update_work_stream** after you create/checkout that branch (plan-only updates do not count). **target_repo:** for multi-repo projects, pass the repo alias (from list_project_repositories) to target a specific repo; omit for the primary repo. Optional idempotency_key.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"project_id":       map[string]any{"type": "string", "description": "Project ID"},
@@ -131,6 +131,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"idempotency_key":  map[string]any{"type": "string", "description": "Idempotency key to prevent duplicate creation (optional)"},
 			"work_stream_id":   map[string]any{"type": "string", "description": "Work stream ID to attach this ticket to (optional)"},
 			"depends_on":       map[string]any{"type": "string", "description": "JSON array of ticket IDs this ticket depends on (optional)"},
+			"target_repo":      map[string]any{"type": "string", "description": "Target repository alias for multi-repo projects (optional, from list_project_repositories; omit for primary repo)"},
 			"agent_id":         map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
 		"required":             []string{"project_id", "title", "description"},
@@ -1016,7 +1017,15 @@ func createTicketHandler(b *Backend, ctx context.Context, args map[string]any) (
 		if d := getString(args, "depends_on", ""); d != "" {
 			_ = json.Unmarshal([]byte(d), &dependsOn)
 		}
-		t, err := b.Ticket.CreateTicket(ctx, projectID, title, typ, prio, agentID, dependsOn, workStreamID, objective, ticket.TicketContext{}, idempotencyKey)
+		targetRepo := getString(args, "target_repo", "")
+		// Validate target_repo alias exists if provided and multi-repo is configured.
+		if targetRepo != "" && b.Repos != nil {
+			_, repoErr := b.Repos.GetRepository(ctx, projectID, targetRepo)
+			if repoErr != nil {
+				return toolErrTriple(apierrors.New(apierrors.CodeNotFound, "target_repo alias not found: "+targetRepo+". Use list_project_repositories to see available aliases.", false))
+			}
+		}
+		t, err := b.Ticket.CreateTicket(ctx, projectID, title, typ, prio, agentID, dependsOn, workStreamID, objective, ticket.TicketContext{}, idempotencyKey, targetRepo)
 		if err != nil {
 			return toolErrTriple(apierrors.MapError(err))
 		}
@@ -1264,6 +1273,12 @@ func getTicketHandler(b *Backend, ctx context.Context, args map[string]any) (*mc
 				if proj, _ := b.Project.GetProject(ctx, t.ProjectID); proj != nil {
 					attachWorkStreamGit(out, proj, ws)
 				}
+			}
+		}
+		// Include target repo info for multi-repo tickets.
+		if t.TargetRepo != "" && b.Repos != nil {
+			if repo, err := b.Repos.GetRepository(ctx, t.ProjectID, t.TargetRepo); err == nil && repo != nil {
+				out["target_repository"] = repo
 			}
 		}
 		return jsonResult(out)

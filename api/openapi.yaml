@@ -1725,6 +1725,9 @@ components:
             type: string
         work_stream_id:
           type: string
+        target_repo:
+          type: string
+          description: Repository alias for multi-repo projects (from project_repositories). Empty means primary repo.
         assigned_to:
           type: string
         created_by:
@@ -1735,6 +1738,28 @@ components:
         updated_at:
           type: string
           format: date-time
+    ProjectRepository:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        alias:
+          type: string
+          description: Unique alias within the project (e.g. "backend", "frontend")
+        repo_url:
+          type: string
+          description: Git clone URL
+        default_branch:
+          type: string
+          description: Default branch name (e.g. "main")
+        is_primary:
+          type: boolean
+          description: Whether this is the primary repository
+        created_at:
+          type: string
+          format: date-time
     CreateTicketRequest:
       type: object
       required: [title, created_by]
@@ -1743,6 +1768,9 @@ components:
           type: string
         work_stream_id:
           type: string
+        target_repo:
+          type: string
+          description: Repository alias for multi-repo projects (optional)
         type:
           type: string
           enum: [task, bug, spike, review]

@@ -28,6 +28,7 @@ type Backend struct {
 	Investigation *investigation.Service
 	Claims        *claims.Service
 	Notification  *notification.Service
+	Repos         *project.RepositoryService // nil-safe: multi-repo features disabled when nil
 
 	// CodeIntel is the pluggable code intelligence provider (Layer 3).
 	// When nil, code_* tools are not registered. Set via PluginRegistry.
