@@ -152,6 +152,8 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	// Claims registry for concurrency control (spec v0.2 §4.3).
 	claimsStore := claims.NewStore(pool)
 	claimsSvc := claims.NewService(claimsStore, bus)
+	// Lifecycle handler: auto-register claims on ticket.started, auto-release on completion.
+	_ = claims.NewLifecycleHandler(bus, claimsSvc, planSvc, ticketSvc)
 
 	// Observation service for production signal tracking and attribution.
 	obsStore := observation.NewPostgresStore(pool)
