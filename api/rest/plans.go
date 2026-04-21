@@ -16,12 +16,14 @@ type PlansHandler struct {
 
 // createPlanRequest is the request body for creating a plan.
 type createPlanRequest struct {
-	TicketID       string           `json:"ticket_id"`
-	Backend        string           `json:"backend"`
-	Content        json.RawMessage  `json:"content"`
-	CreatedBy      string           `json:"created_by"`
-	FreshnessStamp *time.Time       `json:"freshness_stamp,omitempty"`
-	ExpiresAt      *time.Time       `json:"expires_at,omitempty"`
+	TicketID       string              `json:"ticket_id"`
+	Backend        string              `json:"backend"`
+	Content        json.RawMessage     `json:"content"`
+	CreatedBy      string              `json:"created_by"`
+	FreshnessStamp *time.Time          `json:"freshness_stamp,omitempty"`
+	FreshnessData  *plan.FreshnessData `json:"freshness_data,omitempty"`
+	ExpiresAt      *time.Time          `json:"expires_at,omitempty"`
+	Environment    string              `json:"environment,omitempty"`
 }
 
 // updateContentRequest is the request body for updating plan content.
@@ -33,6 +35,13 @@ type updateContentRequest struct {
 // transitionRequest is the request body for plan state transitions.
 type transitionRequest struct {
 	Action string `json:"action"`
+}
+
+// freshnessCheckRequest is the request body for checking plan freshness before apply.
+type freshnessCheckRequest struct {
+	CurrentState *plan.FreshnessData `json:"current_state,omitempty"`
+	NewContent   json.RawMessage     `json:"new_content,omitempty"`
+	ChangeClass  string              `json:"change_class,omitempty"`
 }
 
 func (h *PlansHandler) create(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +87,10 @@ func (h *PlansHandler) create(w http.ResponseWriter, r *http.Request) {
 		freshnessStamp = *body.FreshnessStamp
 	}
 
-	p, err := h.PlanSvc.CreatePlan(r.Context(), body.TicketID, backend, content, body.CreatedBy, freshnessStamp, body.ExpiresAt)
+	p, err := h.PlanSvc.CreatePlanWithFreshness(
+		r.Context(), body.TicketID, backend, content, body.CreatedBy,
+		freshnessStamp, body.ExpiresAt, body.FreshnessData, body.Environment,
+	)
 	if err != nil {
 		if ve, ok := err.(*plan.ValidationError); ok {
 			WriteStructuredError(w, apierrors.New(apierrors.CodeInvalidInput, ve.Error(), false))
@@ -238,8 +250,74 @@ func (h *PlansHandler) freshness(w http.ResponseWriter, r *http.Request) {
 		WriteStructuredError(w, apierrors.MapError(err))
 		return
 	}
+
+	// Also return freshness data if available.
+	p, err := h.PlanSvc.GetPlan(r.Context(), planID)
+	if err != nil {
+		WriteStructuredError(w, apierrors.MapError(err))
+		return
+	}
+
+	resp := map[string]any{
+		"plan_id": planID,
+		"fresh":   fresh,
+	}
+	if p.FreshnessData != nil {
+		resp["freshness_data"] = p.FreshnessData
+	}
+	if p.Environment != "" {
+		resp["environment"] = p.Environment
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"plan_id": planID, "fresh": fresh})
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// freshnessCheck handles POST /plans/{planID}/freshness-check — the dispatcher's
+// pre-apply endpoint. It evaluates whether the plan is still fresh given the current
+// state and optionally compares against re-generated content.
+func (h *PlansHandler) freshnessCheck(w http.ResponseWriter, r *http.Request) {
+	planID := PathParam(r, "planID")
+
+	var body freshnessCheckRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		WriteStructuredError(w, apierrors.New(apierrors.CodeInvalidInput, "invalid body: "+err.Error(), false))
+		return
+	}
+
+	// Parse new_content if provided.
+	var newContent *plan.Content
+	if len(body.NewContent) > 0 {
+		// Get the plan to know the backend for content parsing.
+		p, err := h.PlanSvc.GetPlan(r.Context(), planID)
+		if err != nil {
+			WriteStructuredError(w, apierrors.MapError(err))
+			return
+		}
+		parsed, err := parseContent(p.Backend, body.NewContent)
+		if err != nil {
+			WriteStructuredError(w, apierrors.New(apierrors.CodeInvalidInput, "invalid new_content: "+err.Error(), false))
+			return
+		}
+		newContent = &parsed
+	}
+
+	result, err := h.PlanSvc.CheckFreshnessBeforeApply(r.Context(), planID, body.CurrentState, newContent, body.ChangeClass)
+	if err != nil {
+		WriteStructuredError(w, apierrors.MapError(err))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(result)
+}
+
+// stalenessConfig handles GET /plans/staleness-config — returns the current
+// per-environment staleness thresholds.
+func (h *PlansHandler) stalenessConfig(w http.ResponseWriter, r *http.Request) {
+	cfg := h.PlanSvc.GetStalenessConfig()
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(cfg)
 }
 
 // parseContent unmarshals raw JSON into the correct Content struct based on backend.

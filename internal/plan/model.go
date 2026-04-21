@@ -62,17 +62,19 @@ func IsValidState(s State) bool {
 
 // Plan is the core entity representing a typed execution plan.
 type Plan struct {
-	ID             string    `json:"id"`
-	TicketID       string    `json:"ticket_id"`
-	Backend        Backend   `json:"backend"`
-	State          State     `json:"state"`
-	Version        int       `json:"version"`
-	Content        Content   `json:"content"`
-	FreshnessStamp time.Time `json:"freshness_stamp"`
-	ExpiresAt      *time.Time `json:"expires_at,omitempty"`
-	CreatedBy      string    `json:"created_by"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID             string          `json:"id"`
+	TicketID       string          `json:"ticket_id"`
+	Backend        Backend         `json:"backend"`
+	State          State           `json:"state"`
+	Version        int             `json:"version"`
+	Content        Content         `json:"content"`
+	FreshnessStamp time.Time       `json:"freshness_stamp"`
+	FreshnessData  *FreshnessData  `json:"freshness_data,omitempty"`
+	ExpiresAt      *time.Time      `json:"expires_at,omitempty"`
+	Environment    string          `json:"environment,omitempty"`
+	CreatedBy      string          `json:"created_by"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
 }
 
 // PlanVersion is an immutable snapshot of a plan's content at a version.

@@ -103,6 +103,8 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		mux.HandleFunc("POST /plans/{planID}/transition", plans.transition)
 		mux.HandleFunc("GET /plans/{planID}/versions", plans.versions)
 		mux.HandleFunc("GET /plans/{planID}/freshness", plans.freshness)
+		mux.HandleFunc("POST /plans/{planID}/freshness-check", plans.freshnessCheck)
+		mux.HandleFunc("GET /plans/staleness-config", plans.stalenessConfig)
 		mux.HandleFunc("GET /tickets/{ticketID}/plans", plans.listByTicket)
 	}
 	if cfg.ObservationHandler != nil {

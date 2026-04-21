@@ -71,6 +71,12 @@ const (
 	EventChangePublished    = "change.published"    // change event published via hooks
 	EventChangeUnattributed = "change.unattributed" // auto-generated for unexplained state changes
 	EventStateGapDetected   = "change.gap_detected" // state change without matching change event
+
+	// --- Plan freshness events (warrant-45) ---
+	EventPlanFreshnessStale  = "plan.freshness_stale"  // freshness check detected stale stamp
+	EventPlanRePlanTriggered = "plan.replan_triggered"  // re-plan was triggered before apply
+	EventPlanRePlanIdentical = "plan.replan_identical"  // re-plan produced identical content (auto-proceed)
+	EventPlanRePlanDiverged  = "plan.replan_diverged"   // re-plan produced different content (route to review)
 )
 
 // Event carries type and typed payload for the bus.
