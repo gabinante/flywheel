@@ -1580,6 +1580,9 @@ components:
           type: string
           enum: [active, closed]
           description: active (default) or closed; list endpoints default to active only.
+        dispatch_enabled:
+          type: boolean
+          description: Whether the dispatcher picks up tickets for this project (default true).
         created_at:
           type: string
           format: date-time
@@ -1601,6 +1604,9 @@ components:
         default_branch:
           type: string
           description: Branch to checkout when closing a work stream; default "main".
+        dispatch_enabled:
+          type: boolean
+          description: Whether the dispatcher picks up tickets for this project (default true). Takes effect immediately.
     WorkStream:
       type: object
       properties:

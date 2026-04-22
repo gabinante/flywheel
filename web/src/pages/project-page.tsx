@@ -25,6 +25,21 @@ export function ProjectPage() {
   const [workStreams, setWorkStreams] = useState<WorkStream[] | null>(null)
   const [streamsErr, setStreamsErr] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [dispatchToggling, setDispatchToggling] = useState(false)
+
+  const loadProject = useCallback(async () => {
+    if (!projectId) return
+    const { data, error, response } = await client.GET('/projects/{projectID}', {
+      params: { path: { projectID: projectId } },
+    })
+    if (!response.ok) {
+      setErr(formatApiError(error))
+      setProject(null)
+      return
+    }
+    setErr(null)
+    setProject(data ?? null)
+  }, [client, projectId])
 
   const loadWorkStreams = useCallback(async () => {
     if (!projectId) return
@@ -46,31 +61,35 @@ export function ProjectPage() {
   }, [client, projectId])
 
   useEffect(() => {
-    if (!projectId) return
     let cancelled = false
-    ;(async () => {
-      const { data, error, response } = await client.GET('/projects/{projectID}', {
-        params: { path: { projectID: projectId } },
-      })
+    void (async () => {
+      await loadProject()
       if (cancelled) return
-      if (!response.ok) {
-        setErr(formatApiError(error))
-        setProject(null)
-        return
-      }
-      setErr(null)
-      setProject(data ?? null)
     })()
     return () => {
       cancelled = true
     }
-  }, [client, projectId])
+  }, [loadProject])
 
   useEffect(() => {
     queueMicrotask(() => {
       void loadWorkStreams()
     })
   }, [loadWorkStreams])
+
+  const toggleDispatch = useCallback(async () => {
+    if (!projectId || !project) return
+    setDispatchToggling(true)
+    const newVal = !(project.dispatch_enabled !== false)
+    const { response } = await client.PATCH('/projects/{projectID}', {
+      params: { path: { projectID: projectId } },
+      body: { dispatch_enabled: newVal },
+    })
+    if (response.ok) {
+      setProject((prev) => (prev ? { ...prev, dispatch_enabled: newVal } : prev))
+    }
+    setDispatchToggling(false)
+  }, [client, project, projectId])
 
   if (!orgId || !projectId) {
     return <p className="text-destructive text-sm">Missing route params.</p>
@@ -84,6 +103,8 @@ export function ProjectPage() {
   if (!project) {
     return <p className="text-muted-foreground text-sm">Project not found.</p>
   }
+
+  const dispatchOn = project.dispatch_enabled !== false
 
   return (
     <div className="flex flex-col gap-6">
@@ -125,6 +146,37 @@ export function ProjectPage() {
           </Link>
         </Button>
       </div>
+
+      {/* Dispatch control card */}
+      <Card>
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1.5">
+            <CardTitle className="text-sm">Agent dispatch</CardTitle>
+            <CardDescription>
+              {dispatchOn
+                ? 'Agents will automatically pick up pending tickets for this project.'
+                : 'Dispatch is paused — agents will not pick up new tickets.'}
+            </CardDescription>
+          </div>
+          <Button
+            variant={dispatchOn ? 'default' : 'outline'}
+            size="sm"
+            className={
+              dispatchOn
+                ? 'bg-emerald-600 hover:bg-emerald-700 shrink-0'
+                : 'shrink-0'
+            }
+            disabled={dispatchToggling}
+            onClick={toggleDispatch}
+          >
+            {dispatchToggling
+              ? 'Saving…'
+              : dispatchOn
+                ? 'Dispatch enabled'
+                : 'Dispatch disabled'}
+          </Button>
+        </CardHeader>
+      </Card>
 
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

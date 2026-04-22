@@ -261,20 +261,40 @@ export function ProjectsPage() {
           </Link>
           <span className="px-1">/</span>
         </p>
-        <div className="mt-1 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Projects{orgName ? ` \u2014 ${orgName}` : ''}
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {projects.length > 0
-                ? `${projects.length} project${projects.length === 1 ? '' : 's'}`
-                : 'No projects in this organization'}
-            </p>
-          </div>
-        </div>
-      </motion.div>
-
+        <h1 className="text-xl font-semibold tracking-tight">
+          Projects{orgName ? ` — ${orgName}` : ''}
+        </h1>
+      </div>
+      <ul className="flex flex-col gap-3">
+        {projects.map((p) => (
+          <li key={p.id}>
+            <Link to={`/orgs/${orgId}/projects/${p.id}`}>
+              <Card className="transition-colors hover:bg-muted/40">
+                <CardHeader>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <CardTitle>{p.name ?? p.slug ?? p.id}</CardTitle>
+                    {p.status ? (
+                      <Badge variant="outline">{p.status}</Badge>
+                    ) : null}
+                    {p.dispatch_enabled !== false ? (
+                      <Badge variant="default" className="bg-emerald-600/80 text-xs">
+                        Dispatch on
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="text-muted-foreground text-xs">
+                        Dispatch off
+                      </Badge>
+                    )}
+                  </div>
+                  <CardDescription className="font-mono text-xs">
+                    {p.id}
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            </Link>
+          </li>
+        ))}
+      </ul>
       {projects.length === 0 ? (
         <EmptyProjectsState orgId={orgId} />
       ) : (

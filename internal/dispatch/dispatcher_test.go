@@ -1245,7 +1245,7 @@ func TestHandleWorkerExit_ConcurrentWorkers(t *testing.T) {
 }
 
 func TestEventBusIntegration(t *testing.T) {
-	proj := &project.Project{ID: "p-1", Name: "test"}
+	proj := &project.Project{ID: "p-1", Name: "test", DispatchEnabled: true}
 	tk := &ticket.Ticket{
 		ID:        "t-evt",
 		ProjectID: "p-1",
@@ -1287,6 +1287,100 @@ func TestEventBusIntegration(t *testing.T) {
 
 	if worker.callCount() != 1 {
 		t.Errorf("expected 1 worker call from event, got %d", worker.callCount())
+	}
+}
+
+func TestDispatchDisabledSkipsTickets(t *testing.T) {
+	// When dispatch_enabled=false, the dispatcher should skip the project's tickets.
+	proj := &project.Project{ID: "p-1", Name: "test", DispatchEnabled: false}
+	tk := &ticket.Ticket{
+		ID:        "t-disabled",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+		Title:     "disabled dispatch test",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	worker := &mockWorker{}
+	cfg := Config{
+		MaxWorkers:    5,
+		ProjectID:     "p-1",
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d.Start(ctx)
+	defer d.Stop()
+
+	// Publish a ticket.created event for the disabled project.
+	_ = bus.Publish(ctx, events.Event{
+		Type:    events.EventTicketCreated,
+		Payload: map[string]any{"ticket_id": "t-disabled"},
+	})
+
+	// Wait for the goroutine to process.
+	time.Sleep(500 * time.Millisecond)
+
+	if worker.callCount() != 0 {
+		t.Errorf("expected 0 worker calls when dispatch disabled, got %d", worker.callCount())
+	}
+}
+
+func TestDispatchEnabledAllowsTickets(t *testing.T) {
+	// When dispatch_enabled=true, the dispatcher should process the project's tickets.
+	proj := &project.Project{ID: "p-1", Name: "test", DispatchEnabled: true}
+	tk := &ticket.Ticket{
+		ID:        "t-enabled",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+		Title:     "enabled dispatch test",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	worker := &mockWorker{}
+	cfg := Config{
+		MaxWorkers:    5,
+		ProjectID:     "p-1",
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d.Start(ctx)
+	defer d.Stop()
+
+	// Publish a ticket.created event for the enabled project.
+	_ = bus.Publish(ctx, events.Event{
+		Type:    events.EventTicketCreated,
+		Payload: map[string]any{"ticket_id": "t-enabled"},
+	})
+
+	// Wait for the goroutine to process.
+	time.Sleep(500 * time.Millisecond)
+
+	if worker.callCount() != 1 {
+		t.Errorf("expected 1 worker call when dispatch enabled, got %d", worker.callCount())
 	}
 }
 
