@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
+import { Skeleton as SkeletonBar } from '@/components/ui/skeleton'
 import { useAuth } from '@/contexts/use-auth'
 
 import type { components } from '@/lib/api/v1'
-import { cn } from '@/lib/utils'
 
 type Ticket = components['schemas']['Ticket']
 type TraceStep = components['schemas']['TraceStep']
@@ -116,23 +116,12 @@ function SectionHeader({
 // Shimmer skeleton
 // ---------------------------------------------------------------------------
 
-function Shimmer({ className }: { className?: string }) {
-  return (
-    <div
-      className={cn(
-        'animate-pulse rounded bg-muted/60',
-        className,
-      )}
-    />
-  )
-}
-
 function WidgetSkeleton() {
   return (
     <div className="flex flex-col gap-2">
-      <Shimmer className="h-3 w-20" />
-      <Shimmer className="h-12 w-full rounded-lg" />
-      <Shimmer className="h-12 w-full rounded-lg" />
+      <SkeletonBar className="h-3 w-20" />
+      <SkeletonBar className="h-12 w-full rounded-lg" />
+      <SkeletonBar className="h-12 w-full rounded-lg" />
     </div>
   )
 }

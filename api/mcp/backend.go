@@ -4,6 +4,7 @@ import (
 	"github.com/gabinante/flywheel/internal/agent"
 	"github.com/gabinante/flywheel/internal/catalog"
 	"github.com/gabinante/flywheel/internal/claims"
+	"github.com/gabinante/flywheel/internal/entity"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/investigation"
 	"github.com/gabinante/flywheel/internal/notification"
@@ -12,6 +13,8 @@ import (
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
 	"github.com/gabinante/flywheel/internal/review"
+	"github.com/gabinante/flywheel/internal/rollback"
+	"github.com/gabinante/flywheel/internal/stateindex"
 	"github.com/gabinante/flywheel/internal/ticket"
 	"github.com/gabinante/flywheel/internal/workstream"
 )
@@ -24,7 +27,8 @@ type Backend struct {
 	Queue      *queue.Service
 	Trace      *execution.Service
 	Review     *review.Service
-	Org        *org.Service
+	Org           *org.Service
+	Entity        *entity.Service
 	AgentStore    agent.AgentStore
 	Investigation *investigation.Service
 	Claims        *claims.Service
@@ -44,6 +48,11 @@ type Backend struct {
 	// Catalog (Layer 14 project map)
 	Catalog        *catalog.Service
 	CatalogScanner *catalog.Scanner
+
+	// StateIndex provides observed infrastructure state queries (Layer 10).
+	StateIndex *stateindex.Service
+
+	Rollback   *rollback.Service
 
 	// DefaultAgentID is used as a fallback when agent_id is not passed in args
 	// and not available from HTTP auth context (e.g. stdio mode with FLYWHEEL_TOKEN).

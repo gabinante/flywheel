@@ -4,12 +4,14 @@ import { Link, useParams } from 'react-router-dom'
 import { KeyboardShortcutHelp } from '@/components/keyboard-shortcut-help'
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { ReviewQueueCelebration } from '@/components/review-queue-celebration'
+import { StaggerItem, StaggerList } from '@/components/stagger-list'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { FlywheelClient } from '@/contexts/auth-context'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
+import { ReviewsPageSkeleton, Skeleton } from '@/components/ui/skeleton'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 
@@ -389,7 +391,7 @@ export function ReviewsPage() {
     return <p className="text-destructive text-sm">{err}</p>
   }
   if (!tickets) {
-    return <p className="text-muted-foreground text-sm">Loading…</p>
+    return <ReviewsPageSkeleton />
   }
 
   return (
@@ -446,14 +448,14 @@ export function ReviewsPage() {
       )}
 
       {/* Ticket list */}
-      <ul className="flex flex-col gap-3" role="listbox" aria-label="Review queue">
+      <StaggerList className="flex flex-col gap-3" role="listbox" aria-label="Review queue">
         {tickets.map((t, idx) => {
           const isActive = idx === activeIndex
           const isExpanded = expandedIds.has(t.id ?? '')
           const trace = traceCache[t.id ?? '']
 
           return (
-            <li
+            <StaggerItem
               key={t.id}
               ref={(el) => { itemRefs.current[idx] = el }}
               role="option"
@@ -535,9 +537,10 @@ export function ReviewsPage() {
                         Execution trace
                       </h3>
                       {trace === undefined ? (
-                        <p className="text-muted-foreground text-xs italic">
-                          Loading trace…
-                        </p>
+                        <div className="flex flex-col gap-1.5">
+                          <Skeleton className="h-3 w-full" />
+                          <Skeleton className="h-3 w-3/4" />
+                        </div>
                       ) : (
                         <TraceSummary steps={trace} />
                       )}
@@ -604,10 +607,10 @@ export function ReviewsPage() {
                   </CardContent>
                 )}
               </Card>
-            </li>
+            </StaggerItem>
           )
         })}
-      </ul>
+      </StaggerList>
 
       {/* Empty states */}
       {tickets.length === 0 && justEmptiedQueue && (

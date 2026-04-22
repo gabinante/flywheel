@@ -5,8 +5,8 @@ import (
 )
 
 func TestAnalyzeMetrics_GoodTrend(t *testing.T) {
-	svc := &Service{}
-	p := &Policy{ID: "pol-1", MinSample: 20}
+	svc := &CalibrationService{}
+	p := &CalibrationPolicy{ID: "pol-1", MinSample: 20}
 	m := &Metrics{
 		PolicyID:             "pol-1",
 		TotalDecisions:       50,
@@ -29,8 +29,8 @@ func TestAnalyzeMetrics_GoodTrend(t *testing.T) {
 }
 
 func TestAnalyzeMetrics_BadTrend(t *testing.T) {
-	svc := &Service{}
-	p := &Policy{ID: "pol-1", MinSample: 20}
+	svc := &CalibrationService{}
+	p := &CalibrationPolicy{ID: "pol-1", MinSample: 20}
 	m := &Metrics{
 		PolicyID:             "pol-1",
 		TotalDecisions:       30,
@@ -50,8 +50,8 @@ func TestAnalyzeMetrics_BadTrend(t *testing.T) {
 }
 
 func TestAnalyzeMetrics_NeutralTrend(t *testing.T) {
-	svc := &Service{}
-	p := &Policy{ID: "pol-1", MinSample: 20}
+	svc := &CalibrationService{}
+	p := &CalibrationPolicy{ID: "pol-1", MinSample: 20}
 	m := &Metrics{
 		PolicyID:             "pol-1",
 		TotalDecisions:       25,
@@ -68,8 +68,8 @@ func TestAnalyzeMetrics_NeutralTrend(t *testing.T) {
 }
 
 func TestAnalyzeMetrics_InsufficientSample(t *testing.T) {
-	svc := &Service{}
-	p := &Policy{ID: "pol-1", MinSample: 20}
+	svc := &CalibrationService{}
+	p := &CalibrationPolicy{ID: "pol-1", MinSample: 20}
 	m := &Metrics{
 		PolicyID:             "pol-1",
 		TotalDecisions:       5,
@@ -90,26 +90,26 @@ func TestAnalyzeMetrics_InsufficientSample(t *testing.T) {
 func TestSimulateDecision(t *testing.T) {
 	tests := []struct {
 		name     string
-		rules    Rules
-		decision PolicyDecision
+		rules    CalibrationRules
+		decision CalibrationDecision
 		expected Decision
 	}{
 		{
 			name:     "block conditions override auto_approved",
-			rules:    Rules{BlockConditions: []Condition{{Field: "test", Operator: "eq", Value: true}}},
-			decision: PolicyDecision{Decision: DecisionAutoApproved},
+			rules:    CalibrationRules{BlockConditions: []Condition{{Field: "test", Operator: "eq", Value: true}}},
+			decision: CalibrationDecision{Decision: DecisionAutoApproved},
 			expected: DecisionBlocked,
 		},
 		{
 			name:     "auto-approve conditions upgrade required_review",
-			rules:    Rules{AutoApproveConditions: []Condition{{Field: "test", Operator: "eq", Value: true}}},
-			decision: PolicyDecision{Decision: DecisionRequiredReview},
+			rules:    CalibrationRules{AutoApproveConditions: []Condition{{Field: "test", Operator: "eq", Value: true}}},
+			decision: CalibrationDecision{Decision: DecisionRequiredReview},
 			expected: DecisionAutoApproved,
 		},
 		{
 			name:     "no matching rules keeps same decision",
-			rules:    Rules{},
-			decision: PolicyDecision{Decision: DecisionRequiredReview},
+			rules:    CalibrationRules{},
+			decision: CalibrationDecision{Decision: DecisionRequiredReview},
 			expected: DecisionRequiredReview,
 		},
 	}
@@ -132,10 +132,10 @@ func TestBuildConcerns(t *testing.T) {
 }
 
 func TestSimulationSummary(t *testing.T) {
-	rules := Rules{
+	rules := CalibrationRules{
 		AutoApproveConditions: []Condition{{Field: "priority", Operator: "gt", Value: 2}},
 	}
-	decisions := []PolicyDecision{
+	decisions := []CalibrationDecision{
 		{Decision: DecisionRequiredReview},
 		{Decision: DecisionAutoApproved},
 		{Decision: DecisionRequiredReview},

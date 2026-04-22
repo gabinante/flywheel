@@ -101,6 +101,27 @@ func (e ProjectStatus) Valid() bool {
 	}
 }
 
+// Defines values for StateTransitionEntryActorType.
+const (
+	StateTransitionEntryActorTypeAgent  StateTransitionEntryActorType = "agent"
+	StateTransitionEntryActorTypeHuman  StateTransitionEntryActorType = "human"
+	StateTransitionEntryActorTypeSystem StateTransitionEntryActorType = "system"
+)
+
+// Valid indicates whether the value is a known member of the StateTransitionEntryActorType enum.
+func (e StateTransitionEntryActorType) Valid() bool {
+	switch e {
+	case StateTransitionEntryActorTypeAgent:
+		return true
+	case StateTransitionEntryActorTypeHuman:
+		return true
+	case StateTransitionEntryActorTypeSystem:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StructuredErrorCode.
 const (
 	StructuredErrorCodeConflict       StructuredErrorCode = "conflict"
@@ -277,19 +298,19 @@ func (e TraceStepInputType) Valid() bool {
 
 // Defines values for TransitionRequestActor.
 const (
-	Agent  TransitionRequestActor = "agent"
-	Human  TransitionRequestActor = "human"
-	System TransitionRequestActor = "system"
+	TransitionRequestActorAgent  TransitionRequestActor = "agent"
+	TransitionRequestActorHuman  TransitionRequestActor = "human"
+	TransitionRequestActorSystem TransitionRequestActor = "system"
 )
 
 // Valid indicates whether the value is a known member of the TransitionRequestActor enum.
 func (e TransitionRequestActor) Valid() bool {
 	switch e {
-	case Agent:
+	case TransitionRequestActorAgent:
 		return true
-	case Human:
+	case TransitionRequestActorHuman:
 		return true
-	case System:
+	case TransitionRequestActorSystem:
 		return true
 	default:
 		return false
@@ -676,11 +697,14 @@ type Project struct {
 
 	// DefaultBranch Branch to checkout when closing a work stream; default "main".
 	DefaultBranch *string `json:"default_branch,omitempty"`
-	Id            *string `json:"id,omitempty"`
-	Name          *string `json:"name,omitempty"`
-	OrgId         *string `json:"org_id,omitempty"`
-	RepoUrl       *string `json:"repo_url,omitempty"`
-	Slug          *string `json:"slug,omitempty"`
+
+	// DispatchEnabled Whether the dispatcher picks up tickets for this project (default true).
+	DispatchEnabled *bool   `json:"dispatch_enabled,omitempty"`
+	Id              *string `json:"id,omitempty"`
+	Name            *string `json:"name,omitempty"`
+	OrgId           *string `json:"org_id,omitempty"`
+	RepoUrl         *string `json:"repo_url,omitempty"`
+	Slug            *string `json:"slug,omitempty"`
 
 	// Status active (default) or closed; list endpoints default to active only.
 	Status    *ProjectStatus `json:"status,omitempty"`
@@ -705,6 +729,20 @@ type ResolveEscalationRequest struct {
 	Answer     string  `json:"answer"`
 	ReviewerId *string `json:"reviewer_id,omitempty"`
 }
+
+// StateTransitionEntry defines model for StateTransitionEntry.
+type StateTransitionEntry struct {
+	ActorId   *string                        `json:"actor_id,omitempty"`
+	ActorType *StateTransitionEntryActorType `json:"actor_type,omitempty"`
+	CreatedAt *time.Time                     `json:"created_at,omitempty"`
+	FromState *string                        `json:"from_state,omitempty"`
+	Id        *string                        `json:"id,omitempty"`
+	ToState   *string                        `json:"to_state,omitempty"`
+	Trigger   *string                        `json:"trigger,omitempty"`
+}
+
+// StateTransitionEntryActorType defines model for StateTransitionEntry.ActorType.
+type StateTransitionEntryActorType string
 
 // StructuredError defines model for StructuredError.
 type StructuredError struct {
@@ -771,6 +809,13 @@ type TraceStepInput struct {
 // TraceStepInputType defines model for TraceStepInput.Type.
 type TraceStepInputType string
 
+// TransitionHistory defines model for TransitionHistory.
+type TransitionHistory struct {
+	CurrentState *string                 `json:"current_state,omitempty"`
+	TicketId     *string                 `json:"ticket_id,omitempty"`
+	Transitions  *[]StateTransitionEntry `json:"transitions,omitempty"`
+}
+
 // TransitionRequest defines model for TransitionRequest.
 type TransitionRequest struct {
 	Actor   *TransitionRequestActor `json:"actor,omitempty"`
@@ -786,6 +831,9 @@ type TransitionRequestActor string
 type UpdateProjectRequest struct {
 	// DefaultBranch Branch to checkout when closing a work stream; default "main".
 	DefaultBranch *string `json:"default_branch,omitempty"`
+
+	// DispatchEnabled Whether the dispatcher picks up tickets for this project (default true). Takes effect immediately.
+	DispatchEnabled *bool `json:"dispatch_enabled,omitempty"`
 
 	// Name Project display name.
 	Name *string `json:"name,omitempty"`
@@ -1040,6 +1088,9 @@ type ServerInterface interface {
 	// Append a step to the execution trace (requires valid lease)
 	// (POST /tickets/{ticketID}/trace)
 	LogStep(w http.ResponseWriter, r *http.Request, ticketID string)
+	// State transition history for a ticket (timeline of state changes)
+	// (GET /tickets/{ticketID}/transitions)
+	GetTransitions(w http.ResponseWriter, r *http.Request, ticketID string)
 	// Transition ticket state (e.g. start, submit, approve, reject)
 	// (POST /tickets/{ticketID}/transitions)
 	TransitionTicket(w http.ResponseWriter, r *http.Request, ticketID string)
@@ -1945,6 +1996,31 @@ func (siw *ServerInterfaceWrapper) LogStep(w http.ResponseWriter, r *http.Reques
 	handler.ServeHTTP(w, r)
 }
 
+// GetTransitions operation middleware
+func (siw *ServerInterfaceWrapper) GetTransitions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "ticketID" -------------
+	var ticketID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "ticketID", r.PathValue("ticketID"), &ticketID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ticketID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTransitions(w, r, ticketID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // TransitionTicket operation middleware
 func (siw *ServerInterfaceWrapper) TransitionTicket(w http.ResponseWriter, r *http.Request) {
 
@@ -2125,6 +2201,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/tickets/{ticketID}/reviews", wrapper.CreateReview)
 	m.HandleFunc("GET "+options.BaseURL+"/tickets/{ticketID}/trace", wrapper.GetTrace)
 	m.HandleFunc("POST "+options.BaseURL+"/tickets/{ticketID}/trace", wrapper.LogStep)
+	m.HandleFunc("GET "+options.BaseURL+"/tickets/{ticketID}/transitions", wrapper.GetTransitions)
 	m.HandleFunc("POST "+options.BaseURL+"/tickets/{ticketID}/transitions", wrapper.TransitionTicket)
 
 	return m
@@ -3052,6 +3129,32 @@ func (response LogStep404JSONResponse) VisitLogStepResponse(w http.ResponseWrite
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetTransitionsRequestObject struct {
+	TicketID string `json:"ticketID"`
+}
+
+type GetTransitionsResponseObject interface {
+	VisitGetTransitionsResponse(w http.ResponseWriter) error
+}
+
+type GetTransitions200JSONResponse TransitionHistory
+
+func (response GetTransitions200JSONResponse) VisitGetTransitionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetTransitions404JSONResponse StructuredError
+
+func (response GetTransitions404JSONResponse) VisitGetTransitionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type TransitionTicketRequestObject struct {
 	TicketID string `json:"ticketID"`
 	Body     *TransitionTicketJSONRequestBody
@@ -3176,6 +3279,9 @@ type StrictServerInterface interface {
 	// Append a step to the execution trace (requires valid lease)
 	// (POST /tickets/{ticketID}/trace)
 	LogStep(ctx context.Context, request LogStepRequestObject) (LogStepResponseObject, error)
+	// State transition history for a ticket (timeline of state changes)
+	// (GET /tickets/{ticketID}/transitions)
+	GetTransitions(ctx context.Context, request GetTransitionsRequestObject) (GetTransitionsResponseObject, error)
 	// Transition ticket state (e.g. start, submit, approve, reject)
 	// (POST /tickets/{ticketID}/transitions)
 	TransitionTicket(ctx context.Context, request TransitionTicketRequestObject) (TransitionTicketResponseObject, error)
@@ -4058,6 +4164,32 @@ func (sh *strictHandler) LogStep(w http.ResponseWriter, r *http.Request, ticketI
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(LogStepResponseObject); ok {
 		if err := validResponse.VisitLogStepResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTransitions operation middleware
+func (sh *strictHandler) GetTransitions(w http.ResponseWriter, r *http.Request, ticketID string) {
+	var request GetTransitionsRequestObject
+
+	request.TicketID = ticketID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTransitions(ctx, request.(GetTransitionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTransitions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTransitionsResponseObject); ok {
+		if err := validResponse.VisitGetTransitionsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

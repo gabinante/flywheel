@@ -263,10 +263,14 @@ func (s *ProjectStore) Create(_ context.Context, p *project.Project) error {
 	if branch == "" {
 		branch = "main"
 	}
+	dispatchEnabled := 1
+	if !p.DispatchEnabled {
+		dispatchEnabled = 0
+	}
 	_, err := s.db.Exec(
-		`INSERT INTO projects (id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.ID, p.OrgID, p.Name, p.Slug, nilIfEmpty(p.RepoURL), branch, string(techJSON), string(packJSON), status,
+		`INSERT INTO projects (id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.ID, p.OrgID, p.Name, p.Slug, nilIfEmpty(p.RepoURL), branch, string(techJSON), string(packJSON), status, dispatchEnabled,
 		p.CreatedAt.UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return err
@@ -279,11 +283,12 @@ func (s *ProjectStore) GetByID(_ context.Context, id string) (*project.Project, 
 	var p project.Project
 	var techJSON, packJSON string
 	var repoURL, defaultBranch sql.NullString
+	var dispatchEnabled int
 	var ts string
 	err := s.db.QueryRow(
-		`SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, created_at
+		`SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, created_at
 		 FROM projects WHERE id = ?`, id).
-		Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techJSON, &packJSON, &p.Status, &ts)
+		Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techJSON, &packJSON, &p.Status, &dispatchEnabled, &ts)
 	if err != nil {
 		return nil, err
 	}
@@ -295,6 +300,7 @@ func (s *ProjectStore) GetByID(_ context.Context, id string) (*project.Project, 
 	} else {
 		p.DefaultBranch = "main"
 	}
+	p.DispatchEnabled = dispatchEnabled != 0
 	_ = json.Unmarshal([]byte(techJSON), &p.TechStack)
 	_ = json.Unmarshal([]byte(packJSON), &p.ContextPack)
 	p.CreatedAt, _ = time.Parse(time.RFC3339Nano, ts)
@@ -302,7 +308,7 @@ func (s *ProjectStore) GetByID(_ context.Context, id string) (*project.Project, 
 }
 
 func (s *ProjectStore) ListByOrgID(_ context.Context, orgID string, statusFilter string) ([]project.Project, error) {
-	q := `SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, created_at
+	q := `SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, created_at
 		  FROM projects WHERE org_id = ?`
 	if statusFilter == "" || statusFilter == "active" {
 		q += ` AND status = 'active'`
@@ -320,8 +326,9 @@ func (s *ProjectStore) ListByOrgID(_ context.Context, orgID string, statusFilter
 		var p project.Project
 		var techJSON, packJSON string
 		var repoURL, defaultBranch sql.NullString
+		var dispatchEnabled int
 		var ts string
-		if err := rows.Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techJSON, &packJSON, &p.Status, &ts); err != nil {
+		if err := rows.Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techJSON, &packJSON, &p.Status, &dispatchEnabled, &ts); err != nil {
 			return nil, err
 		}
 		if repoURL.Valid {
@@ -332,6 +339,7 @@ func (s *ProjectStore) ListByOrgID(_ context.Context, orgID string, statusFilter
 		} else {
 			p.DefaultBranch = "main"
 		}
+		p.DispatchEnabled = dispatchEnabled != 0
 		_ = json.Unmarshal([]byte(techJSON), &p.TechStack)
 		_ = json.Unmarshal([]byte(packJSON), &p.ContextPack)
 		p.CreatedAt, _ = time.Parse(time.RFC3339Nano, ts)
@@ -402,6 +410,22 @@ func (s *ProjectStore) UpdateDefaultBranch(_ context.Context, projectID, branch 
 		branch = "main"
 	}
 	res, err := s.db.Exec(`UPDATE projects SET default_branch = ? WHERE id = ?`, branch, projectID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return project.ErrProjectNotFound
+	}
+	return nil
+}
+
+func (s *ProjectStore) UpdateDispatchEnabled(_ context.Context, projectID string, enabled bool) error {
+	val := 0
+	if enabled {
+		val = 1
+	}
+	res, err := s.db.Exec(`UPDATE projects SET dispatch_enabled = ? WHERE id = ?`, val, projectID)
 	if err != nil {
 		return err
 	}

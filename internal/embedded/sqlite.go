@@ -84,16 +84,17 @@ func migrate(db *sql.DB) error {
 		)`,
 		// Projects
 		`CREATE TABLE IF NOT EXISTS projects (
-			id             TEXT PRIMARY KEY,
-			org_id         TEXT NOT NULL REFERENCES orgs(id),
-			name           TEXT NOT NULL,
-			slug           TEXT NOT NULL,
-			repo_url       TEXT,
-			default_branch TEXT NOT NULL DEFAULT 'main',
-			tech_stack     TEXT NOT NULL DEFAULT '[]',
-			context_pack   TEXT NOT NULL DEFAULT '{}',
-			status         TEXT NOT NULL DEFAULT 'active',
-			created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+			id               TEXT PRIMARY KEY,
+			org_id           TEXT NOT NULL REFERENCES orgs(id),
+			name             TEXT NOT NULL,
+			slug             TEXT NOT NULL,
+			repo_url         TEXT,
+			default_branch   TEXT NOT NULL DEFAULT 'main',
+			tech_stack       TEXT NOT NULL DEFAULT '[]',
+			context_pack     TEXT NOT NULL DEFAULT '{}',
+			status           TEXT NOT NULL DEFAULT 'active',
+			dispatch_enabled INTEGER NOT NULL DEFAULT 1,
+			created_at       TEXT NOT NULL DEFAULT (datetime('now')),
 			UNIQUE (org_id, slug)
 		)`,
 		`CREATE TABLE IF NOT EXISTS ticket_sequences (

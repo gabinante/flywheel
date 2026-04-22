@@ -12,6 +12,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/contexts/use-auth'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
@@ -209,9 +210,11 @@ export function ExecutionTraceCard({
           <CardTitle className="text-sm">Execution Trace</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-2 text-muted-foreground text-sm">
-            <RefreshCw className="size-3.5 animate-spin" />
-            Loading trace…
+          <div className="flex flex-col gap-1.5">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-10 w-full rounded-lg" />
+            <Skeleton className="h-10 w-full rounded-lg" />
+            <Skeleton className="h-10 w-full rounded-lg" />
           </div>
         </CardContent>
       </Card>
