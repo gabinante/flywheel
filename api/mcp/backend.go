@@ -13,6 +13,7 @@ import (
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
 	"github.com/gabinante/flywheel/internal/review"
+	"github.com/gabinante/flywheel/internal/rollback"
 	"github.com/gabinante/flywheel/internal/ticket"
 	"github.com/gabinante/flywheel/internal/workstream"
 )
@@ -46,6 +47,8 @@ type Backend struct {
 	// Catalog (Layer 14 project map)
 	Catalog        *catalog.Service
 	CatalogScanner *catalog.Scanner
+
+	Rollback   *rollback.Service
 
 	// DefaultAgentID is used as a fallback when agent_id is not passed in args
 	// and not available from HTTP auth context (e.g. stdio mode with FLYWHEEL_TOKEN).
