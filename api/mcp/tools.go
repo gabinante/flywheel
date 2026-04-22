@@ -365,6 +365,16 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"required":             []string{"ticket_id"},
 		"additionalProperties": false,
 	}}, wrap(forceReleaseLeaseHandler))
+	mcp.AddTool(s, &mcp.Tool{Name: "rollback_ticket", Description: "Initiate a stage-specific rollback for a ticket. Behavior depends on the ticket's current lifecycle stage:\n- Executing: discard worktree, release claims, return to draft for re-planning.\n- Awaiting validation / Validated (pre-deploy): revert diff, release claims, return to draft.\n- Deploying / Observing (post-deploy): redeploy previous version, release claims. For production: auto-creates an incident ticket.\n- Closed (post-observation): creates a new rollback ticket for structural code revert (original stays closed).\nRollback is not available from draft, specced, planning, or awaiting_input states.", InputSchema: map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"ticket_id": map[string]any{"type": "string", "description": "Ticket ID to roll back"},
+			"reason":    map[string]any{"type": "string", "description": "Reason for the rollback"},
+			"agent_id":  map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+		},
+		"required":             []string{"ticket_id", "reason"},
+		"additionalProperties": false,
+	}}, wrap(rollbackTicketHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "list_pending_reviews", Description: "List tickets in awaiting_review for a project. Use this when the user asks 'what needs my review?' or 'show pending reviews'. Returns full tickets so you can summarize them in chat; use get_trace(ticket_id) to show execution steps for each.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -1686,6 +1696,30 @@ func forceReleaseLeaseHandler(b *Backend, ctx context.Context, args map[string]a
 		return toolErrTriple(apierrors.MapError(err))
 	}
 	return jsonResult(map[string]any{"ok": true, "ticket_id": ticketID, "message": "Ticket returned to pending; use claim_ticket to claim it."})
+}
+
+func rollbackTicketHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
+	ticketID, err := requireString(args, "ticket_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	reason, err := requireString(args, "reason")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	agentID, err := getAgentIDFromArgs(ctx, args)
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	if b.Rollback == nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInternal, "rollback service not configured", false))
+	}
+	actor := ticket.Actor{ID: agentID, Type: ticket.ActorHuman}
+	result, err := b.Rollback.Rollback(ctx, ticketID, actor, reason)
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	return jsonResult(result)
 }
 
 func listPendingReviewsHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {

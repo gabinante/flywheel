@@ -177,6 +177,9 @@ func (d *Dispatcher) Start(ctx context.Context) {
 		_ = d.durableBus.SubscribePattern("tests.failed", "dispatcher:tests-failed", func(_ context.Context, e events.Event) {
 			d.handleTestsFailed(ctx, e)
 		})
+		_ = d.durableBus.SubscribePattern("ticket.rolled_back", "dispatcher:rolled-back", func(_ context.Context, e events.Event) {
+			d.handleTicketRolledBack(ctx, e)
+		})
 	} else {
 		// Legacy exact subscriptions (backward compatible).
 		d.bus.Subscribe(events.EventTicketCreated, func(_ context.Context, e events.Event) {
@@ -199,6 +202,9 @@ func (d *Dispatcher) Start(ctx context.Context) {
 		})
 		d.bus.Subscribe(events.EventTestsFailed, func(_ context.Context, e events.Event) {
 			d.handleTestsFailed(ctx, e)
+		})
+		d.bus.Subscribe(events.EventTicketRolledBack, func(_ context.Context, e events.Event) {
+			d.handleTicketRolledBack(ctx, e)
 		})
 	}
 
@@ -409,6 +415,41 @@ func (d *Dispatcher) handleTestsFailed(ctx context.Context, e events.Event) {
 	if prURL != "" {
 		d.spawnConflictResolver(ctx, t, prURL)
 	}
+}
+
+// handleTicketRolledBack cancels any active worker and cleans up when a ticket is rolled back.
+func (d *Dispatcher) handleTicketRolledBack(_ context.Context, e events.Event) {
+	ticketID, _ := e.Payload["ticket_id"].(string)
+	if ticketID == "" {
+		return
+	}
+
+	// Cancel any active worker for this ticket.
+	d.mu.Lock()
+	if cancel, ok := d.active[ticketID]; ok {
+		cancel()
+		delete(d.active, ticketID)
+	}
+	// Also cancel reviewer if running.
+	if cancel, ok := d.active["review:"+ticketID]; ok {
+		cancel()
+		delete(d.active, "review:"+ticketID)
+	}
+	// Also cancel conflict resolver if running.
+	if cancel, ok := d.active["resolve:"+ticketID]; ok {
+		cancel()
+		delete(d.active, "resolve:"+ticketID)
+	}
+	d.mu.Unlock()
+
+	// Worktree cleanup is handled by the rollback service, but clean up
+	// any remaining worktree as a safety net.
+	if err := d.worktrees.Remove(ticketID); err != nil {
+		// Not critical — the rollback service may have already removed it.
+		log.Printf("dispatch: rollback worktree cleanup %s: %v (may already be removed)", ticketID, err)
+	}
+
+	log.Printf("dispatch: ticket %s rolled back — worker cancelled, worktree cleaned", ticketID)
 }
 
 func (d *Dispatcher) tryDispatch(ctx context.Context, t *ticket.Ticket) {
