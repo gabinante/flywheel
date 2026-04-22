@@ -22,7 +22,7 @@ export function ReviewQueueCelebration({
 }: ReviewQueueCelebrationProps) {
   return (
     <div
-      className="border-border relative mt-2 overflow-hidden rounded-xl border bg-gradient-to-br from-emerald-50 via-amber-50 to-orange-50 p-10 text-center dark:from-emerald-950/35 dark:via-amber-950/25 dark:to-orange-950/25"
+      className="relative mt-2 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-emerald-950/30 via-amber-950/20 to-orange-950/20 p-10 text-center backdrop-blur-md"
       role="status"
     >
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
