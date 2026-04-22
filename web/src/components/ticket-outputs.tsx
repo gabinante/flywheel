@@ -80,7 +80,7 @@ export function TicketOutputsCard({ outputs }: TicketOutputsCardProps) {
             <h3 className="text-foreground mb-1.5 text-xs font-medium tracking-wide uppercase">
               Artifacts
             </h3>
-            <ul className="border-border flex flex-col gap-1 rounded-md border bg-muted/30 px-3 py-2">
+            <ul className="flex flex-col gap-1 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 backdrop-blur-sm">
               {artifactsItems.map((item, i) => (
                 <li
                   key={i}
@@ -98,7 +98,7 @@ export function TicketOutputsCard({ outputs }: TicketOutputsCardProps) {
             <h3 className="text-foreground mb-1.5 text-xs font-medium tracking-wide uppercase">
               Artifacts
             </h3>
-            <pre className="bg-muted max-h-48 overflow-auto rounded-md p-3 font-mono text-xs">
+            <pre className="max-h-48 overflow-auto rounded-xl border border-white/10 bg-white/[0.03] p-3 font-mono text-xs backdrop-blur-sm">
               {typeof artifactsVal === 'string'
                 ? artifactsVal
                 : JSON.stringify(artifactsVal, null, 2)}
@@ -123,7 +123,7 @@ export function TicketOutputsCard({ outputs }: TicketOutputsCardProps) {
                         {String(val)}
                       </span>
                     ) : (
-                      <pre className="bg-muted mt-1 max-h-40 overflow-auto rounded-md p-2 font-mono text-xs">
+                      <pre className="mt-1 max-h-40 overflow-auto rounded-xl border border-white/10 bg-white/[0.03] p-2 font-mono text-xs backdrop-blur-sm">
                         {JSON.stringify(val, null, 2)}
                       </pre>
                     )}

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
+import { DetailPageSkeleton } from '@/components/ui/skeleton'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 
@@ -111,7 +112,7 @@ export function WorkStreamEditPage() {
     return <p className="text-destructive text-sm">{err}</p>
   }
   if (stream === undefined) {
-    return <p className="text-muted-foreground text-sm">Loading…</p>
+    return <DetailPageSkeleton />
   }
   if (!stream) {
     return <p className="text-muted-foreground text-sm">Work stream not found.</p>

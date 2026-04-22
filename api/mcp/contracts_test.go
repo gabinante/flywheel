@@ -83,14 +83,15 @@ func TestPluginContract_RequiredResources(t *testing.T) {
 func TestAllContracts(t *testing.T) {
 	contracts := AllContracts()
 
-	if len(contracts) != 5 {
-		t.Fatalf("AllContracts() returned %d contracts, want 5", len(contracts))
+	if len(contracts) != 6 {
+		t.Fatalf("AllContracts() returned %d contracts, want 6", len(contracts))
 	}
 
 	expectedNames := []string{
 		"code_intelligence",
 		"catalog",
 		"state_index",
+		"findings",
 		"signal_ingestion",
 		"notification",
 	}
@@ -160,6 +161,7 @@ func TestAllContracts_ToolSchemasValid(t *testing.T) {
 func TestAllContracts_Layers(t *testing.T) {
 	expectedLayers := map[string]int{
 		"code_intelligence": 3,
+		"findings":          4,
 		"catalog":           14,
 		"state_index":       10,
 		"signal_ingestion":  11,
