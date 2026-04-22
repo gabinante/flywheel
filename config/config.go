@@ -2,39 +2,98 @@ package config
 
 import (
 	"bufio"
+	"fmt"
+	"log"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Load reads configuration from environment with sensible defaults.
 // If a .env file exists in the current directory, it is loaded first (values already in env are not overwritten).
+// In embedded mode, also loads ~/.warrant/data/config.env for bootstrap-generated settings.
+//
+// Environment variables should be populated by varlock before the server starts:
+//
+//	varlock run -- ./warrant          (production / Docker)
+//	varlock run -- go run ./cmd/server (local dev)
+//
+// varlock validates variables against .env.schema and ensures sensitive values
+// are never logged. See scripts/varlock and .env.schema for details.
 func Load() *Config {
 	loadEnvFile(".env")
+	// In embedded mode, also load the data dir config if it exists.
+	// This allows headless bootstrap to persist config across restarts.
+	if getEnv("STORAGE_MODE", "") == "embedded" {
+		dataDir := getEnv("WARRANT_DATA_DIR", "")
+		if dataDir == "" {
+			if home, err := os.UserHomeDir(); err == nil {
+				dataDir = filepath.Join(home, ".warrant", "data")
+			}
+		}
+		if dataDir != "" {
+			loadEnvFile(filepath.Join(dataDir, "config.env"))
+		}
+	}
 	port := getEnv("PORT", "8080")
 	baseURL := getEnv("BASE_URL", "http://localhost:"+port)
-	return &Config{
+	storageMode := getEnv("STORAGE_MODE", "")
+	embeddedEnabled := storageMode == "embedded"
+	cfg := &Config{
+		Mirror: MirrorConfig{
+			Enabled:      getEnvBool("MIRROR_ENABLED", false),
+			LinearAPIKey: getEnv("MIRROR_LINEAR_API_KEY", ""),
+			JiraBaseURL:  getEnv("MIRROR_JIRA_BASE_URL", ""),
+			JiraEmail:    getEnv("MIRROR_JIRA_EMAIL", ""),
+			JiraAPIToken: getEnv("MIRROR_JIRA_API_TOKEN", ""),
+		},
+		Notification: NotificationConfig{
+			Enabled:         getEnvBool("NOTIFICATION_ENABLED", true),
+			SlackWebhookURL: getEnv("NOTIFICATION_SLACK_WEBHOOK_URL", ""),
+		},
+		Embedded: EmbeddedConfig{
+			Enabled: embeddedEnabled,
+			DataDir: getEnv("WARRANT_DATA_DIR", ""),
+		},
 		Dispatch: DispatchConfig{
 			Enabled:      getEnvBool("DISPATCH_ENABLED", false),
 			MaxWorkers:   getEnvInt("DISPATCH_MAX_WORKERS", 4),
 			ClaudePath:   getEnv("DISPATCH_CLAUDE_PATH", "claude"),
-			WorktreeDir:  getEnv("DISPATCH_WORKTREE_DIR", "/tmp/warrant-worktrees"),
+			WorktreeDir:  getEnv("DISPATCH_WORKTREE_DIR", "/tmp/flywheel-worktrees"),
 			APIKey:       getEnv("DISPATCH_API_KEY", ""),
 			ProjectID:    getEnv("DISPATCH_PROJECT_ID", ""),
 			AutoApproveOnAcceptancePass: getEnvBool("AUTO_APPROVE_ON_ACCEPTANCE_PASS", false),
+			AgentDriver:   getEnv("DISPATCH_AGENT_DRIVER", "claude"),
+			AgentCLIPath:  getEnv("DISPATCH_AGENT_CMD", ""),
 			DockerEnabled:  getEnvBool("DISPATCH_DOCKER_ENABLED", false),
-			DockerImage:    getEnv("DISPATCH_DOCKER_IMAGE", "warrant-worker"),
+			DockerImage:    getEnv("DISPATCH_DOCKER_IMAGE", "flywheel-worker"),
 			DockerMemory:   getEnv("DISPATCH_DOCKER_MEMORY", "4g"),
 			DockerCPUs:     getEnv("DISPATCH_DOCKER_CPUS", "2"),
 			DockerFirewall: getEnvBool("DISPATCH_DOCKER_FIREWALL", true),
-			AnthropicKey:   getEnv("ANTHROPIC_API_KEY", ""),
+			AnthropicKey:      getEnv("ANTHROPIC_API_KEY", ""),
+			ReconcileInterval: getEnvDuration("DISPATCH_RECONCILE_INTERVAL", 60*time.Second),
+		},
+		Cost: CostConfig{
+			Enabled:                    getEnvBool("COST_TRACKING_ENABLED", true),
+			DefaultMonthlyBudgetDollars: getEnvFloat("COST_DEFAULT_MONTHLY_BUDGET", 0),
+			DefaultTicketBudgetDollars:  getEnvFloat("COST_DEFAULT_TICKET_BUDGET", 0),
+			WarnAtFraction:             getEnvFloat("COST_WARN_AT_FRACTION", 0.8),
+			FlagshipProvider:           getEnv("COST_FLAGSHIP_PROVIDER", "anthropic"),
+			FlagshipModel:              getEnv("COST_FLAGSHIP_MODEL", "claude-opus-4-20250514"),
+			MidProvider:                getEnv("COST_MID_PROVIDER", "anthropic"),
+			MidModel:                   getEnv("COST_MID_MODEL", "claude-sonnet-4-20250514"),
+			FastProvider:               getEnv("COST_FAST_PROVIDER", "anthropic"),
+			FastModel:                  getEnv("COST_FAST_MODEL", "claude-haiku-3-20250307"),
 		},
 		Server: ServerConfig{
 			Port:    port,
 			WebDist: getEnv("WEB_DIST", "web/dist"),
 		},
 		DB: DBConfig{
-			URL: getEnv("DATABASE_URL", "postgres://warrant:warrant@localhost:5433/warrant?sslmode=disable"),
+			URL: getEnv("DATABASE_URL", "postgres://flywheel:flywheel@localhost:5433/flywheel?sslmode=disable"),
 		},
 		Redis: RedisConfig{
 			URL: getEnv("REDIS_URL", "redis://localhost:6379/0"),
@@ -50,7 +109,44 @@ func Load() *Config {
 			SuccessRedirectURL: getEnv("AUTH_SUCCESS_REDIRECT_URL", ""),
 			JWTSecret:          getEnv("JWT_SECRET", ""),
 		},
+		Findings: FindingsConfig{
+			WeaviateURL:        getEnv("WEAVIATE_URL", ""),
+			WeaviateAPIKey:     getEnv("WEAVIATE_API_KEY", ""),
+			WeaviateVectorizer: getEnv("WEAVIATE_VECTORIZER", "text2vec-openai"),
+		},
 	}
+
+	for _, w := range cfg.Validate() {
+		log.Printf("config warning: %s", w)
+	}
+
+	return cfg
+}
+
+// Validate checks for conflicting or potentially misconfigured settings
+// and returns a list of warning messages. Called automatically by Load().
+func (c *Config) Validate() []string {
+	var warnings []string
+
+	// When dispatch is enabled in host mode, the claude CLI must be reachable.
+	// Skip the check when Docker isolation is active because the binary lives
+	// inside the container image, not on the host PATH.
+	if c.Dispatch.Enabled && !c.Dispatch.DockerEnabled {
+		if _, err := exec.LookPath(c.Dispatch.ClaudePath); err != nil {
+			warnings = append(warnings, fmt.Sprintf(
+				"DISPATCH_ENABLED=true but DISPATCH_CLAUDE_PATH=%q not found on PATH: %v",
+				c.Dispatch.ClaudePath, err))
+		}
+	}
+
+	// Auto-approving on acceptance pass requires acceptance tests to actually run.
+	if c.Dispatch.AutoApproveOnAcceptancePass && !c.RunAcceptanceTestOnSubmit {
+		warnings = append(warnings,
+			"AUTO_APPROVE_ON_ACCEPTANCE_PASS=true but RUN_ACCEPTANCE_TEST_ON_SUBMIT=false; "+
+				"tickets cannot be auto-approved because no acceptance test will run")
+	}
+
+	return warnings
 }
 
 type Config struct {
@@ -60,24 +156,81 @@ type Config struct {
 	Queue                     QueueConfig
 	Auth                      AuthConfig
 	Dispatch                  DispatchConfig
+	Cost                      CostConfig
+	Mirror                    MirrorConfig
+	Notification              NotificationConfig
+	Embedded                  EmbeddedConfig
+	Findings                  FindingsConfig
 	RunAcceptanceTestOnSubmit bool
+}
+
+// FindingsConfig holds configuration for the findings layer (Layer 4).
+type FindingsConfig struct {
+	WeaviateURL        string // Weaviate server URL. Empty = use in-memory fallback.
+	WeaviateAPIKey     string // Weaviate API key for authentication (optional).
+	WeaviateVectorizer string // Vectorizer module name (default: "text2vec-openai").
+}
+
+// CostConfig holds cost and rate-limit management settings.
+type CostConfig struct {
+	Enabled                     bool    // enable cost tracking (default: true)
+	DefaultMonthlyBudgetDollars float64 // 0 = no default budget
+	DefaultTicketBudgetDollars  float64 // 0 = no default budget
+	WarnAtFraction              float64 // fraction (0-1) at which to warn (default: 0.8)
+	FlagshipProvider            string  // provider for flagship tier (e.g. "anthropic")
+	FlagshipModel               string  // model name for flagship tier
+	MidProvider                 string  // provider for mid tier
+	MidModel                    string  // model name for mid tier
+	FastProvider                string  // provider for fast/cheap tier
+	FastModel                   string  // model name for fast tier
+}
+
+// MirrorConfig holds configuration for the ticket mirroring service.
+// The mirror service itself is opt-in per project (via project ContextPack.Extra),
+// but global API credentials are configured here.
+type MirrorConfig struct {
+	Enabled      bool   // master switch: enable the mirror service
+	LinearAPIKey string // Linear API key (global, or per-project via varlock)
+	JiraBaseURL  string // Jira instance base URL
+	JiraEmail    string // Jira API user email
+	JiraAPIToken string // Jira API token
+}
+
+// NotificationConfig holds configuration for the notification push layer.
+// Channel adapters (Slack, email, SMS) are pluggable — defaults are registered
+// when their credentials are configured. Per-project settings are stored in the
+// notification_preferences table.
+type NotificationConfig struct {
+	Enabled         bool   // master switch: enable the notification service
+	SlackWebhookURL string // default Slack incoming webhook URL (per-project overrides via preferences)
+}
+
+// EmbeddedConfig controls zero-config embedded mode (SQLite + in-memory Redis).
+// When Enabled is true, Postgres and Redis are not required.
+type EmbeddedConfig struct {
+	Enabled bool   // STORAGE_MODE=embedded or auto-detected
+	DataDir string // directory for SQLite DB and findings (default: ~/.warrant/data)
 }
 
 type DispatchConfig struct {
 	Enabled      bool
 	MaxWorkers   int
-	ClaudePath   string   // path to claude CLI binary (host mode)
+	ClaudePath   string   // path to claude CLI binary (host mode, backward compat)
 	WorktreeDir  string   // base directory for git worktrees (host mode)
-	APIKey       string   // warrant API key for worker MCP authentication
+	APIKey       string   // Flywheel API key for worker MCP authentication
 	ProjectID    string   // only dispatch tickets for this project (empty = all)
 	AutoApproveOnAcceptancePass bool
+	// Agent driver settings.
+	AgentDriver  string   // driver name: "claude" (default), "generic", or custom registered driver
+	AgentCLIPath string   // override CLI path for the agent binary (DISPATCH_AGENT_CMD)
 	// Docker isolation settings.
 	DockerEnabled  bool
-	DockerImage    string // worker image name (default: "warrant-worker")
+	DockerImage    string // worker image name (default: "flywheel-worker")
 	DockerMemory   string // memory limit per worker (default: "4g")
 	DockerCPUs     string // CPU limit per worker (default: "2")
-	DockerFirewall bool   // enable default-deny firewall with allowlist
-	AnthropicKey   string // ANTHROPIC_API_KEY passed to docker workers
+	DockerFirewall    bool          // enable default-deny firewall with allowlist
+	AnthropicKey      string        // ANTHROPIC_API_KEY passed to docker workers
+	ReconcileInterval time.Duration // periodic reconciliation interval (default: 60s)
 }
 
 type ServerConfig struct {
@@ -150,6 +303,15 @@ func getEnvInt(key string, defaultVal int) int {
 	return defaultVal
 }
 
+func getEnvFloat(key string, defaultVal float64) float64 {
+	if v := os.Getenv(key); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
+		}
+	}
+	return defaultVal
+}
+
 func getEnvBool(key string, defaultVal bool) bool {
 	if v := os.Getenv(key); v != "" {
 		switch strings.ToLower(v) {
@@ -157,6 +319,18 @@ func getEnvBool(key string, defaultVal bool) bool {
 			return true
 		case "0", "false", "no":
 			return false
+		}
+	}
+	return defaultVal
+}
+
+func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+		if n, err := strconv.Atoi(v); err == nil {
+			return time.Duration(n) * time.Second
 		}
 	}
 	return defaultVal

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
-  title: Warrant API
-  description: REST API for Warrant ticketing (orgs, projects, tickets, reviews, queue).
+  title: Flywheel API
+  description: REST API for Flywheel ticketing (orgs, projects, tickets, reviews, queue).
   version: 0.1.0
 servers:
   - url: http://localhost:8080
@@ -846,6 +846,323 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StructuredError'
+  /projects/{projectID}/policies:
+    get:
+      operationId: ListPolicies
+      summary: List advancement policies for a project
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: enabled
+          in: query
+          description: Filter to enabled policies only.
+          schema:
+            type: string
+            enum: ["true", "false"]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyListResponse'
+    post:
+      operationId: CreatePolicy
+      summary: Create a new advancement policy
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePolicyRequest'
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Policy'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /projects/{projectID}/policies/health:
+    get:
+      operationId: GetProjectPolicyHealth
+      summary: Policy health view showing all policies with outcome statistics, proposals, and edit history
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectHealthResponse'
+  /projects/{projectID}/policies/calibrate:
+    post:
+      operationId: RunCalibration
+      summary: Run calibration feedback loop — analyzes metrics and generates broadening or review proposals
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalibrationResponse'
+  /policies/{policyID}:
+    get:
+      operationId: GetPolicy
+      summary: Get a single policy by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: policyID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Policy'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+    put:
+      operationId: UpdatePolicy
+      summary: Update a policy (records a change event in the stream)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: policyID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePolicyRequest'
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /policies/{policyID}/health:
+    get:
+      operationId: GetPolicyHealth
+      summary: Get health view for a single policy with metrics, proposals, and change history
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: policyID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyHealth'
+  /policies/{policyID}/metrics:
+    get:
+      operationId: GetPolicyMetrics
+      summary: Get computed per-policy metrics (auto-approval rate, rollback rate, incident rate)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: policyID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyMetrics'
+  /policies/{policyID}/decisions:
+    get:
+      operationId: ListPolicyDecisions
+      summary: List rolling record of gated decisions with outcomes
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: policyID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyDecisionsResponse'
+    post:
+      operationId: RecordPolicyDecision
+      summary: Record a policy decision on a ticket
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: policyID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordDecisionRequest'
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyDecision'
+  /policies/{policyID}/history:
+    get:
+      operationId: ListPolicyChangeEvents
+      summary: List auditable change events for a policy (edit history)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: policyID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyChangeEventsResponse'
+  /policies/{policyID}/simulate:
+    post:
+      operationId: SimulateRuleChange
+      summary: Simulate candidate rule changes against last N days of historical tickets before committing
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: policyID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SimulateRequest'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimulationResult'
+  /proposals/{proposalID}/resolve:
+    post:
+      operationId: ResolveProposal
+      summary: Accept, reject, or dismiss a system-generated proposal (broadening is never automatic)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: proposalID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveProposalRequest'
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /tickets/{ticketID}/outcome:
+    post:
+      operationId: RecordTicketOutcome
+      summary: Record the outcome (success, rollback, incident) for all policy decisions on a ticket
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: ticketID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordOutcomeRequest'
+      responses:
+        "200":
+          description: OK
   /projects/{projectID}/queue/claim:
     post:
       operationId: ClaimTicket
@@ -950,6 +1267,178 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StructuredError'
+  # --- Plan endpoints (first-class plan entity) ---
+  /plans:
+    post:
+      operationId: CreatePlan
+      summary: Create a typed execution plan for a ticket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePlanRequest'
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Plan'
+        "400":
+          description: Bad request (validation failure — e.g., invalid DDL)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /plans/{planID}:
+    get:
+      operationId: GetPlan
+      summary: Get a plan by ID
+      parameters:
+        - name: planID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Plan'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /plans/{planID}/content:
+    put:
+      operationId: UpdatePlanContent
+      summary: Update plan content (draft state only, re-validates against backend schema)
+      parameters:
+        - name: planID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePlanContentRequest'
+      responses:
+        "204":
+          description: Updated
+        "400":
+          description: Validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /plans/{planID}/transition:
+    post:
+      operationId: TransitionPlan
+      summary: Transition plan state (submit, classify, approve, apply, reject)
+      parameters:
+        - name: planID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [submit, classify, approve, apply, reject]
+      responses:
+        "200":
+          description: Transitioned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Plan'
+        "400":
+          description: Invalid transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /plans/{planID}/versions:
+    get:
+      operationId: ListPlanVersions
+      summary: List version history of a plan
+      parameters:
+        - name: planID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlanVersion'
+  /plans/{planID}/freshness:
+    get:
+      operationId: CheckPlanFreshness
+      summary: Check if a plan is still fresh (not expired for re-plan-before-apply)
+      parameters:
+        - name: planID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan_id:
+                    type: string
+                  fresh:
+                    type: boolean
+  /tickets/{ticketID}/plans:
+    get:
+      operationId: ListPlansByTicket
+      summary: List all plans linked to a ticket
+      parameters:
+        - name: ticketID
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: backend
+          in: query
+          description: Filter by backend type
+          schema:
+            type: string
+            enum: [database, terraform, code, shell, deploy]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Plan'
 components:
   securitySchemes:
     BearerAuth:
@@ -1113,6 +1602,9 @@ components:
           type: string
           enum: [active, closed]
           description: active (default) or closed; list endpoints default to active only.
+        dispatch_enabled:
+          type: boolean
+          description: Whether the dispatcher picks up tickets for this project (default true).
         created_at:
           type: string
           format: date-time
@@ -1134,6 +1626,9 @@ components:
         default_branch:
           type: string
           description: Branch to checkout when closing a work stream; default "main".
+        dispatch_enabled:
+          type: boolean
+          description: Whether the dispatcher picks up tickets for this project (default true). Takes effect immediately.
     WorkStream:
       type: object
       properties:
@@ -1258,6 +1753,9 @@ components:
             type: string
         work_stream_id:
           type: string
+        target_repo:
+          type: string
+          description: Repository alias for multi-repo projects (from project_repositories). Empty means primary repo.
         assigned_to:
           type: string
         created_by:
@@ -1268,6 +1766,28 @@ components:
         updated_at:
           type: string
           format: date-time
+    ProjectRepository:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        alias:
+          type: string
+          description: Unique alias within the project (e.g. "backend", "frontend")
+        repo_url:
+          type: string
+          description: Git clone URL
+        default_branch:
+          type: string
+          description: Default branch name (e.g. "main")
+        is_primary:
+          type: boolean
+          description: Whether this is the primary repository
+        created_at:
+          type: string
+          format: date-time
     CreateTicketRequest:
       type: object
       required: [title, created_by]
@@ -1276,6 +1796,9 @@ components:
           type: string
         work_stream_id:
           type: string
+        target_repo:
+          type: string
+          description: Repository alias for multi-repo projects (optional)
         type:
           type: string
           enum: [task, bug, spike, review]
@@ -1461,3 +1984,588 @@ components:
         created_at:
           type: string
           format: date-time
+    # --- Plan schemas ---
+    Plan:
+      type: object
+      properties:
+        id:
+          type: string
+        ticket_id:
+          type: string
+        backend:
+          type: string
+          enum: [database, terraform, code, shell, deploy]
+        state:
+          type: string
+          enum: [draft, submitted, classified, approved, applied, superseded, rejected]
+        version:
+          type: integer
+        content:
+          $ref: '#/components/schemas/PlanContent'
+        freshness_stamp:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PlanContent:
+      type: object
+      description: >
+        Union type — exactly one backend sub-schema is populated.
+        No untyped escape hatch; agent cannot express classification-evading content.
+      properties:
+        database:
+          $ref: '#/components/schemas/DatabasePlan'
+        terraform:
+          $ref: '#/components/schemas/TerraformPlan'
+        code:
+          $ref: '#/components/schemas/CodePlan'
+        shell:
+          $ref: '#/components/schemas/ShellPlan'
+        deploy:
+          $ref: '#/components/schemas/DeployPlan'
+    DatabasePlan:
+      type: object
+      required: [migration_name, ddl, direction]
+      description: Database migration plan. DDL must be valid SQL — prose fails validation.
+      properties:
+        migration_name:
+          type: string
+        ddl:
+          type: string
+          description: Must be valid SQL DDL (validated at submission)
+        rollback_ddl:
+          type: string
+        direction:
+          type: string
+          enum: [up, down]
+        database_name:
+          type: string
+        schema_version:
+          type: string
+    TerraformPlan:
+      type: object
+      required: [plan_json, provider]
+      description: Terraform plan output (JSON).
+      properties:
+        plan_json:
+          type: string
+          description: Must be valid JSON
+        resource_changes:
+          type: array
+          items:
+            type: object
+            properties:
+              address:
+                type: string
+              type:
+                type: string
+              name:
+                type: string
+              change_action:
+                type: string
+                enum: [create, update, delete, replace, no-op]
+        provider:
+          type: string
+        workspace:
+          type: string
+        state_version:
+          type: integer
+    CodePlan:
+      type: object
+      required: [file_path, language, hunks]
+      description: AST diff representation for code changes.
+      properties:
+        file_path:
+          type: string
+        language:
+          type: string
+        before_hash:
+          type: string
+        after_hash:
+          type: string
+        hunks:
+          type: array
+          items:
+            type: object
+            required: [content, operation]
+            properties:
+              start_line:
+                type: integer
+              end_line:
+                type: integer
+              content:
+                type: string
+              operation:
+                type: string
+                enum: [add, remove, modify]
+    ShellPlan:
+      type: object
+      required: [commands, side_effect_manifest]
+      description: Shell commands with explicit side-effect manifest. No untyped prose allowed.
+      properties:
+        commands:
+          type: array
+          items:
+            type: object
+            required: [command]
+            properties:
+              command:
+                type: string
+              description:
+                type: string
+              idempotent:
+                type: boolean
+              timeout:
+                type: string
+        working_dir:
+          type: string
+        environment:
+          type: object
+          additionalProperties:
+            type: string
+        side_effect_manifest:
+          type: object
+          description: >
+            Declarative permission boundary for shell execution. The sandbox enforces this
+            manifest at runtime; the classifier reads it (not the script) to determine risk.
+            Wildcard operations widen classification automatically.
+          properties:
+            file_ops:
+              type: array
+              description: File system operations the script may perform.
+              items:
+                type: object
+                required: [action, path]
+                properties:
+                  action:
+                    type: string
+                    enum: [read, write, delete]
+                  path:
+                    type: string
+                    description: Glob pattern for affected files (e.g., "/app/dist/**")
+            network_ops:
+              type: array
+              description: Outbound network operations the script may perform.
+              items:
+                type: object
+                required: [endpoint, method]
+                properties:
+                  endpoint:
+                    type: string
+                    description: Target host:port or URL pattern
+                  method:
+                    type: string
+                    enum: [GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS, TCP, UDP]
+                  idempotent:
+                    type: boolean
+                    description: Whether this call is safe to retry
+            process_ops:
+              type: array
+              description: Subprocesses the script may spawn.
+              items:
+                type: object
+                required: [binary]
+                properties:
+                  binary:
+                    type: string
+                    description: Executable name or path
+                  args:
+                    type: array
+                    items:
+                      type: string
+                    description: Allowed argument patterns (glob-matched)
+            credential_ops:
+              type: array
+              description: Secrets/credentials the script will access.
+              items:
+                type: object
+                required: [name]
+                properties:
+                  name:
+                    type: string
+                    description: Credential identifier (env var name or secret path)
+                  purpose:
+                    type: string
+                    description: Why this credential is needed (for audit)
+            resource_limits:
+              type: object
+              description: Upper bounds on resource consumption for sandbox enforcement.
+              properties:
+                max_runtime_seconds:
+                  type: integer
+                  description: Maximum wall-clock time (0 = system default)
+                max_disk_write_bytes:
+                  type: integer
+                  format: int64
+                  description: Maximum total writable bytes (0 = system default)
+                max_network_calls:
+                  type: integer
+                  description: Maximum outbound connections (0 = system default)
+    DeployPlan:
+      type: object
+      required: [artifact_hash, target, deploy_strategy]
+      description: Deploy plan referencing specific artifact hash and target.
+      properties:
+        artifact_hash:
+          type: string
+        artifact_url:
+          type: string
+        target:
+          type: string
+        deploy_strategy:
+          type: string
+          enum: [rolling, blue-green, canary, recreate]
+        health_check_url:
+          type: string
+        rollback_hash:
+          type: string
+        replicas:
+          type: integer
+    PlanVersion:
+      type: object
+      properties:
+        id:
+          type: string
+        plan_id:
+          type: string
+        version:
+          type: integer
+        content:
+          $ref: '#/components/schemas/PlanContent'
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    CreatePlanRequest:
+      type: object
+      required: [ticket_id, backend, content]
+      properties:
+        ticket_id:
+          type: string
+        backend:
+          type: string
+          enum: [database, terraform, code, shell, deploy]
+        content:
+          description: Backend-specific content object (must match backend type schema)
+          type: object
+        created_by:
+          type: string
+        freshness_stamp:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+    UpdatePlanContentRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          description: New backend-specific content (re-validated against schema)
+          type: object
+        updated_by:
+          type: string
+    # --- Policy calibration schemas ---
+    PolicyCondition:
+      type: object
+      properties:
+        field:
+          type: string
+        operator:
+          type: string
+        value: {}
+        label:
+          type: string
+    PolicyRules:
+      type: object
+      properties:
+        auto_approve_conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyCondition'
+        review_conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyCondition'
+        block_conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyCondition'
+    Policy:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        rules:
+          $ref: '#/components/schemas/PolicyRules'
+        enabled:
+          type: boolean
+        min_sample:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PolicyMetrics:
+      type: object
+      properties:
+        policy_id:
+          type: string
+        total_decisions:
+          type: integer
+        auto_approval_rate:
+          type: number
+          format: double
+        rollback_rate:
+          type: number
+          format: double
+        incident_rate:
+          type: number
+          format: double
+        success_rate:
+          type: number
+          format: double
+        pending_outcomes:
+          type: integer
+        sample_size_sufficient:
+          type: boolean
+    PolicyDecision:
+      type: object
+      properties:
+        id:
+          type: string
+        policy_id:
+          type: string
+        ticket_id:
+          type: string
+        decision:
+          type: string
+          enum: [auto_approved, required_review, blocked]
+        outcome:
+          type: string
+          enum: [success, rollback, incident]
+        reason:
+          type: string
+        decided_at:
+          type: string
+          format: date-time
+        outcome_at:
+          type: string
+          format: date-time
+    PolicyChangeEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        policy_id:
+          type: string
+        actor_id:
+          type: string
+        change_type:
+          type: string
+          enum: [created, updated, enabled, disabled, broadened, narrowed]
+        prev_rules:
+          $ref: '#/components/schemas/PolicyRules'
+        new_rules:
+          $ref: '#/components/schemas/PolicyRules'
+        notes:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    PolicyProposal:
+      type: object
+      properties:
+        id:
+          type: string
+        policy_id:
+          type: string
+        proposal_type:
+          type: string
+          enum: [broaden, review]
+        suggestion:
+          type: object
+        statistics:
+          type: object
+        status:
+          type: string
+          enum: [pending, accepted, rejected, dismissed]
+        created_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: string
+          format: date-time
+        resolved_by:
+          type: string
+    PolicyHealth:
+      type: object
+      properties:
+        policy:
+          $ref: '#/components/schemas/Policy'
+        metrics:
+          $ref: '#/components/schemas/PolicyMetrics'
+        proposals:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyProposal'
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyChangeEvent'
+    SimulationResult:
+      type: object
+      properties:
+        policy_id:
+          type: string
+        tickets_simulated:
+          type: integer
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              ticket_id:
+                type: string
+              current_decision:
+                type: string
+              new_decision:
+                type: string
+              changed:
+                type: boolean
+        summary:
+          type: object
+          properties:
+            total_tickets:
+              type: integer
+            would_auto_approve:
+              type: integer
+            would_require_review:
+              type: integer
+            would_block:
+              type: integer
+            changed_decisions:
+              type: integer
+            change_rate:
+              type: number
+              format: double
+    PolicyListResponse:
+      type: object
+      properties:
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/Policy'
+    ProjectHealthResponse:
+      type: object
+      properties:
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyHealth'
+    CalibrationResponse:
+      type: object
+      properties:
+        proposals:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyProposal'
+    PolicyDecisionsResponse:
+      type: object
+      properties:
+        decisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyDecision'
+    PolicyChangeEventsResponse:
+      type: object
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyChangeEvent'
+    CreatePolicyRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        rules:
+          $ref: '#/components/schemas/PolicyRules'
+        min_sample:
+          type: integer
+          default: 20
+        actor_id:
+          type: string
+    UpdatePolicyRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        rules:
+          $ref: '#/components/schemas/PolicyRules'
+        enabled:
+          type: boolean
+        min_sample:
+          type: integer
+        actor_id:
+          type: string
+    RecordDecisionRequest:
+      type: object
+      required: [ticket_id, decision]
+      properties:
+        ticket_id:
+          type: string
+        decision:
+          type: string
+          enum: [auto_approved, required_review, blocked]
+        reason:
+          type: string
+    RecordOutcomeRequest:
+      type: object
+      required: [outcome]
+      properties:
+        outcome:
+          type: string
+          enum: [success, rollback, incident]
+    SimulateRequest:
+      type: object
+      required: [candidate_rules]
+      properties:
+        candidate_rules:
+          $ref: '#/components/schemas/PolicyRules'
+        days:
+          type: integer
+          default: 30
+          description: Number of days of historical tickets to simulate against.
+    ResolveProposalRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [accepted, rejected, dismissed]
+        resolved_by:
+          type: string

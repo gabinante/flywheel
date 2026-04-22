@@ -697,11 +697,14 @@ type Project struct {
 
 	// DefaultBranch Branch to checkout when closing a work stream; default "main".
 	DefaultBranch *string `json:"default_branch,omitempty"`
-	Id            *string `json:"id,omitempty"`
-	Name          *string `json:"name,omitempty"`
-	OrgId         *string `json:"org_id,omitempty"`
-	RepoUrl       *string `json:"repo_url,omitempty"`
-	Slug          *string `json:"slug,omitempty"`
+
+	// DispatchEnabled Whether the dispatcher picks up tickets for this project (default true).
+	DispatchEnabled *bool   `json:"dispatch_enabled,omitempty"`
+	Id              *string `json:"id,omitempty"`
+	Name            *string `json:"name,omitempty"`
+	OrgId           *string `json:"org_id,omitempty"`
+	RepoUrl         *string `json:"repo_url,omitempty"`
+	Slug            *string `json:"slug,omitempty"`
 
 	// Status active (default) or closed; list endpoints default to active only.
 	Status    *ProjectStatus `json:"status,omitempty"`
@@ -828,6 +831,9 @@ type TransitionRequestActor string
 type UpdateProjectRequest struct {
 	// DefaultBranch Branch to checkout when closing a work stream; default "main".
 	DefaultBranch *string `json:"default_branch,omitempty"`
+
+	// DispatchEnabled Whether the dispatcher picks up tickets for this project (default true). Takes effect immediately.
+	DispatchEnabled *bool `json:"dispatch_enabled,omitempty"`
 
 	// Name Project display name.
 	Name *string `json:"name,omitempty"`

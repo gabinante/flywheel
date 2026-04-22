@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'warrant_jwt'
+const STORAGE_KEY = 'flywheel_jwt'
 
 export function getStoredToken(): string | null {
   try {

@@ -2,7 +2,7 @@ import createClient from 'openapi-fetch'
 
 import type { paths } from '@/lib/api/v1'
 
-export function createWarrantClient(getToken: () => string | null) {
+export function createFlywheelClient(getToken: () => string | null) {
   const client = createClient<paths>({ baseUrl: '' })
   client.use({
     onRequest({ request }) {

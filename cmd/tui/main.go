@@ -1,7 +1,7 @@
-// TUI client for Warrant. Uses the generated REST client.
-// Optional: WARRANT_BASE_URL (default http://localhost:8080).
+// TUI client for Flywheel. Uses the generated REST client.
+// Optional: FLYWHEEL_BASE_URL (default http://localhost:8080).
 // On start: log in with GitHub (browser), then select an org. No JWT or org ID required in env.
-// Token is cached in ~/.config/warrant/token (or platform config dir) with 0600 permissions.
+// Token is cached in ~/.config/flywheel/token (or platform config dir) with 0600 permissions.
 package main
 
 import (
@@ -40,7 +40,7 @@ func tokenCachePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "warrant", "token"), nil
+	return filepath.Join(dir, "flywheel", "token"), nil
 }
 
 type tokenCache struct {
@@ -103,7 +103,7 @@ func achievementsPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "warrant", "achievements.json"), nil
+	return filepath.Join(dir, "flywheel", "achievements.json"), nil
 }
 
 type achievementsStore struct {
@@ -215,7 +215,7 @@ func checkAndUnlockAchievements(stats *client.MeStats, history *client.MeStatsHi
 }
 
 func renderHeader(m model) string {
-	s := components.Primary.Render("Warrant")
+	s := components.Primary.Render("Flywheel")
 	if m.orgID != "" {
 		name := ""
 		for _, o := range m.orgs {
@@ -440,7 +440,7 @@ func formatTicketStatsLine(tickets []client.Ticket) string {
 }
 
 func main() {
-	baseURL := os.Getenv("WARRANT_BASE_URL")
+	baseURL := os.Getenv("FLYWHEEL_BASE_URL")
 	if baseURL == "" {
 		baseURL = baseURLDefault
 	}
@@ -494,7 +494,7 @@ type model struct {
 	projectStatus string               // active, closed, all for project list filter
 	meStats           *client.MeStats       // lifetime stats (loaded on org select screen)
 	meStatsHistory    *client.MeStatsHistory // daily counts for activity graph
-	achievementsUnlocked []string             // achievement IDs from ~/.config/warrant/achievements.json
+	achievementsUnlocked []string             // achievement IDs from ~/.config/flywheel/achievements.json
 
 	screen    screen
 	selected  int
@@ -1532,7 +1532,7 @@ func (m model) View() string {
 	}
 	switch m.screen {
 	case screenLogin:
-		b.WriteString(components.Primary.Render("Warrant") + "\n")
+		b.WriteString(components.Primary.Render("Flywheel") + "\n")
 		b.WriteString(components.Muted.Render("Agent work tracking & review") + "\n\n")
 		b.WriteString("Not logged in.\n\n")
 		b.WriteString(components.Border.Width(40).Padding(0, 1).Render(components.Primary.Render("Log in with GitHub") + " (opens browser)") + "\n\n")
@@ -1667,7 +1667,7 @@ func (m model) View() string {
 		}
 		if m.gitNotesErr != "" {
 			b.WriteString(components.Error.Render(m.gitNotesErr) + "\n\n")
-			b.WriteString(components.Muted.Render("Set WARRANT_REPO_PATH or run from project root. Or use: warrant-git note log -t decision -n 20"))
+			b.WriteString(components.Muted.Render("Set FLYWHEEL_REPO_PATH or run from project root. Or use: flywheel-git note log -t decision -n 20"))
 			break
 		}
 		items := make([]string, 0, len(m.gitNotesLog))
@@ -2030,7 +2030,7 @@ func startLoginFlow(baseURL string) tea.Cmd {
 			token := r.URL.Query().Get("token")
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`<!DOCTYPE html><html><head><title>Warrant</title></head><body><p>Success! You can close this window and return to the TUI.</p></body></html>`))
+			_, _ = w.Write([]byte(`<!DOCTYPE html><html><head><title>Flywheel</title></head><body><p>Success! You can close this window and return to the TUI.</p></body></html>`))
 			select {
 			case ch <- token:
 			default:
@@ -2183,7 +2183,7 @@ func loadGitRemotes(repoPath, currentRepoURL string) tea.Cmd {
 		remotes := []string{"Off"}
 		selectedIndex := 0
 		if repoPath == "" {
-			return gitRemotesMsg{remotes: remotes, selectedIndex: 0, err: "No git repo (set WARRANT_REPO_PATH or run from project root)"}
+			return gitRemotesMsg{remotes: remotes, selectedIndex: 0, err: "No git repo (set FLYWHEEL_REPO_PATH or run from project root)"}
 		}
 		out, err := exec.Command("git", "-C", repoPath, "remote").Output()
 		if err != nil {
@@ -2371,11 +2371,11 @@ func projectSlug(m model) string {
 }
 
 // resolveRepoPath returns the repo path for git notes. Priority:
-// 1. WARRANT_REPO_PATH (global)
-// 2. WARRANT_REPO_PATH_<slug> (per-project; slug with - replaced by _)
+// 1. FLYWHEEL_REPO_PATH (global)
+// 2. FLYWHEEL_REPO_PATH_<slug> (per-project; slug with - replaced by _)
 // 3. cwd if it is a git repo
 func resolveRepoPath(projectSlug string) string {
-	if p := os.Getenv("WARRANT_REPO_PATH"); p != "" {
+	if p := os.Getenv("FLYWHEEL_REPO_PATH"); p != "" {
 		if abs, err := filepath.Abs(p); err == nil {
 			if _, err := os.Stat(filepath.Join(abs, ".git")); err == nil {
 				return abs
@@ -2383,7 +2383,7 @@ func resolveRepoPath(projectSlug string) string {
 		}
 	}
 	if projectSlug != "" {
-		envKey := "WARRANT_REPO_PATH_" + strings.ReplaceAll(strings.ToUpper(projectSlug), "-", "_")
+		envKey := "FLYWHEEL_REPO_PATH_" + strings.ReplaceAll(strings.ToUpper(projectSlug), "-", "_")
 		if p := os.Getenv(envKey); p != "" {
 			if abs, err := filepath.Abs(p); err == nil {
 				if _, err := os.Stat(filepath.Join(abs, ".git")); err == nil {
@@ -2405,7 +2405,7 @@ func resolveRepoPath(projectSlug string) string {
 func loadGitNotesLog(api *client.ClientWithResponses, orgID, projectID, repoPath, noteType string, limit int) tea.Cmd {
 	return func() tea.Msg {
 		if repoPath == "" {
-			return gitNotesLogMsg{err: "no repo path (set WARRANT_REPO_PATH or run from project root)"}
+			return gitNotesLogMsg{err: "no repo path (set FLYWHEEL_REPO_PATH or run from project root)"}
 		}
 		params := &client.GetGitNotesLogParams{RepoPath: repoPath, Limit: ptrInt(limit)}
 		if noteType != "" {
@@ -2420,7 +2420,7 @@ func loadGitNotesLog(api *client.ClientWithResponses, orgID, projectID, repoPath
 			return gitNotesLogMsg{err: err.Error()}
 		}
 		if rsp.StatusCode() == 501 {
-			// Fall back to local warrant-git
+			// Fall back to local flywheel-git
 			entries, localErr := loadGitNotesLogLocal(repoPath, noteType, limit)
 			if localErr != "" {
 				return gitNotesLogMsg{err: "server has no repo (501). " + localErr}
@@ -2437,23 +2437,23 @@ func loadGitNotesLog(api *client.ClientWithResponses, orgID, projectID, repoPath
 	}
 }
 
-// loadGitNotesLogLocal runs warrant-git note log and parses output. Returns entries or error string.
+// loadGitNotesLogLocal runs flywheel-git note log and parses output. Returns entries or error string.
 func loadGitNotesLogLocal(repoPath, noteType string, limit int) ([]client.GitNotesLogEntry, string) {
 	if noteType == "" {
 		noteType = "decision"
 	}
 	args := []string{"note", "log", "-t", noteType, "-n", fmt.Sprintf("%d", limit)}
-	cmd := exec.Command("warrant-git", args...)
+	cmd := exec.Command("flywheel-git", args...)
 	cmd.Dir = repoPath
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		if len(out) > 0 {
-			return nil, "warrant-git: " + strings.TrimSpace(string(out))
+			return nil, "flywheel-git: " + strings.TrimSpace(string(out))
 		}
-		return nil, "warrant-git not found or failed. Install with: make build-warrant-git"
+		return nil, "flywheel-git not found or failed. Install with: make build-flywheel-git"
 	}
 	// Format: "commitSHA\nbody\n---\n" per entry
-	ref := "refs/notes/warrant/" + noteType
+	ref := "refs/notes/flywheel/" + noteType
 	parts := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n---\n")
 	var entries []client.GitNotesLogEntry
 	for _, p := range parts {

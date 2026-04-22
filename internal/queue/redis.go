@@ -11,10 +11,10 @@ import (
 )
 
 const (
-	leaseKeyPrefix         = "warrant:lease:"
-	leaseExpiresKey        = "warrant:lease:expires"
+	leaseKeyPrefix         = "flywheel:lease:"
+	leaseExpiresKey        = "flywheel:lease:expires"
 	leaseTTLDefault        = 10 * time.Minute
-	claimIdempotencyPrefix = "warrant:idempotency_claim:"
+	claimIdempotencyPrefix = "flywheel:idempotency_claim:"
 	claimIdempotencyTTL    = 24 * time.Hour
 )
 
