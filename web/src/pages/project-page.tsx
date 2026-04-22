@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { useAuth } from '@/contexts/use-auth'
+import { ProjectPageSkeleton, Skeleton } from '@/components/ui/skeleton'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 
@@ -97,7 +98,7 @@ export function ProjectPage() {
     return <p className="text-destructive text-sm">{err}</p>
   }
   if (project === undefined) {
-    return <p className="text-muted-foreground text-sm">Loading…</p>
+    return <ProjectPageSkeleton />
   }
   if (!project) {
     return <p className="text-muted-foreground text-sm">Project not found.</p>
@@ -213,7 +214,11 @@ export function ProjectPage() {
           ) : null}
 
           {!streamsErr && workStreams === null ? (
-            <p className="text-muted-foreground text-sm">Loading streams…</p>
+            <div className="flex flex-col gap-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-14 w-full rounded-lg" />
+              ))}
+            </div>
           ) : !streamsErr && workStreams?.length === 0 ? (
             <p className="text-muted-foreground text-sm">
               No work streams yet — use{' '}
@@ -227,11 +232,11 @@ export function ProjectPage() {
                 return (
                   <li
                     key={ws.id}
-                    className="border-border flex flex-wrap items-stretch gap-2 rounded-lg border p-2"
+                    className="flex flex-wrap items-stretch gap-2 rounded-xl border border-white/10 bg-white/[0.02] p-2 backdrop-blur-sm"
                   >
                     <Link
                       to={`/orgs/${orgId}/projects/${projectId}/tickets?work_stream_id=${encodeURIComponent(ws.id)}`}
-                      className="hover:bg-muted/40 flex min-w-[200px] flex-1 flex-col justify-center gap-1 rounded-md px-2 py-1 transition-colors"
+                      className="flex min-w-[200px] flex-1 flex-col justify-center gap-1 rounded-lg px-2 py-1 transition-colors hover:bg-white/[0.04]"
                     >
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-medium">
