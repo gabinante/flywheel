@@ -3,7 +3,7 @@
 -- Claims release on ticket completion/abandonment. Conflict classification runs at
 -- ticket creation and execution dispatch.
 
-CREATE TABLE claims (
+CREATE TABLE IF NOT EXISTS claims (
     id           TEXT PRIMARY KEY,
     ticket_id    TEXT NOT NULL REFERENCES tickets(id),
     entity_id    TEXT NOT NULL,
@@ -21,16 +21,16 @@ CREATE TABLE claims (
 );
 
 -- Primary query pattern: find active claims for a given entity+environment
-CREATE INDEX claims_entity_env_active ON claims(entity_id, environment) WHERE state = 'active';
+CREATE INDEX IF NOT EXISTS claims_entity_env_active ON claims(entity_id, environment) WHERE state = 'active';
 
 -- Find all active claims for a ticket (release on completion)
-CREATE INDEX claims_ticket_active ON claims(ticket_id) WHERE state = 'active';
+CREATE INDEX IF NOT EXISTS claims_ticket_active ON claims(ticket_id) WHERE state = 'active';
 
 -- Find all active claims in a project's environment (conflict detection)
-CREATE INDEX claims_env_active ON claims(environment, state);
+CREATE INDEX IF NOT EXISTS claims_env_active ON claims(environment, state);
 
 -- Conflict detection table: records detected conflicts between tickets
-CREATE TABLE claim_conflicts (
+CREATE TABLE IF NOT EXISTS claim_conflicts (
     id              TEXT PRIMARY KEY,
     ticket_id       TEXT NOT NULL REFERENCES tickets(id),
     blocking_ticket TEXT NOT NULL REFERENCES tickets(id),
@@ -46,5 +46,5 @@ CREATE TABLE claim_conflicts (
     CONSTRAINT conflicts_severity_check CHECK (severity IN ('hard', 'soft'))
 );
 
-CREATE INDEX conflicts_ticket ON claim_conflicts(ticket_id) WHERE resolved_at IS NULL;
-CREATE INDEX conflicts_blocking ON claim_conflicts(blocking_ticket) WHERE resolved_at IS NULL;
+CREATE INDEX IF NOT EXISTS conflicts_ticket ON claim_conflicts(ticket_id) WHERE resolved_at IS NULL;
+CREATE INDEX IF NOT EXISTS conflicts_blocking ON claim_conflicts(blocking_ticket) WHERE resolved_at IS NULL;

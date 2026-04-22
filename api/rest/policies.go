@@ -11,11 +11,11 @@ import (
 
 // PolicyServiceForHandler is the interface the handler needs.
 type PolicyServiceForHandler interface {
-	CreatePolicy(ctx context.Context, projectID, name, description, actorID string, rules policy.Rules, minSample int) (*policy.Policy, error)
-	GetPolicy(ctx context.Context, id string) (*policy.Policy, error)
-	ListPolicies(ctx context.Context, projectID string, enabledOnly bool) ([]policy.Policy, error)
-	UpdatePolicy(ctx context.Context, id, name, description, actorID string, rules policy.Rules, enabled bool, minSample int) error
-	RecordDecision(ctx context.Context, policyID, ticketID string, decision policy.Decision, reason string) (*policy.PolicyDecision, error)
+	CreateCalibrationPolicy(ctx context.Context, projectID, name, description, actorID string, rules policy.CalibrationRules, minSample int) (*policy.CalibrationPolicy, error)
+	GetCalibrationPolicy(ctx context.Context, id string) (*policy.CalibrationPolicy, error)
+	ListCalibrationPolicies(ctx context.Context, projectID string, enabledOnly bool) ([]policy.CalibrationPolicy, error)
+	UpdateCalibrationPolicy(ctx context.Context, id, name, description, actorID string, rules policy.CalibrationRules, enabled bool, minSample int) error
+	RecordDecision(ctx context.Context, policyID, ticketID string, decision policy.Decision, reason string) (*policy.CalibrationDecision, error)
 	RecordOutcome(ctx context.Context, decisionID string, outcome policy.Outcome) error
 	RecordOutcomeByTicket(ctx context.Context, ticketID string, outcome policy.Outcome) error
 	GetMetrics(ctx context.Context, policyID string) (*policy.Metrics, error)
@@ -23,8 +23,8 @@ type PolicyServiceForHandler interface {
 	GetProjectHealth(ctx context.Context, projectID string) ([]policy.PolicyHealth, error)
 	RunCalibration(ctx context.Context, projectID string) ([]policy.PolicyProposal, error)
 	ResolveProposal(ctx context.Context, proposalID string, status policy.ProposalStatus, resolvedBy string) error
-	SimulateRuleChange(ctx context.Context, policyID string, candidateRules policy.Rules, days int) (*policy.SimulationResult, error)
-	ListDecisions(ctx context.Context, policyID string, limit int) ([]policy.PolicyDecision, error)
+	SimulateRuleChange(ctx context.Context, policyID string, candidateRules policy.CalibrationRules, days int) (*policy.SimulationResult, error)
+	ListDecisions(ctx context.Context, policyID string, limit int) ([]policy.CalibrationDecision, error)
 	ListChangeEvents(ctx context.Context, policyID string, limit int) ([]policy.PolicyChangeEvent, error)
 }
 
@@ -61,13 +61,13 @@ func (h *PoliciesHandler) listPolicies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	enabledOnly := r.URL.Query().Get("enabled") == "true"
-	list, err := h.PolicySvc.ListPolicies(r.Context(), projectID, enabledOnly)
+	list, err := h.PolicySvc.ListCalibrationPolicies(r.Context(), projectID, enabledOnly)
 	if err != nil {
 		WriteStructuredError(w, apierrors.MapError(err))
 		return
 	}
 	if list == nil {
-		list = []policy.Policy{}
+		list = []policy.CalibrationPolicy{}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"policies": list})
@@ -81,7 +81,7 @@ func (h *PoliciesHandler) createPolicy(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name        string       `json:"name"`
 		Description string       `json:"description"`
-		Rules       policy.Rules `json:"rules"`
+		Rules       policy.CalibrationRules `json:"rules"`
 		MinSample   int          `json:"min_sample"`
 		ActorID     string       `json:"actor_id"`
 	}
@@ -92,7 +92,7 @@ func (h *PoliciesHandler) createPolicy(w http.ResponseWriter, r *http.Request) {
 	if body.ActorID == "" {
 		body.ActorID = "api"
 	}
-	p, err := h.PolicySvc.CreatePolicy(r.Context(), projectID, body.Name, body.Description, body.ActorID, body.Rules, body.MinSample)
+	p, err := h.PolicySvc.CreateCalibrationPolicy(r.Context(), projectID, body.Name, body.Description, body.ActorID, body.Rules, body.MinSample)
 	if err != nil {
 		WriteStructuredError(w, apierrors.MapError(err))
 		return
@@ -104,7 +104,7 @@ func (h *PoliciesHandler) createPolicy(w http.ResponseWriter, r *http.Request) {
 
 func (h *PoliciesHandler) getPolicy(w http.ResponseWriter, r *http.Request) {
 	policyID := PathParam(r, "policyID")
-	p, err := h.PolicySvc.GetPolicy(r.Context(), policyID)
+	p, err := h.PolicySvc.GetCalibrationPolicy(r.Context(), policyID)
 	if err != nil {
 		WriteStructuredError(w, apierrors.MapError(err))
 		return
@@ -118,7 +118,7 @@ func (h *PoliciesHandler) getPolicy(w http.ResponseWriter, r *http.Request) {
 
 func (h *PoliciesHandler) updatePolicy(w http.ResponseWriter, r *http.Request) {
 	policyID := PathParam(r, "policyID")
-	p, err := h.PolicySvc.GetPolicy(r.Context(), policyID)
+	p, err := h.PolicySvc.GetCalibrationPolicy(r.Context(), policyID)
 	if err != nil {
 		WriteStructuredError(w, apierrors.MapError(err))
 		return
@@ -129,7 +129,7 @@ func (h *PoliciesHandler) updatePolicy(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name        string       `json:"name"`
 		Description string       `json:"description"`
-		Rules       policy.Rules `json:"rules"`
+		Rules       policy.CalibrationRules `json:"rules"`
 		Enabled     bool         `json:"enabled"`
 		MinSample   int          `json:"min_sample"`
 		ActorID     string       `json:"actor_id"`
@@ -141,7 +141,7 @@ func (h *PoliciesHandler) updatePolicy(w http.ResponseWriter, r *http.Request) {
 	if body.ActorID == "" {
 		body.ActorID = "api"
 	}
-	if err := h.PolicySvc.UpdatePolicy(r.Context(), policyID, body.Name, body.Description, body.ActorID, body.Rules, body.Enabled, body.MinSample); err != nil {
+	if err := h.PolicySvc.UpdateCalibrationPolicy(r.Context(), policyID, body.Name, body.Description, body.ActorID, body.Rules, body.Enabled, body.MinSample); err != nil {
 		WriteStructuredError(w, apierrors.MapError(err))
 		return
 	}
@@ -150,7 +150,7 @@ func (h *PoliciesHandler) updatePolicy(w http.ResponseWriter, r *http.Request) {
 
 func (h *PoliciesHandler) getMetrics(w http.ResponseWriter, r *http.Request) {
 	policyID := PathParam(r, "policyID")
-	p, err := h.PolicySvc.GetPolicy(r.Context(), policyID)
+	p, err := h.PolicySvc.GetCalibrationPolicy(r.Context(), policyID)
 	if err != nil {
 		WriteStructuredError(w, apierrors.MapError(err))
 		return
@@ -169,7 +169,7 @@ func (h *PoliciesHandler) getMetrics(w http.ResponseWriter, r *http.Request) {
 
 func (h *PoliciesHandler) getPolicyHealth(w http.ResponseWriter, r *http.Request) {
 	policyID := PathParam(r, "policyID")
-	p, err := h.PolicySvc.GetPolicy(r.Context(), policyID)
+	p, err := h.PolicySvc.GetCalibrationPolicy(r.Context(), policyID)
 	if err != nil {
 		WriteStructuredError(w, apierrors.MapError(err))
 		return
@@ -222,7 +222,7 @@ func (h *PoliciesHandler) runCalibration(w http.ResponseWriter, r *http.Request)
 
 func (h *PoliciesHandler) recordDecision(w http.ResponseWriter, r *http.Request) {
 	policyID := PathParam(r, "policyID")
-	p, err := h.PolicySvc.GetPolicy(r.Context(), policyID)
+	p, err := h.PolicySvc.GetCalibrationPolicy(r.Context(), policyID)
 	if err != nil {
 		WriteStructuredError(w, apierrors.MapError(err))
 		return
@@ -283,7 +283,7 @@ func (h *PoliciesHandler) recordOutcomeByTicket(w http.ResponseWriter, r *http.R
 
 func (h *PoliciesHandler) listDecisions(w http.ResponseWriter, r *http.Request) {
 	policyID := PathParam(r, "policyID")
-	p, err := h.PolicySvc.GetPolicy(r.Context(), policyID)
+	p, err := h.PolicySvc.GetCalibrationPolicy(r.Context(), policyID)
 	if err != nil {
 		WriteStructuredError(w, apierrors.MapError(err))
 		return
@@ -297,7 +297,7 @@ func (h *PoliciesHandler) listDecisions(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if decisions == nil {
-		decisions = []policy.PolicyDecision{}
+		decisions = []policy.CalibrationDecision{}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"decisions": decisions})
@@ -305,7 +305,7 @@ func (h *PoliciesHandler) listDecisions(w http.ResponseWriter, r *http.Request) 
 
 func (h *PoliciesHandler) listChangeEvents(w http.ResponseWriter, r *http.Request) {
 	policyID := PathParam(r, "policyID")
-	p, err := h.PolicySvc.GetPolicy(r.Context(), policyID)
+	p, err := h.PolicySvc.GetCalibrationPolicy(r.Context(), policyID)
 	if err != nil {
 		WriteStructuredError(w, apierrors.MapError(err))
 		return
@@ -327,7 +327,7 @@ func (h *PoliciesHandler) listChangeEvents(w http.ResponseWriter, r *http.Reques
 
 func (h *PoliciesHandler) simulate(w http.ResponseWriter, r *http.Request) {
 	policyID := PathParam(r, "policyID")
-	p, err := h.PolicySvc.GetPolicy(r.Context(), policyID)
+	p, err := h.PolicySvc.GetCalibrationPolicy(r.Context(), policyID)
 	if err != nil {
 		WriteStructuredError(w, apierrors.MapError(err))
 		return
@@ -336,7 +336,7 @@ func (h *PoliciesHandler) simulate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		CandidateRules policy.Rules `json:"candidate_rules"`
+		CandidateRules policy.CalibrationRules `json:"candidate_rules"`
 		Days           int          `json:"days"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {

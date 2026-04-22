@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
+import { StaggerItem, StaggerList } from '@/components/stagger-list'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -14,6 +15,7 @@ import {
 } from '@/components/ui/select'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
+import { TicketsPageSkeleton } from '@/components/ui/skeleton'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 
@@ -223,7 +225,7 @@ export function TicketsPage() {
     return <p className="text-destructive text-sm">{err}</p>
   }
   if (!tickets) {
-    return <p className="text-muted-foreground text-sm">Loading…</p>
+    return <TicketsPageSkeleton />
   }
 
   return (
@@ -339,13 +341,13 @@ export function TicketsPage() {
         </p>
       ) : null}
 
-      <ul className="flex flex-col gap-3">
+      <StaggerList className="flex flex-col gap-3">
         {tickets.map((t) => (
-          <li key={t.id}>
+          <StaggerItem key={t.id}>
             <Link
               to={`/orgs/${orgId}/projects/${projectId}/tickets/${t.id}`}
             >
-              <Card className="transition-colors hover:bg-muted/40">
+              <Card className="transition-colors hover:bg-white/[0.06]">
                 <CardHeader>
                   <div className="flex flex-wrap items-center gap-2">
                     <CardTitle className="text-base">{t.title ?? t.id}</CardTitle>
@@ -376,9 +378,9 @@ export function TicketsPage() {
                 </CardHeader>
               </Card>
             </Link>
-          </li>
+          </StaggerItem>
         ))}
-      </ul>
+      </StaggerList>
       {tickets.length === 0 ? (
         <p className="text-muted-foreground text-sm">
           {allTickets?.length === 0

@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import { KeyboardShortcutHelp } from '@/components/keyboard-shortcut-help'
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { ReviewQueueCelebration } from '@/components/review-queue-celebration'
+import { StaggerItem, StaggerList } from '@/components/stagger-list'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea'
 import type { FlywheelClient } from '@/contexts/auth-context'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
+import { ReviewsPageSkeleton, Skeleton } from '@/components/ui/skeleton'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 
@@ -63,17 +65,17 @@ function TraceSummary({ steps }: { steps: TraceStep[] | null }) {
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap gap-2 text-xs">
         {counts.tool_call > 0 && (
-          <span className="bg-muted rounded-md px-2 py-0.5">
+          <span className="rounded-lg border border-white/[0.06] bg-white/[0.04] px-2 py-0.5">
             {counts.tool_call} tool call{counts.tool_call !== 1 ? 's' : ''}
           </span>
         )}
         {counts.observation > 0 && (
-          <span className="bg-muted rounded-md px-2 py-0.5">
+          <span className="rounded-lg border border-white/[0.06] bg-white/[0.04] px-2 py-0.5">
             {counts.observation} observation{counts.observation !== 1 ? 's' : ''}
           </span>
         )}
         {counts.thought > 0 && (
-          <span className="bg-muted rounded-md px-2 py-0.5">
+          <span className="rounded-lg border border-white/[0.06] bg-white/[0.04] px-2 py-0.5">
             {counts.thought} thought{counts.thought !== 1 ? 's' : ''}
           </span>
         )}
@@ -138,7 +140,7 @@ function OutputsSummary({ outputs }: { outputs: unknown }) {
         </a>
       )}
       {!summary && !prUrl && (
-        <pre className="bg-muted max-h-24 overflow-auto rounded-md p-2 font-mono text-xs">
+        <pre className="max-h-24 overflow-auto rounded-xl border border-white/10 bg-white/[0.03] p-2 font-mono text-xs backdrop-blur-sm">
           {JSON.stringify(o, null, 2)}
         </pre>
       )}
@@ -391,7 +393,7 @@ export function ReviewsPage() {
     return <p className="text-destructive text-sm">{err}</p>
   }
   if (!tickets) {
-    return <p className="text-muted-foreground text-sm">Loading…</p>
+    return <ReviewsPageSkeleton />
   }
 
   return (
@@ -448,14 +450,14 @@ export function ReviewsPage() {
       )}
 
       {/* Ticket list */}
-      <ul className="flex flex-col gap-3" role="listbox" aria-label="Review queue">
+      <StaggerList className="flex flex-col gap-3" role="listbox" aria-label="Review queue">
         {tickets.map((t, idx) => {
           const isActive = idx === activeIndex
           const isExpanded = expandedIds.has(t.id ?? '')
           const trace = traceCache[t.id ?? '']
 
           return (
-            <li
+            <StaggerItem
               key={t.id}
               ref={(el) => { itemRefs.current[idx] = el }}
               role="option"
@@ -483,7 +485,7 @@ export function ReviewsPage() {
                       className={`inline-flex size-5 items-center justify-center rounded-full text-xs font-medium transition-colors ${
                         isActive
                           ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted text-muted-foreground'
+                          : 'bg-white/[0.06] text-muted-foreground'
                       }`}
                     >
                       {idx + 1}
@@ -537,9 +539,10 @@ export function ReviewsPage() {
                         Execution trace
                       </h3>
                       {trace === undefined ? (
-                        <p className="text-muted-foreground text-xs italic">
-                          Loading trace…
-                        </p>
+                        <div className="flex flex-col gap-1.5">
+                          <Skeleton className="h-3 w-full" />
+                          <Skeleton className="h-3 w-3/4" />
+                        </div>
                       ) : (
                         <TraceSummary steps={trace} />
                       )}
@@ -549,7 +552,7 @@ export function ReviewsPage() {
                     <div className="flex flex-col gap-1.5">
                       <Label className="text-xs">
                         Review notes{' '}
-                        <kbd className="bg-muted rounded border border-border px-1 font-mono text-[10px]">
+                        <kbd className="rounded-md border border-white/10 bg-white/[0.06] px-1 font-mono text-[10px]">
                           n
                         </kbd>
                       </Label>
@@ -606,10 +609,10 @@ export function ReviewsPage() {
                   </CardContent>
                 )}
               </Card>
-            </li>
+            </StaggerItem>
           )
         })}
-      </ul>
+      </StaggerList>
 
       {/* Empty states */}
       {tickets.length === 0 && justEmptiedQueue && (
