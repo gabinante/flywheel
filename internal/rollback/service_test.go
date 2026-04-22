@@ -43,7 +43,7 @@ type mockCreator struct {
 	err     error
 }
 
-func (m *mockCreator) CreateTicket(_ context.Context, projectID, title string, typ ticket.TicketType, priority ticket.Priority, createdBy string, _ []string, workStreamID string, objective ticket.Objective, ticketCtx ticket.TicketContext, _ string) (*ticket.Ticket, error) {
+func (m *mockCreator) CreateTicket(_ context.Context, projectID, title string, typ ticket.TicketType, priority ticket.Priority, createdBy string, _ []string, workStreamID string, objective ticket.Objective, ticketCtx ticket.TicketContext, _ string, _ ...string) (*ticket.Ticket, error) {
 	if m.err != nil {
 		return nil, m.err
 	}

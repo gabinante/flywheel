@@ -154,6 +154,72 @@ func TestWorktreeRemoveNonexistent(t *testing.T) {
 	}
 }
 
+func TestWorktreeCreateFromRepo(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	// Set up two separate git repos to simulate multi-repo.
+	repo1Dir := t.TempDir()
+	runGit(t, repo1Dir, "init", "--initial-branch=main")
+	runGit(t, repo1Dir, "commit", "--allow-empty", "-m", "init repo1")
+
+	repo2Dir := t.TempDir()
+	runGit(t, repo2Dir, "init", "--initial-branch=main")
+	runGit(t, repo2Dir, "commit", "--allow-empty", "-m", "init repo2")
+
+	baseDir := t.TempDir()
+	m := &WorktreeManager{BaseDir: baseDir, RepoDir: repo1Dir}
+
+	// Create worktree from repo1 (primary).
+	dir1, err := m.Create("ticket-1", "ticket/ticket-1")
+	if err != nil {
+		t.Fatalf("Create from repo1: %v", err)
+	}
+	if _, err := os.Stat(dir1); os.IsNotExist(err) {
+		t.Fatalf("worktree dir1 does not exist")
+	}
+
+	// Create worktree from repo2 (secondary, multi-repo).
+	dir2, err := m.CreateFromRepo("ticket-2", "ticket/ticket-2", repo2Dir)
+	if err != nil {
+		t.Fatalf("CreateFromRepo from repo2: %v", err)
+	}
+	if _, err := os.Stat(dir2); os.IsNotExist(err) {
+		t.Fatalf("worktree dir2 does not exist")
+	}
+
+	// Both worktrees should be in different directories.
+	if dir1 == dir2 {
+		t.Error("worktree directories should be different for different tickets")
+	}
+
+	// Cleanup.
+	_ = m.Remove("ticket-1")
+	_ = m.RemoveFromRepo("ticket-2", repo2Dir)
+}
+
+func TestMultiRepoCloneManager_DirStructure(t *testing.T) {
+	baseDir := t.TempDir()
+	mgr := NewMultiRepoCloneManager(baseDir)
+
+	// Verify the clone directory uses the alias for naming.
+	cloneDir := filepath.Join(baseDir, "proj1-backend")
+	if err := os.MkdirAll(filepath.Join(cloneDir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	dir, err := mgr.EnsureClone("https://example.com/repo.git", "proj1/backend")
+	if err != nil {
+		t.Fatalf("EnsureClone: %v", err)
+	}
+	// Alias "proj1/backend" → sanitized to "proj1-backend"
+	expected := filepath.Join(baseDir, "proj1-backend")
+	if dir != expected {
+		t.Errorf("dir: got %q, want %q", dir, expected)
+	}
+}
+
 // runGit is a test helper that runs a git command in the given directory.
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()

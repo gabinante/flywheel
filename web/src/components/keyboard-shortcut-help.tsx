@@ -45,7 +45,7 @@ export function KeyboardShortcutHelp({ open, onClose }: KeyboardShortcutHelpProp
       aria-label="Keyboard shortcuts"
     >
       <div
-        className="border-border bg-background/95 w-full max-w-sm rounded-xl border p-6 shadow-2xl backdrop-blur-md"
+        className="w-full max-w-sm rounded-2xl border border-white/10 bg-card p-6 backdrop-blur-md"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-foreground mb-4 text-lg font-semibold tracking-tight">
@@ -56,7 +56,7 @@ export function KeyboardShortcutHelp({ open, onClose }: KeyboardShortcutHelpProp
             <div key={s.key} className="flex items-center justify-between gap-4">
               <dt className="text-muted-foreground text-sm">{s.label}</dt>
               <dd>
-                <kbd className="bg-muted text-foreground rounded-md border border-border px-2 py-0.5 font-mono text-xs">
+                <kbd className="rounded-lg border border-white/10 bg-white/[0.06] px-2 py-0.5 font-mono text-xs text-foreground backdrop-blur-sm">
                   {s.key}
                 </kbd>
               </dd>

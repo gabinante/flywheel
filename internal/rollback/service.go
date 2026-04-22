@@ -61,7 +61,7 @@ type LeaseRemover interface {
 
 // TicketCreator creates new tickets (for incident/rollback tickets).
 type TicketCreator interface {
-	CreateTicket(ctx context.Context, projectID, title string, typ ticket.TicketType, priority ticket.Priority, createdBy string, dependsOn []string, workStreamID string, objective ticket.Objective, ticketContext ticket.TicketContext, idempotencyKey string) (*ticket.Ticket, error)
+	CreateTicket(ctx context.Context, projectID, title string, typ ticket.TicketType, priority ticket.Priority, createdBy string, dependsOn []string, workStreamID string, objective ticket.Objective, ticketContext ticket.TicketContext, idempotencyKey string, targetRepo ...string) (*ticket.Ticket, error)
 }
 
 // TicketTransitioner performs state transitions.
