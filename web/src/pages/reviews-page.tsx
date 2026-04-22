@@ -8,6 +8,8 @@ import { StaggerItem, StaggerList } from '@/components/stagger-list'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import type { FlywheelClient } from '@/contexts/auth-context'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
@@ -547,16 +549,16 @@ export function ReviewsPage() {
                     </div>
 
                     {/* Notes */}
-                    <label className="flex flex-col gap-1 text-sm">
-                      <span className="text-muted-foreground text-xs">
+                    <div className="flex flex-col gap-1.5">
+                      <Label className="text-xs">
                         Review notes{' '}
                         <kbd className="rounded-md border border-white/10 bg-white/[0.06] px-1 font-mono text-[10px]">
                           n
                         </kbd>
-                      </span>
-                      <textarea
+                      </Label>
+                      <Textarea
                         ref={(el) => { notesRefs.current[idx] = el }}
-                        className="min-h-[60px] rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm backdrop-blur-sm focus:border-primary/40 focus:outline-none"
+                        className="min-h-[60px]"
                         value={notesById[t.id ?? ''] ?? ''}
                         onChange={(e) =>
                           setNotesById((prev) => ({
@@ -567,7 +569,7 @@ export function ReviewsPage() {
                         placeholder="Optional feedback…"
                         rows={2}
                       />
-                    </label>
+                    </div>
 
                     {/* Action buttons */}
                     <div className="flex flex-wrap items-center gap-2">
