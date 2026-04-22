@@ -99,6 +99,14 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		ticketSvc.SetAutoApproveOnPass(true)
 	}
 
+	// Policy layer: composable rules with most-restrictive-wins semantics.
+	postureStore := policy.NewPostgresStore(pool)
+	postureSvc := policy.NewPostureService(postureStore, bus)
+	policyAdapter := policy.NewTicketPolicyAdapter(postureSvc)
+	_ = policyAdapter // adapter available for ticket service integration
+	_ = postureSvc    // posture service available for API handlers
+	log.Printf("policy: default_posture=%s auto_apply=%v", cfg.Policy.DefaultPosture, cfg.Policy.AutoApplyDefault)
+
 	redisOpts, err := redis.ParseURL(cfg.Redis.URL)
 	if err != nil {
 		log.Fatalf("redis: %v", err)
@@ -125,8 +133,8 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	reviewSvc := review.NewService(reviewStore, ticketSvc, bus)
 	planStore := plan.NewStore(pool)
 	planSvc := plan.NewService(planStore, bus)
-	policyStore := policy.NewStore(pool)
-	policySvc := policy.NewService(policyStore, bus)
+	calibrationStore := policy.NewCalibrationStore(pool)
+	calibrationSvc := policy.NewCalibrationService(calibrationStore, bus)
 	userStore := user.NewStore(pool)
 
 	// Cost management service (budget tracking, rate-limit handling, model routing).
@@ -349,7 +357,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		ObservationHandler: &rest.ObservationHandler{Svc: obsSvc},
 		CatalogHandler:     &rest.CatalogHandler{Svc: catalogSvc, Scanner: catalogScanner},
 		PoliciesHandler: &rest.PoliciesHandler{
-			PolicySvc:  policySvc,
+			PolicySvc:  calibrationSvc,
 			ProjectSvc: projectSvc,
 			OrgSvc:     orgSvc,
 			AgentStore: agentStore,

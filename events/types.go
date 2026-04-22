@@ -34,6 +34,10 @@ const (
 	EventTicketReopened  = "ticket.reopened"  // closed → draft
 	EventLeaseExpired    = "lease.expired"    // planning/executing → draft
 
+	// --- Policy events ---
+	EventPolicyChanged   = "policy.changed"   // policy set created, activated, deactivated, updated, or deleted
+	EventPolicyEvaluated = "policy.evaluated" // policy was evaluated for a transition (audit trail)
+
 	// --- CI/merge events ---
 	EventTestsFailed = "ticket.tests_failed" // CI checks failed on PR before merge
 	EventTestsPassed = "ticket.tests_passed" // CI checks passed on PR
