@@ -627,6 +627,28 @@ paths:
               schema:
                 $ref: '#/components/schemas/StructuredError'
   /tickets/{ticketID}/transitions:
+    get:
+      operationId: GetTransitions
+      summary: State transition history for a ticket (timeline of state changes)
+      parameters:
+        - name: ticketID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransitionHistory'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
     post:
       operationId: TransitionTicket
       summary: Transition ticket state (e.g. start, submit, approve, reject)
@@ -1580,6 +1602,9 @@ components:
           type: string
           enum: [active, closed]
           description: active (default) or closed; list endpoints default to active only.
+        dispatch_enabled:
+          type: boolean
+          description: Whether the dispatcher picks up tickets for this project (default true).
         created_at:
           type: string
           format: date-time
@@ -1601,6 +1626,9 @@ components:
         default_branch:
           type: string
           description: Branch to checkout when closing a work stream; default "main".
+        dispatch_enabled:
+          type: boolean
+          description: Whether the dispatcher picks up tickets for this project (default true). Takes effect immediately.
     WorkStream:
       type: object
       properties:
@@ -1924,6 +1952,36 @@ components:
       type: object
       properties:
         expires_at:
+          type: string
+          format: date-time
+    TransitionHistory:
+      type: object
+      properties:
+        ticket_id:
+          type: string
+        current_state:
+          type: string
+        transitions:
+          type: array
+          items:
+            $ref: '#/components/schemas/StateTransitionEntry'
+    StateTransitionEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        from_state:
+          type: string
+        to_state:
+          type: string
+        trigger:
+          type: string
+        actor_id:
+          type: string
+        actor_type:
+          type: string
+          enum: [human, agent, system]
+        created_at:
           type: string
           format: date-time
     # --- Plan schemas ---

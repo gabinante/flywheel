@@ -1,8 +1,9 @@
-import { HashRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom'
+import { HashRouter, Navigate, Outlet, Route, Routes, useParams } from 'react-router-dom'
 
 import { AppShell } from '@/components/app-shell'
 import { AuthProvider } from '@/contexts/auth-provider'
 import { useAuth } from '@/contexts/use-auth'
+import { CommandCenterPage } from '@/pages/command-center-page'
 import { HomePage } from '@/pages/home-page'
 import { OrgsPage } from '@/pages/orgs-page'
 import { PolicyHealthPage } from '@/pages/policy-health-page'
@@ -26,6 +27,12 @@ function HomeRoute() {
   return <HomePage key={token ?? 'anon'} />
 }
 
+/** Redirect project root to the command center */
+function ProjectRedirect() {
+  const { orgId, projectId } = useParams<{ orgId: string; projectId: string }>()
+  return <Navigate to={`/orgs/${orgId}/projects/${projectId}/command`} replace />
+}
+
 export default function App() {
   return (
     <AuthProvider>
@@ -41,6 +48,14 @@ export default function App() {
               />
               <Route
                 path="/orgs/:orgId/projects/:projectId"
+                element={<ProjectRedirect />}
+              />
+              <Route
+                path="/orgs/:orgId/projects/:projectId/command"
+                element={<CommandCenterPage />}
+              />
+              <Route
+                path="/orgs/:orgId/projects/:projectId/settings"
                 element={<ProjectPage />}
               />
               <Route

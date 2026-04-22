@@ -8,13 +8,16 @@ import {
   PanelRightOpen,
 } from 'lucide-react'
 
+import { DispatchStatusIndicator } from '@/components/dispatch-status-indicator'
 import { FlywheelLogo } from '@/components/flywheel-logo'
 import { HeaderBreadcrumbs } from '@/components/header-breadcrumbs'
 import { KeyboardShortcutHelp } from '@/components/keyboard-shortcut-help'
+import { LeftSidebar } from '@/components/left-sidebar'
 import { RightRail } from '@/components/right-rail'
 import { RightRailWidgets } from '@/components/right-rail-widgets'
 import { Button } from '@/components/ui/button'
 import { RightRailProvider } from '@/contexts/right-rail-provider'
+import { SidebarProvider } from '@/contexts/sidebar-provider'
 import { useAuth } from '@/contexts/use-auth'
 import { useRightRail } from '@/contexts/use-right-rail'
 import { cn } from '@/lib/utils'
@@ -118,95 +121,99 @@ function AppShellInner() {
 
   return (
     <>
-      <div className="flex min-h-screen flex-col">
-        {/* ─── Glassmorphic sticky header ─── */}
-        <header
-          className={cn(
-            'sticky top-0 z-40 border-b border-white/[0.06] transition-all duration-300',
-            scrolled
-              ? 'bg-background/70 shadow-[0_1px_3px_0_rgba(0,0,0,0.3)] backdrop-blur-xl backdrop-saturate-150'
-              : 'bg-background/40 backdrop-blur-md',
-          )}
-        >
-          <div className="flex h-14 items-center justify-between gap-4 px-4">
-            {/* ─── Left: Logo + breadcrumbs ─── */}
-            <div className="flex min-w-0 items-center gap-3">
-              <Link
-                to="/"
-                className="shrink-0 transition-opacity duration-150 hover:opacity-80"
-                aria-label="Flywheel home"
-              >
-                <FlywheelLogo />
-              </Link>
+      <div className="flex h-screen overflow-hidden">
+        <LeftSidebar />
+        <div className="flex flex-1 flex-col overflow-hidden">
+          {/* ─── Glassmorphic sticky header ─── */}
+          <header
+            className={cn(
+              'sticky top-0 z-40 border-b border-white/[0.06] transition-all duration-300',
+              scrolled
+                ? 'bg-background/70 shadow-[0_1px_3px_0_rgba(0,0,0,0.3)] backdrop-blur-xl backdrop-saturate-150'
+                : 'bg-background/40 backdrop-blur-md',
+            )}
+          >
+            <div className="flex h-14 items-center justify-between gap-4 px-4">
+              {/* ─── Left: Logo + breadcrumbs ─── */}
+              <div className="flex min-w-0 items-center gap-3">
+                <Link
+                  to="/"
+                  className="shrink-0 transition-opacity duration-150 hover:opacity-80"
+                  aria-label="Flywheel home"
+                >
+                  <FlywheelLogo />
+                </Link>
 
-              {/* Separator + breadcrumbs */}
-              {token && (
-                <>
-                  <div className="h-5 w-px shrink-0 bg-white/10" aria-hidden />
-                  <HeaderBreadcrumbs className="min-w-0" />
-                </>
-              )}
-            </div>
+                {/* Separator + breadcrumbs */}
+                {token && (
+                  <>
+                    <div className="h-5 w-px shrink-0 bg-white/10" aria-hidden />
+                    <HeaderBreadcrumbs className="min-w-0" />
+                  </>
+                )}
+              </div>
 
-            {/* ─── Right: actions ─── */}
-            <div className="flex shrink-0 items-center gap-1.5">
-              {/* Keyboard shortcut hint */}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => setShowShortcuts(true)}
-                aria-label="Keyboard shortcuts"
-                className="text-muted-foreground/60 transition-colors duration-150 hover:text-foreground"
-              >
-                <Keyboard className="size-4" />
-              </Button>
+              {/* ─── Right: actions ─── */}
+              <div className="flex shrink-0 items-center gap-1.5">
+                {/* Dispatch status indicator */}
+                {token && <DispatchStatusIndicator />}
 
-              {/* Right rail toggle (more discoverable) */}
-              <EnhancedRightRailToggle />
-
-              {/* Separator */}
-              <div className="mx-1 h-5 w-px bg-white/10" aria-hidden />
-
-              {/* Auth buttons */}
-              {token ? (
+                {/* Keyboard shortcut hint */}
                 <Button
                   type="button"
                   variant="ghost"
-                  size="sm"
-                  onClick={signOut}
-                  className="gap-1.5 text-muted-foreground transition-colors duration-150 hover:text-destructive"
+                  size="icon-sm"
+                  onClick={() => setShowShortcuts(true)}
+                  aria-label="Keyboard shortcuts"
+                  className="text-muted-foreground/60 transition-colors duration-150 hover:text-foreground"
                 >
-                  <LogOut className="size-3.5" />
-                  <span className="hidden sm:inline">Sign out</span>
+                  <Keyboard className="size-4" />
                 </Button>
-              ) : (
-                <Button
-                  asChild
-                  size="sm"
-                  className="bg-primary/90 backdrop-blur-sm transition-all duration-200 hover:bg-primary"
-                >
-                  <a href="/auth/github" className="gap-1.5">
-                    <svg viewBox="0 0 16 16" className="size-4 fill-current" aria-hidden>
-                      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
-                    </svg>
-                    Sign in
-                  </a>
-                </Button>
-              )}
-            </div>
-          </div>
-        </header>
 
-        {/* ─── Main content area ─── */}
-        <div className="flex flex-1 overflow-hidden">
+                {/* Right rail toggle (more discoverable) */}
+                <EnhancedRightRailToggle />
+
+                {/* Separator */}
+                <div className="mx-1 h-5 w-px bg-white/10" aria-hidden />
+
+                {/* Auth buttons */}
+                {token ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={signOut}
+                    className="gap-1.5 text-muted-foreground transition-colors duration-150 hover:text-destructive"
+                  >
+                    <LogOut className="size-3.5" />
+                    <span className="hidden sm:inline">Sign out</span>
+                  </Button>
+                ) : (
+                  <Button
+                    asChild
+                    size="sm"
+                    className="bg-primary/90 backdrop-blur-sm transition-all duration-200 hover:bg-primary"
+                  >
+                    <a href="/auth/github" className="gap-1.5">
+                      <svg viewBox="0 0 16 16" className="size-4 fill-current" aria-hidden>
+                        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+                      </svg>
+                      Sign in
+                    </a>
+                  </Button>
+                )}
+              </div>
+            </div>
+          </header>
+
+          {/* ─── Main content area ─── */}
           <main ref={mainRef} className="flex-1 overflow-y-auto" id="main-scroll">
             <div className="mx-auto w-full max-w-4xl p-4">
               <Outlet />
             </div>
           </main>
-          <RightRail />
         </div>
+        <RightRail />
       </div>
 
       {/* Keyboard shortcuts overlay */}
@@ -222,8 +229,10 @@ export function AppShell() {
   const { token } = useAuth()
 
   return (
-    <RightRailProvider railContent={token ? <RightRailWidgets /> : undefined}>
-      <AppShellInner />
-    </RightRailProvider>
+    <SidebarProvider>
+      <RightRailProvider railContent={token ? <RightRailWidgets /> : undefined}>
+        <AppShellInner />
+      </RightRailProvider>
+    </SidebarProvider>
   )
 }

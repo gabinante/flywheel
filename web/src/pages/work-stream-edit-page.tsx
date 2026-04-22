@@ -5,8 +5,19 @@ import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
+import { DetailPageSkeleton } from '@/components/ui/skeleton'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 
@@ -111,7 +122,7 @@ export function WorkStreamEditPage() {
     return <p className="text-destructive text-sm">{err}</p>
   }
   if (stream === undefined) {
-    return <p className="text-muted-foreground text-sm">Loading…</p>
+    return <DetailPageSkeleton />
   }
   if (!stream) {
     return <p className="text-muted-foreground text-sm">Work stream not found.</p>
@@ -181,56 +192,60 @@ export function WorkStreamEditPage() {
             {saved ? (
               <p className="text-muted-foreground text-sm">Saved.</p>
             ) : null}
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-muted-foreground">Name</span>
-              <input
-                className="border-input bg-background h-8 rounded-md border px-2 text-sm disabled:opacity-50"
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ws-name">Name</Label>
+              <Input
+                id="ws-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 disabled={busy}
                 required
               />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-muted-foreground">Plan (Markdown)</span>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ws-plan">Plan (Markdown)</Label>
               <span className="text-muted-foreground text-xs">
                 GFM, fenced code with a language for highlighting,{' '}
                 <code className="font-mono">{'```mermaid'}</code> for diagrams.
                 Leave empty to clear.
               </span>
-              <textarea
-                className="border-input bg-background font-mono min-h-[200px] rounded-md border px-2 py-2 text-sm disabled:opacity-50"
+              <Textarea
+                id="ws-plan"
+                className="min-h-[200px] font-mono"
                 value={plan}
                 onChange={(e) => setPlan(e.target.value)}
                 disabled={busy}
                 rows={12}
                 spellCheck={false}
               />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-muted-foreground">Branch</span>
-              <input
-                className="border-input bg-background h-8 rounded-md border px-2 font-mono text-sm disabled:opacity-50"
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ws-branch">Branch</Label>
+              <Input
+                id="ws-branch"
+                className="font-mono"
                 value={branch}
                 onChange={(e) => setBranch(e.target.value)}
                 disabled={busy}
                 placeholder="e.g. feature/my-stream"
               />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-muted-foreground">Status</span>
-              <select
-                className="border-input bg-background h-8 rounded-md border px-2 text-sm disabled:opacity-50"
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ws-status">Status</Label>
+              <Select
                 value={status}
-                onChange={(e) =>
-                  setStatus(e.target.value as 'active' | 'closed')
-                }
+                onValueChange={(v) => setStatus(v as 'active' | 'closed')}
                 disabled={busy}
               >
-                <option value="active">active</option>
-                <option value="closed">closed</option>
-              </select>
-            </label>
+                <SelectTrigger id="ws-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">active</SelectItem>
+                  <SelectItem value="closed">closed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <Button type="submit" disabled={busy}>
               {busy ? 'Saving…' : 'Save changes'}
             </Button>
