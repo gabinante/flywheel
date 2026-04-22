@@ -1,4 +1,4 @@
-.PHONY: run run-mcp run-embedded migrate migrate-down test generate docker-up docker-down docker-embedded-up docker-embedded-down build build-flywheel-git build-flywheel-mcp web-build varlock-validate install
+.PHONY: run run-mcp run-embedded migrate migrate-create migrate-down test generate docker-up docker-down docker-embedded-up docker-embedded-down build build-flywheel-git build-flywheel-mcp web-build varlock-validate install
 
 VARLOCK := ./scripts/varlock
 
@@ -27,6 +27,12 @@ build-flywheel-git:
 
 build-flywheel-mcp:
 	go build -o flywheel-mcp ./cmd/mcp
+
+migrate-create:
+	@name=$${NAME:?Usage: make migrate-create NAME=description}; \
+	ts=$$(date -u +%Y%m%d%H%M%S); \
+	touch db/migrations/$${ts}_$${name}.up.sql db/migrations/$${ts}_$${name}.down.sql; \
+	echo "Created db/migrations/$${ts}_$${name}.{up,down}.sql"
 
 migrate-down:
 	migrate -path db/migrations -database "$${DATABASE_URL:-postgres://flywheel:flywheel@localhost:5433/flywheel?sslmode=disable}" down 1

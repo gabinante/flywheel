@@ -3,7 +3,7 @@
 -- Channels: slack (default), email, sms. Track dismissal rates for classifier tuning.
 
 -- Notifications: every notification sent or queued for digest.
-CREATE TABLE notifications (
+CREATE TABLE IF NOT EXISTS notifications (
     id              TEXT PRIMARY KEY,
     project_id      TEXT NOT NULL REFERENCES projects(id),
     ticket_id       TEXT NOT NULL DEFAULT '',
@@ -29,13 +29,13 @@ CREATE TABLE notifications (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_notifications_project ON notifications (project_id, created_at DESC);
-CREATE INDEX idx_notifications_project_pending ON notifications (project_id) WHERE status = 'pending';
-CREATE INDEX idx_notifications_classifier ON notifications (classifier) WHERE classifier != '';
-CREATE INDEX idx_notifications_digest ON notifications (project_id, routing, status) WHERE routing = 'digest' AND status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_notifications_project ON notifications (project_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_project_pending ON notifications (project_id) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_notifications_classifier ON notifications (classifier) WHERE classifier != '';
+CREATE INDEX IF NOT EXISTS idx_notifications_digest ON notifications (project_id, routing, status) WHERE routing = 'digest' AND status = 'pending';
 
 -- Notification preferences: per-project channel routing and digest settings.
-CREATE TABLE notification_preferences (
+CREATE TABLE IF NOT EXISTS notification_preferences (
     id              TEXT PRIMARY KEY,
     project_id      TEXT NOT NULL REFERENCES projects(id),
     -- Channel preferences per urgency level.
@@ -58,7 +58,7 @@ CREATE TABLE notification_preferences (
 );
 
 -- Dismissal rate tracking: aggregated per classifier for tuning feedback.
-CREATE TABLE notification_dismissal_rates (
+CREATE TABLE IF NOT EXISTS notification_dismissal_rates (
     classifier      TEXT NOT NULL,
     project_id      TEXT NOT NULL REFERENCES projects(id),
     total_sent      BIGINT NOT NULL DEFAULT 0,

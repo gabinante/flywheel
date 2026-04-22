@@ -243,7 +243,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** State transition history for a ticket (timeline of state changes) */
+        get: operations["GetTransitions"];
         put?: never;
         /** Transition ticket state (e.g. start, submit, approve, reject) */
         post: operations["TransitionTicket"];
@@ -319,6 +320,196 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{projectID}/policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List advancement policies for a project */
+        get: operations["ListPolicies"];
+        put?: never;
+        /** Create a new advancement policy */
+        post: operations["CreatePolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectID}/policies/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Policy health view showing all policies with outcome statistics, proposals, and edit history */
+        get: operations["GetProjectPolicyHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectID}/policies/calibrate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run calibration feedback loop — analyzes metrics and generates broadening or review proposals */
+        post: operations["RunCalibration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/policies/{policyID}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a single policy by ID */
+        get: operations["GetPolicy"];
+        /** Update a policy (records a change event in the stream) */
+        put: operations["UpdatePolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/policies/{policyID}/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get health view for a single policy with metrics, proposals, and change history */
+        get: operations["GetPolicyHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/policies/{policyID}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get computed per-policy metrics (auto-approval rate, rollback rate, incident rate) */
+        get: operations["GetPolicyMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/policies/{policyID}/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List rolling record of gated decisions with outcomes */
+        get: operations["ListPolicyDecisions"];
+        put?: never;
+        /** Record a policy decision on a ticket */
+        post: operations["RecordPolicyDecision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/policies/{policyID}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List auditable change events for a policy (edit history) */
+        get: operations["ListPolicyChangeEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/policies/{policyID}/simulate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Simulate candidate rule changes against last N days of historical tickets before committing */
+        post: operations["SimulateRuleChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/proposals/{proposalID}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept, reject, or dismiss a system-generated proposal (broadening is never automatic) */
+        post: operations["ResolveProposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/{ticketID}/outcome": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the outcome (success, rollback, incident) for all policy decisions on a ticket */
+        post: operations["RecordTicketOutcome"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{projectID}/queue/claim": {
         parameters: {
             query?: never;
@@ -362,6 +553,125 @@ export interface paths {
         put?: never;
         post?: never;
         delete: operations["ReleaseLease"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a typed execution plan for a ticket */
+        post: operations["CreatePlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plans/{planID}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a plan by ID */
+        get: operations["GetPlan"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plans/{planID}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update plan content (draft state only, re-validates against backend schema) */
+        put: operations["UpdatePlanContent"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plans/{planID}/transition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transition plan state (submit, classify, approve, apply, reject) */
+        post: operations["TransitionPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plans/{planID}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List version history of a plan */
+        get: operations["ListPlanVersions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plans/{planID}/freshness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Check if a plan is still fresh (not expired for re-plan-before-apply) */
+        get: operations["CheckPlanFreshness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/{ticketID}/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all plans linked to a ticket */
+        get: operations["ListPlansByTicket"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -455,6 +765,8 @@ export interface components {
              * @enum {string}
              */
             status?: "active" | "closed";
+            /** @description Whether the dispatcher picks up tickets for this project (default true). */
+            dispatch_enabled?: boolean;
             /** Format: date-time */
             created_at?: string;
         };
@@ -469,6 +781,8 @@ export interface components {
             repo_url?: string;
             /** @description Branch to checkout when closing a work stream; default "main". */
             default_branch?: string;
+            /** @description Whether the dispatcher picks up tickets for this project (default true). Takes effect immediately. */
+            dispatch_enabled?: boolean;
         };
         WorkStream: {
             id?: string;
@@ -522,7 +836,7 @@ export interface components {
             type?: "task" | "bug" | "spike" | "review";
             priority?: number;
             /** @enum {string} */
-            state?: "pending" | "claimed" | "executing" | "awaiting_review" | "done" | "blocked" | "needs_human" | "failed";
+            state?: "draft" | "specced" | "planning" | "awaiting_input" | "executing" | "awaiting_validation" | "validated" | "deploying" | "observing" | "closed" | "pending" | "claimed" | "awaiting_review" | "done" | "blocked" | "needs_human" | "failed";
             version?: number;
             objective?: components["schemas"]["Objective"];
             ticket_context?: components["schemas"]["TicketContext"];
@@ -530,6 +844,8 @@ export interface components {
             outputs?: Record<string, never>;
             depends_on?: string[];
             work_stream_id?: string;
+            /** @description Repository alias for multi-repo projects (from project_repositories). Empty means primary repo. */
+            target_repo?: string;
             assigned_to?: string;
             created_by?: string;
             /** Format: date-time */
@@ -537,9 +853,25 @@ export interface components {
             /** Format: date-time */
             updated_at?: string;
         };
+        ProjectRepository: {
+            id?: string;
+            project_id?: string;
+            /** @description Unique alias within the project (e.g. "backend", "frontend") */
+            alias?: string;
+            /** @description Git clone URL */
+            repo_url?: string;
+            /** @description Default branch name (e.g. "main") */
+            default_branch?: string;
+            /** @description Whether this is the primary repository */
+            is_primary?: boolean;
+            /** Format: date-time */
+            created_at?: string;
+        };
         CreateTicketRequest: {
             title: string;
             work_stream_id?: string;
+            /** @description Repository alias for multi-repo projects (optional) */
+            target_repo?: string;
             /** @enum {string} */
             type?: "task" | "bug" | "spike" | "review";
             priority?: number;
@@ -559,7 +891,7 @@ export interface components {
         };
         CreateReviewRequest: {
             /**
-             * @description approved moves awaiting_review → done; rejected moves awaiting_review → executing; reopened moves done → awaiting_review (e.g. undo mistaken approval; outputs preserved).
+             * @description approved moves awaiting_validation → validated; rejected moves awaiting_validation → executing; reopened moves closed → draft (re-opens ticket for new lifecycle).
              * @enum {string}
              */
             decision: "approved" | "rejected" | "reopened";
@@ -623,6 +955,342 @@ export interface components {
         RenewLeaseResponseBody: {
             /** Format: date-time */
             expires_at?: string;
+        };
+        TransitionHistory: {
+            ticket_id?: string;
+            current_state?: string;
+            transitions?: components["schemas"]["StateTransitionEntry"][];
+        };
+        StateTransitionEntry: {
+            id?: string;
+            from_state?: string;
+            to_state?: string;
+            trigger?: string;
+            actor_id?: string;
+            /** @enum {string} */
+            actor_type?: "human" | "agent" | "system";
+            /** Format: date-time */
+            created_at?: string;
+        };
+        Plan: {
+            id?: string;
+            ticket_id?: string;
+            /** @enum {string} */
+            backend?: "database" | "terraform" | "code" | "shell" | "deploy";
+            /** @enum {string} */
+            state?: "draft" | "submitted" | "classified" | "approved" | "applied" | "superseded" | "rejected";
+            version?: number;
+            content?: components["schemas"]["PlanContent"];
+            /** Format: date-time */
+            freshness_stamp?: string;
+            /** Format: date-time */
+            expires_at?: string;
+            created_by?: string;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        /** @description Union type — exactly one backend sub-schema is populated. No untyped escape hatch; agent cannot express classification-evading content. */
+        PlanContent: {
+            database?: components["schemas"]["DatabasePlan"];
+            terraform?: components["schemas"]["TerraformPlan"];
+            code?: components["schemas"]["CodePlan"];
+            shell?: components["schemas"]["ShellPlan"];
+            deploy?: components["schemas"]["DeployPlan"];
+        };
+        /** @description Database migration plan. DDL must be valid SQL — prose fails validation. */
+        DatabasePlan: {
+            migration_name: string;
+            /** @description Must be valid SQL DDL (validated at submission) */
+            ddl: string;
+            rollback_ddl?: string;
+            /** @enum {string} */
+            direction: "up" | "down";
+            database_name?: string;
+            schema_version?: string;
+        };
+        /** @description Terraform plan output (JSON). */
+        TerraformPlan: {
+            /** @description Must be valid JSON */
+            plan_json: string;
+            resource_changes?: {
+                address?: string;
+                type?: string;
+                name?: string;
+                /** @enum {string} */
+                change_action?: "create" | "update" | "delete" | "replace" | "no-op";
+            }[];
+            provider: string;
+            workspace?: string;
+            state_version?: number;
+        };
+        /** @description AST diff representation for code changes. */
+        CodePlan: {
+            file_path: string;
+            language: string;
+            before_hash?: string;
+            after_hash?: string;
+            hunks: {
+                start_line?: number;
+                end_line?: number;
+                content: string;
+                /** @enum {string} */
+                operation: "add" | "remove" | "modify";
+            }[];
+        };
+        /** @description Shell commands with explicit side-effect manifest. No untyped prose allowed. */
+        ShellPlan: {
+            commands: {
+                command: string;
+                description?: string;
+                idempotent?: boolean;
+                timeout?: string;
+            }[];
+            working_dir?: string;
+            environment?: {
+                [key: string]: string;
+            };
+            /** @description Declarative permission boundary for shell execution. The sandbox enforces this manifest at runtime; the classifier reads it (not the script) to determine risk. Wildcard operations widen classification automatically. */
+            side_effect_manifest: {
+                /** @description File system operations the script may perform. */
+                file_ops?: {
+                    /** @enum {string} */
+                    action: "read" | "write" | "delete";
+                    /** @description Glob pattern for affected files (e.g., "/app/dist/**") */
+                    path: string;
+                }[];
+                /** @description Outbound network operations the script may perform. */
+                network_ops?: {
+                    /** @description Target host:port or URL pattern */
+                    endpoint: string;
+                    /** @enum {string} */
+                    method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS" | "TCP" | "UDP";
+                    /** @description Whether this call is safe to retry */
+                    idempotent?: boolean;
+                }[];
+                /** @description Subprocesses the script may spawn. */
+                process_ops?: {
+                    /** @description Executable name or path */
+                    binary: string;
+                    /** @description Allowed argument patterns (glob-matched) */
+                    args?: string[];
+                }[];
+                /** @description Secrets/credentials the script will access. */
+                credential_ops?: {
+                    /** @description Credential identifier (env var name or secret path) */
+                    name: string;
+                    /** @description Why this credential is needed (for audit) */
+                    purpose?: string;
+                }[];
+                /** @description Upper bounds on resource consumption for sandbox enforcement. */
+                resource_limits?: {
+                    /** @description Maximum wall-clock time (0 = system default) */
+                    max_runtime_seconds?: number;
+                    /**
+                     * Format: int64
+                     * @description Maximum total writable bytes (0 = system default)
+                     */
+                    max_disk_write_bytes?: number;
+                    /** @description Maximum outbound connections (0 = system default) */
+                    max_network_calls?: number;
+                };
+            };
+        };
+        /** @description Deploy plan referencing specific artifact hash and target. */
+        DeployPlan: {
+            artifact_hash: string;
+            artifact_url?: string;
+            target: string;
+            /** @enum {string} */
+            deploy_strategy: "rolling" | "blue-green" | "canary" | "recreate";
+            health_check_url?: string;
+            rollback_hash?: string;
+            replicas?: number;
+        };
+        PlanVersion: {
+            id?: string;
+            plan_id?: string;
+            version?: number;
+            content?: components["schemas"]["PlanContent"];
+            created_by?: string;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        CreatePlanRequest: {
+            ticket_id: string;
+            /** @enum {string} */
+            backend: "database" | "terraform" | "code" | "shell" | "deploy";
+            /** @description Backend-specific content object (must match backend type schema) */
+            content: Record<string, never>;
+            created_by?: string;
+            /** Format: date-time */
+            freshness_stamp?: string;
+            /** Format: date-time */
+            expires_at?: string;
+        };
+        UpdatePlanContentRequest: {
+            /** @description New backend-specific content (re-validated against schema) */
+            content: Record<string, never>;
+            updated_by?: string;
+        };
+        PolicyCondition: {
+            field?: string;
+            operator?: string;
+            value?: unknown;
+            label?: string;
+        };
+        PolicyRules: {
+            auto_approve_conditions?: components["schemas"]["PolicyCondition"][];
+            review_conditions?: components["schemas"]["PolicyCondition"][];
+            block_conditions?: components["schemas"]["PolicyCondition"][];
+        };
+        Policy: {
+            id?: string;
+            project_id?: string;
+            name?: string;
+            description?: string;
+            rules?: components["schemas"]["PolicyRules"];
+            enabled?: boolean;
+            min_sample?: number;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        PolicyMetrics: {
+            policy_id?: string;
+            total_decisions?: number;
+            /** Format: double */
+            auto_approval_rate?: number;
+            /** Format: double */
+            rollback_rate?: number;
+            /** Format: double */
+            incident_rate?: number;
+            /** Format: double */
+            success_rate?: number;
+            pending_outcomes?: number;
+            sample_size_sufficient?: boolean;
+        };
+        PolicyDecision: {
+            id?: string;
+            policy_id?: string;
+            ticket_id?: string;
+            /** @enum {string} */
+            decision?: "auto_approved" | "required_review" | "blocked";
+            /** @enum {string} */
+            outcome?: "success" | "rollback" | "incident";
+            reason?: string;
+            /** Format: date-time */
+            decided_at?: string;
+            /** Format: date-time */
+            outcome_at?: string;
+        };
+        PolicyChangeEvent: {
+            id?: string;
+            policy_id?: string;
+            actor_id?: string;
+            /** @enum {string} */
+            change_type?: "created" | "updated" | "enabled" | "disabled" | "broadened" | "narrowed";
+            prev_rules?: components["schemas"]["PolicyRules"];
+            new_rules?: components["schemas"]["PolicyRules"];
+            notes?: string;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        PolicyProposal: {
+            id?: string;
+            policy_id?: string;
+            /** @enum {string} */
+            proposal_type?: "broaden" | "review";
+            suggestion?: Record<string, never>;
+            statistics?: Record<string, never>;
+            /** @enum {string} */
+            status?: "pending" | "accepted" | "rejected" | "dismissed";
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            resolved_at?: string;
+            resolved_by?: string;
+        };
+        PolicyHealth: {
+            policy?: components["schemas"]["Policy"];
+            metrics?: components["schemas"]["PolicyMetrics"];
+            proposals?: components["schemas"]["PolicyProposal"][];
+            history?: components["schemas"]["PolicyChangeEvent"][];
+        };
+        SimulationResult: {
+            policy_id?: string;
+            tickets_simulated?: number;
+            results?: {
+                ticket_id?: string;
+                current_decision?: string;
+                new_decision?: string;
+                changed?: boolean;
+            }[];
+            summary?: {
+                total_tickets?: number;
+                would_auto_approve?: number;
+                would_require_review?: number;
+                would_block?: number;
+                changed_decisions?: number;
+                /** Format: double */
+                change_rate?: number;
+            };
+        };
+        PolicyListResponse: {
+            policies?: components["schemas"]["Policy"][];
+        };
+        ProjectHealthResponse: {
+            policies?: components["schemas"]["PolicyHealth"][];
+        };
+        CalibrationResponse: {
+            proposals?: components["schemas"]["PolicyProposal"][];
+        };
+        PolicyDecisionsResponse: {
+            decisions?: components["schemas"]["PolicyDecision"][];
+        };
+        PolicyChangeEventsResponse: {
+            events?: components["schemas"]["PolicyChangeEvent"][];
+        };
+        CreatePolicyRequest: {
+            name: string;
+            description?: string;
+            rules?: components["schemas"]["PolicyRules"];
+            /** @default 20 */
+            min_sample: number;
+            actor_id?: string;
+        };
+        UpdatePolicyRequest: {
+            name?: string;
+            description?: string;
+            rules?: components["schemas"]["PolicyRules"];
+            enabled?: boolean;
+            min_sample?: number;
+            actor_id?: string;
+        };
+        RecordDecisionRequest: {
+            ticket_id: string;
+            /** @enum {string} */
+            decision: "auto_approved" | "required_review" | "blocked";
+            reason?: string;
+        };
+        RecordOutcomeRequest: {
+            /** @enum {string} */
+            outcome: "success" | "rollback" | "incident";
+        };
+        SimulateRequest: {
+            candidate_rules: components["schemas"]["PolicyRules"];
+            /**
+             * @description Number of days of historical tickets to simulate against.
+             * @default 30
+             */
+            days: number;
+        };
+        ResolveProposalRequest: {
+            /** @enum {string} */
+            status: "accepted" | "rejected" | "dismissed";
+            resolved_by?: string;
         };
     };
     responses: never;
@@ -1128,7 +1796,7 @@ export interface operations {
                 /** @description Filter by work stream. */
                 work_stream_id?: string;
                 /** @description Filter by ticket state. */
-                state?: "pending" | "claimed" | "executing" | "awaiting_review" | "done" | "blocked" | "needs_human" | "failed";
+                state?: "draft" | "specced" | "planning" | "awaiting_input" | "executing" | "awaiting_validation" | "validated" | "deploying" | "observing" | "closed" | "pending" | "claimed" | "awaiting_review" | "done" | "blocked" | "needs_human" | "failed";
             };
             header?: never;
             path: {
@@ -1448,6 +2116,37 @@ export interface operations {
             };
         };
     };
+    GetTransitions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticketID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransitionHistory"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
     TransitionTicket: {
         parameters: {
             query?: never;
@@ -1656,6 +2355,371 @@ export interface operations {
             };
         };
     };
+    ListPolicies: {
+        parameters: {
+            query?: {
+                /** @description Filter to enabled policies only. */
+                enabled?: "true" | "false";
+            };
+            header?: never;
+            path: {
+                projectID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyListResponse"];
+                };
+            };
+        };
+    };
+    CreatePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Policy"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    GetProjectPolicyHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectHealthResponse"];
+                };
+            };
+        };
+    };
+    RunCalibration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalibrationResponse"];
+                };
+            };
+        };
+    };
+    GetPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policyID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Policy"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    UpdatePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policyID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    GetPolicyHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policyID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyHealth"];
+                };
+            };
+        };
+    };
+    GetPolicyMetrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policyID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyMetrics"];
+                };
+            };
+        };
+    };
+    ListPolicyDecisions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policyID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyDecisionsResponse"];
+                };
+            };
+        };
+    };
+    RecordPolicyDecision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policyID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyDecision"];
+                };
+            };
+        };
+    };
+    ListPolicyChangeEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policyID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyChangeEventsResponse"];
+                };
+            };
+        };
+    };
+    SimulateRuleChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policyID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SimulateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulationResult"];
+                };
+            };
+        };
+    };
+    ResolveProposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposalID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveProposalRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    RecordTicketOutcome: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticketID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordOutcomeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     ClaimTicket: {
         parameters: {
             query?: never;
@@ -1786,6 +2850,213 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    CreatePlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePlanRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plan"];
+                };
+            };
+            /** @description Bad request (validation failure — e.g., invalid DDL) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    GetPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plan"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    UpdatePlanContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePlanContentRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation failure */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    TransitionPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    action: "submit" | "classify" | "approve" | "apply" | "reject";
+                };
+            };
+        };
+        responses: {
+            /** @description Transitioned */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plan"];
+                };
+            };
+            /** @description Invalid transition */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    ListPlanVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanVersion"][];
+                };
+            };
+        };
+    };
+    CheckPlanFreshness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        plan_id?: string;
+                        fresh?: boolean;
+                    };
+                };
+            };
+        };
+    };
+    ListPlansByTicket: {
+        parameters: {
+            query?: {
+                /** @description Filter by backend type */
+                backend?: "database" | "terraform" | "code" | "shell" | "deploy";
+            };
+            header?: never;
+            path: {
+                ticketID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plan"][];
                 };
             };
         };

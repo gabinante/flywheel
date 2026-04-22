@@ -29,6 +29,88 @@ import (
 
 type sessionContextKey struct{}
 
+// ToolScope categorizes MCP tools by their access level for defense-in-depth.
+// Read tools need no confirmation; write tools that affect only Flywheel state
+// are allowed for coordinators; write tools with external side effects require
+// human confirmation; forbidden tools are structurally blocked for coordinators.
+type ToolScope string
+
+const (
+	// ToolScopeRead indicates a read-only tool with no side effects.
+	ToolScopeRead ToolScope = "read"
+	// ToolScopeWriteInternal indicates a tool that mutates Flywheel state only (tickets, streams).
+	ToolScopeWriteInternal ToolScope = "write_internal"
+	// ToolScopeWriteExternal indicates a tool with external side effects requiring confirmation.
+	ToolScopeWriteExternal ToolScope = "write_external"
+	// ToolScopeForbiddenCoordinator indicates a tool structurally forbidden for coordinator role.
+	ToolScopeForbiddenCoordinator ToolScope = "forbidden_coordinator"
+)
+
+// ToolScopeRegistry maps tool names to their scope classification.
+// This registry enforces defense-in-depth: write tools with external effects
+// require human confirmation flows, and forbidden tools are structurally blocked
+// for the coordinator role regardless of what external content may instruct.
+var ToolScopeRegistry = map[string]ToolScope{
+	// Read-only tools (no confirmation needed)
+	"list_orgs":             ToolScopeRead,
+	"list_projects":         ToolScopeRead,
+	"get_project_context":   ToolScopeRead,
+	"list_tickets":          ToolScopeRead,
+	"get_ticket":            ToolScopeRead,
+	"list_work_streams":     ToolScopeRead,
+	"get_work_stream":       ToolScopeRead,
+	"list_pending_reviews":  ToolScopeRead,
+	"get_trace":             ToolScopeRead,
+	"flywheel_show_git_notes": ToolScopeRead,
+	"flywheel_log_git_notes":  ToolScopeRead,
+	"flywheel_diff_git_notes": ToolScopeRead,
+
+	// Write tools — internal Flywheel state only (allowed for coordinator)
+	"create_project":           ToolScopeWriteInternal,
+	"update_project_context":   ToolScopeWriteInternal,
+	"update_project_status":    ToolScopeWriteInternal,
+	"create_ticket":            ToolScopeWriteInternal,
+	"update_ticket":            ToolScopeWriteInternal,
+	"create_work_stream":       ToolScopeWriteInternal,
+	"update_work_stream":       ToolScopeWriteInternal,
+	"update_work_stream_plan":  ToolScopeWriteInternal,
+
+	// Write tools — worker lifecycle (internal but role-scoped)
+	"claim_ticket":    ToolScopeWriteInternal,
+	"start_ticket":    ToolScopeWriteInternal,
+	"log_step":        ToolScopeWriteInternal,
+	"submit_ticket":   ToolScopeWriteInternal,
+	"escalate_ticket": ToolScopeWriteInternal,
+	"renew_lease":     ToolScopeWriteInternal,
+	"force_release_lease": ToolScopeWriteInternal,
+
+	// Write tools — external side effects (require human confirmation)
+	"flywheel_add_git_note":  ToolScopeWriteExternal,
+	"flywheel_sync_git_notes": ToolScopeWriteExternal,
+
+	// Review tools — human-gated by design
+	"approve_ticket": ToolScopeForbiddenCoordinator,
+	"reject_ticket":  ToolScopeForbiddenCoordinator,
+	"reopen_ticket":  ToolScopeForbiddenCoordinator,
+}
+
+// GetToolScope returns the scope classification for a tool name.
+// Unknown tools default to ToolScopeWriteExternal (require confirmation).
+func GetToolScope(toolName string) ToolScope {
+	if scope, ok := ToolScopeRegistry[toolName]; ok {
+		return scope
+	}
+	// Default: unknown tools require confirmation (defense-in-depth)
+	return ToolScopeWriteExternal
+}
+
+// IsWriteToolRequiringConfirmation returns true if the tool has external side effects
+// and should require human confirmation before execution.
+func IsWriteToolRequiringConfirmation(toolName string) bool {
+	scope := GetToolScope(toolName)
+	return scope == ToolScopeWriteExternal || scope == ToolScopeForbiddenCoordinator
+}
+
 // wrapFn is the signature for the wrap closure used when registering tools.
 type wrapFn = func(func(*Backend, context.Context, map[string]any) (*mcp.CallToolResult, any, error)) func(context.Context, *mcp.CallToolRequest, map[string]any) (*mcp.CallToolResult, any, error)
 
