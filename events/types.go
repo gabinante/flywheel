@@ -79,6 +79,11 @@ const (
 	EventPlanRejected   = "plan.rejected"
 	EventPlanSuperseded = "plan.superseded"
 
+	// --- Stream events (spec v0.2 section 2.2) ---
+	EventEntityStreamAppended = "stream.entity.appended"
+	EventStateStreamAppended  = "stream.state.appended"
+	EventChangeStreamAppended = "stream.change.appended"
+
 	// --- Claims registry events (spec v0.2 §4.3) ---
 	EventClaimRegistered  = "claim.registered"
 	EventClaimReleased    = "claim.released"
