@@ -243,7 +243,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** State transition history for a ticket (timeline of state changes) */
+        get: operations["GetTransitions"];
         put?: never;
         /** Transition ticket state (e.g. start, submit, approve, reject) */
         post: operations["TransitionTicket"];
@@ -954,6 +955,22 @@ export interface components {
         RenewLeaseResponseBody: {
             /** Format: date-time */
             expires_at?: string;
+        };
+        TransitionHistory: {
+            ticket_id?: string;
+            current_state?: string;
+            transitions?: components["schemas"]["StateTransitionEntry"][];
+        };
+        StateTransitionEntry: {
+            id?: string;
+            from_state?: string;
+            to_state?: string;
+            trigger?: string;
+            actor_id?: string;
+            /** @enum {string} */
+            actor_type?: "human" | "agent" | "system";
+            /** Format: date-time */
+            created_at?: string;
         };
         Plan: {
             id?: string;
@@ -2086,6 +2103,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    GetTransitions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticketID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransitionHistory"];
                 };
             };
             /** @description Not found */

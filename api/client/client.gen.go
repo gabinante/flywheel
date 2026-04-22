@@ -100,6 +100,27 @@ func (e ProjectStatus) Valid() bool {
 	}
 }
 
+// Defines values for StateTransitionEntryActorType.
+const (
+	StateTransitionEntryActorTypeAgent  StateTransitionEntryActorType = "agent"
+	StateTransitionEntryActorTypeHuman  StateTransitionEntryActorType = "human"
+	StateTransitionEntryActorTypeSystem StateTransitionEntryActorType = "system"
+)
+
+// Valid indicates whether the value is a known member of the StateTransitionEntryActorType enum.
+func (e StateTransitionEntryActorType) Valid() bool {
+	switch e {
+	case StateTransitionEntryActorTypeAgent:
+		return true
+	case StateTransitionEntryActorTypeHuman:
+		return true
+	case StateTransitionEntryActorTypeSystem:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StructuredErrorCode.
 const (
 	StructuredErrorCodeConflict       StructuredErrorCode = "conflict"
@@ -276,19 +297,19 @@ func (e TraceStepInputType) Valid() bool {
 
 // Defines values for TransitionRequestActor.
 const (
-	Agent  TransitionRequestActor = "agent"
-	Human  TransitionRequestActor = "human"
-	System TransitionRequestActor = "system"
+	TransitionRequestActorAgent  TransitionRequestActor = "agent"
+	TransitionRequestActorHuman  TransitionRequestActor = "human"
+	TransitionRequestActorSystem TransitionRequestActor = "system"
 )
 
 // Valid indicates whether the value is a known member of the TransitionRequestActor enum.
 func (e TransitionRequestActor) Valid() bool {
 	switch e {
-	case Agent:
+	case TransitionRequestActorAgent:
 		return true
-	case Human:
+	case TransitionRequestActorHuman:
 		return true
-	case System:
+	case TransitionRequestActorSystem:
 		return true
 	default:
 		return false
@@ -706,6 +727,20 @@ type ResolveEscalationRequest struct {
 	ReviewerId *string `json:"reviewer_id,omitempty"`
 }
 
+// StateTransitionEntry defines model for StateTransitionEntry.
+type StateTransitionEntry struct {
+	ActorId   *string                        `json:"actor_id,omitempty"`
+	ActorType *StateTransitionEntryActorType `json:"actor_type,omitempty"`
+	CreatedAt *time.Time                     `json:"created_at,omitempty"`
+	FromState *string                        `json:"from_state,omitempty"`
+	Id        *string                        `json:"id,omitempty"`
+	ToState   *string                        `json:"to_state,omitempty"`
+	Trigger   *string                        `json:"trigger,omitempty"`
+}
+
+// StateTransitionEntryActorType defines model for StateTransitionEntry.ActorType.
+type StateTransitionEntryActorType string
+
 // StructuredError defines model for StructuredError.
 type StructuredError struct {
 	Code      StructuredErrorCode `json:"code"`
@@ -770,6 +805,13 @@ type TraceStepInput struct {
 
 // TraceStepInputType defines model for TraceStepInput.Type.
 type TraceStepInputType string
+
+// TransitionHistory defines model for TransitionHistory.
+type TransitionHistory struct {
+	CurrentState *string                 `json:"current_state,omitempty"`
+	TicketId     *string                 `json:"ticket_id,omitempty"`
+	Transitions  *[]StateTransitionEntry `json:"transitions,omitempty"`
+}
 
 // TransitionRequest defines model for TransitionRequest.
 type TransitionRequest struct {
@@ -1139,6 +1181,9 @@ type ClientInterface interface {
 	LogStepWithBody(ctx context.Context, ticketID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	LogStep(ctx context.Context, ticketID string, body LogStepJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetTransitions request
+	GetTransitions(ctx context.Context, ticketID string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// TransitionTicketWithBody request with any body
 	TransitionTicketWithBody(ctx context.Context, ticketID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1640,6 +1685,18 @@ func (c *Client) LogStepWithBody(ctx context.Context, ticketID string, contentTy
 
 func (c *Client) LogStep(ctx context.Context, ticketID string, body LogStepJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewLogStepRequest(c.Server, ticketID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetTransitions(ctx context.Context, ticketID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTransitionsRequest(c.Server, ticketID)
 	if err != nil {
 		return nil, err
 	}
@@ -3046,6 +3103,40 @@ func NewLogStepRequestWithBody(server string, ticketID string, contentType strin
 	return req, nil
 }
 
+// NewGetTransitionsRequest generates requests for GetTransitions
+func NewGetTransitionsRequest(server string, ticketID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "ticketID", ticketID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tickets/%s/transitions", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewTransitionTicketRequest calls the generic TransitionTicket builder with application/json body
 func NewTransitionTicketRequest(server string, ticketID string, body TransitionTicketJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -3248,6 +3339,9 @@ type ClientWithResponsesInterface interface {
 	LogStepWithBodyWithResponse(ctx context.Context, ticketID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*LogStepResponse, error)
 
 	LogStepWithResponse(ctx context.Context, ticketID string, body LogStepJSONRequestBody, reqEditors ...RequestEditorFn) (*LogStepResponse, error)
+
+	// GetTransitionsWithResponse request
+	GetTransitionsWithResponse(ctx context.Context, ticketID string, reqEditors ...RequestEditorFn) (*GetTransitionsResponse, error)
 
 	// TransitionTicketWithBodyWithResponse request with any body
 	TransitionTicketWithBodyWithResponse(ctx context.Context, ticketID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TransitionTicketResponse, error)
@@ -3933,6 +4027,29 @@ func (r LogStepResponse) StatusCode() int {
 	return 0
 }
 
+type GetTransitionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *TransitionHistory
+	JSON404      *StructuredError
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTransitionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTransitionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type TransitionTicketResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4319,6 +4436,15 @@ func (c *ClientWithResponses) LogStepWithResponse(ctx context.Context, ticketID 
 		return nil, err
 	}
 	return ParseLogStepResponse(rsp)
+}
+
+// GetTransitionsWithResponse request returning *GetTransitionsResponse
+func (c *ClientWithResponses) GetTransitionsWithResponse(ctx context.Context, ticketID string, reqEditors ...RequestEditorFn) (*GetTransitionsResponse, error) {
+	rsp, err := c.GetTransitions(ctx, ticketID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTransitionsResponse(rsp)
 }
 
 // TransitionTicketWithBodyWithResponse request with arbitrary body returning *TransitionTicketResponse
@@ -5356,6 +5482,39 @@ func ParseLogStepResponse(rsp *http.Response) (*LogStepResponse, error) {
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetTransitionsResponse parses an HTTP response from a GetTransitionsWithResponse call
+func ParseGetTransitionsResponse(rsp *http.Response) (*GetTransitionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTransitionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TransitionHistory
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest StructuredError

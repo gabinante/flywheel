@@ -40,6 +40,7 @@ type PolicyEvaluator interface {
 // Service provides ticket operations.
 type Service struct {
 	store             TicketStore
+	transitionStore   *TransitionStore
 	sm                *StateMachine
 	bus               events.Bus
 	project           ProjectGetter
@@ -57,6 +58,19 @@ func NewService(store TicketStore, bus events.Bus, project ProjectGetter) *Servi
 		bus:     bus,
 		project: project,
 	}
+}
+
+// SetTransitionStore sets the optional store for recording state transitions.
+func (s *Service) SetTransitionStore(ts *TransitionStore) {
+	s.transitionStore = ts
+}
+
+// GetTransitions returns the state transition history for a ticket.
+func (s *Service) GetTransitions(ctx context.Context, ticketID string) ([]StateTransition, error) {
+	if s.transitionStore == nil {
+		return nil, nil
+	}
+	return s.transitionStore.ListByTicket(ctx, ticketID)
 }
 
 // SetPolicyEvaluator sets the optional policy evaluator. When set, TransitionTicket
@@ -254,6 +268,7 @@ func (s *Service) TransitionTicket(ctx context.Context, id string, trigger strin
 	if err != nil {
 		return err
 	}
+	fromState := t.State
 	newState, err := s.sm.Transition(t, trigger, actor, payload, deps)
 	if err != nil {
 		return err
@@ -270,6 +285,7 @@ func (s *Service) TransitionTicket(ctx context.Context, id string, trigger strin
 	if err := s.store.UpdateState(ctx, id, t.Version, newState, assignedTo); err != nil {
 		return err
 	}
+	s.recordTransition(ctx, id, fromState, newState, trigger, actor)
 
 	// Include policy decision in the event payload for audit trail.
 	eventExtra := payload
@@ -324,6 +340,7 @@ func (s *Service) SubmitTicket(ctx context.Context, id string, leaseToken string
 		}
 	}
 	payload := map[string]any{"outputs": outputs}
+	fromState := t.State
 	newState, err := s.sm.Transition(t, TriggerSubmit, Actor{ID: t.AssignedTo, Type: ActorAgent}, payload, nil)
 	if err != nil {
 		return err
@@ -335,6 +352,7 @@ func (s *Service) SubmitTicket(ctx context.Context, id string, leaseToken string
 		return err
 	}
 	_ = leaseToken
+	s.recordTransition(ctx, id, fromState, newState, TriggerSubmit, Actor{ID: t.AssignedTo, Type: ActorAgent})
 	s.emitTransitionEvent(TriggerSubmit, id, newState, t.ProjectID, nil)
 
 	// Auto-approve if enabled and acceptance test was present and passed.
@@ -345,6 +363,7 @@ func (s *Service) SubmitTicket(ctx context.Context, id string, leaseToken string
 			approveState, err := s.sm.Transition(t2, TriggerApprove, Actor{ID: "system", Type: ActorSystem}, nil, nil)
 			if err == nil {
 				if err := s.store.UpdateState(ctx, id, t2.Version, approveState, t2.AssignedTo); err == nil {
+					s.recordTransition(ctx, id, t2.State, approveState, TriggerApprove, Actor{ID: "system", Type: ActorSystem})
 					s.emitTransitionEvent(TriggerApprove, id, approveState, t.ProjectID, nil)
 				}
 			}
@@ -405,6 +424,14 @@ func (s *Service) emitTransitionEvent(trigger, ticketID string, newState State, 
 		event := events.NewEvent(eventType, payload).WithEntityKey("ticket:" + ticketID)
 		_ = s.bus.Publish(context.Background(), event)
 	}
+}
+
+// recordTransition persists a state transition record if the transition store is configured.
+func (s *Service) recordTransition(ctx context.Context, ticketID string, from, to State, trigger string, actor Actor) {
+	if s.transitionStore == nil {
+		return
+	}
+	_ = s.transitionStore.Record(ctx, ticketID, from, to, trigger, actor)
 }
 
 // triggerToEventType maps a trigger+state to the correct event type to emit.

@@ -676,6 +676,45 @@ func (s *StrictServer) LogStep(ctx context.Context, req generated.LogStepRequest
 	return generated.LogStep204Response{}, nil
 }
 
+func (s *StrictServer) GetTransitions(ctx context.Context, req generated.GetTransitionsRequestObject) (generated.GetTransitionsResponseObject, error) {
+	t, err := s.TicketSvc.GetTicket(ctx, req.TicketID)
+	if err != nil {
+		return nil, apierrors.MapError(err)
+	}
+	if err := CheckProjectAccess(ctx, t.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
+		return nil, err
+	}
+	transitions, err := s.TicketSvc.GetTransitions(ctx, req.TicketID)
+	if err != nil {
+		return nil, apierrors.MapError(err)
+	}
+	entries := make([]generated.StateTransitionEntry, 0, len(transitions))
+	for _, tr := range transitions {
+		fromState := tr.FromState
+		toState := tr.ToState
+		trigger := tr.Trigger
+		actorID := tr.ActorID
+		actorType := generated.StateTransitionEntryActorType(tr.ActorType)
+		createdAt := tr.CreatedAt
+		entries = append(entries, generated.StateTransitionEntry{
+			Id:        &tr.ID,
+			FromState: &fromState,
+			ToState:   &toState,
+			Trigger:   &trigger,
+			ActorId:   &actorID,
+			ActorType: &actorType,
+			CreatedAt: &createdAt,
+		})
+	}
+	currentState := string(t.State)
+	ticketID := req.TicketID
+	return generated.GetTransitions200JSONResponse(generated.TransitionHistory{
+		TicketId:     &ticketID,
+		CurrentState: &currentState,
+		Transitions:  &entries,
+	}), nil
+}
+
 func (s *StrictServer) TransitionTicket(ctx context.Context, req generated.TransitionTicketRequestObject) (generated.TransitionTicketResponseObject, error) {
 	t, err := s.TicketSvc.GetTicket(ctx, req.TicketID)
 	if err != nil {

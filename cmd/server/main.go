@@ -102,7 +102,9 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	workStreamStore := workstream.NewStore(pool)
 	workStreamSvc := workstream.NewService(workStreamStore)
 	ticketStore := ticket.NewStore(pool)
+	transitionStore := ticket.NewTransitionStore(pool)
 	ticketSvc := ticket.NewService(ticketStore, bus, projectSvc)
+	ticketSvc.SetTransitionStore(transitionStore)
 	if cfg.RunAcceptanceTestOnSubmit {
 		ticketSvc.SetAcceptanceRunner(&ticket.ShellAcceptanceRunner{})
 	}
