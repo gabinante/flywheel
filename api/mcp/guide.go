@@ -9,6 +9,18 @@ const AgentGuideContent = `# Flywheel MCP – Agent guide
 
 Use this flow when working on tickets via Flywheel. Your identity is tied to your OAuth login; you only see projects in organizations you belong to.
 
+## Setup
+
+Flywheel MCP auto-connects when the server is running. Three connection methods:
+
+**1. Claude Code (recommended):** The project ships .claude/settings.json with the MCP server pre-configured. Start the Flywheel server (make run or docker compose up), then open Claude Code in the project — it connects automatically via http://localhost:8080/mcp.
+
+**2. Cursor / other MCP clients:** Copy .flywheel-mcp-config.json to your IDE's MCP config location. Update the X-API-Key header with your agent's API key (from the Flywheel web UI or /agents endpoint).
+
+**3. Stdio (direct):** Run the MCP server as a subprocess: go run ./cmd/mcp (requires DATABASE_URL and REDIS_URL). This is useful for custom agent frameworks that speak MCP over stdio.
+
+All three methods give you the same set of tools. The server sends instructions during initialization that explain the workflow.
+
 **Work streams + Git:** If the project has **repo_url** and you use **work streams**, you must call **update_work_stream** with **branch** after you create or check out the Git branch. **update_work_stream_plan** only changes Markdown—it does **not** set the branch. Omitting **branch** is a common mistake; **claim_ticket** / **get_ticket** will keep returning **create_or_set_branch** until you fix it.
 
 ## Typical flow
