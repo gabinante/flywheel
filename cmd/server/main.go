@@ -371,6 +371,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			ReconcileInterval: cfg.Dispatch.ReconcileInterval,
 		}, bus, ticketSvc, projectSvc)
 		dispatcher.SetLeaseReleaser(queueSvc)
+		dispatcher.SetTicketTransitioner(ticketSvc)
 		dispatcher.Start(ctx)
 	}
 

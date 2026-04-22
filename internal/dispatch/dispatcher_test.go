@@ -1384,6 +1384,185 @@ func TestDispatchEnabledAllowsTickets(t *testing.T) {
 	}
 }
 
+// --- Ticket Transitioner Tests (post-merge lifecycle) ---
+
+// mockTicketTransitioner records TransitionTicket calls.
+type mockTicketTransitioner struct {
+	mu          sync.Mutex
+	transitions []mockTransition
+	err         error    // error to return (nil = success)
+	failOn      string   // trigger name to fail on (empty = never fail)
+}
+
+type mockTransition struct {
+	ID      string
+	Trigger string
+	Actor   ticket.Actor
+}
+
+func (m *mockTicketTransitioner) TransitionTicket(_ context.Context, id string, trigger string, actor ticket.Actor, _ map[string]any) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.transitions = append(m.transitions, mockTransition{ID: id, Trigger: trigger, Actor: actor})
+	if m.failOn != "" && trigger == m.failOn {
+		return m.err
+	}
+	return nil
+}
+
+func (m *mockTicketTransitioner) transitionCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.transitions)
+}
+
+func (m *mockTicketTransitioner) triggers() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var result []string
+	for _, t := range m.transitions {
+		result = append(result, t.Trigger)
+	}
+	return result
+}
+
+func TestCloseMergedTicket_HappyPath(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter()
+	pg := newMockProjectGetter()
+	cfg := Config{MaxWorkers: 5}
+
+	d := New(cfg, bus, tg, pg)
+	trans := &mockTicketTransitioner{}
+	d.SetTicketTransitioner(trans)
+
+	// Seed a merge attempt to verify it gets cleared.
+	d.mu.Lock()
+	d.mergeAttempts["t-1"] = 3
+	d.mu.Unlock()
+
+	tk := &ticket.Ticket{ID: "t-1", ProjectID: "p-1", State: ticket.StateValidated}
+	d.closeMergedTicket(context.Background(), tk)
+
+	if trans.transitionCount() != 3 {
+		t.Fatalf("expected 3 transitions, got %d", trans.transitionCount())
+	}
+	triggers := trans.triggers()
+	expected := []string{ticket.TriggerDeploy, ticket.TriggerObserve, ticket.TriggerClose}
+	for i, exp := range expected {
+		if triggers[i] != exp {
+			t.Errorf("transition %d: expected %q, got %q", i, exp, triggers[i])
+		}
+	}
+
+	// Verify merge attempts cleared.
+	d.mu.Lock()
+	remaining := d.mergeAttempts["t-1"]
+	d.mu.Unlock()
+	if remaining != 0 {
+		t.Errorf("expected merge attempts cleared, got %d", remaining)
+	}
+}
+
+func TestCloseMergedTicket_NilTransitioner(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter()
+	pg := newMockProjectGetter()
+	cfg := Config{MaxWorkers: 5}
+
+	d := New(cfg, bus, tg, pg)
+	// Note: NOT setting ticketTransitioner — it's nil.
+
+	tk := &ticket.Ticket{ID: "t-1", ProjectID: "p-1", State: ticket.StateValidated}
+
+	// Should not panic.
+	d.closeMergedTicket(context.Background(), tk)
+}
+
+func TestCloseMergedTicket_TransitionError(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter()
+	pg := newMockProjectGetter()
+	cfg := Config{MaxWorkers: 5}
+
+	d := New(cfg, bus, tg, pg)
+	trans := &mockTicketTransitioner{
+		failOn: ticket.TriggerObserve,
+		err:    fmt.Errorf("transition failed"),
+	}
+	d.SetTicketTransitioner(trans)
+
+	tk := &ticket.Ticket{ID: "t-1", ProjectID: "p-1", State: ticket.StateValidated}
+	d.closeMergedTicket(context.Background(), tk)
+
+	// Should have attempted deploy (success) and observe (failure), then stopped.
+	if trans.transitionCount() != 2 {
+		t.Errorf("expected 2 transitions (stopped at observe), got %d", trans.transitionCount())
+	}
+}
+
+func TestAutoMergePR_StateGuard(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tk := &ticket.Ticket{
+		ID:        "t-guard",
+		ProjectID: "p-1",
+		State:     ticket.StateClosed, // not validated — should be skipped
+		Outputs:   map[string]any{"pr_url": "https://github.com/test/pr/1"},
+	}
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter()
+	cfg := Config{MaxWorkers: 5, RepoDir: t.TempDir(), WorktreeDir: t.TempDir()}
+
+	d := New(cfg, bus, tg, pg)
+	trans := &mockTicketTransitioner{}
+	d.SetTicketTransitioner(trans)
+
+	d.autoMergePR(context.Background(), tk, "https://github.com/test/pr/1")
+
+	// No transitions should happen — state guard blocks.
+	if trans.transitionCount() != 0 {
+		t.Errorf("expected 0 transitions (state guard), got %d", trans.transitionCount())
+	}
+}
+
+func TestAutoMergePR_Escalation(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tk := &ticket.Ticket{
+		ID:        "t-esc",
+		ProjectID: "p-1",
+		State:     ticket.StateValidated,
+		Outputs:   map[string]any{"pr_url": "https://github.com/test/pr/1"},
+	}
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter()
+	cfg := Config{MaxWorkers: 5, RepoDir: t.TempDir(), WorktreeDir: t.TempDir()}
+
+	d := New(cfg, bus, tg, pg)
+
+	// Seed merge attempts at threshold.
+	d.mu.Lock()
+	d.mergeAttempts["t-esc"] = maxMergeAttempts
+	d.mu.Unlock()
+
+	// Subscribe to escalation events.
+	var escalated []events.Event
+	bus.Subscribe(events.EventTicketEscalated, func(_ context.Context, e events.Event) {
+		escalated = append(escalated, e)
+	})
+
+	d.autoMergePR(context.Background(), tk, "https://github.com/test/pr/1")
+
+	if len(escalated) != 1 {
+		t.Fatalf("expected 1 escalation event, got %d", len(escalated))
+	}
+	if escalated[0].Payload["ticket_id"] != "t-esc" {
+		t.Errorf("expected ticket_id=t-esc, got %v", escalated[0].Payload["ticket_id"])
+	}
+	if escalated[0].Payload["source"] != "auto_merge" {
+		t.Errorf("expected source=auto_merge, got %v", escalated[0].Payload["source"])
+	}
+}
+
 func TestWorkStreamCompletionAllDone(t *testing.T) {
 	bus := events.NewInProcessBus()
 	tg := newMockTicketGetter(

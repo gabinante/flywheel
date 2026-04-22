@@ -41,6 +41,15 @@ type LeaseReleaser interface {
 	ForceReleaseLease(ctx context.Context, ticketID string) error
 }
 
+// TicketTransitioner applies state transitions to tickets.
+// Matches the ticket.Service.TransitionTicket signature.
+type TicketTransitioner interface {
+	TransitionTicket(ctx context.Context, id string, trigger string, actor ticket.Actor, payload map[string]any) error
+}
+
+// maxMergeAttempts is the number of merge failures before escalating to a human.
+const maxMergeAttempts = 5
+
 // Config holds dispatcher settings.
 type Config struct {
 	MaxWorkers   int
@@ -79,13 +88,15 @@ type Dispatcher struct {
 	worktrees     *WorktreeManager
 	clones        *MultiRepoCloneManager // nil-safe: only used for multi-repo projects
 	repoResolver  RepoResolver            // nil-safe: only used for multi-repo projects
-	leaseReleaser LeaseReleaser           // nil-safe: if nil, worker exit does not release lease (Layer 2 TTL handles it)
+	leaseReleaser      LeaseReleaser      // nil-safe: if nil, worker exit does not release lease (Layer 2 TTL handles it)
+	ticketTransitioner TicketTransitioner // nil-safe: if nil, merged tickets are not auto-closed
 
-	mu         sync.Mutex
-	active     map[string]context.CancelFunc // ticketID → cancel
-	wg         sync.WaitGroup
-	scanning   int32              // atomic CAS guard for reconcile
-	stopCancel context.CancelFunc // cancels the internal context on Stop()
+	mu            sync.Mutex
+	active        map[string]context.CancelFunc // ticketID → cancel
+	mergeAttempts map[string]int               // ticketID → failed merge count
+	wg            sync.WaitGroup
+	scanning      int32              // atomic CAS guard for reconcile
+	stopCancel    context.CancelFunc // cancels the internal context on Stop()
 }
 
 // New creates a dispatcher that subscribes to the event bus.
@@ -137,7 +148,8 @@ func New(cfg Config, bus events.Bus, tickets TicketGetter, projects ProjectGette
 			RepoDir: cfg.RepoDir,
 		},
 		clones: NewMultiRepoCloneManager(filepath.Join(cfg.WorktreeDir, ".clones")),
-		active: make(map[string]context.CancelFunc),
+		active:        make(map[string]context.CancelFunc),
+		mergeAttempts: make(map[string]int),
 	}
 	// Detect if bus supports durable event delivery.
 	if durable, ok := bus.(events.DurableEventBus); ok {
@@ -247,6 +259,12 @@ func (d *Dispatcher) Stop() {
 // Call this after construction to wire the queue service without circular imports.
 func (d *Dispatcher) SetLeaseReleaser(lr LeaseReleaser) {
 	d.leaseReleaser = lr
+}
+
+// SetTicketTransitioner configures the ticket transitioner for post-merge lifecycle.
+// Call this after construction to wire the ticket service without circular imports.
+func (d *Dispatcher) SetTicketTransitioner(tt TicketTransitioner) {
+	d.ticketTransitioner = tt
 }
 
 // SetRepoResolver configures multi-repo resolution. When set, tickets with
@@ -802,10 +820,26 @@ func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
 	return nil
 }
 
-// autoMergePR merges the PR after a ticket is approved.
+// autoMergePR merges the PR after a ticket is approved/validated.
 // It first validates that CI checks pass, then merges. If the merge fails due
-// to conflicts, it spawns a conflict resolver worker.
+// to conflicts, it spawns a conflict resolver worker. On success, it advances
+// the ticket through deploying → observing → closed.
 func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL string) {
+	// State guard: only merge from validated state. Prevents re-entrancy when
+	// ticket.closed event re-enters handleTicketDone.
+	if t.State != ticket.StateValidated {
+		return
+	}
+
+	// Check escalation threshold before attempting.
+	d.mu.Lock()
+	attempts := d.mergeAttempts[t.ID]
+	d.mu.Unlock()
+	if attempts >= maxMergeAttempts {
+		d.escalateMergeFailure(ctx, t, fmt.Sprintf("merge failed %d times", attempts))
+		return
+	}
+
 	_ = d.worktrees.Remove(t.ID)
 
 	// Validate CI checks before attempting merge.
@@ -819,6 +853,11 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 	if err != nil {
 		output := string(out)
 		log.Printf("dispatch: auto-merge %s failed: %v\n%s", t.ID, err, output)
+
+		d.mu.Lock()
+		d.mergeAttempts[t.ID]++
+		d.mu.Unlock()
+
 		if strings.Contains(output, "not mergeable") || strings.Contains(output, "CONFLICT") || strings.Contains(output, "cannot be cleanly created") {
 			d.spawnConflictResolver(ctx, t, prURL)
 		}
@@ -829,7 +868,49 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 		delCmd := exec.Command("git", "push", "origin", "--delete", branch)
 		delCmd.Dir = d.cfg.RepoDir
 		_ = delCmd.Run()
+
+		d.closeMergedTicket(ctx, t)
 	}
+}
+
+// closeMergedTicket advances a ticket through the post-merge lifecycle:
+// validated → deploying → observing → closed. Uses a system actor.
+// Nil-safe: if ticketTransitioner is nil, logs and returns.
+func (d *Dispatcher) closeMergedTicket(ctx context.Context, t *ticket.Ticket) {
+	if d.ticketTransitioner == nil {
+		log.Printf("dispatch: ticket transitioner not set, cannot close merged ticket %s", t.ID)
+		return
+	}
+
+	actor := ticket.Actor{ID: "dispatcher", Type: ticket.ActorSystem}
+
+	for _, trigger := range []string{ticket.TriggerDeploy, ticket.TriggerObserve, ticket.TriggerClose} {
+		if err := d.ticketTransitioner.TransitionTicket(ctx, t.ID, trigger, actor, nil); err != nil {
+			log.Printf("dispatch: post-merge transition %s for %s failed: %v", trigger, t.ID, err)
+			return
+		}
+	}
+
+	log.Printf("dispatch: ticket %s closed after merge", t.ID)
+
+	d.mu.Lock()
+	delete(d.mergeAttempts, t.ID)
+	d.mu.Unlock()
+}
+
+// escalateMergeFailure publishes an escalation event when merge attempts exceed the threshold.
+// The ticket stays in validated state for manual intervention.
+func (d *Dispatcher) escalateMergeFailure(ctx context.Context, t *ticket.Ticket, reason string) {
+	log.Printf("dispatch: escalating merge failure for %s: %s", t.ID, reason)
+	_ = d.bus.Publish(ctx, events.Event{
+		Type: events.EventTicketEscalated,
+		Payload: map[string]any{
+			"ticket_id":  t.ID,
+			"project_id": t.ProjectID,
+			"reason":     reason,
+			"source":     "auto_merge",
+		},
+	})
 }
 
 // validatePRChecks verifies CI checks pass on the PR before merging.
@@ -950,6 +1031,11 @@ func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, 
 	out, mergeErr := cmd.CombinedOutput()
 	if mergeErr != nil {
 		log.Printf("dispatch: retry merge %s still failed: %v\n%s", t.ID, mergeErr, string(out))
+
+		d.mu.Lock()
+		d.mergeAttempts[t.ID]++
+		d.mu.Unlock()
+
 		return fmt.Errorf("retry merge: %w", mergeErr)
 	}
 
@@ -958,5 +1044,7 @@ func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, 
 	delCmd := exec.Command("git", "push", "origin", "--delete", branch)
 	delCmd.Dir = d.cfg.RepoDir
 	_ = delCmd.Run()
+
+	d.closeMergedTicket(ctx, t)
 	return nil
 }
