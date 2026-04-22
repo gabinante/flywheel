@@ -38,6 +38,7 @@ import (
 	"github.com/gabinante/flywheel/internal/observation"
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/pillar"
+	"github.com/gabinante/flywheel/internal/stateindex"
 	"github.com/gabinante/flywheel/internal/plan"
 	"github.com/gabinante/flywheel/internal/policy"
 	"github.com/gabinante/flywheel/internal/project"
@@ -210,6 +211,10 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	obsStore := observation.NewPostgresStore(pool)
 	obsSvc := observation.NewService(obsStore, bus)
 
+	// State index service (spec v0.2 Layer 10): observed infrastructure state.
+	stateIndexStore := stateindex.NewPostgresStore(pool)
+	stateIndexSvc := stateindex.NewService(stateIndexStore, bus)
+
 	// Foundational streams (entity, state, change) per spec v0.2 section 2.2.
 	streamStore := stream.NewPostgresStore(pool)
 	streamSvc := stream.NewService(streamStore, bus)
@@ -331,6 +336,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			Catalog:        catalogSvc,
 			CatalogScanner: catalogScanner,
 			Pillar:         pillarSvc,
+			StateIndex:     stateIndexSvc,
 			Rollback:       rollbackSvc,
 		})
 		if err != nil {
@@ -403,6 +409,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		DispatchHandler:    &rest.DispatchHandler{Dispatcher: dispatcher},
 		PlansHandler:       &rest.PlansHandler{PlanSvc: planSvc},
 		ObservationHandler: &rest.ObservationHandler{Svc: obsSvc},
+		StateIndexHandler:  &rest.StateIndexHandler{Svc: stateIndexSvc},
 		StreamsHandler:     &rest.StreamsHandler{Svc: streamSvc},
 		CatalogHandler:     &rest.CatalogHandler{Svc: catalogSvc, Scanner: catalogScanner},
 		PoliciesHandler: &rest.PoliciesHandler{
