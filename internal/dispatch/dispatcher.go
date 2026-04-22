@@ -67,9 +67,12 @@ type Config struct {
 }
 
 // Dispatcher listens for ticket events and spawns workers.
+// Supports both the legacy Bus interface (exact Subscribe) and the new DurableEventBus
+// (pattern-based SubscribePattern) for at-least-once delivery.
 type Dispatcher struct {
 	cfg           Config
 	bus           events.Bus
+	durableBus    events.DurableEventBus // nil if bus doesn't support durability
 	tickets       TicketGetter
 	projects      ProjectGetter
 	worker        Worker
@@ -136,38 +139,70 @@ func New(cfg Config, bus events.Bus, tickets TicketGetter, projects ProjectGette
 		clones: NewMultiRepoCloneManager(filepath.Join(cfg.WorktreeDir, ".clones")),
 		active: make(map[string]context.CancelFunc),
 	}
+	// Detect if bus supports durable event delivery.
+	if durable, ok := bus.(events.DurableEventBus); ok {
+		d.durableBus = durable
+	}
 	return d
 }
 
 // Start subscribes to events and begins dispatching. Call Stop to shut down.
+// When a DurableEventBus is available, uses pattern-based subscriptions with
+// at-least-once delivery guarantees. Falls back to exact subscriptions on legacy Bus.
 func (d *Dispatcher) Start(ctx context.Context) {
 	// Derive an internal context so Stop() can cancel background goroutines
 	// even if the caller's context is still alive.
 	ctx, d.stopCancel = context.WithCancel(ctx)
 
-	d.bus.Subscribe(events.EventTicketCreated, func(_ context.Context, e events.Event) {
-		d.handleTicketReady(ctx, e)
-	})
-	d.bus.Subscribe(events.EventTicketUnblocked, func(_ context.Context, e events.Event) {
-		d.handleTicketReady(ctx, e)
-	})
-	d.bus.Subscribe(events.EventTicketRejected, func(_ context.Context, e events.Event) {
-		d.handleTicketRejected(ctx, e)
-	})
-	d.bus.Subscribe(events.EventTicketSubmitted, func(_ context.Context, e events.Event) {
-		d.handleTicketSubmitted(ctx, e)
-	})
-	d.bus.Subscribe(events.EventTicketDone, func(_ context.Context, e events.Event) {
-		d.handleTicketDone(ctx, e)
-	})
-	d.bus.Subscribe(events.EventTicketApproved, func(_ context.Context, e events.Event) {
-		d.handleTicketDone(ctx, e)
-	})
-	d.bus.Subscribe(events.EventTestsFailed, func(_ context.Context, e events.Event) {
-		d.handleTestsFailed(ctx, e)
-	})
+	if d.durableBus != nil {
+		// Use pattern-based subscriptions for durable delivery.
+		_ = d.durableBus.SubscribePattern("ticket.created", "dispatcher:ready", func(_ context.Context, e events.Event) {
+			d.handleTicketReady(ctx, e)
+		})
+		_ = d.durableBus.SubscribePattern("ticket.unblocked", "dispatcher:ready", func(_ context.Context, e events.Event) {
+			d.handleTicketReady(ctx, e)
+		})
+		_ = d.durableBus.SubscribePattern("ticket.rejected", "dispatcher:rejected", func(_ context.Context, e events.Event) {
+			d.handleTicketRejected(ctx, e)
+		})
+		_ = d.durableBus.SubscribePattern("ticket.submitted", "dispatcher:submitted", func(_ context.Context, e events.Event) {
+			d.handleTicketSubmitted(ctx, e)
+		})
+		_ = d.durableBus.SubscribePattern("ticket.closed", "dispatcher:done", func(_ context.Context, e events.Event) {
+			d.handleTicketDone(ctx, e)
+		})
+		_ = d.durableBus.SubscribePattern("ticket.approved", "dispatcher:done", func(_ context.Context, e events.Event) {
+			d.handleTicketDone(ctx, e)
+		})
+		_ = d.durableBus.SubscribePattern("tests.failed", "dispatcher:tests-failed", func(_ context.Context, e events.Event) {
+			d.handleTestsFailed(ctx, e)
+		})
+	} else {
+		// Legacy exact subscriptions (backward compatible).
+		d.bus.Subscribe(events.EventTicketCreated, func(_ context.Context, e events.Event) {
+			d.handleTicketReady(ctx, e)
+		})
+		d.bus.Subscribe(events.EventTicketUnblocked, func(_ context.Context, e events.Event) {
+			d.handleTicketReady(ctx, e)
+		})
+		d.bus.Subscribe(events.EventTicketRejected, func(_ context.Context, e events.Event) {
+			d.handleTicketRejected(ctx, e)
+		})
+		d.bus.Subscribe(events.EventTicketSubmitted, func(_ context.Context, e events.Event) {
+			d.handleTicketSubmitted(ctx, e)
+		})
+		d.bus.Subscribe(events.EventTicketDone, func(_ context.Context, e events.Event) {
+			d.handleTicketDone(ctx, e)
+		})
+		d.bus.Subscribe(events.EventTicketApproved, func(_ context.Context, e events.Event) {
+			d.handleTicketDone(ctx, e)
+		})
+		d.bus.Subscribe(events.EventTestsFailed, func(_ context.Context, e events.Event) {
+			d.handleTestsFailed(ctx, e)
+		})
+	}
 
-	log.Printf("dispatch: started (max_workers=%d, worktree_dir=%s, project=%s)", d.cfg.MaxWorkers, d.cfg.WorktreeDir, d.cfg.ProjectID)
+	log.Printf("dispatch: started (max_workers=%d, worktree_dir=%s, project=%s, durable=%v)", d.cfg.MaxWorkers, d.cfg.WorktreeDir, d.cfg.ProjectID, d.durableBus != nil)
 
 	// Scan for existing pending tickets on startup.
 	go d.reconcile(ctx)
