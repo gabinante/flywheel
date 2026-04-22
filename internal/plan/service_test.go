@@ -135,7 +135,7 @@ func TestClassifierRulesMapOneToOne(t *testing.T) {
 	}{
 		{BackendDatabase, Content{Database: &DatabasePlan{MigrationName: "t", DDL: "CREATE TABLE t(id INT);", Direction: "up"}}},
 		{BackendTerraform, Content{Terraform: &TerraformPlan{PlanJSON: `{}`, Provider: "aws"}}},
-		{BackendCode, Content{Code: &CodePlan{FilePath: "f.go", Language: "go", Hunks: []CodeHunk{{StartLine: 1, EndLine: 2, Content: "x", Operation: "add"}}}}},
+		{BackendCode, Content{Code: &CodePlan{Language: "go", TargetEntities: []TargetEntity{{ID: "f.go", EntityType: "file", OperationType: "modify"}}, Diffs: []CodeDiff{{FilePath: "f.go", Hunks: []CodeHunk{{StartLine: 1, EndLine: 2, Content: "x", Operation: "add"}}}}}}},
 		{BackendShell, Content{Shell: &ShellPlan{Commands: []ShellCommand{{Command: "ls"}}, SideEffectManifest: SideEffectManifest{}}}},
 		{BackendDeploy, Content{Deploy: &DeployPlan{ArtifactHash: "sha256:abc", Target: "prod", DeployStrategy: "rolling"}}},
 	}

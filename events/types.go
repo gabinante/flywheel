@@ -1,5 +1,7 @@
 package events
 
+import "time"
+
 // Event type constants for the ticket lifecycle (spec v0.2).
 // Each state transition emits a typed event on the bus.
 const (
@@ -34,6 +36,10 @@ const (
 	EventTicketReopened  = "ticket.reopened"  // closed → draft
 	EventLeaseExpired    = "lease.expired"    // planning/executing → draft
 
+	// --- Policy events ---
+	EventPolicyChanged   = "policy.changed"   // policy set created, activated, deactivated, updated, or deleted
+	EventPolicyEvaluated = "policy.evaluated" // policy was evaluated for a transition (audit trail)
+
 	// --- CI/merge events ---
 	EventTestsFailed = "ticket.tests_failed" // CI checks failed on PR before merge
 	EventTestsPassed = "ticket.tests_passed" // CI checks passed on PR
@@ -52,6 +58,14 @@ const (
 	// --- Work stream events ---
 	EventWorkStreamCompleted = "work_stream.completed" // all tickets in stream are closed
 
+	// --- Catalog (Layer 14) events ---
+	EventCatalogEntityCreated = "catalog.entity_created"
+	EventCatalogEntityUpdated = "catalog.entity_updated"
+	EventCatalogEntityDeleted = "catalog.entity_deleted"
+	EventCatalogEdgeCreated   = "catalog.edge_created"
+	EventCatalogEdgeDeleted   = "catalog.edge_deleted"
+	EventCatalogScanCompleted = "catalog.scan_completed"
+
 	// --- Plan lifecycle events ---
 	EventPlanCreated    = "plan.created"
 	EventPlanSubmitted  = "plan.submitted"
@@ -65,10 +79,64 @@ const (
 	EventEntityStreamAppended = "stream.entity.appended"
 	EventStateStreamAppended  = "stream.state.appended"
 	EventChangeStreamAppended = "stream.change.appended"
+
+	// --- Claims registry events (spec v0.2 §4.3) ---
+	EventClaimRegistered  = "claim.registered"
+	EventClaimReleased    = "claim.released"
+	EventConflictDetected = "claim.conflict_detected"
+	EventConflictResolved = "claim.conflict_resolved"
+
+	// --- Change stream events (spec v0.2 §2.4) ---
+	EventChangePublished    = "change.published"    // change event published via hooks
+	EventChangeUnattributed = "change.unattributed" // auto-generated for unexplained state changes
+	EventStateGapDetected   = "change.gap_detected" // state change without matching change event
+
+	// --- Plan freshness events (warrant-45) ---
+	EventPlanFreshnessStale  = "plan.freshness_stale"  // freshness check detected stale stamp
+	EventPlanRePlanTriggered = "plan.replan_triggered"  // re-plan was triggered before apply
+	EventPlanRePlanIdentical = "plan.replan_identical"  // re-plan produced identical content (auto-proceed)
+	EventPlanRePlanDiverged  = "plan.replan_diverged"   // re-plan produced different content (route to review)
+
+	// --- Notification events ---
+	EventNotificationCreated    = "notification.created"     // notification queued or pushed
+	EventNotificationSent       = "notification.sent"        // notification delivered successfully
+	EventNotificationFailed     = "notification.failed"      // notification delivery failed
+	EventNotificationDismissed  = "notification.dismissed"   // operator dismissed notification
+	EventNotificationDigestSent = "notification.digest_sent" // digest batch delivered
 )
 
 // Event carries type and typed payload for the bus.
+// ID and EntityKey are set by durable implementations; in-process bus leaves them empty.
 type Event struct {
-	Type    string
+	// ID is a unique identifier assigned by the durable store (empty for in-process).
+	ID string
+
+	// Type is the event type (e.g., "ticket.created").
+	Type string
+
+	// EntityKey groups events for ordered delivery. Events with the same entity key
+	// are delivered in order. Typically "ticket:<id>" or "project:<id>".
+	EntityKey string
+
+	// Payload carries event-specific data.
 	Payload map[string]any
+
+	// Timestamp is when the event was created (set by store for durable, time.Now for in-process).
+	Timestamp time.Time
+}
+
+// NewEvent creates an event with the given type and payload.
+// EntityKey defaults to empty (no ordering guarantee).
+func NewEvent(eventType string, payload map[string]any) Event {
+	return Event{
+		Type:      eventType,
+		Payload:   payload,
+		Timestamp: time.Now(),
+	}
+}
+
+// WithEntityKey returns a copy of the event with the given entity key set.
+func (e Event) WithEntityKey(key string) Event {
+	e.EntityKey = key
+	return e
 }

@@ -19,6 +19,7 @@ type TicketStore interface {
 	UpdateContext(ctx context.Context, id string, ctxVal TicketContext) error
 	UpdateDependsOn(ctx context.Context, id string, dependsOn []string) error
 	UpdateWorkStreamID(ctx context.Context, id string, workStreamID string) error
+	UpdateTargetRepo(ctx context.Context, id string, targetRepo string) error
 	UpdateTitleAndObjective(ctx context.Context, id string, title string, obj Objective) error
 	CountByCreatedBy(ctx context.Context, createdBy string) (int, error)
 	CountByCreatedByPerDay(ctx context.Context, createdBy string, days int) ([]int, error)

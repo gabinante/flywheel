@@ -263,10 +263,14 @@ func (s *ProjectStore) Create(_ context.Context, p *project.Project) error {
 	if branch == "" {
 		branch = "main"
 	}
+	dispatchEnabled := 1
+	if !p.DispatchEnabled {
+		dispatchEnabled = 0
+	}
 	_, err := s.db.Exec(
-		`INSERT INTO projects (id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.ID, p.OrgID, p.Name, p.Slug, nilIfEmpty(p.RepoURL), branch, string(techJSON), string(packJSON), status,
+		`INSERT INTO projects (id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.ID, p.OrgID, p.Name, p.Slug, nilIfEmpty(p.RepoURL), branch, string(techJSON), string(packJSON), status, dispatchEnabled,
 		p.CreatedAt.UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return err
@@ -279,11 +283,12 @@ func (s *ProjectStore) GetByID(_ context.Context, id string) (*project.Project, 
 	var p project.Project
 	var techJSON, packJSON string
 	var repoURL, defaultBranch sql.NullString
+	var dispatchEnabled int
 	var ts string
 	err := s.db.QueryRow(
-		`SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, created_at
+		`SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, created_at
 		 FROM projects WHERE id = ?`, id).
-		Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techJSON, &packJSON, &p.Status, &ts)
+		Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techJSON, &packJSON, &p.Status, &dispatchEnabled, &ts)
 	if err != nil {
 		return nil, err
 	}
@@ -295,6 +300,7 @@ func (s *ProjectStore) GetByID(_ context.Context, id string) (*project.Project, 
 	} else {
 		p.DefaultBranch = "main"
 	}
+	p.DispatchEnabled = dispatchEnabled != 0
 	_ = json.Unmarshal([]byte(techJSON), &p.TechStack)
 	_ = json.Unmarshal([]byte(packJSON), &p.ContextPack)
 	p.CreatedAt, _ = time.Parse(time.RFC3339Nano, ts)
@@ -302,7 +308,7 @@ func (s *ProjectStore) GetByID(_ context.Context, id string) (*project.Project, 
 }
 
 func (s *ProjectStore) ListByOrgID(_ context.Context, orgID string, statusFilter string) ([]project.Project, error) {
-	q := `SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, created_at
+	q := `SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, created_at
 		  FROM projects WHERE org_id = ?`
 	if statusFilter == "" || statusFilter == "active" {
 		q += ` AND status = 'active'`
@@ -320,8 +326,9 @@ func (s *ProjectStore) ListByOrgID(_ context.Context, orgID string, statusFilter
 		var p project.Project
 		var techJSON, packJSON string
 		var repoURL, defaultBranch sql.NullString
+		var dispatchEnabled int
 		var ts string
-		if err := rows.Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techJSON, &packJSON, &p.Status, &ts); err != nil {
+		if err := rows.Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techJSON, &packJSON, &p.Status, &dispatchEnabled, &ts); err != nil {
 			return nil, err
 		}
 		if repoURL.Valid {
@@ -332,6 +339,7 @@ func (s *ProjectStore) ListByOrgID(_ context.Context, orgID string, statusFilter
 		} else {
 			p.DefaultBranch = "main"
 		}
+		p.DispatchEnabled = dispatchEnabled != 0
 		_ = json.Unmarshal([]byte(techJSON), &p.TechStack)
 		_ = json.Unmarshal([]byte(packJSON), &p.ContextPack)
 		p.CreatedAt, _ = time.Parse(time.RFC3339Nano, ts)
@@ -402,6 +410,22 @@ func (s *ProjectStore) UpdateDefaultBranch(_ context.Context, projectID, branch 
 		branch = "main"
 	}
 	res, err := s.db.Exec(`UPDATE projects SET default_branch = ? WHERE id = ?`, branch, projectID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return project.ErrProjectNotFound
+	}
+	return nil
+}
+
+func (s *ProjectStore) UpdateDispatchEnabled(_ context.Context, projectID string, enabled bool) error {
+	val := 0
+	if enabled {
+		val = 1
+	}
+	res, err := s.db.Exec(`UPDATE projects SET dispatch_enabled = ? WHERE id = ?`, val, projectID)
 	if err != nil {
 		return err
 	}
@@ -514,17 +538,17 @@ func (s *TicketStore) Create(_ context.Context, t *ticket.Ticket) error {
 	outJSON, _ := json.Marshal(t.Outputs)
 	depsJSON, _ := json.Marshal(t.DependsOn)
 	_, err := s.db.Exec(
-		`INSERT INTO tickets (id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, assigned_to, created_by, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO tickets (id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, target_repo, assigned_to, created_by, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.ID, t.ProjectID, t.Title, string(t.Type), int(t.Priority), string(t.State), t.Version,
 		string(objJSON), string(ctxJSON), string(inJSON), string(outJSON), string(depsJSON),
-		nilIfEmpty(t.WorkStreamID), nilIfEmpty(t.AssignedTo), t.CreatedBy,
+		nilIfEmpty(t.WorkStreamID), nilIfEmpty(t.TargetRepo), nilIfEmpty(t.AssignedTo), t.CreatedBy,
 		t.CreatedAt.UTC().Format(time.RFC3339Nano), t.UpdatedAt.UTC().Format(time.RFC3339Nano))
 	return err
 }
 
 func (s *TicketStore) GetByID(_ context.Context, id string) (*ticket.Ticket, error) {
-	return s.scanTicket(`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, assigned_to, created_by, created_at, updated_at
+	return s.scanTicket(`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, target_repo, assigned_to, created_by, created_at, updated_at
 		 FROM tickets WHERE id = ?`, id)
 }
 
@@ -539,7 +563,7 @@ func (s *TicketStore) GetByIDs(_ context.Context, ids []string) ([]*ticket.Ticke
 		args[i] = id
 	}
 	rows, err := s.db.Query(fmt.Sprintf(
-		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, assigned_to, created_by, created_at, updated_at
+		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, target_repo, assigned_to, created_by, created_at, updated_at
 		 FROM tickets WHERE id IN (%s)`, placeholders), args...)
 	if err != nil {
 		return nil, err
@@ -549,7 +573,7 @@ func (s *TicketStore) GetByIDs(_ context.Context, ids []string) ([]*ticket.Ticke
 }
 
 func (s *TicketStore) GetByProject(_ context.Context, projectID string, workStreamID string, state ticket.State) ([]*ticket.Ticket, error) {
-	q := `SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, assigned_to, created_by, created_at, updated_at
+	q := `SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, target_repo, assigned_to, created_by, created_at, updated_at
 		 FROM tickets WHERE project_id = ?`
 	args := []any{projectID}
 	if workStreamID != "" {
@@ -570,9 +594,18 @@ func (s *TicketStore) GetByProject(_ context.Context, projectID string, workStre
 }
 
 func (s *TicketStore) ListByState(_ context.Context, projectID string, state ticket.State) ([]*ticket.Ticket, error) {
-	rows, err := s.db.Query(
-		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, assigned_to, created_by, created_at, updated_at
-		 FROM tickets WHERE project_id = ? AND state = ? ORDER BY priority, created_at`, projectID, string(state))
+	var q string
+	var args []any
+	if projectID != "" {
+		q = `SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, target_repo, assigned_to, created_by, created_at, updated_at
+		     FROM tickets WHERE project_id = ? AND state = ? ORDER BY priority, created_at`
+		args = []any{projectID, string(state)}
+	} else {
+		q = `SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, target_repo, assigned_to, created_by, created_at, updated_at
+		     FROM tickets WHERE state = ? ORDER BY priority, created_at`
+		args = []any{string(state)}
+	}
+	rows, err := s.db.Query(q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -623,6 +656,11 @@ func (s *TicketStore) UpdateDependsOn(_ context.Context, id string, dependsOn []
 
 func (s *TicketStore) UpdateWorkStreamID(_ context.Context, id string, workStreamID string) error {
 	_, err := s.db.Exec(`UPDATE tickets SET work_stream_id = ?, updated_at = datetime('now') WHERE id = ?`, nilIfEmpty(workStreamID), id)
+	return err
+}
+
+func (s *TicketStore) UpdateTargetRepo(_ context.Context, id string, targetRepo string) error {
+	_, err := s.db.Exec(`UPDATE tickets SET target_repo = ?, updated_at = datetime('now') WHERE id = ?`, nilIfEmpty(targetRepo), id)
 	return err
 }
 
@@ -700,7 +738,7 @@ func (s *TicketStore) ListStaleTickets(_ context.Context, states []ticket.State,
 	}
 	args[len(states)] = cutoff
 	rows, err := s.db.Query(fmt.Sprintf(
-		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, assigned_to, created_by, created_at, updated_at
+		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, target_repo, assigned_to, created_by, created_at, updated_at
 		 FROM tickets WHERE state IN (%s) AND updated_at < ? ORDER BY updated_at`, placeholders), args...)
 	if err != nil {
 		return nil, err
@@ -713,11 +751,11 @@ func (s *TicketStore) ListStaleTickets(_ context.Context, states []ticket.State,
 func (s *TicketStore) scanTicket(query string, args ...any) (*ticket.Ticket, error) {
 	var t ticket.Ticket
 	var objJSON, ctxJSON, inJSON, outJSON, depsJSON string
-	var workStreamID, assignedTo sql.NullString
+	var workStreamID, targetRepo, assignedTo sql.NullString
 	var createdAt, updatedAt string
 	err := s.db.QueryRow(query, args...).
 		Scan(&t.ID, &t.ProjectID, &t.Title, &t.Type, &t.Priority, &t.State, &t.Version,
-			&objJSON, &ctxJSON, &inJSON, &outJSON, &depsJSON, &workStreamID, &assignedTo, &t.CreatedBy, &createdAt, &updatedAt)
+			&objJSON, &ctxJSON, &inJSON, &outJSON, &depsJSON, &workStreamID, &targetRepo, &assignedTo, &t.CreatedBy, &createdAt, &updatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -726,6 +764,9 @@ func (s *TicketStore) scanTicket(query string, args ...any) (*ticket.Ticket, err
 	}
 	if workStreamID.Valid {
 		t.WorkStreamID = workStreamID.String
+	}
+	if targetRepo.Valid {
+		t.TargetRepo = targetRepo.String
 	}
 	_ = json.Unmarshal([]byte(objJSON), &t.Objective)
 	_ = json.Unmarshal([]byte(ctxJSON), &t.Context)
@@ -745,10 +786,10 @@ func (s *TicketStore) scanTickets(rows *sql.Rows) ([]*ticket.Ticket, error) {
 	for rows.Next() {
 		var t ticket.Ticket
 		var objJSON, ctxJSON, inJSON, outJSON, depsJSON string
-		var workStreamID, assignedTo sql.NullString
+		var workStreamID, targetRepo, assignedTo sql.NullString
 		var createdAt, updatedAt string
 		if err := rows.Scan(&t.ID, &t.ProjectID, &t.Title, &t.Type, &t.Priority, &t.State, &t.Version,
-			&objJSON, &ctxJSON, &inJSON, &outJSON, &depsJSON, &workStreamID, &assignedTo, &t.CreatedBy, &createdAt, &updatedAt); err != nil {
+			&objJSON, &ctxJSON, &inJSON, &outJSON, &depsJSON, &workStreamID, &targetRepo, &assignedTo, &t.CreatedBy, &createdAt, &updatedAt); err != nil {
 			return nil, err
 		}
 		if assignedTo.Valid {
@@ -756,6 +797,9 @@ func (s *TicketStore) scanTickets(rows *sql.Rows) ([]*ticket.Ticket, error) {
 		}
 		if workStreamID.Valid {
 			t.WorkStreamID = workStreamID.String
+		}
+		if targetRepo.Valid {
+			t.TargetRepo = targetRepo.String
 		}
 		_ = json.Unmarshal([]byte(objJSON), &t.Objective)
 		_ = json.Unmarshal([]byte(ctxJSON), &t.Context)
@@ -784,16 +828,21 @@ func (s *ExecutionStepStore) AppendStep(_ context.Context, ticketID, agentID str
 	if step.ID == "" {
 		step.ID = mustUUID()
 	}
+	// Include worker_type column (nullable) for worker type tracking.
+	var workerType *string
+	if step.WorkerType != "" {
+		workerType = &step.WorkerType
+	}
 	_, err := s.db.Exec(
-		`INSERT INTO execution_steps (id, ticket_id, agent_id, type, payload, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		step.ID, ticketID, agentID, string(step.Type), string(payloadJSON),
+		`INSERT INTO execution_steps (id, ticket_id, agent_id, type, payload, worker_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		step.ID, ticketID, agentID, string(step.Type), string(payloadJSON), workerType,
 		step.CreatedAt.UTC().Format(time.RFC3339Nano))
 	return err
 }
 
 func (s *ExecutionStepStore) GetStepsByTicketID(_ context.Context, ticketID string) ([]execution.Step, error) {
 	rows, err := s.db.Query(
-		`SELECT id, type, payload, created_at FROM execution_steps WHERE ticket_id = ? ORDER BY created_at`, ticketID)
+		`SELECT id, type, payload, worker_type, created_at FROM execution_steps WHERE ticket_id = ? ORDER BY created_at`, ticketID)
 	if err != nil {
 		return nil, err
 	}
@@ -802,11 +851,15 @@ func (s *ExecutionStepStore) GetStepsByTicketID(_ context.Context, ticketID stri
 	for rows.Next() {
 		var st execution.Step
 		var payloadJSON, ts string
-		if err := rows.Scan(&st.ID, &st.Type, &payloadJSON, &ts); err != nil {
+		var workerType *string
+		if err := rows.Scan(&st.ID, &st.Type, &payloadJSON, &workerType, &ts); err != nil {
 			return nil, err
 		}
 		st.Payload = make(map[string]any)
 		_ = json.Unmarshal([]byte(payloadJSON), &st.Payload)
+		if workerType != nil {
+			st.WorkerType = *workerType
+		}
 		st.CreatedAt, _ = time.Parse(time.RFC3339Nano, ts)
 		steps = append(steps, st)
 	}

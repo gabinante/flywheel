@@ -8,12 +8,14 @@ import { TicketOutputsCard } from '@/components/ticket-outputs'
 import { TicketRelationshipsCard } from '@/components/ticket-relationships-card'
 import { TicketReopenPanel } from '@/components/ticket-reopen-panel'
 import { TicketReviewPanel } from '@/components/ticket-review-panel'
+import { TicketTimeline } from '@/components/ticket-timeline'
 import { WorkStreamSummaryCard } from '@/components/work-stream-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
+import { DetailPageSkeleton } from '@/components/ui/skeleton'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 
@@ -200,7 +202,7 @@ export function TicketDetailPage() {
     return <p className="text-destructive text-sm">{err}</p>
   }
   if (ticket === undefined) {
-    return <p className="text-muted-foreground text-sm">Loading…</p>
+    return <DetailPageSkeleton />
   }
   if (!ticket) {
     return <p className="text-muted-foreground text-sm">Ticket not found.</p>
@@ -270,6 +272,12 @@ export function TicketDetailPage() {
         </Card>
       ) : null}
 
+      <TicketTimeline
+        ticketId={ticketId}
+        currentState={ticket.state}
+        createdAt={ticket.created_at}
+      />
+
       <TicketRelationshipsCard
         orgId={orgId}
         projectId={projectId}
@@ -320,7 +328,7 @@ export function TicketDetailPage() {
       <ExecutionTraceCard ticketId={ticketId} ticketState={ticket.state} />
 
       {reviewBanner?.kind === 'reopened' ? (
-        <Card className="border-primary/20 bg-primary/5">
+        <Card className="border-primary/20 bg-primary/[0.07] backdrop-blur-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">Back in review queue</CardTitle>
           </CardHeader>
@@ -363,8 +371,8 @@ export function TicketDetailPage() {
           className={
             reviewBanner.decision === 'rejected' &&
             (reviewBanner.kind === 'simple' || reviewBanner.kind === 'followup-error')
-              ? 'border-destructive/30 bg-destructive/5'
-              : 'border-primary/20 bg-primary/5'
+              ? 'border-destructive/20 bg-destructive/[0.07] backdrop-blur-sm'
+              : 'border-primary/20 bg-primary/[0.07] backdrop-blur-sm'
           }
         >
           <CardHeader className="pb-2">

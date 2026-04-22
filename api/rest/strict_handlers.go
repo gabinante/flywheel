@@ -14,6 +14,7 @@ import (
 	"github.com/gabinante/flywheel/api/generated"
 	"github.com/gabinante/flywheel/internal/agent"
 	"github.com/gabinante/flywheel/internal/cost"
+	"github.com/gabinante/flywheel/internal/entity"
 	apierrors "github.com/gabinante/flywheel/internal/errors"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/gitnotes"
@@ -35,6 +36,7 @@ type StrictServer struct {
 	QueueSvc      *queue.Service
 	TraceSvc      *execution.Service
 	ReviewSvc     *review.Service
+	EntitySvc     *entity.Service
 	AgentStore    agent.AgentStore
 	CostSvc       *cost.Service
 }
@@ -311,8 +313,8 @@ func (s *StrictServer) UpdateProject(ctx context.Context, req generated.UpdatePr
 	if err := CheckProjectAccess(ctx, req.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
 		return nil, err
 	}
-	if req.Body == nil || (req.Body.Status == nil && req.Body.RepoUrl == nil && req.Body.Name == nil && req.Body.Slug == nil && req.Body.DefaultBranch == nil) {
-		return nil, apierrors.New(apierrors.CodeInvalidInput, "at least one of status, repo_url, name, slug, default_branch required", false)
+	if req.Body == nil || (req.Body.Status == nil && req.Body.RepoUrl == nil && req.Body.Name == nil && req.Body.Slug == nil && req.Body.DefaultBranch == nil && req.Body.DispatchEnabled == nil) {
+		return nil, apierrors.New(apierrors.CodeInvalidInput, "at least one of status, repo_url, name, slug, default_branch, dispatch_enabled required", false)
 	}
 	if req.Body.Status != nil {
 		if err := s.ProjectSvc.UpdateStatus(ctx, req.ProjectID, string(*req.Body.Status)); err != nil {
@@ -337,6 +339,11 @@ func (s *StrictServer) UpdateProject(ctx context.Context, req generated.UpdatePr
 	}
 	if req.Body.DefaultBranch != nil {
 		if err := s.ProjectSvc.UpdateDefaultBranch(ctx, req.ProjectID, strings.TrimSpace(*req.Body.DefaultBranch)); err != nil {
+			return nil, apierrors.MapError(err)
+		}
+	}
+	if req.Body.DispatchEnabled != nil {
+		if err := s.ProjectSvc.UpdateDispatchEnabled(ctx, req.ProjectID, *req.Body.DispatchEnabled); err != nil {
 			return nil, apierrors.MapError(err)
 		}
 	}
@@ -669,6 +676,45 @@ func (s *StrictServer) LogStep(ctx context.Context, req generated.LogStepRequest
 	return generated.LogStep204Response{}, nil
 }
 
+func (s *StrictServer) GetTransitions(ctx context.Context, req generated.GetTransitionsRequestObject) (generated.GetTransitionsResponseObject, error) {
+	t, err := s.TicketSvc.GetTicket(ctx, req.TicketID)
+	if err != nil {
+		return nil, apierrors.MapError(err)
+	}
+	if err := CheckProjectAccess(ctx, t.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
+		return nil, err
+	}
+	transitions, err := s.TicketSvc.GetTransitions(ctx, req.TicketID)
+	if err != nil {
+		return nil, apierrors.MapError(err)
+	}
+	entries := make([]generated.StateTransitionEntry, 0, len(transitions))
+	for _, tr := range transitions {
+		fromState := tr.FromState
+		toState := tr.ToState
+		trigger := tr.Trigger
+		actorID := tr.ActorID
+		actorType := generated.StateTransitionEntryActorType(tr.ActorType)
+		createdAt := tr.CreatedAt
+		entries = append(entries, generated.StateTransitionEntry{
+			Id:        &tr.ID,
+			FromState: &fromState,
+			ToState:   &toState,
+			Trigger:   &trigger,
+			ActorId:   &actorID,
+			ActorType: &actorType,
+			CreatedAt: &createdAt,
+		})
+	}
+	currentState := string(t.State)
+	ticketID := req.TicketID
+	return generated.GetTransitions200JSONResponse(generated.TransitionHistory{
+		TicketId:     &ticketID,
+		CurrentState: &currentState,
+		Transitions:  &entries,
+	}), nil
+}
+
 func (s *StrictServer) TransitionTicket(ctx context.Context, req generated.TransitionTicketRequestObject) (generated.TransitionTicketResponseObject, error) {
 	t, err := s.TicketSvc.GetTicket(ctx, req.TicketID)
 	if err != nil {
@@ -887,17 +933,19 @@ func projectToGen(p *project.Project) generated.Project {
 	if db == "" {
 		db = "main"
 	}
+	de := p.DispatchEnabled
 	return generated.Project{
-		Id:            &p.ID,
-		OrgId:         &p.OrgID,
-		Name:          &p.Name,
-		Slug:          &p.Slug,
-		RepoUrl:       &p.RepoURL,
-		DefaultBranch: &db,
-		TechStack:     &p.TechStack,
-		Status:        &st,
-		CreatedAt:     &ca,
-		ContextPack:   &cp,
+		Id:              &p.ID,
+		OrgId:           &p.OrgID,
+		Name:            &p.Name,
+		Slug:            &p.Slug,
+		RepoUrl:         &p.RepoURL,
+		DefaultBranch:   &db,
+		TechStack:       &p.TechStack,
+		Status:          &st,
+		DispatchEnabled: &de,
+		CreatedAt:       &ca,
+		ContextPack:     &cp,
 	}
 }
 

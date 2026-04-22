@@ -23,7 +23,7 @@ export function RightRail() {
     <aside
       data-slot="right-rail"
       className={cn(
-        'shrink-0 overflow-hidden border-l border-border transition-[width] duration-200 ease-in-out',
+        'shrink-0 overflow-hidden border-l border-white/10 bg-card backdrop-blur-md transition-[width] duration-200 ease-in-out',
         isOpen ? RAIL_WIDTH : 'w-0',
       )}
     >
