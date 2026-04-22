@@ -31,7 +31,7 @@ func (h *OAuthHandler) serveProtectedResourceMetadata(w http.ResponseWriter, r *
 	meta := map[string]any{
 		"resource":              resource,
 		"authorization_servers":  []string{issuer},
-		"scopes_supported":       []string{"warrant:mcp"},
+		"scopes_supported":       []string{"flywheel:mcp"},
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(meta)
@@ -45,7 +45,7 @@ func (h *OAuthHandler) serveAuthorizationServerMetadata(w http.ResponseWriter, r
 		"authorization_endpoint":             issuer + "/oauth/authorize",
 		"token_endpoint":                    issuer + "/oauth/token",
 		"registration_endpoint":             issuer + "/oauth/register",
-		"scopes_supported":                  []string{"warrant:mcp"},
+		"scopes_supported":                  []string{"flywheel:mcp"},
 		"response_types_supported":          []string{"code"},
 		"grant_types_supported":            []string{"authorization_code"},
 		"code_challenge_methods_supported":  []string{"S256"},

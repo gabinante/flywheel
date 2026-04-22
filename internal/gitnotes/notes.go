@@ -10,7 +10,7 @@ import (
 )
 
 // AddNote adds a note to the given commit in the repo at repoPath.
-// ref is the full notes ref (e.g. refs/notes/warrant/decision).
+// ref is the full notes ref (e.g. refs/notes/flywheel/decision).
 // body is the note content (e.g. JSON); commitSHA is the commit to attach the note to (e.g. "HEAD" or full SHA).
 func AddNote(repoPath, ref, commitSHA, body string) error {
 	if repoPath == "" || ref == "" || commitSHA == "" {
@@ -24,7 +24,7 @@ func AddNote(repoPath, ref, commitSHA, body string) error {
 		return fmt.Errorf("gitnotes: not a git repo: %w", err)
 	}
 
-	tmp, err := os.CreateTemp("", "warrant-git-note-*.txt")
+	tmp, err := os.CreateTemp("", "flywheel-git-note-*.txt")
 	if err != nil {
 		return fmt.Errorf("gitnotes: create temp file: %w", err)
 	}

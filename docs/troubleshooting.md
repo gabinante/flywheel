@@ -6,9 +6,9 @@
 
 **Run migrations:** Migrations run automatically in the server container. For hosted/non-Docker deploys, run `make migrate` from the host. Migrations are in **db/migrations/**; never run them from multiple app instances at once.
 
-**Inspect DB:** Connect with `psql` using `DATABASE_URL` (e.g. `psql postgres://warrant:warrant@localhost:5433/warrant`). Key tables: `orgs`, `org_members`, `projects`, `tickets`, `execution_steps`, `reviews`, `escalations`. Use `GET /tickets/{id}` or MCP **get_ticket** to inspect a ticket; use **get_trace** for execution steps.
+**Inspect DB:** Connect with `psql` using `DATABASE_URL` (e.g. `psql postgres://flywheel:flywheel@localhost:5433/flywheel`). Key tables: `orgs`, `org_members`, `projects`, `tickets`, `execution_steps`, `reviews`, `escalations`. Use `GET /tickets/{id}` or MCP **get_ticket** to inspect a ticket; use **get_trace** for execution steps.
 
-**Inspect Redis:** Connect with `redis-cli` using `REDIS_URL` (e.g. `redis-cli -u redis://localhost:6379/0`). Lease keys: `warrant:lease:{ticketID}`. Idempotency keys: `warrant:idempotency_claim:*`. Expiry set: `warrant:lease:expires`. Use `KEYS warrant:*` to list; `TTL warrant:lease:X` to see lease TTL.
+**Inspect Redis:** Connect with `redis-cli` using `REDIS_URL` (e.g. `redis-cli -u redis://localhost:6379/0`). Lease keys: `flywheel:lease:{ticketID}`. Idempotency keys: `flywheel:idempotency_claim:*`. Expiry set: `flywheel:lease:expires`. Use `KEYS flywheel:*` to list; `TTL flywheel:lease:X` to see lease TTL.
 
 **Health and logs:** **GET /healthz** returns 200 when the HTTP server is up. For Docker, use `docker compose logs -f server` to tail logs. Each request is logged with method, path, status, duration, and **request_id** (in `X-Request-Id` response header). Use request_id to correlate errors with log lines. API errors are structured JSON only; no stack traces in responses.
 
@@ -80,4 +80,4 @@ When an agent crashes after claiming a ticket, or a ticket is stuck in **claimed
 - **With lease token:** `DELETE /tickets/{ticketID}/lease` with `lease_token` (body or query).
 - **Without lease token:** `POST /tickets/{ticketID}/transitions` with `{"trigger": "lease_expired", "actor": "system", "actor_id": "operator"}`.
 
-For more on using Warrant from Cursor and MCP, see **docs/cursor-mcp.md**. For the agent flow (claim → start → log_step → submit), see the Warrant MCP agent guide (e.g. resource `warrant://docs/agent-guide` or in-app guide).
+For more on using Flywheel from Cursor and MCP, see **docs/cursor-mcp.md**. For the agent flow (claim → start → log_step → submit), see the Flywheel MCP agent guide (e.g. resource `flywheel://docs/agent-guide` or in-app guide).

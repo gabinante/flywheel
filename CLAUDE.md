@@ -2,7 +2,7 @@
 
 ## What this is
 
-Warrant is a **work queue plus shared context** for software projects — AI agents and humans use the same ticket system. The one-liner: **"Adderall for coding agents."** Agents without structure thrash; agents with structure ship.
+Flywheel is a **work queue plus shared context** for software projects — AI agents and humans use the same ticket system. The one-liner: **"Adderall for coding agents."** Agents without structure thrash; agents with structure ship.
 
 ## Tech stack
 
@@ -18,11 +18,21 @@ Warrant is a **work queue plus shared context** for software projects — AI age
 make test              # Go tests (no database required)
 make generate          # Regenerate from OpenAPI spec
 make web-build         # Build frontend (cd web && npm ci && npm run build)
-make run               # go run ./cmd/server
+make run               # Start server via varlock (loads .env, validates .env.schema)
+make varlock-validate  # Validate .env against .env.schema without starting
 make docker-up         # docker compose up -d
 make migrate           # Run DB migrations (non-Docker deploys)
 cd web && npm run dev  # Vite dev server on :5173, proxies to :8080
 cd web && npm run gen:api  # Regenerate TS API client from openapi.yaml
+
+# Flywheel launchd service (auto-starts on login, restarts on crash)
+launchctl load ~/Library/LaunchAgents/com.flywheel.server.plist    # enable
+launchctl unload ~/Library/LaunchAgents/com.flywheel.server.plist  # disable
+launchctl stop com.flywheel.server                                 # restart
+launchctl list | grep flywheel                                     # check status
+
+# After code changes, rebuild then restart:
+go build -o bin/flywheel-server ./cmd/server && launchctl stop com.flywheel.server
 ```
 
 ## Product posture
@@ -93,6 +103,51 @@ When adding or touching a layer, ask: **is this novel, pluggable-with-default, o
 - **Event-driven, not request-driven.** State transitions emit events. Workers subscribe. Don't write synchronous request-response for long-running work. The UI subscribes to events for real-time updates.
 - **Sandboxed workers.** Worker code runs in containers with controlled egress. Don't mount the Docker socket or home directories into workers. Respect time/resource limits.
 - **Secrets.** Never read from `.env` directly in application code — use `varlock load` or `varlock run`. Never log secrets. When adding a new integration, add its secret names to the relevant `.env.schema` with proper `@sensitive` annotations, then fetch via varlock. The coordinator should never have raw secret values in context.
+
+## Database migrations
+
+Files in `db/migrations/` use **timestamp-based** prefixes (`YYYYMMDDHHmmss`),
+not sequential numbers. This prevents collisions when parallel workers create
+migrations on separate branches.
+
+Format: `YYYYMMDDHHmmss_description.{up,down}.sql`
+Generate: `date -u +%Y%m%d%H%M%S`
+Helper: `make migrate-create NAME=add_users_table`
+
+Legacy migrations 000001–000020 use sequential numbering and remain valid.
+
+## Secrets management (varlock)
+
+varlock (`scripts/varlock`) is the project's secrets-loading tool. It reads `.env`, validates against `.env.schema`, and ensures sensitive values are never printed or logged.
+
+### Usage patterns
+
+```bash
+# Local development — start the server with secrets loaded from .env:
+make run                            # wraps: varlock run -- go run ./cmd/server
+
+# Validate your .env against the schema without running anything:
+make varlock-validate               # wraps: varlock validate
+
+# In Docker Compose — varlock is baked into the image CMD, validating on startup.
+
+# Directly (for scripts):
+./scripts/varlock run -- <any-command>
+eval "$(./scripts/varlock load)"    # export into current shell (secrets redacted in output)
+```
+
+### Adding a new secret
+
+1. Add the variable to `.env.schema` with `@sensitive` and `@required`/`@optional` annotations.
+2. Add the variable name (without value) to `.env.example`.
+3. Reference via `os.Getenv("KEY")` in Go code (or `config.Load()`) — never read `.env` directly.
+4. varlock handles loading the value from `.env` at process start.
+
+### Schema annotations
+
+- `@sensitive` — Value is a secret. varlock will never echo it; reviewers know it needs secure storage.
+- `@required` — Server refuses to start if unset (varlock exits non-zero).
+- `@optional` — Has a sensible default or is not needed in all environments.
 
 ## When you're unsure
 

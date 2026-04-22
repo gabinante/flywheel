@@ -13,6 +13,7 @@ import (
 
 	"github.com/gabinante/flywheel/api/generated"
 	"github.com/gabinante/flywheel/internal/agent"
+	"github.com/gabinante/flywheel/internal/cost"
 	"github.com/gabinante/flywheel/internal/entity"
 	apierrors "github.com/gabinante/flywheel/internal/errors"
 	"github.com/gabinante/flywheel/internal/execution"
@@ -36,7 +37,8 @@ type StrictServer struct {
 	TraceSvc      *execution.Service
 	ReviewSvc     *review.Service
 	EntitySvc     *entity.Service
-	AgentStore    *agent.Store
+	AgentStore    agent.AgentStore
+	CostSvc       *cost.Service
 }
 
 func (s *StrictServer) GetHealthz(ctx context.Context, req generated.GetHealthzRequestObject) (generated.GetHealthzResponseObject, error) {
@@ -311,8 +313,8 @@ func (s *StrictServer) UpdateProject(ctx context.Context, req generated.UpdatePr
 	if err := CheckProjectAccess(ctx, req.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
 		return nil, err
 	}
-	if req.Body == nil || (req.Body.Status == nil && req.Body.RepoUrl == nil && req.Body.Name == nil && req.Body.Slug == nil && req.Body.DefaultBranch == nil) {
-		return nil, apierrors.New(apierrors.CodeInvalidInput, "at least one of status, repo_url, name, slug, default_branch required", false)
+	if req.Body == nil || (req.Body.Status == nil && req.Body.RepoUrl == nil && req.Body.Name == nil && req.Body.Slug == nil && req.Body.DefaultBranch == nil && req.Body.DispatchEnabled == nil) {
+		return nil, apierrors.New(apierrors.CodeInvalidInput, "at least one of status, repo_url, name, slug, default_branch, dispatch_enabled required", false)
 	}
 	if req.Body.Status != nil {
 		if err := s.ProjectSvc.UpdateStatus(ctx, req.ProjectID, string(*req.Body.Status)); err != nil {
@@ -337,6 +339,11 @@ func (s *StrictServer) UpdateProject(ctx context.Context, req generated.UpdatePr
 	}
 	if req.Body.DefaultBranch != nil {
 		if err := s.ProjectSvc.UpdateDefaultBranch(ctx, req.ProjectID, strings.TrimSpace(*req.Body.DefaultBranch)); err != nil {
+			return nil, apierrors.MapError(err)
+		}
+	}
+	if req.Body.DispatchEnabled != nil {
+		if err := s.ProjectSvc.UpdateDispatchEnabled(ctx, req.ProjectID, *req.Body.DispatchEnabled); err != nil {
 			return nil, apierrors.MapError(err)
 		}
 	}
@@ -811,7 +818,7 @@ func (s *StrictServer) ReleaseLease(ctx context.Context, req generated.ReleaseLe
 
 // Helpers
 
-func requireAgent(ctx context.Context, store *agent.Store) *apierrors.StructuredError {
+func requireAgent(ctx context.Context, store agent.AgentStore) *apierrors.StructuredError {
 	agentID := GetAgentID(ctx)
 	if agentID == "" {
 		return apierrors.New(apierrors.CodeUnauthorized, "authentication required", false)
@@ -823,7 +830,7 @@ func requireAgent(ctx context.Context, store *agent.Store) *apierrors.Structured
 	return nil
 }
 
-func requireOAuthAgent(ctx context.Context, store *agent.Store) *apierrors.StructuredError {
+func requireOAuthAgent(ctx context.Context, store agent.AgentStore) *apierrors.StructuredError {
 	if err := requireAgent(ctx, store); err != nil {
 		return err
 	}
@@ -887,17 +894,19 @@ func projectToGen(p *project.Project) generated.Project {
 	if db == "" {
 		db = "main"
 	}
+	de := p.DispatchEnabled
 	return generated.Project{
-		Id:            &p.ID,
-		OrgId:         &p.OrgID,
-		Name:          &p.Name,
-		Slug:          &p.Slug,
-		RepoUrl:       &p.RepoURL,
-		DefaultBranch: &db,
-		TechStack:     &p.TechStack,
-		Status:        &st,
-		CreatedAt:     &ca,
-		ContextPack:   &cp,
+		Id:              &p.ID,
+		OrgId:           &p.OrgID,
+		Name:            &p.Name,
+		Slug:            &p.Slug,
+		RepoUrl:         &p.RepoURL,
+		DefaultBranch:   &db,
+		TechStack:       &p.TechStack,
+		Status:          &st,
+		DispatchEnabled: &de,
+		CreatedAt:       &ca,
+		ContextPack:     &cp,
 	}
 }
 

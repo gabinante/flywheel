@@ -17,7 +17,7 @@ type ProjectGetter interface {
 
 // Service provides ticket operations.
 type Service struct {
-	store             *Store
+	store             TicketStore
 	sm                *StateMachine
 	bus               events.Bus
 	project           ProjectGetter
@@ -25,8 +25,9 @@ type Service struct {
 	autoApproveOnPass bool
 }
 
-// NewService returns a new Service.
-func NewService(store *Store, bus events.Bus, project ProjectGetter) *Service {
+// NewService returns a new Service. The store parameter accepts any TicketStore
+// implementation (Postgres *Store, embedded SQLite, etc.).
+func NewService(store TicketStore, bus events.Bus, project ProjectGetter) *Service {
 	return &Service{
 		store:   store,
 		sm:      NewStateMachine(),
@@ -52,7 +53,7 @@ var ErrAcceptanceCriteriaRequired = fmt.Errorf("tasks and bugs require at least 
 // CreateTicket creates a ticket with ID <project-slug>-<seq>. CreatedBy is the principal (user or agent ID).
 // If idempotencyKey is non-empty and (projectID, idempotencyKey) was used before, returns the existing ticket.
 // workStreamID is optional; caller must validate it exists and belongs to project.
-func (s *Service) CreateTicket(ctx context.Context, projectID, title string, typ TicketType, priority Priority, createdBy string, dependsOn []string, workStreamID string, objective Objective, ticketContext TicketContext, idempotencyKey string) (*Ticket, error) {
+func (s *Service) CreateTicket(ctx context.Context, projectID, title string, typ TicketType, priority Priority, createdBy string, dependsOn []string, workStreamID string, objective Objective, ticketContext TicketContext, idempotencyKey string, targetRepo ...string) (*Ticket, error) {
 	if typ == TypeTask || typ == TypeBug {
 		hasCriteria := len(objective.SuccessCriteria) > 0 || objective.AcceptanceTest != ""
 		if !hasCriteria {
@@ -79,6 +80,10 @@ func (s *Service) CreateTicket(ctx context.Context, projectID, title string, typ
 	}
 	id := slug + "-" + strconv.FormatInt(seq, 10)
 	now := time.Now().UTC()
+	repo := ""
+	if len(targetRepo) > 0 {
+		repo = targetRepo[0]
+	}
 	t := &Ticket{
 		ID:           id,
 		ProjectID:    projectID,
@@ -93,6 +98,7 @@ func (s *Service) CreateTicket(ctx context.Context, projectID, title string, typ
 		Outputs:      make(map[string]any),
 		DependsOn:    dependsOn,
 		WorkStreamID: workStreamID,
+		TargetRepo:   repo,
 		CreatedBy:    createdBy,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -137,6 +143,17 @@ func (s *Service) GetTicketsByIDs(ctx context.Context, ids []string) ([]*Ticket,
 	return s.store.GetByIDs(ctx, ids)
 }
 
+// ListByWorkStream returns all tickets in a work stream (any state).
+func (s *Service) ListByWorkStream(ctx context.Context, projectID string, workStreamID string) ([]*Ticket, error) {
+	return s.store.GetByProject(ctx, projectID, workStreamID, "")
+}
+
+// ListStaleTickets returns tickets in the given states whose updated_at is older
+// than the staleness threshold. Used by the DB staleness sweep (Layer 3 recovery).
+func (s *Service) ListStaleTickets(ctx context.Context, states []State, threshold time.Duration) ([]*Ticket, error) {
+	return s.store.ListStaleTickets(ctx, states, threshold)
+}
+
 // UpdateDependsOn sets the dependency list for a ticket. Caller must ensure dep IDs are valid and in the same project; no cycle check.
 func (s *Service) UpdateDependsOn(ctx context.Context, ticketID string, dependsOn []string) error {
 	if dependsOn == nil {
@@ -148,6 +165,11 @@ func (s *Service) UpdateDependsOn(ctx context.Context, ticketID string, dependsO
 // UpdateWorkStreamID sets the work_stream_id for a ticket. Caller must validate work stream exists and belongs to ticket's project.
 func (s *Service) UpdateWorkStreamID(ctx context.Context, ticketID string, workStreamID string) error {
 	return s.store.UpdateWorkStreamID(ctx, ticketID, workStreamID)
+}
+
+// UpdateTargetRepo sets the target_repo alias for a ticket. Caller must validate the alias exists in project_repositories.
+func (s *Service) UpdateTargetRepo(ctx context.Context, ticketID string, targetRepo string) error {
+	return s.store.UpdateTargetRepo(ctx, ticketID, targetRepo)
 }
 
 // PatchTicketMetadata merges optional title and objective fields into a ticket. Only non-nil patch fields from objective are applied.

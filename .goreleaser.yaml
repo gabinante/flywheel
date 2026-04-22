@@ -1,34 +1,34 @@
 version: 2
-project_name: warrant
+project_name: flywheel
 
 builds:
-  - id: warrant
+  - id: flywheel
     main: ./cmd/server
-    binary: warrant
+    binary: flywheel
     goos: [linux, darwin]
     goarch: [amd64, arm64]
-  - id: warrant-git
-    main: ./cmd/warrant-git
-    binary: warrant-git
+  - id: flywheel-git
+    main: ./cmd/flywheel-git
+    binary: flywheel-git
     goos: [linux, darwin]
     goarch: [amd64, arm64]
-  - id: warrant-mcp
+  - id: flywheel-mcp
     main: ./cmd/mcp
-    binary: warrant-mcp
+    binary: flywheel-mcp
     goos: [linux, darwin]
     goarch: [amd64, arm64]
 
 archives:
-  - id: warrant
-    ids: [warrant]
+  - id: flywheel
+    ids: [flywheel]
     formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-  - id: warrant-git
-    ids: [warrant-git]
+  - id: flywheel-git
+    ids: [flywheel-git]
     formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-  - id: warrant-mcp
-    ids: [warrant-mcp]
+  - id: flywheel-mcp
+    ids: [flywheel-mcp]
     formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 

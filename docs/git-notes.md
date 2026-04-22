@@ -1,6 +1,6 @@
-# Warrant Git Notes — Refs and schema
+# Flywheel Git Notes — Refs and schema
 
-Quick reference for the Warrant git-notes integration. Full design: [git-integration-design.md](git-integration-design.md).
+Quick reference for the Flywheel git-notes integration. Full design: [git-integration-design.md](git-integration-design.md).
 
 ## Refs (multi-ref)
 
@@ -8,15 +8,15 @@ Notes are stored in separate refs per type:
 
 | Type      | Ref                              |
 |-----------|----------------------------------|
-| decision  | `refs/notes/warrant/decision`    |
-| trace     | `refs/notes/warrant/trace`       |
-| intent    | `refs/notes/warrant/intent`      |
+| decision  | `refs/notes/flywheel/decision`   |
+| trace     | `refs/notes/flywheel/trace`      |
+| intent    | `refs/notes/flywheel/intent`     |
 
 - **decision** — high-level decisions and rationale
 - **trace** — execution summaries / trace attachments
 - **intent** — what the agent set out to do
 
-Sync: push/pull `refs/notes/warrant/*` (or each ref).
+Sync: push/pull `refs/notes/flywheel/*` (or each ref).
 
 ## Note schema (JSON)
 
@@ -28,9 +28,9 @@ Versioned; current version `v: 1`.
 | `type`     | string | yes      | `decision`, `trace`, or `intent` |
 | `message`  | string | yes      | Note content |
 | `created_at` | string | no    | RFC3339 timestamp |
-| `agent_id` | string | no       | Warrant agent ID |
-| `ticket_id`| string | no       | Warrant ticket ID |
-| `project_id` | string | no     | Warrant project ID |
+| `agent_id` | string | no       | Flywheel agent ID |
+| `ticket_id`| string | no       | Flywheel ticket ID |
+| `project_id` | string | no     | Flywheel project ID |
 | `payload`  | object | no       | Extra structured data |
 
 Example:
@@ -49,6 +49,6 @@ Example:
 
 ## How to use
 
-- **CLI**: `warrant-git note add|show|log|diff`, `warrant-git sync` — see `warrant-git help`.
-- **MCP**: `warrant_add_git_note`, `warrant_show_git_notes`, `warrant_log_git_notes`, `warrant_diff_git_notes`, `warrant_sync_git_notes`.
+- **CLI**: `flywheel-git note add|show|log|diff`, `flywheel-git sync` — see `flywheel-git help`.
+- **MCP**: `flywheel_add_git_note`, `flywheel_show_git_notes`, `flywheel_log_git_notes`, `flywheel_diff_git_notes`, `flywheel_sync_git_notes`.
 - **REST**: `GET /orgs/{orgID}/projects/{projectID}/git-notes/commits/{commitSha}?repo_path=...`, `GET .../git-notes/log?repo_path=...&limit=20&type=decision`.

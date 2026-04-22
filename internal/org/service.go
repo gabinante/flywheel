@@ -14,11 +14,12 @@ const defaultOrgSlugPrefix = "u-"
 
 // Service provides org operations. Other packages call this, not the store.
 type Service struct {
-	store *Store
+	store OrgStore
 }
 
-// NewService returns a new Service.
-func NewService(store *Store) *Service {
+// NewService returns a new Service. The store parameter accepts any OrgStore
+// implementation (Postgres *Store, embedded SQLite, etc.).
+func NewService(store OrgStore) *Service {
 	return &Service{store: store}
 }
 
