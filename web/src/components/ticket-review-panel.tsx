@@ -8,6 +8,8 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/use-auth'
 import { formatApiError } from '@/lib/api/client'
 
@@ -57,16 +59,17 @@ export function TicketReviewPanel({
         {formError ? (
           <p className="text-destructive text-sm">{formError}</p>
         ) : null}
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-muted-foreground">Feedback (optional)</span>
-          <textarea
-            className="min-h-[88px] rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm backdrop-blur-sm focus:border-primary/40 focus:outline-none disabled:opacity-50"
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="review-feedback">Feedback (optional)</Label>
+          <Textarea
+            id="review-feedback"
+            className="min-h-[88px]"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             disabled={busy}
             rows={4}
           />
-        </label>
+        </div>
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"

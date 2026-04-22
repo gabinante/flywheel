@@ -5,6 +5,14 @@ import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { StaggerItem, StaggerList } from '@/components/stagger-list'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
 import { TicketsPageSkeleton } from '@/components/ui/skeleton'
@@ -35,7 +43,7 @@ type CategoryId =
   | 'done'
   | 'blocked'
 
-/** Everything except `done` — default “open work” view. */
+/** Everything except `done` — default "open work" view. */
 const OPEN_STATES = ALL_STATES.filter((s) => s !== 'done')
 
 const CATEGORY_OPTIONS: { id: CategoryId; label: string }[] = [
@@ -86,6 +94,9 @@ function filterTickets(
   }
   return list
 }
+
+/** Sentinel value for "all" / "any" option in Select (radix doesn't support empty string as value). */
+const ALL_VALUE = '__all__'
 
 export function TicketsPage() {
   const { orgId, projectId } = useParams<{ orgId: string; projectId: string }>()
@@ -250,35 +261,32 @@ export function TicketsPage() {
       ) : null}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-        <div className="flex flex-col gap-1">
-          <label className="text-muted-foreground text-sm" htmlFor="work-stream-filter">
-            Work stream
-          </label>
-          <select
-            id="work-stream-filter"
-            className="border-input bg-background h-8 min-w-[12rem] rounded-md border px-2 text-sm"
-            value={workStreamFilter}
-            onChange={(e) => setWorkStreamFilter(e.target.value)}
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="work-stream-filter">Work stream</Label>
+          <Select
+            value={workStreamFilter || ALL_VALUE}
+            onValueChange={(v) => setWorkStreamFilter(v === ALL_VALUE ? '' : v)}
             disabled={!streams}
           >
-            <option value="">All work streams</option>
-            {(streams ?? []).filter((s) => s.id).map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name ?? s.slug ?? s.id}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger id="work-stream-filter" className="min-w-[12rem]">
+              <SelectValue placeholder="All work streams" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_VALUE}>All work streams</SelectItem>
+              {(streams ?? []).filter((s) => s.id).map((s) => (
+                <SelectItem key={s.id} value={s.id!}>
+                  {s.name ?? s.slug ?? s.id}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-muted-foreground text-sm" htmlFor="category-filter">
-            View
-          </label>
-          <select
-            id="category-filter"
-            className="border-input bg-background h-8 min-w-[12rem] rounded-md border px-2 text-sm"
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="category-filter">View</Label>
+          <Select
             value={category}
-            onChange={(e) => {
-              const next = e.target.value as CategoryId
+            onValueChange={(v) => {
+              const next = v as CategoryId
               setCategory(next)
               const allowed = statesInCategory(next)
               setSpecificState((prev) => {
@@ -288,34 +296,40 @@ export function TicketsPage() {
               })
             }}
           >
-            {CATEGORY_OPTIONS.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger id="category-filter" className="min-w-[12rem]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CATEGORY_OPTIONS.map((o) => (
+                <SelectItem key={o.id} value={o.id}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-muted-foreground text-sm" htmlFor="state-refine">
-            Refine by state
-          </label>
-          <select
-            id="state-refine"
-            className="border-input bg-background h-8 min-w-[12rem] rounded-md border px-2 text-sm"
-            value={specificState}
-            onChange={(e) =>
-              setSpecificState(e.target.value as TicketState | '')
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="state-refine">Refine by state</Label>
+          <Select
+            value={specificState || ALL_VALUE}
+            onValueChange={(v) =>
+              setSpecificState(v === ALL_VALUE ? '' : (v as TicketState))
             }
           >
-            <option value="">
-              {category === 'all' ? 'Any state' : 'Any in this view'}
-            </option>
-            {refineOptions.map((s) => (
-              <option key={s} value={s}>
-                {s.replace(/_/g, ' ')}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger id="state-refine" className="min-w-[12rem]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_VALUE}>
+                {category === 'all' ? 'Any state' : 'Any in this view'}
+              </SelectItem>
+              {refineOptions.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s.replace(/_/g, ' ')}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -375,8 +389,8 @@ export function TicketsPage() {
               : 'No tickets in this project yet.'
             : category === 'open' &&
                 allTickets?.every((t) => t.state === 'done')
-              ? 'No open tickets in this work stream (the Open view hides completed work). Switch View to “All tickets” or “Done” above.'
-              : 'No tickets match this view. Try “All tickets” or change the filters above.'}
+              ? 'No open tickets in this work stream (the Open view hides completed work). Switch View to "All tickets" or "Done" above.'
+              : 'No tickets match this view. Try "All tickets" or change the filters above.'}
         </p>
       ) : null}
     </div>
