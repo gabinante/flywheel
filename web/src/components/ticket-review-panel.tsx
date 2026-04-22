@@ -60,7 +60,7 @@ export function TicketReviewPanel({
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-muted-foreground">Feedback (optional)</span>
           <textarea
-            className="border-input bg-background min-h-[88px] rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+            className="min-h-[88px] rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm backdrop-blur-sm focus:border-primary/40 focus:outline-none disabled:opacity-50"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             disabled={busy}

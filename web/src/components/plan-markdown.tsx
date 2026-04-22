@@ -93,7 +93,7 @@ const planComponents: Components = {
       if (!isBlockWithoutLang) {
         return (
           <code
-            className="border-border/60 bg-muted/70 text-foreground box-decoration-clone rounded border px-0.5 py-px font-mono text-[0.8125em] leading-[inherit] [overflow-wrap:anywhere] [word-break:break-word]"
+            className="box-decoration-clone rounded-md border border-white/10 bg-white/[0.06] px-1 py-px font-mono text-[0.8125em] leading-[inherit] text-foreground [overflow-wrap:anywhere] [word-break:break-word]"
             {...rest}
           >
             {children}
@@ -101,7 +101,7 @@ const planComponents: Components = {
         )
       }
       return (
-        <pre className="bg-muted border-border overflow-x-auto rounded-md border p-2 font-mono text-xs">
+        <pre className="overflow-x-auto rounded-xl border border-white/10 bg-white/[0.03] p-2 font-mono text-xs backdrop-blur-sm">
           <code {...rest}>{children}</code>
         </pre>
       )

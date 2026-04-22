@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/contexts/use-auth'
 
 /** Remount when `token` changes (see keyed wrapper in App) so verification state resets. */
@@ -38,7 +39,10 @@ export function HomePage() {
 
   if (token && verified === null) {
     return (
-      <p className="text-muted-foreground text-sm">Verifying session…</p>
+      <div className="flex flex-col gap-3">
+        <Skeleton className="h-4 w-36" />
+        <Skeleton className="h-3 w-48" />
+      </div>
     )
   }
 
