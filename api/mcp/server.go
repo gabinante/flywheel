@@ -52,6 +52,7 @@ func NewServer(b *Backend) (*mcp.Server, error) {
 		Instructions: ServerInstructions,
 	})
 	RegisterTools(server, b)
+	RegisterEntityTools(server, b)
 	RegisterCodeIntelTools(server, b)
 	RegisterFindingsTools(server, b)
 	RegisterCatalogTools(server, b)

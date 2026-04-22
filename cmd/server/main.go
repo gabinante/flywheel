@@ -25,6 +25,7 @@ import (
 	"github.com/gabinante/flywheel/internal/cost"
 	"github.com/gabinante/flywheel/internal/dispatch"
 	"github.com/gabinante/flywheel/internal/embedded"
+	"github.com/gabinante/flywheel/internal/entity"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/investigation"
 	"github.com/gabinante/flywheel/internal/mirror"
@@ -141,6 +142,8 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	execSvc := execution.NewService(execStore, leaseValidator)
 	reviewStore := review.NewStore(pool)
 	reviewSvc := review.NewService(reviewStore, ticketSvc, bus)
+	entityStore := entity.NewStore(pool)
+	entitySvc := entity.NewService(entityStore, bus)
 	planStore := plan.NewStore(pool)
 	planSvc := plan.NewService(planStore, bus)
 	calibrationStore := policy.NewCalibrationStore(pool)
@@ -242,6 +245,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		QueueSvc:      queueSvc,
 		TraceSvc:      execSvc,
 		ReviewSvc:     reviewSvc,
+		EntitySvc:     entitySvc,
 		AgentStore:    agentStore,
 		CostSvc:       costSvc,
 	}
@@ -297,6 +301,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			Trace:          execSvc,
 			Review:         reviewSvc,
 			Org:            orgSvc,
+			Entity:         entitySvc,
 			AgentStore:     agentStore,
 			Investigation:  investigationSvc,
 			Claims:         claimsSvc,
@@ -367,6 +372,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		MCPHandler:         mcpHandler,
 		MCPSSEHandler:      mcpSSEHandler,
 		AgentsHandler:      &rest.AgentsHandler{AgentSvc: agentSvc},
+		EntitiesHandler:    &rest.EntitiesHandler{EntitySvc: entitySvc},
 		DispatchHandler:    &rest.DispatchHandler{Dispatcher: dispatcher},
 		PlansHandler:       &rest.PlansHandler{PlanSvc: planSvc},
 		ObservationHandler: &rest.ObservationHandler{Svc: obsSvc},

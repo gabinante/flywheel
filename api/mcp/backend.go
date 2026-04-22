@@ -4,6 +4,7 @@ import (
 	"github.com/gabinante/flywheel/internal/agent"
 	"github.com/gabinante/flywheel/internal/catalog"
 	"github.com/gabinante/flywheel/internal/claims"
+	"github.com/gabinante/flywheel/internal/entity"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/investigation"
 	"github.com/gabinante/flywheel/internal/notification"
@@ -24,7 +25,8 @@ type Backend struct {
 	Queue      *queue.Service
 	Trace      *execution.Service
 	Review     *review.Service
-	Org        *org.Service
+	Org           *org.Service
+	Entity        *entity.Service
 	AgentStore    agent.AgentStore
 	Investigation *investigation.Service
 	Claims        *claims.Service
