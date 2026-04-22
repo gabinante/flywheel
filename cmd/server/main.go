@@ -44,6 +44,7 @@ import (
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
 	"github.com/gabinante/flywheel/internal/review"
+	"github.com/gabinante/flywheel/internal/rollback"
 	"github.com/gabinante/flywheel/internal/stream"
 	"github.com/gabinante/flywheel/internal/ticket"
 	"github.com/gabinante/flywheel/internal/user"
@@ -202,6 +203,10 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	pillarStore := pillar.NewPostgresStore(pool)
 	pillarSvc := pillar.NewService(pillarStore)
 
+	// Rollback service for stage-specific rollback behavior.
+	rollbackSvc := rollback.NewService(ticketSvc, ticketSvc, bus)
+	rollbackSvc.SetLeaseRemover(queueSvc)
+
 	// Observation service for production signal tracking and attribution.
 	obsStore := observation.NewPostgresStore(pool)
 	obsSvc := observation.NewService(obsStore, bus)
@@ -332,6 +337,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			CatalogScanner: catalogScanner,
 			Pillar:         pillarSvc,
 			StateIndex:     stateIndexSvc,
+			Rollback:       rollbackSvc,
 		})
 		if err != nil {
 			log.Fatalf("mcp server: %v", err)
@@ -377,6 +383,12 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			ReconcileInterval: cfg.Dispatch.ReconcileInterval,
 		}, bus, ticketSvc, projectSvc)
 		dispatcher.SetLeaseReleaser(queueSvc)
+		dispatcher.SetTicketTransitioner(ticketSvc)
+		// Wire worktree cleanup for rollback when dispatcher manages worktrees.
+		rollbackSvc.SetWorktreeRemover(&dispatch.WorktreeManager{
+			BaseDir: cfg.Dispatch.WorktreeDir,
+			RepoDir: repoDir,
+		})
 		dispatcher.Start(ctx)
 	}
 
@@ -482,6 +494,10 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 	catalogSvc := catalog.NewService(catalogSt)
 	catalogScanner := catalog.NewScanner()
 
+	// Rollback service for embedded mode.
+	rollbackSvcEmbed := rollback.NewService(ticketSvc, ticketSvc, bus)
+	rollbackSvcEmbed.SetLeaseRemover(queueSvc)
+
 	// Run first-run wizard if no data exists yet.
 	firstRun := bootstrap.IsFirstRun(dataDir)
 	if firstRun {
@@ -554,6 +570,7 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		Catalog:        catalogSvc,
 		CatalogScanner: catalogScanner,
 		Pillar:         pillarSvc,
+		Rollback:       rollbackSvcEmbed,
 	})
 	if err != nil {
 		log.Fatalf("mcp server: %v", err)

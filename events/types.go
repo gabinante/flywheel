@@ -25,6 +25,10 @@ const (
 	EventTicketReplanned   = "ticket.replanned"   // executing → planning
 	EventTicketInvalidated = "ticket.invalidated" // validated → planning
 
+	// --- Rollback events ---
+	EventTicketRolledBack = "ticket.rolled_back"       // stage-specific rollback → draft
+	EventRollbackIncident = "ticket.rollback_incident"  // incident ticket auto-created on prod rollback
+
 	// --- Review events ---
 	EventTicketApproved = "ticket.approved" // awaiting_validation → validated
 	EventTicketRejected = "ticket.rejected" // awaiting_validation → executing

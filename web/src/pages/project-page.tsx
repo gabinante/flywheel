@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
+import { DispatchDashboard } from '@/components/dispatch-dashboard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -266,6 +267,8 @@ export function ProjectPage() {
           ) : null}
         </CardContent>
       </Card>
+
+      <DispatchDashboard orgId={orgId} projectId={projectId} />
 
       {project.repo_url ? (
         <Card>
