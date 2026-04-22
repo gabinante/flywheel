@@ -84,39 +84,39 @@
     --sidebar-ring: oklch(0.55 0.12 150);
 }
 
-/* Dark mode — primary theme (dark moss greens) */
+/* Dark mode — primary theme (dark moss greens + glassmorphism translucency) */
 .dark {
     --background: oklch(0.145 0.015 150);
     --foreground: oklch(0.93 0.01 150);
-    --card: oklch(0.19 0.02 150);
+    --card: oklch(0.19 0.02 150 / 60%);
     --card-foreground: oklch(0.93 0.01 150);
     --popover: oklch(0.18 0.01 155 / 80%);
     --popover-foreground: oklch(0.93 0.01 150);
     --primary: oklch(0.72 0.18 150);
     --primary-foreground: oklch(0.145 0.015 150);
-    --secondary: oklch(0.24 0.025 150);
+    --secondary: oklch(0.24 0.025 150 / 50%);
     --secondary-foreground: oklch(0.93 0.01 150);
-    --muted: oklch(0.24 0.025 150);
+    --muted: oklch(0.24 0.025 150 / 40%);
     --muted-foreground: oklch(0.65 0.03 150);
-    --accent: oklch(0.24 0.025 150);
+    --accent: oklch(0.24 0.025 150 / 50%);
     --accent-foreground: oklch(0.93 0.01 150);
     --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(0.55 0.05 150 / 12%);
-    --input: oklch(0.55 0.05 150 / 18%);
-    --ring: oklch(0.72 0.18 150);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 12%);
+    --ring: oklch(0.72 0.18 150 / 40%);
     --chart-1: oklch(0.72 0.18 150);
     --chart-2: oklch(0.55 0.12 150);
     --chart-3: oklch(0.42 0.08 150);
     --chart-4: oklch(0.35 0.06 150);
     --chart-5: oklch(0.27 0.04 150);
-    --sidebar: oklch(0.125 0.018 150);
+    --sidebar: oklch(0.125 0.018 150 / 80%);
     --sidebar-foreground: oklch(0.93 0.01 150);
     --sidebar-primary: oklch(0.72 0.18 150);
     --sidebar-primary-foreground: oklch(0.145 0.015 150);
-    --sidebar-accent: oklch(0.22 0.025 150);
+    --sidebar-accent: oklch(0.22 0.025 150 / 50%);
     --sidebar-accent-foreground: oklch(0.93 0.01 150);
-    --sidebar-border: oklch(0.55 0.05 150 / 12%);
-    --sidebar-ring: oklch(0.72 0.18 150);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.72 0.18 150 / 40%);
 }
 
 @layer base {

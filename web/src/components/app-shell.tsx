@@ -18,7 +18,7 @@ export function AppShell() {
           <LeftSidebar />
           <div className="flex flex-1 flex-col overflow-hidden">
             {token && (
-              <div className="flex h-10 shrink-0 items-center justify-end gap-2 border-b border-border bg-background/80 px-4 backdrop-blur">
+              <div className="flex h-10 shrink-0 items-center justify-end gap-2 border-b border-white/10 bg-background/80 px-4 backdrop-blur-md">
                 <DispatchStatusIndicator />
               </div>
             )}
