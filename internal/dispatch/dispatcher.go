@@ -2,9 +2,13 @@ package dispatch
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gabinante/flywheel/events"
@@ -17,11 +21,24 @@ type TicketGetter interface {
 	GetTicket(ctx context.Context, id string) (*ticket.Ticket, error)
 	GetTicketsByIDs(ctx context.Context, ids []string) ([]*ticket.Ticket, error)
 	ListByState(ctx context.Context, projectID string, state ticket.State) ([]*ticket.Ticket, error)
+	ListByWorkStream(ctx context.Context, projectID string, workStreamID string) ([]*ticket.Ticket, error)
 }
 
 // ProjectGetter retrieves projects.
 type ProjectGetter interface {
 	GetProject(ctx context.Context, id string) (*project.Project, error)
+}
+
+// RepoResolver resolves the repository URL and local path for a ticket's target repo.
+// Returns repoURL, defaultBranch, error. Used for multi-repo project support.
+type RepoResolver interface {
+	ResolveRepo(ctx context.Context, projectID, targetRepo string) (repoURL, defaultBranch string, err error)
+}
+
+// LeaseReleaser releases a ticket's lease and transitions it back to draft.
+// This is Layer 1 of failure recovery: immediate cleanup on worker process exit.
+type LeaseReleaser interface {
+	ForceReleaseLease(ctx context.Context, ticketID string) error
 }
 
 // Config holds dispatcher settings.
@@ -30,11 +47,16 @@ type Config struct {
 	ClaudePath   string
 	WorktreeDir  string
 	RepoDir      string // path to the main git repository
-	ServerURL    string // warrant server URL for MCP connections
+	ServerURL    string // Flywheel server URL for MCP connections
 	AgentID      string // agent identity for workers
-	APIKey       string // warrant API key for worker MCP authentication
+	APIKey       string // Flywheel API key for worker MCP authentication
 	ProjectID    string // only dispatch tickets for this project (empty = all)
-	AutoApprove  bool   // auto-approve tickets when acceptance tests pass
+	AutoApprove        bool          // auto-approve tickets when acceptance tests pass
+	ReconcileInterval  time.Duration  // periodic reconciliation interval (default: 60s)
+	// Agent driver selection.
+	AgentDriver  string // driver name: "claude" (default), "generic", or custom
+	AgentCLIPath string // override CLI path for the agent binary
+	AgentArgs    []string // extra static arguments for the agent command
 	// Docker isolation settings.
 	DockerEnabled  bool
 	DockerImage    string
@@ -46,23 +68,47 @@ type Config struct {
 
 // Dispatcher listens for ticket events and spawns workers.
 type Dispatcher struct {
-	cfg       Config
-	bus       events.Bus
-	tickets   TicketGetter
-	projects  ProjectGetter
-	worker    Worker
-	worktrees *WorktreeManager
+	cfg           Config
+	bus           events.Bus
+	tickets       TicketGetter
+	projects      ProjectGetter
+	worker        Worker
+	worktrees     *WorktreeManager
+	clones        *MultiRepoCloneManager // nil-safe: only used for multi-repo projects
+	repoResolver  RepoResolver            // nil-safe: only used for multi-repo projects
+	leaseReleaser LeaseReleaser           // nil-safe: if nil, worker exit does not release lease (Layer 2 TTL handles it)
 
-	mu       sync.Mutex
-	active   map[string]context.CancelFunc // ticketID → cancel
-	wg       sync.WaitGroup
+	mu         sync.Mutex
+	active     map[string]context.CancelFunc // ticketID → cancel
+	wg         sync.WaitGroup
+	scanning   int32              // atomic CAS guard for reconcile
+	stopCancel context.CancelFunc // cancels the internal context on Stop()
 }
 
 // New creates a dispatcher that subscribes to the event bus.
 func New(cfg Config, bus events.Bus, tickets TicketGetter, projects ProjectGetter) *Dispatcher {
+	// Resolve the agent driver.
+	driverName := cfg.AgentDriver
+	if driverName == "" {
+		driverName = "claude"
+	}
+	cliPath := cfg.AgentCLIPath
+	if cliPath == "" {
+		cliPath = cfg.ClaudePath // backward compat
+	}
+	driver, err := LookupDriver(driverName, DriverConfig{
+		CLIPath:   cliPath,
+		ExtraArgs: cfg.AgentArgs,
+	})
+	if err != nil {
+		log.Printf("dispatch: %v, falling back to claude driver", err)
+		driver = NewClaudeDriver(DriverConfig{CLIPath: cliPath})
+	}
+
 	var worker Worker
 	if cfg.DockerEnabled {
 		worker = &DockerWorker{
+			Driver:       driver,
 			Image:        cfg.DockerImage,
 			APIKey:       cfg.APIKey,
 			RepoDir:      cfg.RepoDir,
@@ -73,8 +119,8 @@ func New(cfg Config, bus events.Bus, tickets TicketGetter, projects ProjectGette
 		}
 	} else {
 		worker = &CLIWorker{
-			ClaudePath: cfg.ClaudePath,
-			APIKey:     cfg.APIKey,
+			Driver: driver,
+			APIKey: cfg.APIKey,
 		}
 	}
 	d := &Dispatcher{
@@ -87,6 +133,7 @@ func New(cfg Config, bus events.Bus, tickets TicketGetter, projects ProjectGette
 			BaseDir: cfg.WorktreeDir,
 			RepoDir: cfg.RepoDir,
 		},
+		clones: NewMultiRepoCloneManager(filepath.Join(cfg.WorktreeDir, ".clones")),
 		active: make(map[string]context.CancelFunc),
 	}
 	return d
@@ -94,6 +141,10 @@ func New(cfg Config, bus events.Bus, tickets TicketGetter, projects ProjectGette
 
 // Start subscribes to events and begins dispatching. Call Stop to shut down.
 func (d *Dispatcher) Start(ctx context.Context) {
+	// Derive an internal context so Stop() can cancel background goroutines
+	// even if the caller's context is still alive.
+	ctx, d.stopCancel = context.WithCancel(ctx)
+
 	d.bus.Subscribe(events.EventTicketCreated, func(_ context.Context, e events.Event) {
 		d.handleTicketReady(ctx, e)
 	})
@@ -112,15 +163,42 @@ func (d *Dispatcher) Start(ctx context.Context) {
 	d.bus.Subscribe(events.EventTicketApproved, func(_ context.Context, e events.Event) {
 		d.handleTicketDone(ctx, e)
 	})
+	d.bus.Subscribe(events.EventTestsFailed, func(_ context.Context, e events.Event) {
+		d.handleTestsFailed(ctx, e)
+	})
 
 	log.Printf("dispatch: started (max_workers=%d, worktree_dir=%s, project=%s)", d.cfg.MaxWorkers, d.cfg.WorktreeDir, d.cfg.ProjectID)
 
 	// Scan for existing pending tickets on startup.
-	go d.scanPending(ctx)
+	go d.reconcile(ctx)
+
+	// Periodic reconciliation: retry validated tickets with pending CI, pick up
+	// any tickets that fell through the cracks between events.
+	reconcileInterval := d.cfg.ReconcileInterval
+	if reconcileInterval <= 0 {
+		reconcileInterval = 60 * time.Second
+	}
+	d.wg.Add(1)
+	go func() {
+		defer d.wg.Done()
+		ticker := time.NewTicker(reconcileInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				d.reconcile(ctx)
+			}
+		}
+	}()
 }
 
-// Stop waits for all active workers to finish.
+// Stop cancels all active workers and background goroutines, then waits for completion.
 func (d *Dispatcher) Stop() {
+	if d.stopCancel != nil {
+		d.stopCancel()
+	}
 	d.mu.Lock()
 	for _, cancel := range d.active {
 		cancel()
@@ -128,6 +206,28 @@ func (d *Dispatcher) Stop() {
 	d.mu.Unlock()
 	d.wg.Wait()
 	log.Println("dispatch: stopped")
+}
+
+// SetLeaseReleaser configures the lease releaser for immediate cleanup on worker exit.
+// Call this after construction to wire the queue service without circular imports.
+func (d *Dispatcher) SetLeaseReleaser(lr LeaseReleaser) {
+	d.leaseReleaser = lr
+}
+
+// SetRepoResolver configures multi-repo resolution. When set, tickets with
+// target_repo are resolved to the correct repository for worktree creation.
+func (d *Dispatcher) SetRepoResolver(rr RepoResolver) {
+	d.repoResolver = rr
+}
+
+// reconcile wraps scanPending with an atomic CAS to prevent concurrent runs.
+func (d *Dispatcher) reconcile(ctx context.Context) bool {
+	if !atomic.CompareAndSwapInt32(&d.scanning, 0, 1) {
+		return false
+	}
+	defer atomic.StoreInt32(&d.scanning, 0)
+	d.scanPending(ctx)
+	return true
 }
 
 func (d *Dispatcher) scanPending(ctx context.Context) {
@@ -138,6 +238,44 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 	case <-time.After(2 * time.Second):
 	}
 
+	// Reviewers first — finish in-progress work before starting new work.
+	// This handles tickets stuck in awaiting_review when the reviewer was
+	// deferred due to capacity (worker still occupied the slot at submit time).
+	reviewing, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, ticket.StateAwaitingReview)
+	if err != nil {
+		log.Printf("dispatch: scan awaiting_review: %v", err)
+	} else {
+		for _, t := range reviewing {
+			if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
+				continue
+			}
+			d.spawnReviewer(ctx, t)
+		}
+	}
+
+	// Scan for validated tickets with unmerged PRs — try merge or spawn resolver.
+	validated, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, ticket.StateValidated)
+	if err != nil {
+		log.Printf("dispatch: scan validated: %v", err)
+	} else {
+		for _, t := range validated {
+			if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
+				continue
+			}
+			prURL, ok := t.Outputs["pr_url"].(string)
+			if !ok || prURL == "" {
+				continue
+			}
+			d.mu.Lock()
+			_, resolving := d.active["resolve:"+t.ID]
+			d.mu.Unlock()
+			if resolving {
+				continue
+			}
+			d.autoMergePR(ctx, t, prURL)
+		}
+	}
+
 	pending, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, ticket.StatePending)
 	if err != nil {
 		log.Printf("dispatch: scan pending: %v", err)
@@ -145,8 +283,22 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 	}
 	log.Printf("dispatch: scan found %d pending tickets", len(pending))
 	for _, t := range pending {
+		if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
+			continue
+		}
 		d.tryDispatch(ctx, t)
 	}
+}
+
+// isProjectDispatchEnabled checks whether dispatch is enabled for a project.
+// Returns true if the project cannot be found (fail-open for backward compat
+// with the legacy DISPATCH_PROJECT_ID single-project approach).
+func (d *Dispatcher) isProjectDispatchEnabled(ctx context.Context, projectID string) bool {
+	proj, err := d.projects.GetProject(ctx, projectID)
+	if err != nil || proj == nil {
+		return true // fail-open: don't block dispatch if project lookup fails
+	}
+	return proj.DispatchEnabled
 }
 
 func (d *Dispatcher) handleTicketReady(ctx context.Context, e events.Event) {
@@ -162,8 +314,13 @@ func (d *Dispatcher) handleTicketReady(ctx context.Context, e events.Event) {
 		return
 	}
 
-	// Filter by project if configured.
+	// Filter by project if configured (legacy env var approach).
 	if d.cfg.ProjectID != "" && t.ProjectID != d.cfg.ProjectID {
+		return
+	}
+
+	// Check per-project dispatch toggle.
+	if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
 		return
 	}
 
@@ -186,11 +343,37 @@ func (d *Dispatcher) handleTicketRejected(ctx context.Context, e events.Event) {
 	if d.cfg.ProjectID != "" && t.ProjectID != d.cfg.ProjectID {
 		return
 	}
+	if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
+		return
+	}
 	if t.State != ticket.StateExecuting {
 		return
 	}
 	log.Printf("dispatch: ticket %s rejected, re-spawning worker for iteration", ticketID)
 	d.spawn(ctx, t)
+}
+
+// handleTestsFailed is called when CI checks fail on a validated ticket's PR.
+// It logs the failure for visibility. The ticket remains in validated state —
+// the next scan cycle will retry after the branch is fixed.
+func (d *Dispatcher) handleTestsFailed(ctx context.Context, e events.Event) {
+	ticketID, _ := e.Payload["ticket_id"].(string)
+	prURL, _ := e.Payload["pr_url"].(string)
+	output, _ := e.Payload["output"].(string)
+	log.Printf("dispatch: TESTS FAILED for ticket %s (PR: %s)\n%s", ticketID, prURL, output)
+
+	// Spawn a conflict resolver to fix the build — the branch likely needs
+	// a rebase or build fix after main diverged.
+	if ticketID == "" {
+		return
+	}
+	t, err := d.tickets.GetTicket(ctx, ticketID)
+	if err != nil || t == nil {
+		return
+	}
+	if prURL != "" {
+		d.spawnConflictResolver(ctx, t, prURL)
+	}
 }
 
 func (d *Dispatcher) tryDispatch(ctx context.Context, t *ticket.Ticket) {
@@ -218,7 +401,7 @@ func (d *Dispatcher) tryDispatch(ctx context.Context, t *ticket.Ticket) {
 			return
 		}
 		for _, dep := range deps {
-			if dep.State != ticket.StateDone {
+			if dep.State != ticket.StateDone && dep.State != ticket.StateValidated {
 				return
 			}
 		}
@@ -240,6 +423,9 @@ func (d *Dispatcher) handleTicketSubmitted(ctx context.Context, e events.Event) 
 		return
 	}
 	if d.cfg.ProjectID != "" && t.ProjectID != d.cfg.ProjectID {
+		return
+	}
+	if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
 		return
 	}
 	if t.State != ticket.StateAwaitingReview {
@@ -266,13 +452,49 @@ func (d *Dispatcher) handleTicketDone(ctx context.Context, e events.Event) {
 	t, err := d.tickets.GetTicket(ctx, ticketID)
 	if err == nil && t != nil {
 		if prURL, ok := t.Outputs["pr_url"].(string); ok && prURL != "" {
-			d.autoMergePR(t, prURL)
+			d.autoMergePR(ctx, t, prURL)
 		}
 	}
 
 	if err := d.worktrees.Remove(ticketID); err != nil {
 		log.Printf("dispatch: worktree cleanup %s: %v", ticketID, err)
 	}
+
+	// Check work stream completion.
+	if t != nil && t.WorkStreamID != "" {
+		d.checkWorkStreamCompletion(ctx, t)
+	}
+}
+
+// checkWorkStreamCompletion checks whether all tickets in the work stream are
+// done (closed). If so, it logs a completion message — the foundation for
+// coordinator follow-up work.
+func (d *Dispatcher) checkWorkStreamCompletion(ctx context.Context, completed *ticket.Ticket) {
+	tickets, err := d.tickets.ListByWorkStream(ctx, completed.ProjectID, completed.WorkStreamID)
+	if err != nil {
+		log.Printf("dispatch: work stream completion check for %s: %v", completed.WorkStreamID, err)
+		return
+	}
+	if len(tickets) == 0 {
+		return
+	}
+
+	for _, t := range tickets {
+		if t.State != ticket.StateClosed {
+			return
+		}
+	}
+
+	log.Printf("dispatch: work stream %s complete — all %d tickets done (project=%s)",
+		completed.WorkStreamID, len(tickets), completed.ProjectID)
+	d.bus.Publish(ctx, events.Event{
+		Type: events.EventWorkStreamCompleted,
+		Payload: map[string]any{
+			"work_stream_id": completed.WorkStreamID,
+			"project_id":     completed.ProjectID,
+			"ticket_count":   len(tickets),
+		},
+	})
 }
 
 func (d *Dispatcher) spawn(ctx context.Context, t *ticket.Ticket) {
@@ -296,18 +518,48 @@ func (d *Dispatcher) spawn(ctx context.Context, t *ticket.Ticket) {
 			d.mu.Unlock()
 
 			// Re-scan for pending tickets to fill the freed slot.
-			go d.scanPending(ctx)
+			go d.reconcile(ctx)
 		}()
 
 		if err := d.runWorker(workerCtx, t); err != nil {
 			log.Printf("dispatch: worker %s failed: %v", t.ID, err)
 		}
+
+		// Layer 1 failure recovery: if the worker exited without submitting or
+		// escalating, immediately release the lease so the ticket returns to
+		// draft (pending) for retry. This avoids waiting for TTL expiry (Layer 2).
+		d.handleWorkerExit(t.ID)
 	}()
 
 	log.Printf("dispatch: spawned worker for %s (%d/%d active)", t.ID, d.activeCount(), d.cfg.MaxWorkers)
 }
 
+// DetermineWorkerType selects the appropriate worker type based on ticket state
+// and context. This is the routing logic that decides what kind of agent to spawn.
+func DetermineWorkerType(t *ticket.Ticket) WorkerType {
+	// Check if the ticket has an explicit worker_type in its inputs.
+	if wt, ok := t.Inputs["worker_type"].(string); ok {
+		parsed := WorkerType(wt)
+		if parsed.IsValid() {
+			return parsed
+		}
+	}
+
+	// Route based on ticket state and type.
+	switch t.State {
+	case ticket.StateAwaitingValidation: // also matches StateAwaitingReview (alias)
+		return WorkerTypeValidator
+	default:
+		// Default to executor for implementation work.
+		return WorkerTypeExecutor
+	}
+}
+
 func (d *Dispatcher) runWorker(ctx context.Context, t *ticket.Ticket) error {
+	return d.runTypedWorker(ctx, t, DetermineWorkerType(t))
+}
+
+func (d *Dispatcher) runTypedWorker(ctx context.Context, t *ticket.Ticket, wt WorkerType) error {
 	// Get project for context pack.
 	proj, err := d.projects.GetProject(ctx, t.ProjectID)
 	if err != nil {
@@ -328,19 +580,34 @@ func (d *Dispatcher) runWorker(ctx context.Context, t *ticket.Ticket) error {
 		}
 	}
 
-	// Assemble prompt.
-	prompt := AssembleWorkerPrompt(proj, t, depOutputs, d.cfg.ServerURL, d.cfg.AgentID)
+	// Assemble type-specific prompt.
+	prompt := AssembleTypedWorkerPrompt(wt, proj, t, depOutputs, d.cfg.ServerURL, d.cfg.AgentID)
 
 	// Determine working directory.
+	// Multi-repo: if the ticket targets a specific repo, resolve and clone it.
 	var workDir string
+	repoDir := d.cfg.RepoDir
+	if t.TargetRepo != "" && d.repoResolver != nil && d.clones != nil {
+		repoURL, _, resolveErr := d.repoResolver.ResolveRepo(ctx, t.ProjectID, t.TargetRepo)
+		if resolveErr != nil {
+			log.Printf("dispatch: resolve repo %s for %s: %v (falling back to primary)", t.TargetRepo, t.ID, resolveErr)
+		} else if repoURL != "" {
+			cloneDir, cloneErr := d.clones.EnsureClone(repoURL, t.ProjectID+"/"+t.TargetRepo)
+			if cloneErr != nil {
+				return fmt.Errorf("clone repo %s: %w", t.TargetRepo, cloneErr)
+			}
+			repoDir = cloneDir
+		}
+	}
+
 	if d.cfg.DockerEnabled {
 		// Docker mode: container handles its own workspace; pass repo dir for context.
-		workDir = d.cfg.RepoDir
+		workDir = repoDir
 	} else {
 		// Host mode: create git worktree for isolation.
 		branch := "ticket/" + t.ID
 		var err error
-		workDir, err = d.worktrees.Create(t.ID, branch)
+		workDir, err = d.worktrees.CreateFromRepo(t.ID, branch, repoDir)
 		if err != nil {
 			return err
 		}
@@ -353,20 +620,64 @@ func (d *Dispatcher) runWorker(ctx context.Context, t *ticket.Ticket) error {
 	case <-time.After(100 * time.Millisecond):
 	}
 
+	// Build type-specific task prompt.
+	taskMsg := buildTypedTaskPrompt(wt, t.ID, t.ProjectID)
+
+	log.Printf("dispatch: running %s worker for %s", wt, t.ID)
+
 	// Spawn worker.
-	taskMsg := buildTaskPrompt(t.ID, t.ProjectID)
 	result, err := d.worker.Spawn(ctx, t.ID, t.ProjectID, prompt, taskMsg, workDir, d.cfg.ServerURL)
 	if err != nil {
 		return err
 	}
 
 	if !result.Success {
-		log.Printf("dispatch: worker %s completed with error: %s\nOutput: %s", t.ID, result.Error, result.Output)
+		log.Printf("dispatch: %s worker %s completed with error: %s\nOutput: %s", wt, t.ID, result.Error, result.Output)
 	} else {
-		log.Printf("dispatch: worker %s completed successfully", t.ID)
+		log.Printf("dispatch: %s worker %s completed successfully", wt, t.ID)
 	}
 
 	return nil
+}
+
+// handleWorkerExit is Layer 1 of failure recovery. When a worker process exits
+// (success or failure), this checks whether the ticket is still in a state that
+// indicates the worker didn't complete its work (planning or executing). If so,
+// it immediately releases the lease via ForceReleaseLease, which:
+//   - Removes the Redis lease key (invalidating the token — fencing preserved)
+//   - Transitions the ticket back to draft (= pending, retriable)
+//
+// This is a no-op if:
+//   - leaseReleaser is nil (graceful degradation; Layer 2 TTL will handle it)
+//   - The ticket already transitioned to a terminal/advanced state (submitted, escalated, etc.)
+//   - The ticket is not found (already cleaned up)
+func (d *Dispatcher) handleWorkerExit(ticketID string) {
+	if d.leaseReleaser == nil {
+		return
+	}
+
+	// Use a background context: the worker context may be cancelled, but we
+	// still want to clean up the lease.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Check current ticket state. Only release if still in planning or executing —
+	// these are the states where the worker holds the lease but hasn't completed.
+	t, err := d.tickets.GetTicket(ctx, ticketID)
+	if err != nil || t == nil {
+		return
+	}
+
+	// If the ticket moved past the worker's responsibility (submitted, escalated,
+	// awaiting_input, awaiting_validation, etc.), don't release.
+	if t.State != ticket.StatePlanning && t.State != ticket.StateExecuting {
+		return
+	}
+
+	log.Printf("dispatch: worker %s exited without completing — releasing lease (state=%s)", ticketID, t.State)
+	if err := d.leaseReleaser.ForceReleaseLease(ctx, ticketID); err != nil {
+		log.Printf("dispatch: failed to release lease for %s: %v", ticketID, err)
+	}
 }
 
 func (d *Dispatcher) activeCount() int {
@@ -404,7 +715,7 @@ func (d *Dispatcher) spawnReviewer(ctx context.Context, t *ticket.Ticket) {
 			d.mu.Lock()
 			delete(d.active, reviewKey)
 			d.mu.Unlock()
-			go d.scanPending(ctx)
+			go d.reconcile(ctx)
 		}()
 
 		if err := d.runReviewer(workerCtx, t); err != nil {
@@ -415,14 +726,16 @@ func (d *Dispatcher) spawnReviewer(ctx context.Context, t *ticket.Ticket) {
 	log.Printf("dispatch: spawned reviewer for %s (%d/%d active)", t.ID, d.activeCount(), d.cfg.MaxWorkers)
 }
 
-// runReviewer spawns a claude session that reviews the ticket's PR and approves or rejects.
+// runReviewer spawns a validator worker that reviews the ticket's PR and approves or rejects.
 func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
 	proj, err := d.projects.GetProject(ctx, t.ProjectID)
 	if err != nil {
 		return err
 	}
 
-	prompt := AssembleReviewerPrompt(proj, t, d.cfg.ServerURL, d.cfg.AgentID)
+	// Use the typed validator prompt for consistency.
+	depOutputs := make(map[string]map[string]any)
+	prompt := AssembleTypedWorkerPrompt(WorkerTypeValidator, proj, t, depOutputs, d.cfg.ServerURL, d.cfg.AgentID)
 
 	// Reviewer works in the repo dir (needs access to the code for `gh` and `make test`).
 	// Use the existing worktree if available (the worker's branch), otherwise the main repo.
@@ -437,31 +750,178 @@ func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
 	case <-time.After(100 * time.Millisecond):
 	}
 
-	taskMsg := buildReviewerTaskPrompt(t.ID)
+	log.Printf("dispatch: running validator worker for %s", t.ID)
+
+	taskMsg := buildTypedTaskPrompt(WorkerTypeValidator, t.ID, t.ProjectID)
 	result, err := d.worker.Spawn(ctx, t.ID, t.ProjectID, prompt, taskMsg, workDir, d.cfg.ServerURL)
 	if err != nil {
 		return err
 	}
 
 	if !result.Success {
-		log.Printf("dispatch: reviewer %s completed with error: %s\nOutput: %s", t.ID, result.Error, result.Output)
+		log.Printf("dispatch: validator %s completed with error: %s\nOutput: %s", t.ID, result.Error, result.Output)
 	} else {
-		log.Printf("dispatch: reviewer %s completed successfully", t.ID)
+		log.Printf("dispatch: validator %s completed successfully", t.ID)
 	}
 
 	return nil
 }
 
 // autoMergePR merges the PR after a ticket is approved.
-func (d *Dispatcher) autoMergePR(t *ticket.Ticket, prURL string) {
-	// Extract PR number or use the URL directly with gh.
-	// gh pr merge works with URLs.
-	cmd := exec.Command("gh", "pr", "merge", prURL, "--squash", "--delete-branch")
+// It first validates that CI checks pass, then merges. If the merge fails due
+// to conflicts, it spawns a conflict resolver worker.
+func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL string) {
+	_ = d.worktrees.Remove(t.ID)
+
+	// Validate CI checks before attempting merge.
+	if !d.validatePRChecks(ctx, t, prURL) {
+		return
+	}
+
+	cmd := exec.Command("gh", "pr", "merge", prURL, "--squash")
 	cmd.Dir = d.cfg.RepoDir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("dispatch: auto-merge %s failed: %v\n%s", t.ID, err, string(out))
+		output := string(out)
+		log.Printf("dispatch: auto-merge %s failed: %v\n%s", t.ID, err, output)
+		if strings.Contains(output, "not mergeable") || strings.Contains(output, "CONFLICT") || strings.Contains(output, "cannot be cleanly created") {
+			d.spawnConflictResolver(ctx, t, prURL)
+		}
 	} else {
 		log.Printf("dispatch: auto-merged PR for %s", t.ID)
+		// Delete remote branch (best-effort).
+		branch := "ticket/" + t.ID
+		delCmd := exec.Command("git", "push", "origin", "--delete", branch)
+		delCmd.Dir = d.cfg.RepoDir
+		_ = delCmd.Run()
 	}
+}
+
+// validatePRChecks verifies CI checks pass on the PR before merging.
+// Returns true if checks pass (or no checks exist), false if failing/pending.
+// Emits EventTestsFailed when checks fail.
+func (d *Dispatcher) validatePRChecks(ctx context.Context, t *ticket.Ticket, prURL string) bool {
+	// Use `gh pr checks` to get CI status.
+	cmd := exec.Command("gh", "pr", "checks", prURL)
+	cmd.Dir = d.cfg.RepoDir
+	out, err := cmd.CombinedOutput()
+	output := string(out)
+
+	if err != nil {
+		// gh pr checks exits non-zero if any check failed or is pending.
+		if strings.Contains(output, "fail") || strings.Contains(output, "X") {
+			log.Printf("dispatch: CI checks failed for %s, emitting tests_failed event", t.ID)
+			_ = d.bus.Publish(ctx, events.Event{
+				Type: events.EventTestsFailed,
+				Payload: map[string]any{
+					"ticket_id":  t.ID,
+					"project_id": t.ProjectID,
+					"pr_url":     prURL,
+					"output":     truncate(output, 1000),
+				},
+			})
+			return false
+		}
+		// Checks still pending — skip for now, will retry on next scan.
+		if strings.Contains(output, "pending") || strings.Contains(output, "-") {
+			log.Printf("dispatch: CI checks pending for %s, will retry later", t.ID)
+			return false
+		}
+		// No checks configured or other error — allow merge.
+		log.Printf("dispatch: gh pr checks %s: %v (proceeding with merge)", t.ID, err)
+	}
+
+	return true
+}
+
+// truncate returns s truncated to maxLen characters.
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen]
+}
+
+// spawnConflictResolver launches a worker to rebase a PR branch onto main and resolve conflicts.
+func (d *Dispatcher) spawnConflictResolver(ctx context.Context, t *ticket.Ticket, prURL string) {
+	resolveKey := "resolve:" + t.ID
+
+	d.mu.Lock()
+	if len(d.active) >= d.cfg.MaxWorkers {
+		d.mu.Unlock()
+		log.Printf("dispatch: at capacity, deferring conflict resolution for %s", t.ID)
+		return
+	}
+	if _, running := d.active[resolveKey]; running {
+		d.mu.Unlock()
+		return
+	}
+	d.mu.Unlock()
+
+	workerCtx, cancel := context.WithCancel(ctx)
+	d.mu.Lock()
+	d.active[resolveKey] = cancel
+	d.mu.Unlock()
+
+	d.wg.Add(1)
+	go func() {
+		defer d.wg.Done()
+		defer func() {
+			d.mu.Lock()
+			delete(d.active, resolveKey)
+			d.mu.Unlock()
+			go d.reconcile(ctx)
+		}()
+
+		if err := d.runConflictResolver(workerCtx, t, prURL); err != nil {
+			log.Printf("dispatch: conflict resolver %s failed: %v", t.ID, err)
+		}
+	}()
+
+	log.Printf("dispatch: spawned conflict resolver for %s (%d/%d active)", t.ID, d.activeCount(), d.cfg.MaxWorkers)
+}
+
+// runConflictResolver rebases a ticket's branch onto main and retries the merge.
+func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, prURL string) error {
+	branch := "ticket/" + t.ID
+
+	workDir, err := d.worktrees.Create(t.ID, branch)
+	if err != nil {
+		return fmt.Errorf("create worktree: %w", err)
+	}
+
+	prompt := assembleConflictResolverPrompt(t, prURL, branch)
+	taskMsg := fmt.Sprintf(
+		"Rebase branch %s onto main and resolve any merge conflicts. "+
+			"Then force-push the result. The goal is to make PR %s mergeable.",
+		branch, prURL,
+	)
+
+	result, err := d.worker.Spawn(ctx, t.ID, t.ProjectID, prompt, taskMsg, workDir, d.cfg.ServerURL)
+	if err != nil {
+		return err
+	}
+
+	if !result.Success {
+		log.Printf("dispatch: conflict resolver %s failed: %s\nOutput: %s", t.ID, result.Error, result.Output)
+		return fmt.Errorf("resolver failed: %s", result.Error)
+	}
+
+	log.Printf("dispatch: conflict resolver %s completed, retrying merge", t.ID)
+
+	_ = d.worktrees.Remove(t.ID)
+	cmd := exec.Command("gh", "pr", "merge", prURL, "--squash")
+	cmd.Dir = d.cfg.RepoDir
+	out, mergeErr := cmd.CombinedOutput()
+	if mergeErr != nil {
+		log.Printf("dispatch: retry merge %s still failed: %v\n%s", t.ID, mergeErr, string(out))
+		return fmt.Errorf("retry merge: %w", mergeErr)
+	}
+
+	log.Printf("dispatch: auto-merged PR for %s (after conflict resolution)", t.ID)
+	// Delete remote branch (best-effort).
+	delCmd := exec.Command("git", "push", "origin", "--delete", branch)
+	delCmd.Dir = d.cfg.RepoDir
+	_ = delCmd.Run()
+	return nil
 }

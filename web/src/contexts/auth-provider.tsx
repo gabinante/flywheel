@@ -6,7 +6,7 @@ import {
   consumeOAuthHashToken,
   getStoredToken,
 } from '@/lib/auth-token'
-import { createWarrantClient } from '@/lib/api/client'
+import { createFlywheelClient } from '@/lib/api/client'
 
 function readInitialToken(): string | null {
   if (typeof window === 'undefined') return null
@@ -26,7 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null)
   }, [])
 
-  const client = useMemo(() => createWarrantClient(() => getStoredToken()), [])
+  const client = useMemo(() => createFlywheelClient(() => getStoredToken()), [])
 
   const value = useMemo(
     () => ({

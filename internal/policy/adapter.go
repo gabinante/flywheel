@@ -17,14 +17,14 @@ type TicketForPolicy struct {
 	Services    []string
 }
 
-// TicketPolicyAdapter adapts policy.Service to the ticket.PolicyEvaluator interface.
+// TicketPolicyAdapter adapts policy.PostureService to the ticket.PolicyEvaluator interface.
 // It bridges the policy and ticket packages without circular imports.
 type TicketPolicyAdapter struct {
-	svc *Service
+	svc *PostureService
 }
 
 // NewTicketPolicyAdapter returns a new adapter.
-func NewTicketPolicyAdapter(svc *Service) *TicketPolicyAdapter {
+func NewTicketPolicyAdapter(svc *PostureService) *TicketPolicyAdapter {
 	return &TicketPolicyAdapter{svc: svc}
 }
 

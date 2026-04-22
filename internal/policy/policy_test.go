@@ -651,7 +651,7 @@ func TestServiceCreatePolicySetFromPosture(t *testing.T) {
 	ctx := context.Background()
 	bus := events.NewInProcessBus()
 	store := NewMemoryStore()
-	svc := NewService(store, bus)
+	svc := NewPostureService(store, bus)
 
 	ps, err := svc.CreatePolicySet(ctx, "proj-1", "My Policy", "", "plan-only", "user-1")
 	if err != nil {
@@ -672,7 +672,7 @@ func TestServiceCreatePolicySetUnknownPosture(t *testing.T) {
 	ctx := context.Background()
 	bus := events.NewInProcessBus()
 	store := NewMemoryStore()
-	svc := NewService(store, bus)
+	svc := NewPostureService(store, bus)
 
 	_, err := svc.CreatePolicySet(ctx, "proj-1", "My Policy", "", "nonexistent", "user-1")
 	if err == nil {
@@ -684,7 +684,7 @@ func TestServiceActivatePolicySet(t *testing.T) {
 	ctx := context.Background()
 	bus := events.NewInProcessBus()
 	store := NewMemoryStore()
-	svc := NewService(store, bus)
+	svc := NewPostureService(store, bus)
 
 	ps, _ := svc.CreatePolicySet(ctx, "proj-1", "Policy A", "", "sandbox", "user-1")
 	if err := svc.ActivatePolicySet(ctx, ps.ID, "user-1"); err != nil {
@@ -704,7 +704,7 @@ func TestServiceActivatePolicySet_DeactivatesPrevious(t *testing.T) {
 	ctx := context.Background()
 	bus := events.NewInProcessBus()
 	store := NewMemoryStore()
-	svc := NewService(store, bus)
+	svc := NewPostureService(store, bus)
 
 	ps1, _ := svc.CreatePolicySet(ctx, "proj-1", "A", "", "sandbox", "user-1")
 	_ = svc.ActivatePolicySet(ctx, ps1.ID, "user-1")
@@ -727,7 +727,7 @@ func TestServiceApplyPosture(t *testing.T) {
 	ctx := context.Background()
 	bus := events.NewInProcessBus()
 	store := NewMemoryStore()
-	svc := NewService(store, bus)
+	svc := NewPostureService(store, bus)
 
 	ps, err := svc.ApplyPosture(ctx, "proj-1", "prod-gate", "user-1")
 	if err != nil {
@@ -749,7 +749,7 @@ func TestServiceEvaluateTransition_NoPolicy(t *testing.T) {
 	ctx := context.Background()
 	bus := events.NewInProcessBus()
 	store := NewMemoryStore()
-	svc := NewService(store, bus)
+	svc := NewPostureService(store, bus)
 
 	decision, err := svc.EvaluateTransition(ctx, "proj-1", TransitionContext{})
 	if err != nil {
@@ -764,7 +764,7 @@ func TestServiceEvaluateTransition_WithPolicy(t *testing.T) {
 	ctx := context.Background()
 	bus := events.NewInProcessBus()
 	store := NewMemoryStore()
-	svc := NewService(store, bus)
+	svc := NewPostureService(store, bus)
 
 	_, _ = svc.ApplyPosture(ctx, "proj-1", "sandbox", "user-1")
 
@@ -781,7 +781,7 @@ func TestServiceGetEffectivePolicy(t *testing.T) {
 	ctx := context.Background()
 	bus := events.NewInProcessBus()
 	store := NewMemoryStore()
-	svc := NewService(store, bus)
+	svc := NewPostureService(store, bus)
 
 	_, _ = svc.ApplyPosture(ctx, "proj-1", "prod-gate", "user-1")
 
@@ -818,7 +818,7 @@ func TestServiceUpdateRules(t *testing.T) {
 	ctx := context.Background()
 	bus := events.NewInProcessBus()
 	store := NewMemoryStore()
-	svc := NewService(store, bus)
+	svc := NewPostureService(store, bus)
 
 	ps, _ := svc.CreatePolicySet(ctx, "proj-1", "Custom", "", "", "user-1")
 
@@ -844,7 +844,7 @@ func TestServiceDeletePolicySet_ActiveFails(t *testing.T) {
 	ctx := context.Background()
 	bus := events.NewInProcessBus()
 	store := NewMemoryStore()
-	svc := NewService(store, bus)
+	svc := NewPostureService(store, bus)
 
 	ps, _ := svc.ApplyPosture(ctx, "proj-1", "sandbox", "user-1")
 	err := svc.DeletePolicySet(ctx, ps.ID, "user-1")
@@ -859,7 +859,7 @@ func TestPolicyChangeEvents(t *testing.T) {
 	ctx := context.Background()
 	bus := events.NewInProcessBus()
 	store := NewMemoryStore()
-	svc := NewService(store, bus)
+	svc := NewPostureService(store, bus)
 
 	var receivedEvents []events.Event
 	bus.Subscribe(events.EventPolicyChanged, func(_ context.Context, ev events.Event) {
@@ -899,7 +899,7 @@ func TestServicePreviewPolicyChange(t *testing.T) {
 	ctx := context.Background()
 	bus := events.NewInProcessBus()
 	store := NewMemoryStore()
-	svc := NewService(store, bus)
+	svc := NewPostureService(store, bus)
 
 	// Set up current policy (plan-only).
 	_, _ = svc.ApplyPosture(ctx, "proj-1", "plan-only", "user-1")

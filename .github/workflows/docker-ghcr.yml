@@ -26,5 +26,5 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ env.REPO_OWNER_LOWER }}/warrant:latest
-            ghcr.io/${{ env.REPO_OWNER_LOWER }}/warrant:${{ github.ref_name }}
+            ghcr.io/${{ env.REPO_OWNER_LOWER }}/flywheel:latest
+            ghcr.io/${{ env.REPO_OWNER_LOWER }}/flywheel:${{ github.ref_name }}

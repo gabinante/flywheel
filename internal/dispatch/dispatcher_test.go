@@ -72,6 +72,21 @@ func (m *mockTicketGetter) ListByState(_ context.Context, _ string, state ticket
 	return result, nil
 }
 
+func (m *mockTicketGetter) ListByWorkStream(_ context.Context, _ string, workStreamID string) ([]*ticket.Ticket, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.err != nil {
+		return nil, m.err
+	}
+	var result []*ticket.Ticket
+	for _, t := range m.tickets {
+		if t.WorkStreamID == workStreamID {
+			result = append(result, t)
+		}
+	}
+	return result, nil
+}
+
 // mockProjectGetter implements ProjectGetter for tests.
 type mockProjectGetter struct {
 	projects map[string]*project.Project
@@ -171,8 +186,13 @@ func TestNewDispatcherCLIWorker(t *testing.T) {
 	}
 
 	// Should use CLIWorker when DockerEnabled is false.
-	if _, ok := d.worker.(*CLIWorker); !ok {
-		t.Error("expected CLIWorker when DockerEnabled is false")
+	cliWorker, ok := d.worker.(*CLIWorker)
+	if !ok {
+		t.Fatal("expected CLIWorker when DockerEnabled is false")
+	}
+	// Driver should be Claude by default.
+	if cliWorker.Driver.Name() != "claude" {
+		t.Errorf("expected claude driver, got %q", cliWorker.Driver.Name())
 	}
 }
 
@@ -205,6 +225,32 @@ func TestNewDispatcherDockerWorker(t *testing.T) {
 	}
 	if dw.APIKey != "key-456" {
 		t.Errorf("expected API key 'key-456', got %q", dw.APIKey)
+	}
+	// Driver should be Claude by default.
+	if dw.Driver.Name() != "claude" {
+		t.Errorf("expected claude driver, got %q", dw.Driver.Name())
+	}
+}
+
+func TestNewDispatcherGenericDriver(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter()
+	pg := newMockProjectGetter()
+
+	cfg := Config{
+		MaxWorkers:  1,
+		AgentDriver: "generic",
+		AgentCLIPath: "/usr/bin/opencode",
+		RepoDir:     "/repo",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	cliWorker, ok := d.worker.(*CLIWorker)
+	if !ok {
+		t.Fatal("expected CLIWorker when DockerEnabled is false")
+	}
+	if cliWorker.Driver.Name() != "generic" {
+		t.Errorf("expected generic driver, got %q", cliWorker.Driver.Name())
 	}
 }
 
@@ -742,8 +788,464 @@ func TestRunWorkerProjectNotFound(t *testing.T) {
 	}
 }
 
-func TestEventBusIntegration(t *testing.T) {
+// --- Lease Release Tests (Layer 1 failure recovery) ---
+
+// mockLeaseReleaser implements LeaseReleaser for tests.
+type mockLeaseReleaser struct {
+	mu       sync.Mutex
+	calls    []string // ticket IDs passed to ForceReleaseLease
+	err      error    // error to return
+}
+
+func (m *mockLeaseReleaser) ForceReleaseLease(_ context.Context, ticketID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls = append(m.calls, ticketID)
+	return m.err
+}
+
+func (m *mockLeaseReleaser) callCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.calls)
+}
+
+func (m *mockLeaseReleaser) lastTicketID() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.calls) == 0 {
+		return ""
+	}
+	return m.calls[len(m.calls)-1]
+}
+
+func TestHandleWorkerExit_WorkerCrash_ReleasesLease(t *testing.T) {
+	// Simulate: worker exits with error while ticket is still in executing state.
+	// Expected: lease is immediately released, ticket goes back to draft (pending).
 	proj := &project.Project{ID: "p-1", Name: "test"}
+	tk := &ticket.Ticket{
+		ID:        "t-crash",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+		Title:     "crash test",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	releaser := &mockLeaseReleaser{}
+	worker := &mockWorker{
+		spawnFunc: func(ctx context.Context, _, _, _, _, _, _ string) (*WorkerResult, error) {
+			// Simulate crash: return error.
+			return nil, fmt.Errorf("process killed")
+		},
+	}
+
+	cfg := Config{
+		MaxWorkers:    5,
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+
+	// Ticket state must be planning or executing for handleWorkerExit to trigger.
+	// After spawn → runWorker fails → handleWorkerExit checks ticket state.
+	// Update the mock ticket to be in executing state (simulating that claim happened).
+	tg.mu.Lock()
+	tk.State = ticket.StateExecuting
+	tg.mu.Unlock()
+
+	d.spawn(context.Background(), tk)
+
+	// Wait for goroutine to complete.
+	d.wg.Wait()
+
+	if releaser.callCount() != 1 {
+		t.Fatalf("expected 1 ForceReleaseLease call, got %d", releaser.callCount())
+	}
+	if releaser.lastTicketID() != "t-crash" {
+		t.Errorf("expected ticketID 't-crash', got %q", releaser.lastTicketID())
+	}
+}
+
+func TestHandleWorkerExit_SuccessfulSubmit_NoRelease(t *testing.T) {
+	// Simulate: worker submits successfully, ticket moves to awaiting_validation.
+	// Expected: no lease release (ticket already advanced past worker's responsibility).
+	proj := &project.Project{ID: "p-1", Name: "test"}
+	tk := &ticket.Ticket{
+		ID:        "t-submit",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+		Title:     "submit test",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	releaser := &mockLeaseReleaser{}
+	worker := &mockWorker{
+		spawnFunc: func(ctx context.Context, _, _, _, _, _, _ string) (*WorkerResult, error) {
+			// Simulate successful worker: it submits, ticket moves to awaiting_validation.
+			tg.mu.Lock()
+			tk.State = ticket.StateAwaitingValidation
+			tg.mu.Unlock()
+			return &WorkerResult{Success: true, Output: "done"}, nil
+		},
+	}
+
+	cfg := Config{
+		MaxWorkers:    5,
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+
+	d.spawn(context.Background(), tk)
+	d.wg.Wait()
+
+	if releaser.callCount() != 0 {
+		t.Errorf("expected 0 ForceReleaseLease calls (ticket submitted), got %d", releaser.callCount())
+	}
+}
+
+func TestHandleWorkerExit_PlanningState_ReleasesLease(t *testing.T) {
+	// Simulate: worker exits while ticket is in planning (claimed) state.
+	// Expected: lease is released.
+	proj := &project.Project{ID: "p-1", Name: "test"}
+	tk := &ticket.Ticket{
+		ID:        "t-planning",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+		Title:     "planning crash",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	releaser := &mockLeaseReleaser{}
+	worker := &mockWorker{
+		spawnFunc: func(ctx context.Context, _, _, _, _, _, _ string) (*WorkerResult, error) {
+			return nil, fmt.Errorf("crash during planning")
+		},
+	}
+
+	cfg := Config{
+		MaxWorkers:    5,
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+
+	// Simulate that ticket was claimed (moved to planning).
+	tg.mu.Lock()
+	tk.State = ticket.StatePlanning
+	tg.mu.Unlock()
+
+	d.spawn(context.Background(), tk)
+	d.wg.Wait()
+
+	if releaser.callCount() != 1 {
+		t.Fatalf("expected 1 ForceReleaseLease call for planning state, got %d", releaser.callCount())
+	}
+}
+
+func TestHandleWorkerExit_PreSpawnFailure_NoRelease(t *testing.T) {
+	// Simulate: runWorker fails before reaching spawn (e.g. project not found).
+	// Ticket is still in pending/draft state → handleWorkerExit should not release.
+	tk := &ticket.Ticket{
+		ID:        "t-prespawn",
+		ProjectID: "missing-project",
+		State:     ticket.StatePending,
+		Title:     "pre-spawn fail",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter() // no projects → GetProject fails
+
+	releaser := &mockLeaseReleaser{}
+	worker := &mockWorker{}
+
+	cfg := Config{
+		MaxWorkers:    5,
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+
+	d.spawn(context.Background(), tk)
+	d.wg.Wait()
+
+	// Ticket is still in pending (draft) state, not planning/executing,
+	// so handleWorkerExit should be a no-op.
+	if releaser.callCount() != 0 {
+		t.Errorf("expected 0 ForceReleaseLease calls (ticket still pending), got %d", releaser.callCount())
+	}
+}
+
+func TestHandleWorkerExit_NilReleaser_NoOp(t *testing.T) {
+	// When leaseReleaser is nil, handleWorkerExit is a graceful no-op.
+	proj := &project.Project{ID: "p-1", Name: "test"}
+	tk := &ticket.Ticket{
+		ID:        "t-nil",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+		Title:     "nil releaser",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	worker := &mockWorker{
+		spawnFunc: func(ctx context.Context, _, _, _, _, _, _ string) (*WorkerResult, error) {
+			return nil, fmt.Errorf("crash")
+		},
+	}
+
+	cfg := Config{
+		MaxWorkers:    5,
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	// Note: NOT setting leaseReleaser — it's nil.
+
+	tg.mu.Lock()
+	tk.State = ticket.StateExecuting
+	tg.mu.Unlock()
+
+	// Should not panic with nil leaseReleaser.
+	d.spawn(context.Background(), tk)
+	d.wg.Wait()
+}
+
+func TestHandleWorkerExit_Escalation_NoRelease(t *testing.T) {
+	// Simulate: worker escalates, ticket moves to awaiting_input (needs_human).
+	// Expected: no release — escalation is a valid worker exit.
+	proj := &project.Project{ID: "p-1", Name: "test"}
+	tk := &ticket.Ticket{
+		ID:        "t-escalate",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+		Title:     "escalation test",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	releaser := &mockLeaseReleaser{}
+	worker := &mockWorker{
+		spawnFunc: func(ctx context.Context, _, _, _, _, _, _ string) (*WorkerResult, error) {
+			// Simulate: worker escalates, ticket moves to awaiting_input.
+			tg.mu.Lock()
+			tk.State = ticket.StateAwaitingInput
+			tg.mu.Unlock()
+			return &WorkerResult{Success: true, Output: "escalated"}, nil
+		},
+	}
+
+	cfg := Config{
+		MaxWorkers:    5,
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+
+	d.spawn(context.Background(), tk)
+	d.wg.Wait()
+
+	if releaser.callCount() != 0 {
+		t.Errorf("expected 0 ForceReleaseLease calls (escalation), got %d", releaser.callCount())
+	}
+}
+
+func TestHandleWorkerExit_ActiveMapCleanup(t *testing.T) {
+	// Verify: after worker crash + lease release, the ticket is removed from the active map.
+	proj := &project.Project{ID: "p-1", Name: "test"}
+	tk := &ticket.Ticket{
+		ID:        "t-cleanup",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+		Title:     "cleanup test",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	releaser := &mockLeaseReleaser{}
+	worker := &mockWorker{
+		spawnFunc: func(ctx context.Context, _, _, _, _, _, _ string) (*WorkerResult, error) {
+			return nil, fmt.Errorf("crash")
+		},
+	}
+
+	cfg := Config{
+		MaxWorkers:    5,
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+
+	tg.mu.Lock()
+	tk.State = ticket.StateExecuting
+	tg.mu.Unlock()
+
+	d.spawn(context.Background(), tk)
+	d.wg.Wait()
+
+	// Worker should be removed from active map.
+	if d.activeCount() != 0 {
+		t.Errorf("expected 0 active workers after crash, got %d", d.activeCount())
+	}
+}
+
+func TestHandleWorkerExit_ReleaserError_Logged(t *testing.T) {
+	// Verify: if ForceReleaseLease returns an error, we don't panic and the
+	// worker is still cleaned up from active map (Layer 2 TTL will handle it).
+	proj := &project.Project{ID: "p-1", Name: "test"}
+	tk := &ticket.Ticket{
+		ID:        "t-err",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+		Title:     "release error",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	releaser := &mockLeaseReleaser{err: fmt.Errorf("redis unavailable")}
+	worker := &mockWorker{
+		spawnFunc: func(ctx context.Context, _, _, _, _, _, _ string) (*WorkerResult, error) {
+			return nil, fmt.Errorf("crash")
+		},
+	}
+
+	cfg := Config{
+		MaxWorkers:    5,
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+
+	tg.mu.Lock()
+	tk.State = ticket.StateExecuting
+	tg.mu.Unlock()
+
+	d.spawn(context.Background(), tk)
+	d.wg.Wait()
+
+	// ForceReleaseLease was called (and failed), but we don't crash.
+	if releaser.callCount() != 1 {
+		t.Errorf("expected 1 ForceReleaseLease call, got %d", releaser.callCount())
+	}
+	// Active map still cleaned up (defer handles that).
+	if d.activeCount() != 0 {
+		t.Errorf("expected 0 active after error, got %d", d.activeCount())
+	}
+}
+
+func TestHandleWorkerExit_ConcurrentWorkers(t *testing.T) {
+	// Verify: multiple workers crashing concurrently each get their lease released.
+	proj := &project.Project{ID: "p-1", Name: "test"}
+	tk1 := &ticket.Ticket{
+		ID:        "t-c1",
+		ProjectID: "p-1",
+		State:     ticket.StateExecuting,
+		Title:     "concurrent 1",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	tk2 := &ticket.Ticket{
+		ID:        "t-c2",
+		ProjectID: "p-1",
+		State:     ticket.StateExecuting,
+		Title:     "concurrent 2",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk1, tk2)
+	pg := newMockProjectGetter(proj)
+
+	releaser := &mockLeaseReleaser{}
+	worker := &mockWorker{
+		spawnFunc: func(ctx context.Context, _, _, _, _, _, _ string) (*WorkerResult, error) {
+			return nil, fmt.Errorf("crash")
+		},
+	}
+
+	cfg := Config{
+		MaxWorkers:    5,
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+
+	// Spawn both workers concurrently (they have different IDs so no dup prevention).
+	d.spawn(context.Background(), tk1)
+	d.spawn(context.Background(), tk2)
+	d.wg.Wait()
+
+	if releaser.callCount() != 2 {
+		t.Errorf("expected 2 ForceReleaseLease calls, got %d", releaser.callCount())
+	}
+	if d.activeCount() != 0 {
+		t.Errorf("expected 0 active after concurrent crashes, got %d", d.activeCount())
+	}
+}
+
+func TestEventBusIntegration(t *testing.T) {
+	proj := &project.Project{ID: "p-1", Name: "test", DispatchEnabled: true}
 	tk := &ticket.Ticket{
 		ID:        "t-evt",
 		ProjectID: "p-1",
@@ -785,5 +1287,185 @@ func TestEventBusIntegration(t *testing.T) {
 
 	if worker.callCount() != 1 {
 		t.Errorf("expected 1 worker call from event, got %d", worker.callCount())
+	}
+}
+
+func TestDispatchDisabledSkipsTickets(t *testing.T) {
+	// When dispatch_enabled=false, the dispatcher should skip the project's tickets.
+	proj := &project.Project{ID: "p-1", Name: "test", DispatchEnabled: false}
+	tk := &ticket.Ticket{
+		ID:        "t-disabled",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+		Title:     "disabled dispatch test",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	worker := &mockWorker{}
+	cfg := Config{
+		MaxWorkers:    5,
+		ProjectID:     "p-1",
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d.Start(ctx)
+	defer d.Stop()
+
+	// Publish a ticket.created event for the disabled project.
+	_ = bus.Publish(ctx, events.Event{
+		Type:    events.EventTicketCreated,
+		Payload: map[string]any{"ticket_id": "t-disabled"},
+	})
+
+	// Wait for the goroutine to process.
+	time.Sleep(500 * time.Millisecond)
+
+	if worker.callCount() != 0 {
+		t.Errorf("expected 0 worker calls when dispatch disabled, got %d", worker.callCount())
+	}
+}
+
+func TestDispatchEnabledAllowsTickets(t *testing.T) {
+	// When dispatch_enabled=true, the dispatcher should process the project's tickets.
+	proj := &project.Project{ID: "p-1", Name: "test", DispatchEnabled: true}
+	tk := &ticket.Ticket{
+		ID:        "t-enabled",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+		Title:     "enabled dispatch test",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	worker := &mockWorker{}
+	cfg := Config{
+		MaxWorkers:    5,
+		ProjectID:     "p-1",
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d.Start(ctx)
+	defer d.Stop()
+
+	// Publish a ticket.created event for the enabled project.
+	_ = bus.Publish(ctx, events.Event{
+		Type:    events.EventTicketCreated,
+		Payload: map[string]any{"ticket_id": "t-enabled"},
+	})
+
+	// Wait for the goroutine to process.
+	time.Sleep(500 * time.Millisecond)
+
+	if worker.callCount() != 1 {
+		t.Errorf("expected 1 worker call when dispatch enabled, got %d", worker.callCount())
+	}
+}
+
+func TestWorkStreamCompletionAllDone(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(
+		&ticket.Ticket{ID: "t-1", ProjectID: "p-1", State: ticket.StateClosed, WorkStreamID: "ws-1"},
+		&ticket.Ticket{ID: "t-2", ProjectID: "p-1", State: ticket.StateClosed, WorkStreamID: "ws-1"},
+		&ticket.Ticket{ID: "t-3", ProjectID: "p-1", State: ticket.StateClosed, WorkStreamID: "ws-1"},
+	)
+	pg := newMockProjectGetter()
+	cfg := Config{MaxWorkers: 5, WorktreeDir: t.TempDir(), RepoDir: t.TempDir()}
+
+	d := New(cfg, bus, tg, pg)
+
+	// Subscribe to the work_stream.completed event.
+	var received []events.Event
+	bus.Subscribe(events.EventWorkStreamCompleted, func(_ context.Context, e events.Event) {
+		received = append(received, e)
+	})
+
+	// Simulate ticket done event.
+	d.handleTicketDone(context.Background(), events.Event{
+		Type:    events.EventTicketDone,
+		Payload: map[string]any{"ticket_id": "t-1"},
+	})
+
+	if len(received) != 1 {
+		t.Fatalf("expected 1 work_stream.completed event, got %d", len(received))
+	}
+	if received[0].Payload["work_stream_id"] != "ws-1" {
+		t.Errorf("expected work_stream_id=ws-1, got %v", received[0].Payload["work_stream_id"])
+	}
+	if received[0].Payload["ticket_count"] != 3 {
+		t.Errorf("expected ticket_count=3, got %v", received[0].Payload["ticket_count"])
+	}
+}
+
+func TestWorkStreamCompletionNotAllDone(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(
+		&ticket.Ticket{ID: "t-1", ProjectID: "p-1", State: ticket.StateClosed, WorkStreamID: "ws-1"},
+		&ticket.Ticket{ID: "t-2", ProjectID: "p-1", State: ticket.StateExecuting, WorkStreamID: "ws-1"},
+	)
+	pg := newMockProjectGetter()
+	cfg := Config{MaxWorkers: 5, WorktreeDir: t.TempDir(), RepoDir: t.TempDir()}
+
+	d := New(cfg, bus, tg, pg)
+
+	var received []events.Event
+	bus.Subscribe(events.EventWorkStreamCompleted, func(_ context.Context, e events.Event) {
+		received = append(received, e)
+	})
+
+	d.handleTicketDone(context.Background(), events.Event{
+		Type:    events.EventTicketDone,
+		Payload: map[string]any{"ticket_id": "t-1"},
+	})
+
+	if len(received) != 0 {
+		t.Errorf("expected no work_stream.completed event when not all tickets are done, got %d", len(received))
+	}
+}
+
+func TestWorkStreamCompletionNoWorkStream(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(
+		&ticket.Ticket{ID: "t-1", ProjectID: "p-1", State: ticket.StateClosed, WorkStreamID: ""},
+	)
+	pg := newMockProjectGetter()
+	cfg := Config{MaxWorkers: 5, WorktreeDir: t.TempDir(), RepoDir: t.TempDir()}
+
+	d := New(cfg, bus, tg, pg)
+
+	var received []events.Event
+	bus.Subscribe(events.EventWorkStreamCompleted, func(_ context.Context, e events.Event) {
+		received = append(received, e)
+	})
+
+	d.handleTicketDone(context.Background(), events.Event{
+		Type:    events.EventTicketDone,
+		Payload: map[string]any{"ticket_id": "t-1"},
+	})
+
+	if len(received) != 0 {
+		t.Errorf("expected no work_stream.completed event for ticket without work_stream_id, got %d", len(received))
 	}
 }

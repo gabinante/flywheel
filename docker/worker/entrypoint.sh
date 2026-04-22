@@ -2,7 +2,7 @@
 set -e
 
 # Apply firewall rules if enabled (default-deny with allowlist)
-if [ "$WARRANT_FIREWALL" = "true" ]; then
+if [ "$FLYWHEEL_FIREWALL" = "true" ]; then
   iptables -P OUTPUT DROP
 
   # Allow loopback
@@ -15,14 +15,14 @@ if [ "$WARRANT_FIREWALL" = "true" ]; then
   iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
   iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
 
-  # Allow host.docker.internal (for MCP -> warrant server)
+  # Allow host.docker.internal (for MCP -> Flywheel server)
   if getent hosts host.docker.internal > /dev/null 2>&1; then
     HOST_IP=$(getent hosts host.docker.internal | awk '{print $1}')
     iptables -A OUTPUT -d "$HOST_IP" -j ACCEPT
   fi
 
   # Allow configured hosts (comma-separated)
-  IFS=',' read -ra HOSTS <<< "$WARRANT_ALLOWED_HOSTS"
+  IFS=',' read -ra HOSTS <<< "$FLYWHEEL_ALLOWED_HOSTS"
   for host in "${HOSTS[@]}"; do
     host=$(echo "$host" | xargs)
     if [ -n "$host" ]; then

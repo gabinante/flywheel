@@ -196,11 +196,11 @@ func (h *AuthHandler) githubCallback(w http.ResponseWriter, r *http.Request) {
 	// Fallback if BaseURL is unusable: HTML with token for MCP copy-paste
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`<!DOCTYPE html><html><head><title>Warrant – Signed in</title></head><body>
+	_, _ = w.Write([]byte(`<!DOCTYPE html><html><head><title>Flywheel – Signed in</title></head><body>
 <h1>You're signed in</h1>
 <p><strong>Agent ID</strong> (use in MCP tools like <code>claim_ticket</code>):</p>
 <pre style="background:#f4f4f4;padding:1em;overflow:auto;">` + agent.ID + `</pre>
-<p><strong>Token</strong> (set as <code>WARRANT_TOKEN</code> in your MCP env):</p>
+<p><strong>Token</strong> (set as <code>FLYWHEEL_TOKEN</code> in your MCP env):</p>
 <pre style="background:#f4f4f4;padding:1em;overflow:auto;">` + jwtStr + `</pre>
 <p>See <code>docs/cursor-mcp.md</code> for Cursor setup.</p>
 </body></html>`))

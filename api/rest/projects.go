@@ -14,7 +14,7 @@ import (
 type ProjectsHandler struct {
 	ProjectSvc *project.Service
 	OrgSvc     *org.Service
-	AgentStore *agent.Store
+	AgentStore agent.AgentStore
 }
 
 func (h *ProjectsHandler) getProject(w http.ResponseWriter, r *http.Request) {
