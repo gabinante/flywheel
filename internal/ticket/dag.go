@@ -2,8 +2,13 @@ package ticket
 
 import "context"
 
+// DependencyResolver can fetch tickets by IDs for dependency resolution.
+type DependencyResolver interface {
+	GetByIDs(ctx context.Context, ids []string) ([]*Ticket, error)
+}
+
 // ResolveDependencies returns the direct dependency tickets for t.
-func ResolveDependencies(store *Store, ctx context.Context, t *Ticket) ([]*Ticket, error) {
+func ResolveDependencies(store DependencyResolver, ctx context.Context, t *Ticket) ([]*Ticket, error) {
 	if len(t.DependsOn) == 0 {
 		return nil, nil
 	}

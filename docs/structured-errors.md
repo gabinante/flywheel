@@ -46,7 +46,7 @@ Use **code** to decide next step:
 - `project_closed` → Reopen the project with **update_project_status** (status `active`) or pick another project.
 - `internal` → Optional single retry; then stop or escalate.
 
-Agents should parse the error string as JSON, read `code` and `retriable`, and branch accordingly. The in-app agent guide (Warrant MCP) summarizes this; see also **docs/cursor-mcp.md** for setup.
+Agents should parse the error string as JSON, read `code` and `retriable`, and branch accordingly. The in-app agent guide (Flywheel MCP) summarizes this; see also **docs/cursor-mcp.md** for setup.
 
 ## Idempotency (create and claim)
 

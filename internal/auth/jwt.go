@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	Issuer  = "warrant"
+	Issuer  = "flywheel"
 	Subject = "agent_id" // JWT sub = agent ID for API/MCP
 )
 

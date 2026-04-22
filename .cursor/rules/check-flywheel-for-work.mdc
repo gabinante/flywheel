@@ -1,0 +1,14 @@
+---
+description: Use Flywheel MCP as the source of truth for work; list projects and tickets before doing "the rest of the work".
+alwaysApply: true
+---
+
+# Check Flywheel for work
+
+When the user asks to "do work", "do the rest of the work", or what to do next:
+
+1. **Use Flywheel MCP** – Call **list_projects** (no args when using OAuth) to list projects. Then **list_tickets** (project_id, optional state) to list tickets (e.g. state=pending or state=awaiting_review). Use the structured-errors project (or the project the user names) and its tickets as the list of work. Do not infer work from the codebase alone; work is defined by tickets in Flywheel.
+
+2. **Then** – Claim or pick a ticket from that list, implement what the ticket asks for, and use **log_step** and **submit_ticket** as you go. If the user asked to "do the rest", iterate over remaining tickets from Flywheel.
+
+3. **Work streams + Git** – If the project has **repo_url** and tickets use a **work_stream**, ensure the work stream’s **branch** is set: after creating or checking out the Git branch locally, call **update_work_stream** with **branch** (`git branch --show-current`). **update_work_stream_plan** does **not** set the branch—do not skip **update_work_stream** after **create_work_stream**.

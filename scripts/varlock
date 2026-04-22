@@ -1,0 +1,251 @@
+#!/usr/bin/env bash
+# varlock — minimal secrets management for Warrant.
+#
+# Reads .env.schema to understand expected variables and their annotations.
+# Loads values from .env (or a specified file) into the environment, then
+# either exports them (load) or execs a wrapped command (run).
+#
+# Sensitive values (marked @sensitive in .env.schema) are NEVER printed to
+# stdout/stderr by this tool.
+#
+# Usage:
+#   varlock run [--env-file FILE] [--schema FILE] -- <command> [args...]
+#   varlock load [--env-file FILE] [--schema FILE]
+#   varlock validate [--env-file FILE] [--schema FILE]
+#
+# Schema format (.env.schema):
+#   KEY=default_value  # @sensitive @required
+#   KEY=               # @optional
+#   # Lines starting with # are comments.
+
+set -euo pipefail
+
+VARLOCK_ENV_FILE="${VARLOCK_ENV_FILE:-.env}"
+VARLOCK_SCHEMA_FILE="${VARLOCK_SCHEMA_FILE:-.env.schema}"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  varlock run [OPTIONS] -- <command> [args...]   Load secrets and exec command
+  varlock load [OPTIONS]                         Print export statements (secrets masked)
+  varlock validate [OPTIONS]                     Validate .env against schema
+
+Options:
+  --env-file FILE    Path to env file (default: .env or $VARLOCK_ENV_FILE)
+  --schema FILE      Path to schema file (default: .env.schema or $VARLOCK_SCHEMA_FILE)
+  -h, --help         Show this help
+
+Environment:
+  VARLOCK_ENV_FILE   Default env file path
+  VARLOCK_SCHEMA_FILE Default schema file path
+EOF
+}
+
+# Parse a .env file and set variables in the current shell (does NOT overwrite existing env).
+_load_env_file() {
+  local file="$1"
+  if [[ ! -f "$file" ]]; then
+    return 0
+  fi
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%%#*}"  # strip inline comments
+    line="$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    [[ -z "$line" ]] && continue
+    local key="${line%%=*}"
+    local val="${line#*=}"
+    [[ -z "$key" ]] && continue
+    # Don't overwrite existing environment variables
+    if [[ -z "${!key+x}" || -z "${!key}" ]]; then
+      export "$key=$val"
+    fi
+  done < "$file"
+}
+
+# Parse .env.schema and return arrays of variable metadata.
+# Sets: SCHEMA_KEYS, SCHEMA_DEFAULTS, SCHEMA_SENSITIVE, SCHEMA_REQUIRED
+declare -a SCHEMA_KEYS=()
+declare -a SCHEMA_DEFAULTS=()
+declare -a SCHEMA_SENSITIVE=()
+declare -a SCHEMA_REQUIRED=()
+
+_parse_schema() {
+  local file="$1"
+  SCHEMA_KEYS=()
+  SCHEMA_DEFAULTS=()
+  SCHEMA_SENSITIVE=()
+  SCHEMA_REQUIRED=()
+
+  if [[ ! -f "$file" ]]; then
+    echo "varlock: warning: schema file not found: $file" >&2
+    return 0
+  fi
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    local trimmed
+    trimmed="$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    # Skip empty lines and pure comment lines
+    [[ -z "$trimmed" || "$trimmed" == \#* ]] && continue
+
+    # Extract comment annotations
+    local comment=""
+    if [[ "$trimmed" == *"#"* ]]; then
+      comment="${trimmed#*#}"
+      trimmed="${trimmed%%#*}"
+      trimmed="$(echo "$trimmed" | sed 's/[[:space:]]*$//')"
+    fi
+
+    # Parse KEY=default
+    local key="${trimmed%%=*}"
+    local default_val="${trimmed#*=}"
+    [[ -z "$key" ]] && continue
+
+    # Check annotations
+    local sensitive=0
+    local required=0
+    if [[ "$comment" == *"@sensitive"* ]]; then
+      sensitive=1
+    fi
+    if [[ "$comment" == *"@required"* ]]; then
+      required=1
+    fi
+
+    SCHEMA_KEYS+=("$key")
+    SCHEMA_DEFAULTS+=("$default_val")
+    SCHEMA_SENSITIVE+=("$sensitive")
+    SCHEMA_REQUIRED+=("$required")
+  done < "$file"
+}
+
+# Validate that required variables are set.
+_validate() {
+  local errors=0
+  for i in "${!SCHEMA_KEYS[@]}"; do
+    local key="${SCHEMA_KEYS[$i]}"
+    local required="${SCHEMA_REQUIRED[$i]}"
+    if [[ "$required" == "1" ]]; then
+      local val="${!key:-}"
+      if [[ -z "$val" ]]; then
+        echo "varlock: error: required variable $key is not set" >&2
+        errors=$((errors + 1))
+      fi
+    fi
+  done
+  return "$errors"
+}
+
+# Print export statements. Sensitive values are masked in output.
+_print_exports() {
+  for i in "${!SCHEMA_KEYS[@]}"; do
+    local key="${SCHEMA_KEYS[$i]}"
+    local sensitive="${SCHEMA_SENSITIVE[$i]}"
+    local val="${!key:-${SCHEMA_DEFAULTS[$i]}}"
+    if [[ "$sensitive" == "1" && -n "$val" ]]; then
+      echo "export ${key}=<REDACTED>"
+    else
+      echo "export ${key}=${val}"
+    fi
+  done
+}
+
+# Apply schema defaults for unset variables.
+_apply_defaults() {
+  for i in "${!SCHEMA_KEYS[@]}"; do
+    local key="${SCHEMA_KEYS[$i]}"
+    local default_val="${SCHEMA_DEFAULTS[$i]}"
+    if [[ -z "${!key:-}" && -n "$default_val" ]]; then
+      export "$key=$default_val"
+    fi
+  done
+}
+
+cmd_run() {
+  _load_env_file "$VARLOCK_ENV_FILE"
+  _parse_schema "$VARLOCK_SCHEMA_FILE"
+  _apply_defaults
+  if ! _validate; then
+    exit 1
+  fi
+  exec "$@"
+}
+
+cmd_load() {
+  _load_env_file "$VARLOCK_ENV_FILE"
+  _parse_schema "$VARLOCK_SCHEMA_FILE"
+  _apply_defaults
+  if ! _validate; then
+    exit 1
+  fi
+  _print_exports
+}
+
+cmd_validate() {
+  _load_env_file "$VARLOCK_ENV_FILE"
+  _parse_schema "$VARLOCK_SCHEMA_FILE"
+  _apply_defaults
+  if _validate; then
+    echo "varlock: schema validation passed" >&2
+  else
+    echo "varlock: schema validation failed" >&2
+    exit 1
+  fi
+}
+
+# --- Main ---
+
+if [[ $# -eq 0 ]]; then
+  usage
+  exit 1
+fi
+
+SUBCMD="$1"
+shift
+
+# Parse global options
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --env-file)
+      VARLOCK_ENV_FILE="$2"
+      shift 2
+      ;;
+    --schema)
+      VARLOCK_SCHEMA_FILE="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+case "$SUBCMD" in
+  run)
+    if [[ $# -eq 0 ]]; then
+      echo "varlock: error: 'run' requires a command" >&2
+      exit 1
+    fi
+    cmd_run "$@"
+    ;;
+  load)
+    cmd_load
+    ;;
+  validate)
+    cmd_validate
+    ;;
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  *)
+    echo "varlock: unknown command: $SUBCMD" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

@@ -11,13 +11,21 @@ import (
 
 // RouterConfig configures the main HTTP router (std net/http only).
 type RouterConfig struct {
-	StrictServer   *StrictServer
-	AuthMiddleware func(http.Handler) http.Handler
-	AuthHandler    *AuthHandler
-	OAuthHandler   *OAuthHandler
-	MCPHandler     http.Handler
-	MCPSSEHandler  http.Handler // SSE transport for older MCP clients
-	AgentsHandler  *AgentsHandler
+	StrictServer       *StrictServer
+	AuthMiddleware     func(http.Handler) http.Handler
+	AuthHandler        *AuthHandler
+	OAuthHandler       *OAuthHandler
+	MCPHandler         http.Handler
+	MCPSSEHandler      http.Handler // SSE transport for older MCP clients
+	AgentsHandler      *AgentsHandler
+	DispatchHandler    *DispatchHandler
+	PlansHandler       *PlansHandler
+	ObservationHandler *ObservationHandler
+	CatalogHandler     *CatalogHandler // Layer 14 project map
+	PoliciesHandler    *PoliciesHandler // Policy calibration feedback loop (not in OpenAPI spec yet)
+	ClaimsHandler      *ClaimsHandler   // Claims registry for concurrency control (spec v0.2 §4.3)
+	HooksHandler       *HooksHandler    // Change event webhook receiver (spec v0.2 §2.4)
+	PillarsHandler     *PillarsHandler  // Pillar and strategy layer (Layer 15)
 	// WebDist is the Vite outDir (contains index.html and assets/). Empty skips SPA routes.
 	WebDist string
 }
@@ -31,7 +39,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("# Warrant metrics\n# Expose Prometheus or other metrics here when needed.\n"))
+		w.Write([]byte("# Flywheel metrics\n# Expose Prometheus or other metrics here when needed.\n"))
 	})
 
 	// Spec-generated API (healthz + all spec routes) — registers onto mux
@@ -85,6 +93,39 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		agents := cfg.AgentsHandler
 		mux.HandleFunc("POST /agents", agents.register)
 		mux.HandleFunc("GET /agents/{agentID}", agents.getAgent)
+	}
+	if cfg.DispatchHandler != nil {
+		mux.HandleFunc("GET /api/dispatch/status", cfg.DispatchHandler.getStatus)
+	}
+	if cfg.PlansHandler != nil {
+		plans := cfg.PlansHandler
+		mux.HandleFunc("POST /plans", plans.create)
+		mux.HandleFunc("GET /plans/{planID}", plans.get)
+		mux.HandleFunc("PUT /plans/{planID}/content", plans.updateContent)
+		mux.HandleFunc("POST /plans/{planID}/transition", plans.transition)
+		mux.HandleFunc("GET /plans/{planID}/versions", plans.versions)
+		mux.HandleFunc("GET /plans/{planID}/freshness", plans.freshness)
+		mux.HandleFunc("POST /plans/{planID}/freshness-check", plans.freshnessCheck)
+		mux.HandleFunc("GET /plans/staleness-config", plans.stalenessConfig)
+		mux.HandleFunc("GET /tickets/{ticketID}/plans", plans.listByTicket)
+	}
+	if cfg.ObservationHandler != nil {
+		cfg.ObservationHandler.RegisterRoutes(mux)
+	}
+	if cfg.CatalogHandler != nil {
+		cfg.CatalogHandler.RegisterRoutes(mux)
+	}
+	if cfg.PoliciesHandler != nil {
+		cfg.PoliciesHandler.RegisterRoutes(mux)
+	}
+	if cfg.ClaimsHandler != nil {
+		cfg.ClaimsHandler.RegisterRoutes(mux)
+	}
+	if cfg.HooksHandler != nil {
+		cfg.HooksHandler.RegisterRoutes(mux)
+	}
+	if cfg.PillarsHandler != nil {
+		cfg.PillarsHandler.RegisterRoutes(mux)
 	}
 
 	h := http.Handler(mux)

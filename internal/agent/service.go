@@ -11,11 +11,12 @@ import (
 
 // Service provides agent identity operations.
 type Service struct {
-	store *Store
+	store AgentStore
 }
 
-// NewService returns a new Service.
-func NewService(store *Store) *Service {
+// NewService returns a new Service. The store parameter accepts any AgentStore
+// implementation (Postgres *Store, embedded SQLite, etc.).
+func NewService(store AgentStore) *Service {
 	return &Service{store: store}
 }
 

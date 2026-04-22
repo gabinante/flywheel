@@ -1,8 +1,8 @@
-# Configuring Warrant MCP in Cursor
+# Configuring Flywheel MCP in Cursor
 
-Use the Warrant MCP server in Cursor so the AI can claim tickets, get context, log steps, submit, and escalate. Cursor supports two ways to connect:
+Use the Flywheel MCP server in Cursor so the AI can claim tickets, get context, log steps, submit, and escalate. Cursor supports two ways to connect:
 
-1. **URL + OAuth (recommended)** – Cursor connects to the Warrant server by URL; when sign-in is required, Cursor opens a browser and handles the token for you.
+1. **URL + OAuth (recommended)** – Cursor connects to the Flywheel server by URL; when sign-in is required, Cursor opens a browser and handles the token for you.
 2. **Stdio + env token** – Cursor runs the MCP process locally and you pass a JWT via env (manual copy from the OAuth success page).
 
 ---
@@ -13,7 +13,7 @@ When you add the MCP server by **URL**, Cursor will get a 401 on first connect, 
 
 ### Prerequisites
 
-1. **Warrant server running** — from the repo root:
+1. **Flywheel server running** — from the repo root:
    ```bash
    cp .env.example .env
    # Edit .env: set GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, JWT_SECRET
@@ -29,14 +29,14 @@ In **Cursor Settings → Tools & MCP** or `.cursor/mcp.json`:
 ```json
 {
   "mcpServers": {
-    "warrant": {
+    "flywheel": {
       "url": "http://localhost:8080/mcp"
     }
   }
 }
 ```
 
-For a deployed server, use your public base URL, e.g. `"url": "https://warrant.example.com/mcp"`.
+For a deployed server, use your public base URL, e.g. `"url": "https://flywheel.example.com/mcp"`.
 
 - On first use, Cursor will prompt for sign-in and open the browser; complete GitHub OAuth.
 - No token or env vars needed; `agent_id` is inferred from the token for tools like `claim_ticket` and `start_ticket`.
@@ -45,11 +45,11 @@ For a deployed server, use your public base URL, e.g. `"url": "https://warrant.e
 
 ## Option 2: Stdio + env token
 
-Cursor runs the MCP process and you pass a JWT via env. Use this when you can’t use the URL (e.g. no HTTP server) or prefer a long-lived token from the success page.
+Cursor runs the MCP process and you pass a JWT via env. Use this when you can't use the URL (e.g. no HTTP server) or prefer a long-lived token from the success page.
 
 ### Prerequisites
 
-1. **Warrant server running** (same DB and Redis the MCP server will use):
+1. **Flywheel server running** (same DB and Redis the MCP server will use):
    ```bash
    cp .env.example .env
    # Edit .env: set GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, JWT_SECRET
@@ -59,7 +59,7 @@ Cursor runs the MCP process and you pass a JWT via env. Use this when you can’
 2. **GitHub OAuth** so you have an identity and token:
    - Set `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, and `JWT_SECRET` in the server env.
    - Open **http://localhost:8080/auth/github** in a browser and complete sign-in.
-   - On the success page, copy your **Agent ID** and **Token** (use the token in Cursor’s MCP env).
+   - On the success page, copy your **Agent ID** and **Token** (use the token in Cursor's MCP env).
 
 ### Cursor configuration
 
@@ -68,13 +68,13 @@ Create **`.cursor/mcp.json`** (or use global MCP config):
 ```json
 {
   "mcpServers": {
-    "warrant": {
+    "flywheel": {
       "command": "go",
       "args": ["run", "./cmd/mcp"],
       "env": {
-        "DATABASE_URL": "postgres://warrant:warrant@localhost:5433/warrant?sslmode=disable",
+        "DATABASE_URL": "postgres://flywheel:flywheel@localhost:5433/flywheel?sslmode=disable",
         "REDIS_URL": "redis://localhost:6379/0",
-        "WARRANT_TOKEN": "PASTE_YOUR_JWT_HERE"
+        "FLYWHEEL_TOKEN": "PASTE_YOUR_JWT_HERE"
       }
     }
   }
@@ -83,16 +83,16 @@ Create **`.cursor/mcp.json`** (or use global MCP config):
 
 Replace `PASTE_YOUR_JWT_HERE` with the token from the sign-in success page.
 
-- **Working directory:** If the Warrant code is in a subfolder, set `"cwd": "warrant"` or use an absolute path in `args`.
-- With stdio, you must pass `agent_id` in tool calls for `claim_ticket` and `start_ticket` (or set `WARRANT_TOKEN` so the server can infer it if you add support in the stdio path).
+- **Working directory:** If the Flywheel code is in a subfolder, set `"cwd": "flywheel"` or use an absolute path in `args`.
+- With stdio, you must pass `agent_id` in tool calls for `claim_ticket` and `start_ticket` (or set `FLYWHEEL_TOKEN` so the server can infer it if you add support in the stdio path).
 
 ### Using a built binary
 
 ```bash
-cd /path/to/warrant && go build -o warrant-mcp ./cmd/mcp
+cd /path/to/flywheel && go build -o flywheel-mcp ./cmd/mcp
 ```
 
-Then in `mcp.json` use `"command": "/path/to/warrant/warrant-mcp"` with the same `env`.
+Then in `mcp.json` use `"command": "/path/to/flywheel/flywheel-mcp"` with the same `env`.
 
 ---
 
@@ -102,9 +102,9 @@ Then in `mcp.json` use `"command": "/path/to/warrant/warrant-mcp"` with the same
 |----------------|----------|-------------|
 | `DATABASE_URL` | Yes      | Same Postgres URL the REST server uses (e.g. port 5433 if using Docker). |
 | `REDIS_URL`    | Yes      | Same Redis URL the REST server uses. |
-| `WARRANT_TOKEN`| No*      | JWT from the sign-in page. Lets the MCP server know which agent is calling. |
+| `FLYWHEEL_TOKEN`| No*      | JWT from the sign-in page. Lets the MCP server know which agent is calling. |
 
-\* If you don’t set `WARRANT_TOKEN`, you must pass `agent_id` explicitly when calling tools that require it (e.g. `claim_ticket`, `start_ticket`).
+\* If you don't set `FLYWHEEL_TOKEN`, you must pass `agent_id` explicitly when calling tools that require it (e.g. `claim_ticket`, `start_ticket`).
 
 ---
 
@@ -125,6 +125,6 @@ If a ticket is stuck **claimed** or an agent crashed after claiming, see **docs/
 
 ## Quick check
 
-1. Warrant server: `curl -s http://localhost:8080/healthz` → `ok`.
+1. Flywheel server: `curl -s http://localhost:8080/healthz` → `ok`.
 2. **URL:** Add `"url": "http://localhost:8080/mcp"` to MCP config; restart Cursor; use a tool – Cursor should prompt for sign-in once.
-3. **Stdio:** Sign in at http://localhost:8080/auth/github, copy Token and Agent ID; add `warrant` to MCP config with env and token; restart Cursor and ask the AI to list projects or tickets.
+3. **Stdio:** Sign in at http://localhost:8080/auth/github, copy Token and Agent ID; add `flywheel` to MCP config with env and token; restart Cursor and ask the AI to list projects or tickets.
