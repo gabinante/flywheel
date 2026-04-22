@@ -297,3 +297,4 @@ func (h *ObservationHandler) pollSources(w http.ResponseWriter, r *http.Request)
 		"attributions":         attrs,
 	})
 }
+

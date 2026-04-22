@@ -377,6 +377,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			ReconcileInterval: cfg.Dispatch.ReconcileInterval,
 		}, bus, ticketSvc, projectSvc)
 		dispatcher.SetLeaseReleaser(queueSvc)
+		dispatcher.SetTicketTransitioner(ticketSvc)
 		// Wire worktree cleanup for rollback when dispatcher manages worktrees.
 		rollbackSvc.SetWorktreeRemover(&dispatch.WorktreeManager{
 			BaseDir: cfg.Dispatch.WorktreeDir,
