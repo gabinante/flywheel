@@ -16,18 +16,27 @@ import (
 	"github.com/gabinante/flywheel/config"
 	"github.com/gabinante/flywheel/db"
 	"github.com/gabinante/flywheel/events"
+	"github.com/gabinante/flywheel/events/hooks"
 	"github.com/gabinante/flywheel/internal/agent"
 	"github.com/gabinante/flywheel/internal/auth"
 	"github.com/gabinante/flywheel/internal/bootstrap"
+	"github.com/gabinante/flywheel/internal/catalog"
+	"github.com/gabinante/flywheel/internal/claims"
 	"github.com/gabinante/flywheel/internal/cost"
 	"github.com/gabinante/flywheel/internal/dispatch"
 	"github.com/gabinante/flywheel/internal/embedded"
 	"github.com/gabinante/flywheel/internal/execution"
+	"github.com/gabinante/flywheel/internal/investigation"
 	"github.com/gabinante/flywheel/internal/mirror"
 	"github.com/gabinante/flywheel/internal/mirror/jira"
 	"github.com/gabinante/flywheel/internal/mirror/linear"
+	"github.com/gabinante/flywheel/internal/notification"
+	notifyemail "github.com/gabinante/flywheel/internal/notification/email"
+	notifyslack "github.com/gabinante/flywheel/internal/notification/slack"
+	notifysms "github.com/gabinante/flywheel/internal/notification/sms"
 	"github.com/gabinante/flywheel/internal/observation"
 	"github.com/gabinante/flywheel/internal/org"
+	"github.com/gabinante/flywheel/internal/pillar"
 	"github.com/gabinante/flywheel/internal/plan"
 	"github.com/gabinante/flywheel/internal/policy"
 	"github.com/gabinante/flywheel/internal/project"
@@ -103,6 +112,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	queueRedis := queue.NewRedisStore(redisClient, leaseTTL)
 	queueSvc := queue.NewService(ticketSvc, ticketSvc, queueRedis)
 	scheduler := queue.NewScheduler(queueRedis, ticketSvc, ticketSvc, bus, 30*time.Second)
+	scheduler.EnableStalenessSweep(ticketSvc, 0) // default: 2x lease TTL
 	go scheduler.Run(ctx)
 
 	// Lease validator for execution trace: validate token and return agent ID
@@ -145,10 +155,66 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		log.Println("mirror: service started")
 	}
 
+	// Notification service: policy-driven async push to operators (Layer 12).
+	// Adapters are pluggable; Slack is the default, email/SMS are stubs.
+	var notifySvc *notification.Service
+	if cfg.Notification.Enabled {
+		notifyStore := notification.NewPostgresStore(pool)
+		notifySvc = notification.NewService(notifyStore, bus)
+		notifySvc.RegisterAdapter(notification.ChannelSlack, notifyslack.NewAdapter())
+		notifySvc.RegisterAdapter(notification.ChannelEmail, notifyemail.NewAdapter())
+		notifySvc.RegisterAdapter(notification.ChannelSMS, notifysms.NewAdapter())
+		log.Println("notification: service started")
+	}
+
+	// Claims registry for concurrency control (spec v0.2 §4.3).
+	claimsStore := claims.NewStore(pool)
+	claimsSvc := claims.NewService(claimsStore, bus)
+	// Lifecycle handler: auto-register claims on ticket.started, auto-release on completion.
+	_ = claims.NewLifecycleHandler(bus, claimsSvc, planSvc, ticketSvc)
+
+	// Pillar and strategy layer (Layer 15).
+	pillarStore := pillar.NewPostgresStore(pool)
+	pillarSvc := pillar.NewService(pillarStore)
 
 	// Observation service for production signal tracking and attribution.
 	obsStore := observation.NewPostgresStore(pool)
 	obsSvc := observation.NewService(obsStore, bus)
+
+	// Code intelligence: bundled Tree-sitter/Go-AST default (Layer 3).
+	codeIntel := mcp.NewTreeSitterCodeIntel()
+	log.Println("code-intel: bundled default initialized (Tree-sitter + Go AST)")
+
+	// Hooks: change event publication library + gap detection (spec v0.2 §2.4).
+	hooksClient := hooks.NewClient(bus)
+	gapDetector := hooks.NewGapDetector(bus, hooksClient)
+	go gapDetector.Start(ctx)
+	log.Println("hooks: change event library initialized with gap detection")
+
+	// Findings layer (Layer 4): semantic findings store.
+	// Uses Weaviate if configured, otherwise falls back to in-memory store.
+	var findingsProvider mcp.FindingsProvider
+	if cfg.Findings.WeaviateURL != "" {
+		findingsProvider = mcp.NewWeaviateFindingsStore(mcp.WeaviateFindingsConfig{
+			URL:        cfg.Findings.WeaviateURL,
+			APIKey:     cfg.Findings.WeaviateAPIKey,
+			Vectorizer: cfg.Findings.WeaviateVectorizer,
+		})
+		log.Printf("findings: Weaviate backend at %s", cfg.Findings.WeaviateURL)
+	} else {
+		findingsProvider = mcp.NewMemoryFindingsStore()
+		log.Println("findings: in-memory backend (set WEAVIATE_URL for production)")
+	}
+
+	// Catalog service (Layer 14 project map).
+	catalogStore := catalog.NewPostgresStore(pool)
+	catalogSvc := catalog.NewService(catalogStore)
+	catalogScanner := catalog.NewScanner()
+
+	// Coordinator learning loop: auto-generate feedback findings on ticket
+	// rejection, failure, replan, and invalidation events.
+	_ = mcp.NewCoordinatorFeedbackSubscriber(bus, findingsProvider, ticketSvc)
+	log.Println("coordinator-feedback: learning loop subscriber active")
 
 	strictServer := &rest.StrictServer{
 		OrgSvc:        orgSvc,
@@ -160,6 +226,24 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		ReviewSvc:     reviewSvc,
 		AgentStore:    agentStore,
 		CostSvc:       costSvc,
+	}
+
+	// Investigation service: uses the same worker infrastructure as dispatch.
+	// Configured when dispatch is enabled; nil-safe in the MCP tool handler.
+	var investigationSvc *investigation.Service
+	if cfg.Dispatch.Enabled {
+		repoDir, _ := os.Getwd()
+		invWorker := dispatch.NewInvestigationWorker(dispatch.Config{
+			ClaudePath:   cfg.Dispatch.ClaudePath,
+			AgentDriver:  cfg.Dispatch.AgentDriver,
+			AgentCLIPath: cfg.Dispatch.AgentCLIPath,
+			APIKey:       cfg.Dispatch.APIKey,
+			RepoDir:      repoDir,
+		})
+		investigationSvc = investigation.NewService(invWorker, investigation.Config{
+			ServerURL: cfg.Auth.BaseURL,
+			WorkDir:   repoDir,
+		})
 	}
 
 	var authMiddleware func(http.Handler) http.Handler
@@ -188,14 +272,22 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			JWTExpirySec: 604800, // 7 days in seconds for token response
 		}
 		mcpSrv, err := mcp.NewServer(&mcp.Backend{
-			Project:    projectSvc,
-			WorkStream: workStreamSvc,
-			Ticket:     ticketSvc,
-			Queue:      queueSvc,
-			Trace:      execSvc,
-			Review:     reviewSvc,
-			Org:        orgSvc,
-			AgentStore: agentStore,
+			Project:        projectSvc,
+			WorkStream:     workStreamSvc,
+			Ticket:         ticketSvc,
+			Queue:          queueSvc,
+			Trace:          execSvc,
+			Review:         reviewSvc,
+			Org:            orgSvc,
+			AgentStore:     agentStore,
+			Investigation:  investigationSvc,
+			Claims:         claimsSvc,
+			CodeIntel:      codeIntel,
+			Findings:       findingsProvider,
+			Notification:   notifySvc,
+			Catalog:        catalogSvc,
+			CatalogScanner: catalogScanner,
+			Pillar:         pillarSvc,
 		})
 		if err != nil {
 			log.Fatalf("mcp server: %v", err)
@@ -236,8 +328,9 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			DockerImage:    cfg.Dispatch.DockerImage,
 			DockerMemory:   cfg.Dispatch.DockerMemory,
 			DockerCPUs:     cfg.Dispatch.DockerCPUs,
-			DockerFirewall: cfg.Dispatch.DockerFirewall,
-			AnthropicKey:   cfg.Dispatch.AnthropicKey,
+			DockerFirewall:    cfg.Dispatch.DockerFirewall,
+			AnthropicKey:      cfg.Dispatch.AnthropicKey,
+			ReconcileInterval: cfg.Dispatch.ReconcileInterval,
 		}, bus, ticketSvc, projectSvc)
 		dispatcher.SetLeaseReleaser(queueSvc)
 		dispatcher.Start(ctx)
@@ -254,13 +347,17 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		DispatchHandler:    &rest.DispatchHandler{Dispatcher: dispatcher},
 		PlansHandler:       &rest.PlansHandler{PlanSvc: planSvc},
 		ObservationHandler: &rest.ObservationHandler{Svc: obsSvc},
+		CatalogHandler:     &rest.CatalogHandler{Svc: catalogSvc, Scanner: catalogScanner},
 		PoliciesHandler: &rest.PoliciesHandler{
 			PolicySvc:  policySvc,
 			ProjectSvc: projectSvc,
 			OrgSvc:     orgSvc,
 			AgentStore: agentStore,
 		},
-		WebDist: cfg.Server.WebDist,
+		ClaimsHandler:  &rest.ClaimsHandler{ClaimsSvc: claimsSvc},
+		HooksHandler:   &rest.HooksHandler{Client: hooksClient},
+		PillarsHandler: &rest.PillarsHandler{PillarSvc: pillarSvc},
+		WebDist:        cfg.Server.WebDist,
 	})
 
 	serve(ctx, cfg, router, dispatcher)
@@ -310,6 +407,7 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 	queueRedis := queue.NewRedisStore(redisClient, leaseTTL)
 	queueSvc := queue.NewService(ticketSvc, ticketSvc, queueRedis)
 	scheduler := queue.NewScheduler(queueRedis, ticketSvc, ticketSvc, bus, 30*time.Second)
+	scheduler.EnableStalenessSweep(ticketSvc, 0) // default: 2x lease TTL
 	go scheduler.Run(ctx)
 
 	leaseValidator := &leaseValidatorAdapter{leases: queueRedis}
@@ -319,6 +417,18 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 	execSvc := execution.NewService(execSt, leaseValidator)
 	reviewSt := embedded.NewReviewStore(sqliteDB)
 	reviewSvc := review.NewService(reviewSt, ticketSvc, bus)
+	pillarSt := embedded.NewPillarStore(sqliteDB)
+	pillarSvc := pillar.NewService(pillarSt)
+
+	// Hooks: change event publication library + gap detection (spec v0.2 §2.4).
+	hooksClient := hooks.NewClient(bus)
+	gapDetector := hooks.NewGapDetector(bus, hooksClient)
+	go gapDetector.Start(ctx)
+
+	// Catalog service (Layer 14 project map).
+	catalogSt := catalog.NewSQLiteStore(sqliteDB)
+	catalogSvc := catalog.NewService(catalogSt)
+	catalogScanner := catalog.NewScanner()
 
 	// Run first-run wizard if no data exists yet.
 	firstRun := bootstrap.IsFirstRun(dataDir)
@@ -357,17 +467,41 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		AgentStore:    agentSt,
 	}
 
+	// Code intelligence: bundled default for embedded mode.
+	embeddedCodeIntel := mcp.NewTreeSitterCodeIntel()
+
+	// Findings layer for embedded mode: always in-memory (no Weaviate dependency).
+	var embeddedFindingsProvider mcp.FindingsProvider
+	if cfg.Findings.WeaviateURL != "" {
+		embeddedFindingsProvider = mcp.NewWeaviateFindingsStore(mcp.WeaviateFindingsConfig{
+			URL:        cfg.Findings.WeaviateURL,
+			APIKey:     cfg.Findings.WeaviateAPIKey,
+			Vectorizer: cfg.Findings.WeaviateVectorizer,
+		})
+	} else {
+		embeddedFindingsProvider = mcp.NewMemoryFindingsStore()
+	}
+
+	// Coordinator learning loop for embedded mode.
+	_ = mcp.NewCoordinatorFeedbackSubscriber(bus, embeddedFindingsProvider, ticketSvc)
+	log.Println("coordinator-feedback: learning loop subscriber active (embedded)")
+
 	// In embedded mode, set up MCP with API key auth (no OAuth required).
 	authMiddleware := rest.AuthMiddleware(jwtSecret, agentSvc)
 	mcpSrv, err := mcp.NewServer(&mcp.Backend{
-		Project:    projectSvc,
-		WorkStream: workStreamSvc,
-		Ticket:     ticketSvc,
-		Queue:      queueSvc,
-		Trace:      execSvc,
-		Review:     reviewSvc,
-		Org:        orgSvc,
-		AgentStore: agentSt,
+		Project:        projectSvc,
+		WorkStream:     workStreamSvc,
+		Ticket:         ticketSvc,
+		Queue:          queueSvc,
+		Trace:          execSvc,
+		Review:         reviewSvc,
+		Org:            orgSvc,
+		AgentStore:     agentSt,
+		CodeIntel:      embeddedCodeIntel,
+		Findings:       embeddedFindingsProvider,
+		Catalog:        catalogSvc,
+		CatalogScanner: catalogScanner,
+		Pillar:         pillarSvc,
 	})
 	if err != nil {
 		log.Fatalf("mcp server: %v", err)
@@ -393,6 +527,9 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		MCPHandler:     mcpHandler,
 		MCPSSEHandler:  mcpSSEHandler,
 		AgentsHandler:  &rest.AgentsHandler{AgentSvc: agentSvc},
+		HooksHandler:   &rest.HooksHandler{Client: hooksClient},
+		CatalogHandler: &rest.CatalogHandler{Svc: catalogSvc, Scanner: catalogScanner},
+		PillarsHandler: &rest.PillarsHandler{PillarSvc: pillarSvc},
 		WebDist:        cfg.Server.WebDist,
 	})
 

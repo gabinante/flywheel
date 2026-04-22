@@ -9,14 +9,22 @@ import (
 	"github.com/gabinante/flywheel/internal/ticket"
 )
 
+// StaleTicketLister finds tickets stuck in active states beyond a threshold.
+// Implemented by ticket.Service (backed by Postgres or SQLite).
+type StaleTicketLister interface {
+	ListStaleTickets(ctx context.Context, states []ticket.State, threshold time.Duration) ([]*ticket.Ticket, error)
+}
+
 // Scheduler runs background jobs: expire leases and react to ticket.done for unblocked.
 type Scheduler struct {
-	leases      LeaseStore
-	ticketSvc   TicketTransitioner
-	ticketList  TicketListerForQueue
-	bus         events.Bus
-	pollInterval time.Duration
-	batchSize   int64
+	leases             LeaseStore
+	ticketSvc          TicketTransitioner
+	ticketList         TicketListerForQueue
+	bus                events.Bus
+	pollInterval       time.Duration
+	batchSize          int64
+	staleLister        StaleTicketLister
+	stalenessThreshold time.Duration
 }
 
 // NewScheduler returns a new Scheduler. The leases parameter accepts any LeaseStore implementation.
@@ -26,12 +34,31 @@ func NewScheduler(leases LeaseStore, ticketSvc TicketTransitioner, ticketList Ti
 	}
 	return &Scheduler{
 		leases:       leases,
-		ticketSvc:     ticketSvc,
-		ticketList:    ticketList,
-		bus:           bus,
-		pollInterval:  pollInterval,
+		ticketSvc:    ticketSvc,
+		ticketList:   ticketList,
+		bus:          bus,
+		pollInterval: pollInterval,
 		batchSize:    50,
 	}
+}
+
+// EnableStalenessSwitch enables the DB staleness sweep (Layer 3 recovery).
+// The sweep periodically scans for tickets stuck in planning/executing state with
+// updated_at older than the staleness threshold, and transitions them back to draft
+// via TriggerLeaseExpired.
+//
+// This is the last-resort backstop for cases where both the dispatcher (Layer 1) and
+// Redis lease expiry (Layer 2) fail — e.g. Redis restart loses lease data while the
+// server is also down. The sweep is grounded in the database, not ephemeral Redis state.
+//
+// The stalenessThreshold should be conservative (default: 2x lease TTL) to avoid
+// reclaiming tickets that are actively being worked on.
+func (s *Scheduler) EnableStalenessSweep(lister StaleTicketLister, stalenessThreshold time.Duration) {
+	if stalenessThreshold <= 0 {
+		stalenessThreshold = 2 * s.leases.TTL()
+	}
+	s.staleLister = lister
+	s.stalenessThreshold = stalenessThreshold
 }
 
 // Run starts the scheduler (blocking). Call in a goroutine.
@@ -45,6 +72,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 			return
 		case <-ticker.C:
 			s.expireLeases(ctx)
+			s.sweepStaleTickets(ctx)
 		}
 	}
 }
@@ -63,6 +91,42 @@ func (s *Scheduler) expireLeases(ctx context.Context) {
 		}
 		if err := s.leases.RemoveExpired(ctx, id); err != nil {
 			log.Printf("queue/scheduler: remove expired lease %s: %v", id, err)
+		}
+	}
+}
+
+// sweepStaleTickets is the Layer 3 DB staleness sweep. It queries Postgres for tickets
+// stuck in planning or executing state with updated_at older than the staleness threshold,
+// then transitions them back to draft via TriggerLeaseExpired.
+//
+// Idempotent: running twice on the same stale ticket is safe because the first run
+// transitions it to draft, and the second run won't find it (it's no longer in
+// planning/executing state). If the transition fails (e.g. version conflict), the error
+// is logged and the ticket is retried on the next sweep cycle.
+func (s *Scheduler) sweepStaleTickets(ctx context.Context) {
+	if s.staleLister == nil {
+		return
+	}
+	staleStates := []ticket.State{ticket.StatePlanning, ticket.StateExecuting}
+	stale, err := s.staleLister.ListStaleTickets(ctx, staleStates, s.stalenessThreshold)
+	if err != nil {
+		log.Printf("queue/scheduler: staleness sweep query: %v", err)
+		return
+	}
+	if len(stale) == 0 {
+		return
+	}
+	actor := ticket.Actor{ID: "staleness-sweep", Type: ticket.ActorSystem}
+	for _, t := range stale {
+		log.Printf("queue/scheduler: staleness sweep recovering zombie ticket %s (state=%s, updated_at=%s, threshold=%s)",
+			t.ID, t.State, t.UpdatedAt.Format(time.RFC3339), s.stalenessThreshold)
+		if err := s.ticketSvc.TransitionTicket(ctx, t.ID, ticket.TriggerLeaseExpired, actor, nil); err != nil {
+			log.Printf("queue/scheduler: staleness sweep transition %s: %v", t.ID, err)
+			continue
+		}
+		// Also clean up any stale Redis lease data for this ticket.
+		if err := s.leases.RemoveExpired(ctx, t.ID); err != nil {
+			log.Printf("queue/scheduler: staleness sweep remove lease %s: %v", t.ID, err)
 		}
 	}
 }

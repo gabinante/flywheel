@@ -2,7 +2,7 @@
 -- Each plan is linked to a ticket, carries a backend type, versioned content,
 -- and freshness stamps for re-plan-before-apply semantics (warrant-45).
 
-CREATE TABLE plans (
+CREATE TABLE IF NOT EXISTS plans (
     id              TEXT PRIMARY KEY,
     ticket_id       TEXT NOT NULL REFERENCES tickets(id),
     backend         TEXT NOT NULL,
@@ -21,12 +21,12 @@ CREATE TABLE plans (
     CONSTRAINT plans_state_check CHECK (state IN ('draft', 'submitted', 'classified', 'approved', 'applied', 'superseded', 'rejected'))
 );
 
-CREATE INDEX plans_ticket_id ON plans(ticket_id);
-CREATE INDEX plans_ticket_backend ON plans(ticket_id, backend);
-CREATE INDEX plans_state ON plans(state);
+CREATE INDEX IF NOT EXISTS plans_ticket_id ON plans(ticket_id);
+CREATE INDEX IF NOT EXISTS plans_ticket_backend ON plans(ticket_id, backend);
+CREATE INDEX IF NOT EXISTS plans_state ON plans(state);
 
 -- plan_versions: immutable version history for plan content changes.
-CREATE TABLE plan_versions (
+CREATE TABLE IF NOT EXISTS plan_versions (
     id         TEXT PRIMARY KEY,
     plan_id    TEXT NOT NULL REFERENCES plans(id),
     version    INT NOT NULL,
@@ -37,4 +37,4 @@ CREATE TABLE plan_versions (
     UNIQUE (plan_id, version)
 );
 
-CREATE INDEX plan_versions_plan_id ON plan_versions(plan_id);
+CREATE INDEX IF NOT EXISTS plan_versions_plan_id ON plan_versions(plan_id);

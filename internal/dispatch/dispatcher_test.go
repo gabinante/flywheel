@@ -72,6 +72,21 @@ func (m *mockTicketGetter) ListByState(_ context.Context, _ string, state ticket
 	return result, nil
 }
 
+func (m *mockTicketGetter) ListByWorkStream(_ context.Context, _ string, workStreamID string) ([]*ticket.Ticket, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.err != nil {
+		return nil, m.err
+	}
+	var result []*ticket.Ticket
+	for _, t := range m.tickets {
+		if t.WorkStreamID == workStreamID {
+			result = append(result, t)
+		}
+	}
+	return result, nil
+}
+
 // mockProjectGetter implements ProjectGetter for tests.
 type mockProjectGetter struct {
 	projects map[string]*project.Project
@@ -1230,7 +1245,7 @@ func TestHandleWorkerExit_ConcurrentWorkers(t *testing.T) {
 }
 
 func TestEventBusIntegration(t *testing.T) {
-	proj := &project.Project{ID: "p-1", Name: "test"}
+	proj := &project.Project{ID: "p-1", Name: "test", DispatchEnabled: true}
 	tk := &ticket.Ticket{
 		ID:        "t-evt",
 		ProjectID: "p-1",
@@ -1272,5 +1287,185 @@ func TestEventBusIntegration(t *testing.T) {
 
 	if worker.callCount() != 1 {
 		t.Errorf("expected 1 worker call from event, got %d", worker.callCount())
+	}
+}
+
+func TestDispatchDisabledSkipsTickets(t *testing.T) {
+	// When dispatch_enabled=false, the dispatcher should skip the project's tickets.
+	proj := &project.Project{ID: "p-1", Name: "test", DispatchEnabled: false}
+	tk := &ticket.Ticket{
+		ID:        "t-disabled",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+		Title:     "disabled dispatch test",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	worker := &mockWorker{}
+	cfg := Config{
+		MaxWorkers:    5,
+		ProjectID:     "p-1",
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d.Start(ctx)
+	defer d.Stop()
+
+	// Publish a ticket.created event for the disabled project.
+	_ = bus.Publish(ctx, events.Event{
+		Type:    events.EventTicketCreated,
+		Payload: map[string]any{"ticket_id": "t-disabled"},
+	})
+
+	// Wait for the goroutine to process.
+	time.Sleep(500 * time.Millisecond)
+
+	if worker.callCount() != 0 {
+		t.Errorf("expected 0 worker calls when dispatch disabled, got %d", worker.callCount())
+	}
+}
+
+func TestDispatchEnabledAllowsTickets(t *testing.T) {
+	// When dispatch_enabled=true, the dispatcher should process the project's tickets.
+	proj := &project.Project{ID: "p-1", Name: "test", DispatchEnabled: true}
+	tk := &ticket.Ticket{
+		ID:        "t-enabled",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+		Title:     "enabled dispatch test",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	worker := &mockWorker{}
+	cfg := Config{
+		MaxWorkers:    5,
+		ProjectID:     "p-1",
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d.Start(ctx)
+	defer d.Stop()
+
+	// Publish a ticket.created event for the enabled project.
+	_ = bus.Publish(ctx, events.Event{
+		Type:    events.EventTicketCreated,
+		Payload: map[string]any{"ticket_id": "t-enabled"},
+	})
+
+	// Wait for the goroutine to process.
+	time.Sleep(500 * time.Millisecond)
+
+	if worker.callCount() != 1 {
+		t.Errorf("expected 1 worker call when dispatch enabled, got %d", worker.callCount())
+	}
+}
+
+func TestWorkStreamCompletionAllDone(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(
+		&ticket.Ticket{ID: "t-1", ProjectID: "p-1", State: ticket.StateClosed, WorkStreamID: "ws-1"},
+		&ticket.Ticket{ID: "t-2", ProjectID: "p-1", State: ticket.StateClosed, WorkStreamID: "ws-1"},
+		&ticket.Ticket{ID: "t-3", ProjectID: "p-1", State: ticket.StateClosed, WorkStreamID: "ws-1"},
+	)
+	pg := newMockProjectGetter()
+	cfg := Config{MaxWorkers: 5, WorktreeDir: t.TempDir(), RepoDir: t.TempDir()}
+
+	d := New(cfg, bus, tg, pg)
+
+	// Subscribe to the work_stream.completed event.
+	var received []events.Event
+	bus.Subscribe(events.EventWorkStreamCompleted, func(_ context.Context, e events.Event) {
+		received = append(received, e)
+	})
+
+	// Simulate ticket done event.
+	d.handleTicketDone(context.Background(), events.Event{
+		Type:    events.EventTicketDone,
+		Payload: map[string]any{"ticket_id": "t-1"},
+	})
+
+	if len(received) != 1 {
+		t.Fatalf("expected 1 work_stream.completed event, got %d", len(received))
+	}
+	if received[0].Payload["work_stream_id"] != "ws-1" {
+		t.Errorf("expected work_stream_id=ws-1, got %v", received[0].Payload["work_stream_id"])
+	}
+	if received[0].Payload["ticket_count"] != 3 {
+		t.Errorf("expected ticket_count=3, got %v", received[0].Payload["ticket_count"])
+	}
+}
+
+func TestWorkStreamCompletionNotAllDone(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(
+		&ticket.Ticket{ID: "t-1", ProjectID: "p-1", State: ticket.StateClosed, WorkStreamID: "ws-1"},
+		&ticket.Ticket{ID: "t-2", ProjectID: "p-1", State: ticket.StateExecuting, WorkStreamID: "ws-1"},
+	)
+	pg := newMockProjectGetter()
+	cfg := Config{MaxWorkers: 5, WorktreeDir: t.TempDir(), RepoDir: t.TempDir()}
+
+	d := New(cfg, bus, tg, pg)
+
+	var received []events.Event
+	bus.Subscribe(events.EventWorkStreamCompleted, func(_ context.Context, e events.Event) {
+		received = append(received, e)
+	})
+
+	d.handleTicketDone(context.Background(), events.Event{
+		Type:    events.EventTicketDone,
+		Payload: map[string]any{"ticket_id": "t-1"},
+	})
+
+	if len(received) != 0 {
+		t.Errorf("expected no work_stream.completed event when not all tickets are done, got %d", len(received))
+	}
+}
+
+func TestWorkStreamCompletionNoWorkStream(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(
+		&ticket.Ticket{ID: "t-1", ProjectID: "p-1", State: ticket.StateClosed, WorkStreamID: ""},
+	)
+	pg := newMockProjectGetter()
+	cfg := Config{MaxWorkers: 5, WorktreeDir: t.TempDir(), RepoDir: t.TempDir()}
+
+	d := New(cfg, bus, tg, pg)
+
+	var received []events.Event
+	bus.Subscribe(events.EventWorkStreamCompleted, func(_ context.Context, e events.Event) {
+		received = append(received, e)
+	})
+
+	d.handleTicketDone(context.Background(), events.Event{
+		Type:    events.EventTicketDone,
+		Payload: map[string]any{"ticket_id": "t-1"},
+	})
+
+	if len(received) != 0 {
+		t.Errorf("expected no work_stream.completed event for ticket without work_stream_id, got %d", len(received))
 	}
 }

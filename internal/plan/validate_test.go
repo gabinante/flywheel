@@ -184,12 +184,19 @@ func TestValidateContent_Terraform_InvalidChangeAction(t *testing.T) {
 func TestValidateContent_Code_Valid(t *testing.T) {
 	content := Content{
 		Code: &CodePlan{
-			FilePath:   "internal/plan/model.go",
-			Language:   "go",
-			BeforeHash: "abc123",
-			AfterHash:  "def456",
-			Hunks: []CodeHunk{
-				{StartLine: 10, EndLine: 15, Content: "func NewFeature() {}", Operation: "add"},
+			Language: "go",
+			TargetEntities: []TargetEntity{
+				{ID: "internal/plan/model.go", EntityType: "file", OperationType: "modify"},
+			},
+			Diffs: []CodeDiff{
+				{
+					FilePath:   "internal/plan/model.go",
+					BeforeHash: "abc123",
+					AfterHash:  "def456",
+					Hunks: []CodeHunk{
+						{StartLine: 10, EndLine: 15, Content: "func NewFeature() {}", Operation: "add"},
+					},
+				},
 			},
 		},
 	}
@@ -198,12 +205,106 @@ func TestValidateContent_Code_Valid(t *testing.T) {
 	}
 }
 
+func TestValidateContent_Code_FullPlan(t *testing.T) {
+	content := Content{
+		Code: &CodePlan{
+			Language:    "go",
+			ServiceName: "plan-service",
+			TargetEntities: []TargetEntity{
+				{ID: "internal/plan/model.go", EntityType: "file", OperationType: "modify"},
+				{ID: "plan.CodePlan", EntityType: "symbol", OperationType: "modify"},
+			},
+			Diffs: []CodeDiff{
+				{
+					FilePath:   "internal/plan/model.go",
+					Language:   "go",
+					BeforeHash: "abc123",
+					AfterHash:  "def456",
+					Hunks: []CodeHunk{
+						{StartLine: 10, EndLine: 15, Content: "type CodePlan struct {}", Operation: "modify", SymbolScope: "type:CodePlan"},
+					},
+				},
+			},
+			SymbolSnapshots: []SymbolSnapshot{
+				{
+					SymbolID:        "plan.CodePlan",
+					FilePath:        "internal/plan/model.go",
+					Kind:            "type",
+					Exported:        true,
+					BeforeSignature: "type CodePlan struct { FilePath string }",
+					AfterSignature:  "type CodePlan struct { TargetEntities []TargetEntity }",
+					Callers:         3,
+				},
+			},
+			TestExpectations: &TestExpectations{
+				TestCommands: []string{"go test ./internal/plan/..."},
+				MinCoverage:  80.0,
+			},
+			SuccessContract: &SuccessContract{
+				Checks: []SuccessCheck{
+					{Name: "Build passes", Command: "go build ./..."},
+					{Name: "Vet clean", Command: "go vet ./..."},
+				},
+			},
+			RollbackPlan: &CodeRollbackPlan{
+				Strategy:        "git_revert",
+				RevertCommitRef: "abc123def",
+			},
+			GitContext: &GitContext{
+				Branch:        "ticket/warrant-49",
+				BaseBranch:    "main",
+				BaseCommitSHA: "abc123def",
+				TicketID:      "warrant-49",
+			},
+		},
+	}
+	if err := ValidateContent(BackendCode, content); err != nil {
+		t.Fatalf("expected valid full plan, got: %v", err)
+	}
+}
+
+func TestValidateContent_Code_NoTargetEntities(t *testing.T) {
+	content := Content{
+		Code: &CodePlan{
+			Language:       "go",
+			TargetEntities: []TargetEntity{},
+			Diffs: []CodeDiff{
+				{FilePath: "main.go", Hunks: []CodeHunk{{StartLine: 1, EndLine: 5, Content: "x", Operation: "add"}}},
+			},
+		},
+	}
+	err := ValidateContent(BackendCode, content)
+	if err == nil {
+		t.Fatal("expected error for no target entities")
+	}
+}
+
+func TestValidateContent_Code_NoDiffs(t *testing.T) {
+	content := Content{
+		Code: &CodePlan{
+			Language: "go",
+			TargetEntities: []TargetEntity{
+				{ID: "main.go", EntityType: "file", OperationType: "modify"},
+			},
+			Diffs: []CodeDiff{},
+		},
+	}
+	err := ValidateContent(BackendCode, content)
+	if err == nil {
+		t.Fatal("expected error for no diffs")
+	}
+}
+
 func TestValidateContent_Code_NoHunks(t *testing.T) {
 	content := Content{
 		Code: &CodePlan{
-			FilePath: "main.go",
 			Language: "go",
-			Hunks:    []CodeHunk{},
+			TargetEntities: []TargetEntity{
+				{ID: "main.go", EntityType: "file", OperationType: "modify"},
+			},
+			Diffs: []CodeDiff{
+				{FilePath: "main.go", Hunks: []CodeHunk{}},
+			},
 		},
 	}
 	err := ValidateContent(BackendCode, content)
@@ -215,16 +316,245 @@ func TestValidateContent_Code_NoHunks(t *testing.T) {
 func TestValidateContent_Code_InvalidOperation(t *testing.T) {
 	content := Content{
 		Code: &CodePlan{
-			FilePath: "main.go",
 			Language: "go",
-			Hunks: []CodeHunk{
-				{StartLine: 1, EndLine: 5, Content: "x", Operation: "replace"},
+			TargetEntities: []TargetEntity{
+				{ID: "main.go", EntityType: "file", OperationType: "modify"},
+			},
+			Diffs: []CodeDiff{
+				{
+					FilePath: "main.go",
+					Hunks: []CodeHunk{
+						{StartLine: 1, EndLine: 5, Content: "x", Operation: "replace"},
+					},
+				},
 			},
 		},
 	}
 	err := ValidateContent(BackendCode, content)
 	if err == nil {
 		t.Fatal("expected error for invalid operation")
+	}
+}
+
+func TestValidateContent_Code_InvalidEntityType(t *testing.T) {
+	content := Content{
+		Code: &CodePlan{
+			Language: "go",
+			TargetEntities: []TargetEntity{
+				{ID: "main.go", EntityType: "widget", OperationType: "modify"},
+			},
+			Diffs: []CodeDiff{
+				{FilePath: "main.go", Hunks: []CodeHunk{{StartLine: 1, EndLine: 5, Content: "x", Operation: "add"}}},
+			},
+		},
+	}
+	err := ValidateContent(BackendCode, content)
+	if err == nil {
+		t.Fatal("expected error for invalid entity type")
+	}
+}
+
+func TestValidateContent_Code_InvalidOperationType(t *testing.T) {
+	content := Content{
+		Code: &CodePlan{
+			Language: "go",
+			TargetEntities: []TargetEntity{
+				{ID: "main.go", EntityType: "file", OperationType: "destroy"},
+			},
+			Diffs: []CodeDiff{
+				{FilePath: "main.go", Hunks: []CodeHunk{{StartLine: 1, EndLine: 5, Content: "x", Operation: "add"}}},
+			},
+		},
+	}
+	err := ValidateContent(BackendCode, content)
+	if err == nil {
+		t.Fatal("expected error for invalid operation type")
+	}
+}
+
+func TestValidateContent_Code_RenameRequiresNewID(t *testing.T) {
+	content := Content{
+		Code: &CodePlan{
+			Language: "go",
+			TargetEntities: []TargetEntity{
+				{ID: "old.go", EntityType: "file", OperationType: "rename"},
+			},
+			Diffs: []CodeDiff{
+				{FilePath: "old.go", Hunks: []CodeHunk{{StartLine: 1, EndLine: 5, Content: "x", Operation: "modify"}}},
+			},
+		},
+	}
+	err := ValidateContent(BackendCode, content)
+	if err == nil {
+		t.Fatal("expected error for rename without new_id")
+	}
+}
+
+func TestValidateContent_Code_InvalidSymbolKind(t *testing.T) {
+	content := Content{
+		Code: &CodePlan{
+			Language: "go",
+			TargetEntities: []TargetEntity{
+				{ID: "main.go", EntityType: "file", OperationType: "modify"},
+			},
+			Diffs: []CodeDiff{
+				{FilePath: "main.go", Hunks: []CodeHunk{{StartLine: 1, EndLine: 5, Content: "x", Operation: "add"}}},
+			},
+			SymbolSnapshots: []SymbolSnapshot{
+				{SymbolID: "Foo", FilePath: "main.go", Kind: "widget", AfterSignature: "func Foo()"},
+			},
+		},
+	}
+	err := ValidateContent(BackendCode, content)
+	if err == nil {
+		t.Fatal("expected error for invalid symbol kind")
+	}
+}
+
+func TestValidateContent_Code_SymbolNeedsSignature(t *testing.T) {
+	content := Content{
+		Code: &CodePlan{
+			Language: "go",
+			TargetEntities: []TargetEntity{
+				{ID: "main.go", EntityType: "file", OperationType: "modify"},
+			},
+			Diffs: []CodeDiff{
+				{FilePath: "main.go", Hunks: []CodeHunk{{StartLine: 1, EndLine: 5, Content: "x", Operation: "add"}}},
+			},
+			SymbolSnapshots: []SymbolSnapshot{
+				{SymbolID: "Foo", FilePath: "main.go", Kind: "function"},
+			},
+		},
+	}
+	err := ValidateContent(BackendCode, content)
+	if err == nil {
+		t.Fatal("expected error for symbol with no before or after signature")
+	}
+}
+
+func TestValidateContent_Code_TestExpectationsEmpty(t *testing.T) {
+	content := Content{
+		Code: &CodePlan{
+			Language: "go",
+			TargetEntities: []TargetEntity{
+				{ID: "main.go", EntityType: "file", OperationType: "modify"},
+			},
+			Diffs: []CodeDiff{
+				{FilePath: "main.go", Hunks: []CodeHunk{{StartLine: 1, EndLine: 5, Content: "x", Operation: "add"}}},
+			},
+			TestExpectations: &TestExpectations{
+				TestCommands: []string{},
+			},
+		},
+	}
+	err := ValidateContent(BackendCode, content)
+	if err == nil {
+		t.Fatal("expected error for empty test commands")
+	}
+}
+
+func TestValidateContent_Code_InvalidRollbackStrategy(t *testing.T) {
+	content := Content{
+		Code: &CodePlan{
+			Language: "go",
+			TargetEntities: []TargetEntity{
+				{ID: "main.go", EntityType: "file", OperationType: "modify"},
+			},
+			Diffs: []CodeDiff{
+				{FilePath: "main.go", Hunks: []CodeHunk{{StartLine: 1, EndLine: 5, Content: "x", Operation: "add"}}},
+			},
+			RollbackPlan: &CodeRollbackPlan{
+				Strategy: "yolo",
+			},
+		},
+	}
+	err := ValidateContent(BackendCode, content)
+	if err == nil {
+		t.Fatal("expected error for invalid rollback strategy")
+	}
+}
+
+func TestValidateContent_Code_GitRevertNeedsCommitRef(t *testing.T) {
+	content := Content{
+		Code: &CodePlan{
+			Language: "go",
+			TargetEntities: []TargetEntity{
+				{ID: "main.go", EntityType: "file", OperationType: "modify"},
+			},
+			Diffs: []CodeDiff{
+				{FilePath: "main.go", Hunks: []CodeHunk{{StartLine: 1, EndLine: 5, Content: "x", Operation: "add"}}},
+			},
+			RollbackPlan: &CodeRollbackPlan{
+				Strategy: "git_revert",
+			},
+		},
+	}
+	err := ValidateContent(BackendCode, content)
+	if err == nil {
+		t.Fatal("expected error for git_revert without commit ref")
+	}
+}
+
+func TestValidateContent_Code_ManualRollbackNeedsSteps(t *testing.T) {
+	content := Content{
+		Code: &CodePlan{
+			Language: "go",
+			TargetEntities: []TargetEntity{
+				{ID: "main.go", EntityType: "file", OperationType: "modify"},
+			},
+			Diffs: []CodeDiff{
+				{FilePath: "main.go", Hunks: []CodeHunk{{StartLine: 1, EndLine: 5, Content: "x", Operation: "add"}}},
+			},
+			RollbackPlan: &CodeRollbackPlan{
+				Strategy: "manual",
+			},
+		},
+	}
+	err := ValidateContent(BackendCode, content)
+	if err == nil {
+		t.Fatal("expected error for manual rollback without steps")
+	}
+}
+
+func TestValidateContent_Code_GitContextNeedsBranch(t *testing.T) {
+	content := Content{
+		Code: &CodePlan{
+			Language: "go",
+			TargetEntities: []TargetEntity{
+				{ID: "main.go", EntityType: "file", OperationType: "modify"},
+			},
+			Diffs: []CodeDiff{
+				{FilePath: "main.go", Hunks: []CodeHunk{{StartLine: 1, EndLine: 5, Content: "x", Operation: "add"}}},
+			},
+			GitContext: &GitContext{
+				Branch: "",
+			},
+		},
+	}
+	err := ValidateContent(BackendCode, content)
+	if err == nil {
+		t.Fatal("expected error for git context without branch")
+	}
+}
+
+func TestValidateContent_Code_SuccessContractNeedsChecks(t *testing.T) {
+	content := Content{
+		Code: &CodePlan{
+			Language: "go",
+			TargetEntities: []TargetEntity{
+				{ID: "main.go", EntityType: "file", OperationType: "modify"},
+			},
+			Diffs: []CodeDiff{
+				{FilePath: "main.go", Hunks: []CodeHunk{{StartLine: 1, EndLine: 5, Content: "x", Operation: "add"}}},
+			},
+			SuccessContract: &SuccessContract{
+				Checks: []SuccessCheck{},
+			},
+		},
+	}
+	err := ValidateContent(BackendCode, content)
+	if err == nil {
+		t.Fatal("expected error for empty success contract checks")
 	}
 }
 
@@ -237,8 +567,21 @@ func TestValidateContent_Shell_Valid(t *testing.T) {
 			},
 			WorkingDir: "/app",
 			SideEffectManifest: SideEffectManifest{
-				FilesCreated:  []string{"dist/"},
-				FilesModified: []string{"node_modules/"},
+				FileOps: []FileOp{
+					{Action: "write", Path: "/app/dist/**"},
+					{Action: "write", Path: "/app/node_modules/**"},
+				},
+				NetworkOps: []NetworkOp{
+					{Endpoint: "registry.npmjs.org:443", Method: "GET", Idempotent: true},
+				},
+				ProcessOps: []ProcessOp{
+					{Binary: "npm", Args: []string{"install", "run", "build"}},
+				},
+				ResourceLimits: ResourceLimits{
+					MaxRuntimeSeconds: 120,
+					MaxDiskWriteBytes: 500 * 1024 * 1024,
+					MaxNetworkCalls:   50,
+				},
 			},
 		},
 	}
@@ -272,6 +615,162 @@ func TestValidateContent_Shell_EmptyCommandString(t *testing.T) {
 	err := ValidateContent(BackendShell, content)
 	if err == nil {
 		t.Fatal("expected error for empty command string")
+	}
+}
+
+func TestValidateContent_Shell_ManifestInvalidFileOpAction(t *testing.T) {
+	content := Content{
+		Shell: &ShellPlan{
+			Commands: []ShellCommand{
+				{Command: "echo hi"},
+			},
+			SideEffectManifest: SideEffectManifest{
+				FileOps: []FileOp{
+					{Action: "execute", Path: "/app/script.sh"},
+				},
+			},
+		},
+	}
+	err := ValidateContent(BackendShell, content)
+	if err == nil {
+		t.Fatal("expected error for invalid file op action")
+	}
+	ve, ok := err.(*ValidationError)
+	if !ok {
+		t.Fatalf("expected ValidationError, got: %T", err)
+	}
+	if ve.Field != "side_effect_manifest.file_ops[0].action" {
+		t.Fatalf("expected field 'side_effect_manifest.file_ops[0].action', got: %s", ve.Field)
+	}
+}
+
+func TestValidateContent_Shell_ManifestEmptyPath(t *testing.T) {
+	content := Content{
+		Shell: &ShellPlan{
+			Commands: []ShellCommand{
+				{Command: "echo hi"},
+			},
+			SideEffectManifest: SideEffectManifest{
+				FileOps: []FileOp{
+					{Action: "write", Path: ""},
+				},
+			},
+		},
+	}
+	err := ValidateContent(BackendShell, content)
+	if err == nil {
+		t.Fatal("expected error for empty path in file op")
+	}
+}
+
+func TestValidateContent_Shell_ManifestInvalidNetworkMethod(t *testing.T) {
+	content := Content{
+		Shell: &ShellPlan{
+			Commands: []ShellCommand{
+				{Command: "curl example.com"},
+			},
+			SideEffectManifest: SideEffectManifest{
+				NetworkOps: []NetworkOp{
+					{Endpoint: "example.com:443", Method: "YEET"},
+				},
+			},
+		},
+	}
+	err := ValidateContent(BackendShell, content)
+	if err == nil {
+		t.Fatal("expected error for invalid network method")
+	}
+}
+
+func TestValidateContent_Shell_ManifestEmptyEndpoint(t *testing.T) {
+	content := Content{
+		Shell: &ShellPlan{
+			Commands: []ShellCommand{
+				{Command: "curl example.com"},
+			},
+			SideEffectManifest: SideEffectManifest{
+				NetworkOps: []NetworkOp{
+					{Endpoint: "", Method: "GET"},
+				},
+			},
+		},
+	}
+	err := ValidateContent(BackendShell, content)
+	if err == nil {
+		t.Fatal("expected error for empty endpoint")
+	}
+}
+
+func TestValidateContent_Shell_ManifestEmptyBinary(t *testing.T) {
+	content := Content{
+		Shell: &ShellPlan{
+			Commands: []ShellCommand{
+				{Command: "npm install"},
+			},
+			SideEffectManifest: SideEffectManifest{
+				ProcessOps: []ProcessOp{
+					{Binary: ""},
+				},
+			},
+		},
+	}
+	err := ValidateContent(BackendShell, content)
+	if err == nil {
+		t.Fatal("expected error for empty binary in process op")
+	}
+}
+
+func TestValidateContent_Shell_ManifestEmptyCredentialName(t *testing.T) {
+	content := Content{
+		Shell: &ShellPlan{
+			Commands: []ShellCommand{
+				{Command: "echo hi"},
+			},
+			SideEffectManifest: SideEffectManifest{
+				CredentialOps: []CredentialOp{
+					{Name: "", Purpose: "something"},
+				},
+			},
+		},
+	}
+	err := ValidateContent(BackendShell, content)
+	if err == nil {
+		t.Fatal("expected error for empty credential name")
+	}
+}
+
+func TestValidateContent_Shell_ManifestValidResourceLimits(t *testing.T) {
+	content := Content{
+		Shell: &ShellPlan{
+			Commands: []ShellCommand{
+				{Command: "echo hi"},
+			},
+			SideEffectManifest: SideEffectManifest{
+				ResourceLimits: ResourceLimits{
+					MaxRuntimeSeconds: 60,
+					MaxDiskWriteBytes: 1024,
+					MaxNetworkCalls:   10,
+				},
+			},
+		},
+	}
+	if err := ValidateContent(BackendShell, content); err != nil {
+		t.Fatalf("expected valid resource limits, got: %v", err)
+	}
+}
+
+func TestValidateContent_Shell_ManifestEmptyIsValid(t *testing.T) {
+	// An empty manifest means "no side effects" — valid declaration.
+	content := Content{
+		Shell: &ShellPlan{
+			Commands: []ShellCommand{
+				{Command: "echo hi"},
+			},
+			SideEffectManifest: SideEffectManifest{},
+		},
+	}
+	if err := ValidateContent(BackendShell, content); err != nil {
+		t.Fatalf("expected empty manifest to be valid, got: %v", err)
 	}
 }
 

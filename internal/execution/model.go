@@ -14,17 +14,19 @@ const (
 
 // Step is one entry in an execution trace.
 type Step struct {
-	ID        string         `json:"id"`
-	Type      StepType       `json:"type"`
-	Payload   map[string]any `json:"payload"`
-	CreatedAt time.Time      `json:"created_at"`
+	ID         string         `json:"id"`
+	Type       StepType       `json:"type"`
+	Payload    map[string]any `json:"payload"`
+	WorkerType string         `json:"worker_type,omitempty"`
+	CreatedAt  time.Time      `json:"created_at"`
 }
 
 // ExecutionTrace is the full history of steps for a ticket.
 type ExecutionTrace struct {
-	TicketID string  `json:"ticket_id"`
-	AgentID  string  `json:"agent_id"`
-	Steps    []Step  `json:"steps"`
+	TicketID   string `json:"ticket_id"`
+	AgentID    string `json:"agent_id"`
+	WorkerType string `json:"worker_type,omitempty"`
+	Steps      []Step `json:"steps"`
 }
 
 // AttemptSummary is a short summary of an attempt (for prior_attempts context).

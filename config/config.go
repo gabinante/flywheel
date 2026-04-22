@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Load reads configuration from environment with sensible defaults.
@@ -49,6 +50,10 @@ func Load() *Config {
 			JiraEmail:    getEnv("MIRROR_JIRA_EMAIL", ""),
 			JiraAPIToken: getEnv("MIRROR_JIRA_API_TOKEN", ""),
 		},
+		Notification: NotificationConfig{
+			Enabled:         getEnvBool("NOTIFICATION_ENABLED", true),
+			SlackWebhookURL: getEnv("NOTIFICATION_SLACK_WEBHOOK_URL", ""),
+		},
 		Embedded: EmbeddedConfig{
 			Enabled: embeddedEnabled,
 			DataDir: getEnv("WARRANT_DATA_DIR", ""),
@@ -68,7 +73,8 @@ func Load() *Config {
 			DockerMemory:   getEnv("DISPATCH_DOCKER_MEMORY", "4g"),
 			DockerCPUs:     getEnv("DISPATCH_DOCKER_CPUS", "2"),
 			DockerFirewall: getEnvBool("DISPATCH_DOCKER_FIREWALL", true),
-			AnthropicKey:   getEnv("ANTHROPIC_API_KEY", ""),
+			AnthropicKey:      getEnv("ANTHROPIC_API_KEY", ""),
+			ReconcileInterval: getEnvDuration("DISPATCH_RECONCILE_INTERVAL", 60*time.Second),
 		},
 		Cost: CostConfig{
 			Enabled:                    getEnvBool("COST_TRACKING_ENABLED", true),
@@ -102,6 +108,11 @@ func Load() *Config {
 			BaseURL:            baseURL,
 			SuccessRedirectURL: getEnv("AUTH_SUCCESS_REDIRECT_URL", ""),
 			JWTSecret:          getEnv("JWT_SECRET", ""),
+		},
+		Findings: FindingsConfig{
+			WeaviateURL:        getEnv("WEAVIATE_URL", ""),
+			WeaviateAPIKey:     getEnv("WEAVIATE_API_KEY", ""),
+			WeaviateVectorizer: getEnv("WEAVIATE_VECTORIZER", "text2vec-openai"),
 		},
 	}
 
@@ -147,8 +158,17 @@ type Config struct {
 	Dispatch                  DispatchConfig
 	Cost                      CostConfig
 	Mirror                    MirrorConfig
+	Notification              NotificationConfig
 	Embedded                  EmbeddedConfig
+	Findings                  FindingsConfig
 	RunAcceptanceTestOnSubmit bool
+}
+
+// FindingsConfig holds configuration for the findings layer (Layer 4).
+type FindingsConfig struct {
+	WeaviateURL        string // Weaviate server URL. Empty = use in-memory fallback.
+	WeaviateAPIKey     string // Weaviate API key for authentication (optional).
+	WeaviateVectorizer string // Vectorizer module name (default: "text2vec-openai").
 }
 
 // CostConfig holds cost and rate-limit management settings.
@@ -176,6 +196,15 @@ type MirrorConfig struct {
 	JiraAPIToken string // Jira API token
 }
 
+// NotificationConfig holds configuration for the notification push layer.
+// Channel adapters (Slack, email, SMS) are pluggable — defaults are registered
+// when their credentials are configured. Per-project settings are stored in the
+// notification_preferences table.
+type NotificationConfig struct {
+	Enabled         bool   // master switch: enable the notification service
+	SlackWebhookURL string // default Slack incoming webhook URL (per-project overrides via preferences)
+}
+
 // EmbeddedConfig controls zero-config embedded mode (SQLite + in-memory Redis).
 // When Enabled is true, Postgres and Redis are not required.
 type EmbeddedConfig struct {
@@ -199,8 +228,9 @@ type DispatchConfig struct {
 	DockerImage    string // worker image name (default: "flywheel-worker")
 	DockerMemory   string // memory limit per worker (default: "4g")
 	DockerCPUs     string // CPU limit per worker (default: "2")
-	DockerFirewall bool   // enable default-deny firewall with allowlist
-	AnthropicKey   string // ANTHROPIC_API_KEY passed to docker workers
+	DockerFirewall    bool          // enable default-deny firewall with allowlist
+	AnthropicKey      string        // ANTHROPIC_API_KEY passed to docker workers
+	ReconcileInterval time.Duration // periodic reconciliation interval (default: 60s)
 }
 
 type ServerConfig struct {
@@ -289,6 +319,18 @@ func getEnvBool(key string, defaultVal bool) bool {
 			return true
 		case "0", "false", "no":
 			return false
+		}
+	}
+	return defaultVal
+}
+
+func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+		if n, err := strconv.Atoi(v); err == nil {
+			return time.Duration(n) * time.Second
 		}
 	}
 	return defaultVal

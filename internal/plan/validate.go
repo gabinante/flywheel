@@ -264,35 +264,194 @@ func validateCode(code *CodePlan) error {
 	if code == nil {
 		return &ValidationError{Backend: BackendCode, Field: "code", Message: "code plan content required"}
 	}
-	if strings.TrimSpace(code.FilePath) == "" {
-		return &ValidationError{Backend: BackendCode, Field: "file_path", Message: "file_path is required"}
-	}
 	if strings.TrimSpace(code.Language) == "" {
 		return &ValidationError{Backend: BackendCode, Field: "language", Message: "language is required"}
 	}
-	if len(code.Hunks) == 0 {
-		return &ValidationError{Backend: BackendCode, Field: "hunks", Message: "at least one hunk is required"}
+
+	// Require at least one target entity — no "stealth" changes.
+	if len(code.TargetEntities) == 0 {
+		return &ValidationError{Backend: BackendCode, Field: "target_entities", Message: "at least one target entity is required"}
 	}
-	for i, h := range code.Hunks {
+	for i, te := range code.TargetEntities {
+		if err := validateTargetEntity(i, te); err != nil {
+			return err
+		}
+	}
+
+	// Require at least one diff — the structured content that gets classified.
+	if len(code.Diffs) == 0 {
+		return &ValidationError{Backend: BackendCode, Field: "diffs", Message: "at least one diff is required"}
+	}
+	for i, d := range code.Diffs {
+		if err := validateCodeDiff(i, d); err != nil {
+			return err
+		}
+	}
+
+	// Validate symbol snapshots if present.
+	for i, ss := range code.SymbolSnapshots {
+		if err := validateSymbolSnapshot(i, ss); err != nil {
+			return err
+		}
+	}
+
+	// Validate test expectations if present.
+	if code.TestExpectations != nil {
+		if err := validateTestExpectations(code.TestExpectations); err != nil {
+			return err
+		}
+	}
+
+	// Validate success contract if present.
+	if code.SuccessContract != nil {
+		if err := validateSuccessContract(code.SuccessContract); err != nil {
+			return err
+		}
+	}
+
+	// Validate rollback plan if present.
+	if code.RollbackPlan != nil {
+		if err := validateCodeRollbackPlan(code.RollbackPlan); err != nil {
+			return err
+		}
+	}
+
+	// Validate git context if present.
+	if code.GitContext != nil {
+		if err := validateGitContext(code.GitContext); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func validateTargetEntity(idx int, te TargetEntity) error {
+	prefix := fmt.Sprintf("target_entities[%d]", idx)
+	if strings.TrimSpace(te.ID) == "" {
+		return &ValidationError{Backend: BackendCode, Field: prefix + ".id", Message: "entity ID is required"}
+	}
+	if !isValidStringIn(te.EntityType, ValidEntityTypes) {
+		return &ValidationError{Backend: BackendCode, Field: prefix + ".entity_type", Message: fmt.Sprintf("entity_type must be one of: %s", strings.Join(ValidEntityTypes, ", "))}
+	}
+	if !isValidStringIn(te.OperationType, ValidOperationTypes) {
+		return &ValidationError{Backend: BackendCode, Field: prefix + ".operation_type", Message: fmt.Sprintf("operation_type must be one of: %s", strings.Join(ValidOperationTypes, ", "))}
+	}
+	if te.OperationType == "rename" && strings.TrimSpace(te.NewID) == "" {
+		return &ValidationError{Backend: BackendCode, Field: prefix + ".new_id", Message: "new_id is required when operation_type is 'rename'"}
+	}
+	return nil
+}
+
+func validateCodeDiff(idx int, d CodeDiff) error {
+	prefix := fmt.Sprintf("diffs[%d]", idx)
+	if strings.TrimSpace(d.FilePath) == "" {
+		return &ValidationError{Backend: BackendCode, Field: prefix + ".file_path", Message: "file_path is required"}
+	}
+	if len(d.Hunks) == 0 {
+		return &ValidationError{Backend: BackendCode, Field: prefix + ".hunks", Message: "at least one hunk is required"}
+	}
+	for i, h := range d.Hunks {
+		hunkPrefix := fmt.Sprintf("%s.hunks[%d]", prefix, i)
 		if h.Operation == "" {
-			return &ValidationError{Backend: BackendCode, Field: fmt.Sprintf("hunks[%d].operation", i), Message: "operation is required"}
+			return &ValidationError{Backend: BackendCode, Field: hunkPrefix + ".operation", Message: "operation is required"}
 		}
 		validOps := []string{"add", "remove", "modify"}
-		valid := false
-		for _, op := range validOps {
-			if h.Operation == op {
-				valid = true
-				break
-			}
-		}
-		if !valid {
-			return &ValidationError{Backend: BackendCode, Field: fmt.Sprintf("hunks[%d].operation", i), Message: "operation must be one of: add, remove, modify"}
+		if !isValidStringIn(h.Operation, validOps) {
+			return &ValidationError{Backend: BackendCode, Field: hunkPrefix + ".operation", Message: "operation must be one of: add, remove, modify"}
 		}
 		if h.Content == "" {
-			return &ValidationError{Backend: BackendCode, Field: fmt.Sprintf("hunks[%d].content", i), Message: "content is required"}
+			return &ValidationError{Backend: BackendCode, Field: hunkPrefix + ".content", Message: "content is required"}
 		}
 	}
 	return nil
+}
+
+func validateSymbolSnapshot(idx int, ss SymbolSnapshot) error {
+	prefix := fmt.Sprintf("symbol_snapshots[%d]", idx)
+	if strings.TrimSpace(ss.SymbolID) == "" {
+		return &ValidationError{Backend: BackendCode, Field: prefix + ".symbol_id", Message: "symbol_id is required"}
+	}
+	if strings.TrimSpace(ss.FilePath) == "" {
+		return &ValidationError{Backend: BackendCode, Field: prefix + ".file_path", Message: "file_path is required"}
+	}
+	if strings.TrimSpace(ss.Kind) == "" {
+		return &ValidationError{Backend: BackendCode, Field: prefix + ".kind", Message: "kind is required"}
+	}
+	if !isValidStringIn(ss.Kind, ValidSymbolKinds) {
+		return &ValidationError{Backend: BackendCode, Field: prefix + ".kind", Message: fmt.Sprintf("kind must be one of: %s", strings.Join(ValidSymbolKinds, ", "))}
+	}
+	// At least one of before/after signature must be present (new or removed symbols omit one).
+	if ss.BeforeSignature == "" && ss.AfterSignature == "" {
+		return &ValidationError{Backend: BackendCode, Field: prefix, Message: "at least one of before_signature or after_signature is required"}
+	}
+	return nil
+}
+
+func validateTestExpectations(te *TestExpectations) error {
+	if len(te.TestCommands) == 0 {
+		return &ValidationError{Backend: BackendCode, Field: "test_expectations.test_commands", Message: "at least one test command is required"}
+	}
+	for i, cmd := range te.TestCommands {
+		if strings.TrimSpace(cmd) == "" {
+			return &ValidationError{Backend: BackendCode, Field: fmt.Sprintf("test_expectations.test_commands[%d]", i), Message: "test command cannot be empty"}
+		}
+	}
+	if te.MinCoverage < 0 || te.MinCoverage > 100 {
+		return &ValidationError{Backend: BackendCode, Field: "test_expectations.min_coverage", Message: "min_coverage must be between 0 and 100"}
+	}
+	return nil
+}
+
+func validateSuccessContract(sc *SuccessContract) error {
+	if len(sc.Checks) == 0 {
+		return &ValidationError{Backend: BackendCode, Field: "success_contract.checks", Message: "at least one success check is required"}
+	}
+	for i, check := range sc.Checks {
+		prefix := fmt.Sprintf("success_contract.checks[%d]", i)
+		if strings.TrimSpace(check.Name) == "" {
+			return &ValidationError{Backend: BackendCode, Field: prefix + ".name", Message: "check name is required"}
+		}
+		if strings.TrimSpace(check.Command) == "" {
+			return &ValidationError{Backend: BackendCode, Field: prefix + ".command", Message: "check command is required"}
+		}
+	}
+	return nil
+}
+
+func validateCodeRollbackPlan(rp *CodeRollbackPlan) error {
+	if strings.TrimSpace(rp.Strategy) == "" {
+		return &ValidationError{Backend: BackendCode, Field: "rollback_plan.strategy", Message: "strategy is required"}
+	}
+	if !isValidStringIn(rp.Strategy, ValidRollbackStrategies) {
+		return &ValidationError{Backend: BackendCode, Field: "rollback_plan.strategy", Message: fmt.Sprintf("strategy must be one of: %s", strings.Join(ValidRollbackStrategies, ", "))}
+	}
+	if rp.Strategy == "git_revert" || rp.Strategy == "git_reset" {
+		if strings.TrimSpace(rp.RevertCommitRef) == "" {
+			return &ValidationError{Backend: BackendCode, Field: "rollback_plan.revert_commit_ref", Message: "revert_commit_ref is required for git-based rollback strategies"}
+		}
+	}
+	if rp.Strategy == "manual" && len(rp.ManualSteps) == 0 {
+		return &ValidationError{Backend: BackendCode, Field: "rollback_plan.manual_steps", Message: "manual_steps are required for manual rollback strategy"}
+	}
+	return nil
+}
+
+func validateGitContext(gc *GitContext) error {
+	if strings.TrimSpace(gc.Branch) == "" {
+		return &ValidationError{Backend: BackendCode, Field: "git_context.branch", Message: "branch is required"}
+	}
+	return nil
+}
+
+// isValidStringIn checks if s is one of the allowed values.
+func isValidStringIn(s string, allowed []string) bool {
+	for _, a := range allowed {
+		if s == a {
+			return true
+		}
+	}
+	return false
 }
 
 func validateShell(shell *ShellPlan) error {
@@ -307,10 +466,86 @@ func validateShell(shell *ShellPlan) error {
 			return &ValidationError{Backend: BackendShell, Field: fmt.Sprintf("commands[%d].command", i), Message: "command is required"}
 		}
 	}
-	// Side-effect manifest is structurally validated by type system;
-	// presence validation ensures the agent explicitly declared effects.
-	// An empty manifest means "no side effects" — which is a valid declaration.
+	// Validate the side-effect manifest at schema level before classification.
+	if err := validateManifest(&shell.SideEffectManifest); err != nil {
+		return err
+	}
 	return nil
+}
+
+// validateManifest validates the side-effect manifest structure and field values.
+// Manifest validation happens at schema level before classification.
+func validateManifest(m *SideEffectManifest) error {
+	// Validate file ops.
+	for i, op := range m.FileOps {
+		if strings.TrimSpace(op.Path) == "" {
+			return &ValidationError{Backend: BackendShell, Field: fmt.Sprintf("side_effect_manifest.file_ops[%d].path", i), Message: "path is required"}
+		}
+		if !isValidFileOpAction(op.Action) {
+			return &ValidationError{
+				Backend: BackendShell,
+				Field:   fmt.Sprintf("side_effect_manifest.file_ops[%d].action", i),
+				Message: fmt.Sprintf("action must be one of: %s", strings.Join(ValidFileOpActions, ", ")),
+			}
+		}
+	}
+	// Validate network ops.
+	for i, op := range m.NetworkOps {
+		if strings.TrimSpace(op.Endpoint) == "" {
+			return &ValidationError{Backend: BackendShell, Field: fmt.Sprintf("side_effect_manifest.network_ops[%d].endpoint", i), Message: "endpoint is required"}
+		}
+		if strings.TrimSpace(op.Method) == "" {
+			return &ValidationError{Backend: BackendShell, Field: fmt.Sprintf("side_effect_manifest.network_ops[%d].method", i), Message: "method is required"}
+		}
+		if !isValidNetworkMethod(op.Method) {
+			return &ValidationError{
+				Backend: BackendShell,
+				Field:   fmt.Sprintf("side_effect_manifest.network_ops[%d].method", i),
+				Message: fmt.Sprintf("method must be one of: %s", strings.Join(ValidNetworkMethods, ", ")),
+			}
+		}
+	}
+	// Validate process ops.
+	for i, op := range m.ProcessOps {
+		if strings.TrimSpace(op.Binary) == "" {
+			return &ValidationError{Backend: BackendShell, Field: fmt.Sprintf("side_effect_manifest.process_ops[%d].binary", i), Message: "binary is required"}
+		}
+	}
+	// Validate credential ops.
+	for i, op := range m.CredentialOps {
+		if strings.TrimSpace(op.Name) == "" {
+			return &ValidationError{Backend: BackendShell, Field: fmt.Sprintf("side_effect_manifest.credential_ops[%d].name", i), Message: "name is required"}
+		}
+	}
+	// Validate resource limits (non-negative).
+	if m.ResourceLimits.MaxRuntimeSeconds < 0 {
+		return &ValidationError{Backend: BackendShell, Field: "side_effect_manifest.resource_limits.max_runtime_seconds", Message: "must be non-negative"}
+	}
+	if m.ResourceLimits.MaxDiskWriteBytes < 0 {
+		return &ValidationError{Backend: BackendShell, Field: "side_effect_manifest.resource_limits.max_disk_write_bytes", Message: "must be non-negative"}
+	}
+	if m.ResourceLimits.MaxNetworkCalls < 0 {
+		return &ValidationError{Backend: BackendShell, Field: "side_effect_manifest.resource_limits.max_network_calls", Message: "must be non-negative"}
+	}
+	return nil
+}
+
+func isValidFileOpAction(action string) bool {
+	for _, valid := range ValidFileOpActions {
+		if action == valid {
+			return true
+		}
+	}
+	return false
+}
+
+func isValidNetworkMethod(method string) bool {
+	for _, valid := range ValidNetworkMethods {
+		if method == valid {
+			return true
+		}
+	}
+	return false
 }
 
 func validateDeploy(deploy *DeployPlan) error {

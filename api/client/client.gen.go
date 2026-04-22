@@ -674,8 +674,9 @@ type Project struct {
 	CreatedAt   *time.Time              `json:"created_at,omitempty"`
 
 	// DefaultBranch Branch to checkout when closing a work stream; default "main".
-	DefaultBranch *string `json:"default_branch,omitempty"`
-	Id            *string `json:"id,omitempty"`
+	DefaultBranch   *string `json:"default_branch,omitempty"`
+	DispatchEnabled *bool   `json:"dispatch_enabled,omitempty"`
+	Id              *string `json:"id,omitempty"`
 	Name          *string `json:"name,omitempty"`
 	OrgId         *string `json:"org_id,omitempty"`
 	RepoUrl       *string `json:"repo_url,omitempty"`
@@ -785,6 +786,9 @@ type TransitionRequestActor string
 type UpdateProjectRequest struct {
 	// DefaultBranch Branch to checkout when closing a work stream; default "main".
 	DefaultBranch *string `json:"default_branch,omitempty"`
+
+	// DispatchEnabled Enable or disable automated dispatch for this project.
+	DispatchEnabled *bool `json:"dispatch_enabled,omitempty"`
 
 	// Name Project display name.
 	Name *string `json:"name,omitempty"`
