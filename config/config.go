@@ -43,6 +43,10 @@ func Load() *Config {
 	storageMode := getEnv("STORAGE_MODE", "")
 	embeddedEnabled := storageMode == "embedded"
 	cfg := &Config{
+		Policy: PolicyConfig{
+			DefaultPosture:   getEnv("POLICY_DEFAULT_POSTURE", "plan-only"),
+			AutoApplyDefault: getEnvBool("POLICY_AUTO_APPLY_DEFAULT", true),
+		},
 		Mirror: MirrorConfig{
 			Enabled:      getEnvBool("MIRROR_ENABLED", false),
 			LinearAPIKey: getEnv("MIRROR_LINEAR_API_KEY", ""),
@@ -156,12 +160,24 @@ type Config struct {
 	Queue                     QueueConfig
 	Auth                      AuthConfig
 	Dispatch                  DispatchConfig
+	Policy                    PolicyConfig
 	Cost                      CostConfig
 	Mirror                    MirrorConfig
 	Notification              NotificationConfig
 	Embedded                  EmbeddedConfig
 	Findings                  FindingsConfig
 	RunAcceptanceTestOnSubmit bool
+}
+
+// PolicyConfig controls the policy layer behavior.
+type PolicyConfig struct {
+	// DefaultPosture is the posture applied to new projects on first run.
+	// Valid values: plan-only, sandbox, prod-gate, graduated-risk, paranoid-service.
+	// Default: plan-only (most conservative).
+	DefaultPosture string
+	// AutoApplyDefault automatically applies the default posture to projects without an active policy.
+	// Default: true.
+	AutoApplyDefault bool
 }
 
 // FindingsConfig holds configuration for the findings layer (Layer 4).

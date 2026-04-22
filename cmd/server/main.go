@@ -25,6 +25,7 @@ import (
 	"github.com/gabinante/flywheel/internal/cost"
 	"github.com/gabinante/flywheel/internal/dispatch"
 	"github.com/gabinante/flywheel/internal/embedded"
+	"github.com/gabinante/flywheel/internal/entity"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/investigation"
 	"github.com/gabinante/flywheel/internal/mirror"
@@ -82,7 +83,17 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	}
 	defer pool.Close()
 
-	bus := events.NewInProcessBus()
+	// Create event bus: use Postgres durable bus by default for at-least-once delivery.
+	// Falls back to in-process bus if DURABLE_BUS=false is set.
+	var bus events.DurableEventBus
+	if os.Getenv("DURABLE_BUS") == "false" {
+		bus = events.NewInProcessBus()
+		log.Println("events: using in-process bus (no durability)")
+	} else {
+		pgBus := events.NewPostgresBus(pool, events.PostgresBusConfig{})
+		bus = pgBus
+		log.Println("events: using Postgres durable bus (at-least-once delivery)")
+	}
 
 	orgStore := org.NewStore(pool)
 	orgSvc := org.NewService(orgStore)
@@ -100,6 +111,14 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	if cfg.Dispatch.AutoApproveOnAcceptancePass {
 		ticketSvc.SetAutoApproveOnPass(true)
 	}
+
+	// Policy layer: composable rules with most-restrictive-wins semantics.
+	postureStore := policy.NewPostgresStore(pool)
+	postureSvc := policy.NewPostureService(postureStore, bus)
+	policyAdapter := policy.NewTicketPolicyAdapter(postureSvc)
+	_ = policyAdapter // adapter available for ticket service integration
+	_ = postureSvc    // posture service available for API handlers
+	log.Printf("policy: default_posture=%s auto_apply=%v", cfg.Policy.DefaultPosture, cfg.Policy.AutoApplyDefault)
 
 	redisOpts, err := redis.ParseURL(cfg.Redis.URL)
 	if err != nil {
@@ -125,10 +144,12 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	execSvc := execution.NewService(execStore, leaseValidator)
 	reviewStore := review.NewStore(pool)
 	reviewSvc := review.NewService(reviewStore, ticketSvc, bus)
+	entityStore := entity.NewStore(pool)
+	entitySvc := entity.NewService(entityStore, bus)
 	planStore := plan.NewStore(pool)
 	planSvc := plan.NewService(planStore, bus)
-	policyStore := policy.NewStore(pool)
-	policySvc := policy.NewService(policyStore, bus)
+	calibrationStore := policy.NewCalibrationStore(pool)
+	calibrationSvc := policy.NewCalibrationService(calibrationStore, bus)
 	userStore := user.NewStore(pool)
 
 	// Cost management service (budget tracking, rate-limit handling, model routing).
@@ -226,6 +247,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		QueueSvc:      queueSvc,
 		TraceSvc:      execSvc,
 		ReviewSvc:     reviewSvc,
+		EntitySvc:     entitySvc,
 		AgentStore:    agentStore,
 		CostSvc:       costSvc,
 	}
@@ -281,6 +303,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			Trace:          execSvc,
 			Review:         reviewSvc,
 			Org:            orgSvc,
+			Entity:         entitySvc,
 			AgentStore:     agentStore,
 			Investigation:  investigationSvc,
 			Claims:         claimsSvc,
@@ -338,6 +361,11 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		dispatcher.Start(ctx)
 	}
 
+	// Start durable bus delivery (LISTEN/NOTIFY + polling) after all subscriptions are registered.
+	if err := bus.Start(ctx); err != nil {
+		log.Fatalf("event bus start: %v", err)
+	}
+
 	router := rest.NewRouter(rest.RouterConfig{
 		StrictServer:       strictServer,
 		AuthMiddleware:     authMiddleware,
@@ -346,12 +374,13 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		MCPHandler:         mcpHandler,
 		MCPSSEHandler:      mcpSSEHandler,
 		AgentsHandler:      &rest.AgentsHandler{AgentSvc: agentSvc},
+		EntitiesHandler:    &rest.EntitiesHandler{EntitySvc: entitySvc},
 		DispatchHandler:    &rest.DispatchHandler{Dispatcher: dispatcher},
 		PlansHandler:       &rest.PlansHandler{PlanSvc: planSvc},
 		ObservationHandler: &rest.ObservationHandler{Svc: obsSvc},
 		CatalogHandler:     &rest.CatalogHandler{Svc: catalogSvc, Scanner: catalogScanner},
 		PoliciesHandler: &rest.PoliciesHandler{
-			PolicySvc:  policySvc,
+			PolicySvc:  calibrationSvc,
 			ProjectSvc: projectSvc,
 			OrgSvc:     orgSvc,
 			AgentStore: agentStore,
@@ -362,7 +391,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		WebDist:        cfg.Server.WebDist,
 	})
 
-	serve(ctx, cfg, router, dispatcher)
+	serve(ctx, cfg, router, dispatcher, bus)
 }
 
 // runEmbedded starts the server in embedded mode: SQLite for storage, miniredis
@@ -535,11 +564,11 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		WebDist:        cfg.Server.WebDist,
 	})
 
-	serve(ctx, cfg, router, nil)
+	serve(ctx, cfg, router, nil, bus)
 }
 
 // serve starts the HTTP server and blocks until SIGINT/SIGTERM.
-func serve(ctx context.Context, cfg *config.Config, router http.Handler, dispatcher *dispatch.Dispatcher) {
+func serve(ctx context.Context, cfg *config.Config, router http.Handler, dispatcher *dispatch.Dispatcher, bus events.DurableEventBus) {
 	srv := &http.Server{
 		Addr:              ":" + cfg.Server.Port,
 		Handler:           router,
@@ -562,6 +591,7 @@ func serve(ctx context.Context, cfg *config.Config, router http.Handler, dispatc
 	if dispatcher != nil {
 		dispatcher.Stop()
 	}
+	_ = bus.Stop()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {

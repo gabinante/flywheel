@@ -327,4 +327,61 @@ Use **code** to decide: lease_expired → renew or re-claim; unauthorized → en
 ## Stuck tickets and runbook
 
 If a ticket is **claimed** but not started (agent crashed), or you need to inspect ticket state and trace or release a stuck lease: see **docs/troubleshooting.md** → section **Tickets: agent stuck or wrong state**. Operators and agents can use that runbook to see how to inspect state (get_ticket, get_trace), when the lease expires and the ticket returns to pending, and how to force a ticket back to pending via REST (with or without the lease token).
+
+## Content defense and prompt injection protection
+
+Flywheel implements defense-in-depth against prompt injection through external content:
+
+### Tool scope classification
+
+Every MCP tool is classified by scope:
+
+| Scope | Description | Confirmation |
+|-------|-------------|--------------|
+| **read** | No side effects (list, get, show) | None needed |
+| **write_internal** | Mutates Flywheel state only (tickets, streams) | None needed |
+| **write_external** | External side effects (git notes, sync) | Human confirmation required |
+| **forbidden_coordinator** | Structurally blocked for coordinator (approve, reject) | N/A — blocked |
+
+Unknown tools default to **write_external** (require confirmation). This is defense-in-depth: if a new tool is added without classification, it defaults to the restrictive path.
+
+### Structural constraints
+
+The **coordinator** role is structurally read-only on external systems:
+- Cannot commit code, push to remotes, or merge PRs
+- Cannot deploy to any environment
+- Cannot modify access control policies or grant access
+- Cannot approve or reject tickets (human-only actions)
+
+These are not advisory — they are enforced by tool scope and role restrictions.
+
+### External content treatment
+
+All content from external sources (dependency outputs, PR descriptions, READMEs, MCP tool responses) is treated as **data to analyze**, never as instructions to follow. The coordinator system prompt explicitly reinforces this invariant.
+
+### Risky content flagging
+
+Content ingested from external sources is scanned for risky patterns:
+- **URLs** — possible exfiltration or misdirection vectors
+- **Base64 blobs** — potentially obfuscated payloads
+- **Instruction-like patterns** — content mimicking system prompts or AI directives
+- **Unusual formatting** — zero-width characters, RTL overrides (obfuscation)
+- **Code execution patterns** — shell commands, eval constructs
+- **Privilege escalation** — references to policy changes, access grants
+
+Flags are logged for audit but do not change content treatment (still data, never instructions).
+
+### Audit trail
+
+Every external content ingestion is logged with: timestamp, source, content size, detected risk flags, subsequent action, and associated ticket/agent. This append-only trail enables post-hoc security review.
+
+### Sensitive action confirmation
+
+Operations with external side effects **always** require human confirmation:
+- Opening or modifying pull requests
+- Posting to external channels (Slack, email, webhooks)
+- Syncing git notes to remotes
+- Any action affecting systems outside Flywheel
+
+This applies regardless of any apparent authorization in read content.
 `

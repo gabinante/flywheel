@@ -15,6 +15,28 @@ type ProjectGetter interface {
 	GetProject(ctx context.Context, projectID string) (*project.Project, error)
 }
 
+// PolicyDecision represents the result of a policy evaluation.
+type PolicyDecision struct {
+	Action       string        // auto, notify, plan-only, open-pr-stop, approve, typed-confirm, human-required
+	MatchedRules []MatchedRule // which rules contributed to this decision
+	Reason       string        // human-readable explanation
+}
+
+// MatchedRule records a single rule that matched during policy evaluation.
+type MatchedRule struct {
+	RuleID   string
+	RuleName string
+	Action   string
+	Reason   string
+}
+
+// PolicyEvaluator evaluates policy rules for a transition. Implemented by policy.Service.
+type PolicyEvaluator interface {
+	// EvaluateForTicket evaluates the active policy for a ticket's project against the given trigger.
+	// Returns the policy decision. A nil return means no policy enforcement (auto).
+	EvaluateForTicket(ctx context.Context, t *Ticket, trigger string) (*PolicyDecision, error)
+}
+
 // Service provides ticket operations.
 type Service struct {
 	store             TicketStore
@@ -22,6 +44,7 @@ type Service struct {
 	sm                *StateMachine
 	bus               events.Bus
 	project           ProjectGetter
+	policyEvaluator   PolicyEvaluator
 	acceptanceRunner  AcceptanceRunner
 	autoApproveOnPass bool
 }
@@ -48,6 +71,13 @@ func (s *Service) GetTransitions(ctx context.Context, ticketID string) ([]StateT
 		return nil, nil
 	}
 	return s.transitionStore.ListByTicket(ctx, ticketID)
+}
+
+// SetPolicyEvaluator sets the optional policy evaluator. When set, TransitionTicket
+// evaluates policy rules before executing the transition and includes the policy
+// decision in the transition event payload.
+func (s *Service) SetPolicyEvaluator(pe PolicyEvaluator) {
+	s.policyEvaluator = pe
 }
 
 // SetAcceptanceRunner sets the optional runner for acceptance_test on submit. When set and the ticket has objective.acceptance_test, SubmitTicket runs it and rejects on failure.
@@ -123,7 +153,7 @@ func (s *Service) CreateTicket(ctx context.Context, projectID, title string, typ
 	if idempotencyKey != "" {
 		_ = s.store.SetCreateIdempotency(ctx, projectID, idempotencyKey, id)
 	}
-	_ = s.bus.Publish(ctx, events.Event{Type: events.EventTicketCreated, Payload: map[string]any{"ticket_id": id}})
+	_ = s.bus.Publish(ctx, events.NewEvent(events.EventTicketCreated, map[string]any{"ticket_id": id}).WithEntityKey("ticket:"+id))
 	return t, nil
 }
 
@@ -216,11 +246,24 @@ func (s *Service) PatchTicketMetadata(ctx context.Context, ticketID string, titl
 }
 
 // TransitionTicket applies a state transition (single entry point for all state changes).
+// If a PolicyEvaluator is set, it evaluates policy rules before executing the transition.
+// The policy decision is included in the transition event payload for audit purposes.
 func (s *Service) TransitionTicket(ctx context.Context, id string, trigger string, actor Actor, payload map[string]any) error {
 	t, err := s.store.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
+
+	// Evaluate policy if evaluator is set.
+	var policyDecision *PolicyDecision
+	if s.policyEvaluator != nil {
+		pd, err := s.policyEvaluator.EvaluateForTicket(ctx, t, trigger)
+		if err != nil {
+			return fmt.Errorf("policy evaluation: %w", err)
+		}
+		policyDecision = pd
+	}
+
 	deps, err := ResolveDependencies(s.store, ctx, t)
 	if err != nil {
 		return err
@@ -243,8 +286,38 @@ func (s *Service) TransitionTicket(ctx context.Context, id string, trigger strin
 		return err
 	}
 	s.recordTransition(ctx, id, fromState, newState, trigger, actor)
-	s.emitTransitionEvent(trigger, id, newState, t.ProjectID, payload)
+
+	// Include policy decision in the event payload for audit trail.
+	eventExtra := payload
+	if policyDecision != nil {
+		if eventExtra == nil {
+			eventExtra = make(map[string]any)
+		}
+		eventExtra["policy_action"] = policyDecision.Action
+		eventExtra["policy_reason"] = policyDecision.Reason
+		if len(policyDecision.MatchedRules) > 0 {
+			ruleNames := make([]string, len(policyDecision.MatchedRules))
+			for i, mr := range policyDecision.MatchedRules {
+				ruleNames[i] = mr.RuleName
+			}
+			eventExtra["policy_rules"] = ruleNames
+		}
+	}
+	s.emitTransitionEvent(trigger, id, newState, t.ProjectID, eventExtra)
 	return nil
+}
+
+// GetPolicyDecision returns the policy decision for a ticket's next transition
+// without executing the transition. Used by API to show which gates a ticket will hit.
+func (s *Service) GetPolicyDecision(ctx context.Context, id string, trigger string) (*PolicyDecision, error) {
+	if s.policyEvaluator == nil {
+		return nil, nil
+	}
+	t, err := s.store.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return s.policyEvaluator.EvaluateForTicket(ctx, t, trigger)
 }
 
 // SubmitTicket validates outputs and transitions to awaiting_validation. Lease token is validated by caller (queue) if needed.
@@ -337,6 +410,7 @@ func (s *Service) InjectEscalationAnswer(ctx context.Context, ticketID, answer s
 }
 
 // emitTransitionEvent publishes a typed event for the given trigger/transition.
+// Events are keyed by ticket ID for ordered delivery within an entity.
 func (s *Service) emitTransitionEvent(trigger, ticketID string, newState State, projectID string, extra map[string]any) {
 	payload := map[string]any{"ticket_id": ticketID, "state": string(newState)}
 	if projectID != "" {
@@ -347,7 +421,8 @@ func (s *Service) emitTransitionEvent(trigger, ticketID string, newState State, 
 	}
 	eventType := triggerToEventType(trigger, newState)
 	if eventType != "" {
-		_ = s.bus.Publish(context.Background(), events.Event{Type: eventType, Payload: payload})
+		event := events.NewEvent(eventType, payload).WithEntityKey("ticket:" + ticketID)
+		_ = s.bus.Publish(context.Background(), event)
 	}
 }
 
