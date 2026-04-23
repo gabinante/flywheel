@@ -1,42 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
-
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useDispatchStatus } from '@/hooks/use-dispatch-status'
 import { cn } from '@/lib/utils'
 
-type DispatchStatusData = {
-  enabled: boolean
-  active_workers: number
-  max_workers: number
-  active_ticket_ids: string[]
-  timestamp: string
-}
-
-const POLL_INTERVAL = 10_000
-
 export function DispatchStatus() {
-  const [status, setStatus] = useState<DispatchStatusData | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  const fetchStatus = useCallback(async () => {
-    try {
-      const res = await fetch('/api/dispatch/status')
-      if (!res.ok) {
-        setError('Dispatcher unavailable')
-        return
-      }
-      const data = (await res.json()) as DispatchStatusData
-      setStatus(data)
-      setError(null)
-    } catch {
-      setError('Failed to reach dispatcher')
-    }
-  }, [])
-
-  useEffect(() => {
-    void fetchStatus()
-    const interval = setInterval(() => void fetchStatus(), POLL_INTERVAL)
-    return () => clearInterval(interval)
-  }, [fetchStatus])
+  const { status, loading } = useDispatchStatus()
+  const error = !loading && !status ? 'Dispatcher unavailable' : null
 
   const active = status?.active_workers ?? 0
   const max = status?.max_workers ?? 0

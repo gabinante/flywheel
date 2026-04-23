@@ -11,10 +11,10 @@ import (
 // HeadlessConfig provides non-interactive bootstrap configuration,
 // used when stdin is not a TTY (e.g., Docker without -it, CI/CD).
 type HeadlessConfig struct {
-	RepoPath     string // defaults to cwd
-	AnthropicKey string // from ANTHROPIC_API_KEY env
-	AutonomyMode string // from AUTONOMY_MODE env, default "sandbox"
-	DataDir      string // from WARRANT_DATA_DIR env
+	RepoPath           string // defaults to cwd
+	DispatchCredential string // from DISPATCH_AGENT_API_KEY, OPENAI_API_KEY, or legacy ANTHROPIC_API_KEY
+	AutonomyMode       string // from AUTONOMY_MODE env, default "sandbox"
+	DataDir            string // from WARRANT_DATA_DIR env
 }
 
 // HeadlessConfigFromEnv builds a HeadlessConfig from environment variables.
@@ -28,11 +28,18 @@ func HeadlessConfigFromEnv() *HeadlessConfig {
 	if autonomy == "" {
 		autonomy = "sandbox"
 	}
+	dispatchCredential := os.Getenv("DISPATCH_AGENT_API_KEY")
+	if dispatchCredential == "" {
+		dispatchCredential = os.Getenv("OPENAI_API_KEY")
+	}
+	if dispatchCredential == "" {
+		dispatchCredential = os.Getenv("ANTHROPIC_API_KEY")
+	}
 	return &HeadlessConfig{
-		RepoPath:     repoPath,
-		AnthropicKey: os.Getenv("ANTHROPIC_API_KEY"),
-		AutonomyMode: autonomy,
-		DataDir:      os.Getenv("WARRANT_DATA_DIR"),
+		RepoPath:           repoPath,
+		DispatchCredential: dispatchCredential,
+		AutonomyMode:       autonomy,
+		DataDir:            os.Getenv("WARRANT_DATA_DIR"),
 	}
 }
 
@@ -40,8 +47,8 @@ func HeadlessConfigFromEnv() *HeadlessConfig {
 // default org/project/agent, and writes config. Used when no TTY is available.
 func RunHeadless(ctx context.Context, cfg *HeadlessConfig, orgSvc OrgCreator, projectSvc ProjectCreator, agentSvc AgentCreator) (*WizardResult, error) {
 	result := &WizardResult{
-		AutonomyMode: cfg.AutonomyMode,
-		AnthropicKey: cfg.AnthropicKey,
+		AutonomyMode:       cfg.AutonomyMode,
+		DispatchCredential: cfg.DispatchCredential,
 	}
 
 	// Resolve repo path.

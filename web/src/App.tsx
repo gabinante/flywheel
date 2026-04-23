@@ -38,8 +38,9 @@ export default function App() {
     <AuthProvider>
       <HashRouter>
         <Routes>
+          {/* Home/landing page renders full-width, outside AppShell constraints */}
+          <Route path="/" element={<HomeRoute />} />
           <Route element={<AppShell />}>
-            <Route path="/" element={<HomeRoute />} />
             <Route element={<RequireAuthLayout />}>
               <Route path="/orgs" element={<OrgsPage />} />
               <Route

@@ -20,12 +20,14 @@ type RouterConfig struct {
 	AgentsHandler       *AgentsHandler
 	EntitiesHandler     *EntitiesHandler
 	DispatchHandler     *DispatchHandler
+	OrchestratorHandler *OrchestratorHandler
 	PlansHandler        *PlansHandler
 	ObservationHandler  *ObservationHandler
 	StreamsHandler      *StreamsHandler      // Foundational streams (entity, state, change) per spec v0.2 section 2.2
 	CatalogHandler      *CatalogHandler      // Layer 14 project map
 	PoliciesHandler     *PoliciesHandler     // Policy calibration feedback loop (not in OpenAPI spec yet)
 	EnvironmentsHandler *EnvironmentsHandler // Environment CRUD (spec 4.1 compound tuple)
+	StateIndexHandler   *StateIndexHandler   // Observed state index (spec v0.2 Layer 10)
 	ClaimsHandler       *ClaimsHandler       // Claims registry for concurrency control (spec v0.2 §4.3)
 	HooksHandler        *HooksHandler        // Change event webhook receiver (spec v0.2 §2.4)
 	PillarsHandler      *PillarsHandler      // Pillar and strategy layer (Layer 15)
@@ -103,6 +105,10 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	if cfg.DispatchHandler != nil {
 		mux.HandleFunc("GET /api/dispatch/status", cfg.DispatchHandler.getStatus)
 	}
+	if cfg.OrchestratorHandler != nil {
+		mux.HandleFunc("GET /api/command-center/projects/{projectID}/orchestrator", cfg.OrchestratorHandler.getThread)
+		mux.HandleFunc("POST /api/command-center/projects/{projectID}/orchestrator/messages", cfg.OrchestratorHandler.createMessage)
+	}
 	if cfg.PlansHandler != nil {
 		plans := cfg.PlansHandler
 		mux.HandleFunc("POST /plans", plans.create)
@@ -129,6 +135,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	if cfg.EnvironmentsHandler != nil {
 		cfg.EnvironmentsHandler.RegisterRoutes(mux)
+	}
+	if cfg.StateIndexHandler != nil {
+		cfg.StateIndexHandler.RegisterRoutes(mux)
 	}
 	if cfg.ClaimsHandler != nil {
 		cfg.ClaimsHandler.RegisterRoutes(mux)
