@@ -149,6 +149,196 @@ func TestTicketStore(t *testing.T) {
 	}
 }
 
+func TestTicketStore_DependsOnPersisted(t *testing.T) {
+	dbPath := t.TempDir() + "/test.db"
+	db, err := OpenDB(dbPath)
+	if err != nil {
+		t.Fatalf("OpenDB: %v", err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+
+	// Create org and project first (FK constraints).
+	orgStore := NewOrgStore(db)
+	orgID := uuid.Must(uuid.NewV7()).String()
+	_ = orgStore.Create(ctx, &org.Org{ID: orgID, Name: "test", Slug: "test", CreatedAt: time.Now().UTC()})
+
+	projStore := NewProjectStore(db)
+	projID := uuid.Must(uuid.NewV7()).String()
+	_ = projStore.Create(ctx, &project.Project{
+		ID: projID, OrgID: orgID, Name: "testproj", Slug: "testproj",
+		Status: "active", CreatedAt: time.Now().UTC(),
+	})
+
+	store := NewTicketStore(db)
+
+	now := time.Now().UTC()
+
+	// Subtest: Create ticket WITH depends_on and verify roundtrip.
+	t.Run("non-empty depends_on persisted", func(t *testing.T) {
+		tk := &ticket.Ticket{
+			ID: "testproj-10", ProjectID: projID, Title: "With deps",
+			Type: ticket.TypeTask, Priority: ticket.P2, State: ticket.StateDraft,
+			Version: 0, Objective: ticket.Objective{Description: "test"},
+			Inputs: map[string]any{}, Outputs: map[string]any{},
+			DependsOn: []string{"lightning-talks-ai-adjacent-topics-21"},
+			CreatedBy: "agent-1", CreatedAt: now, UpdatedAt: now,
+		}
+		if err := store.Create(ctx, tk); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		got, err := store.GetByID(ctx, "testproj-10")
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if len(got.DependsOn) != 1 {
+			t.Fatalf("DependsOn len = %d, want 1; got %v", len(got.DependsOn), got.DependsOn)
+		}
+		if got.DependsOn[0] != "lightning-talks-ai-adjacent-topics-21" {
+			t.Errorf("DependsOn[0] = %q, want %q", got.DependsOn[0], "lightning-talks-ai-adjacent-topics-21")
+		}
+	})
+
+	// Subtest: Multiple depends_on entries.
+	t.Run("multiple depends_on persisted", func(t *testing.T) {
+		tk := &ticket.Ticket{
+			ID: "testproj-11", ProjectID: projID, Title: "Multi deps",
+			Type: ticket.TypeTask, Priority: ticket.P2, State: ticket.StateDraft,
+			Version: 0, Objective: ticket.Objective{Description: "test"},
+			Inputs: map[string]any{}, Outputs: map[string]any{},
+			DependsOn: []string{"dep-a", "dep-b", "dep-c"},
+			CreatedBy: "agent-1", CreatedAt: now, UpdatedAt: now,
+		}
+		if err := store.Create(ctx, tk); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		got, err := store.GetByID(ctx, "testproj-11")
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if len(got.DependsOn) != 3 {
+			t.Fatalf("DependsOn len = %d, want 3; got %v", len(got.DependsOn), got.DependsOn)
+		}
+		expected := []string{"dep-a", "dep-b", "dep-c"}
+		for i, exp := range expected {
+			if got.DependsOn[i] != exp {
+				t.Errorf("DependsOn[%d] = %q, want %q", i, got.DependsOn[i], exp)
+			}
+		}
+	})
+
+	// Subtest: Empty depends_on returns empty slice (not nil).
+	t.Run("empty depends_on returns empty slice", func(t *testing.T) {
+		tk := &ticket.Ticket{
+			ID: "testproj-12", ProjectID: projID, Title: "No deps",
+			Type: ticket.TypeTask, Priority: ticket.P2, State: ticket.StateDraft,
+			Version: 0, Objective: ticket.Objective{Description: "test"},
+			Inputs: map[string]any{}, Outputs: map[string]any{},
+			DependsOn: []string{},
+			CreatedBy: "agent-1", CreatedAt: now, UpdatedAt: now,
+		}
+		if err := store.Create(ctx, tk); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		got, err := store.GetByID(ctx, "testproj-12")
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if got.DependsOn == nil {
+			t.Fatal("DependsOn is nil, want empty slice")
+		}
+		if len(got.DependsOn) != 0 {
+			t.Errorf("DependsOn len = %d, want 0", len(got.DependsOn))
+		}
+	})
+
+	// Subtest: nil depends_on normalized to empty slice.
+	t.Run("nil depends_on normalized to empty slice", func(t *testing.T) {
+		tk := &ticket.Ticket{
+			ID: "testproj-13", ProjectID: projID, Title: "Nil deps",
+			Type: ticket.TypeTask, Priority: ticket.P2, State: ticket.StateDraft,
+			Version: 0, Objective: ticket.Objective{Description: "test"},
+			Inputs: map[string]any{}, Outputs: map[string]any{},
+			DependsOn: nil,
+			CreatedBy: "agent-1", CreatedAt: now, UpdatedAt: now,
+		}
+		if err := store.Create(ctx, tk); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		got, err := store.GetByID(ctx, "testproj-13")
+		if err != nil {
+			t.Fatalf("GetByID: %v", err)
+		}
+		if got.DependsOn == nil {
+			t.Fatal("DependsOn is nil, want empty slice")
+		}
+		if len(got.DependsOn) != 0 {
+			t.Errorf("DependsOn len = %d, want 0", len(got.DependsOn))
+		}
+	})
+
+	// Subtest: depends_on persisted through GetByIDs (batch read).
+	t.Run("depends_on via GetByIDs", func(t *testing.T) {
+		list, err := store.GetByIDs(ctx, []string{"testproj-10", "testproj-11"})
+		if err != nil {
+			t.Fatalf("GetByIDs: %v", err)
+		}
+		if len(list) != 2 {
+			t.Fatalf("expected 2 tickets, got %d", len(list))
+		}
+		for _, tk := range list {
+			if tk.ID == "testproj-10" && len(tk.DependsOn) != 1 {
+				t.Errorf("testproj-10 DependsOn len = %d, want 1", len(tk.DependsOn))
+			}
+			if tk.ID == "testproj-11" && len(tk.DependsOn) != 3 {
+				t.Errorf("testproj-11 DependsOn len = %d, want 3", len(tk.DependsOn))
+			}
+		}
+	})
+
+	// Subtest: depends_on persisted through GetByProject (list).
+	t.Run("depends_on via GetByProject", func(t *testing.T) {
+		list, err := store.GetByProject(ctx, projID, "", "")
+		if err != nil {
+			t.Fatalf("GetByProject: %v", err)
+		}
+		found := false
+		for _, tk := range list {
+			if tk.ID == "testproj-10" {
+				found = true
+				if len(tk.DependsOn) != 1 {
+					t.Errorf("testproj-10 DependsOn len = %d, want 1", len(tk.DependsOn))
+				}
+			}
+		}
+		if !found {
+			t.Error("testproj-10 not found in GetByProject results")
+		}
+	})
+
+	// Subtest: UpdateDependsOn works.
+	t.Run("UpdateDependsOn", func(t *testing.T) {
+		if err := store.UpdateDependsOn(ctx, "testproj-12", []string{"new-dep-1", "new-dep-2"}); err != nil {
+			t.Fatalf("UpdateDependsOn: %v", err)
+		}
+		got, err := store.GetByID(ctx, "testproj-12")
+		if err != nil {
+			t.Fatalf("GetByID after update: %v", err)
+		}
+		if len(got.DependsOn) != 2 {
+			t.Fatalf("DependsOn len = %d, want 2", len(got.DependsOn))
+		}
+		if got.DependsOn[0] != "new-dep-1" || got.DependsOn[1] != "new-dep-2" {
+			t.Errorf("DependsOn = %v, want [new-dep-1 new-dep-2]", got.DependsOn)
+		}
+	})
+}
+
 func TestAgentStore(t *testing.T) {
 	dbPath := t.TempDir() + "/test.db"
 	db, err := OpenDB(dbPath)

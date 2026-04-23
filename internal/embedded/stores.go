@@ -784,6 +784,9 @@ func (s *TicketStore) scanTicket(query string, args ...any) (*ticket.Ticket, err
 	t.Outputs = make(map[string]any)
 	_ = json.Unmarshal([]byte(outJSON), &t.Outputs)
 	_ = json.Unmarshal([]byte(depsJSON), &t.DependsOn)
+	if t.DependsOn == nil {
+		t.DependsOn = []string{}
+	}
 	t.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
 	t.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
 	return &t, nil
@@ -820,6 +823,9 @@ func (s *TicketStore) scanTickets(rows *sql.Rows) ([]*ticket.Ticket, error) {
 		t.Outputs = make(map[string]any)
 		_ = json.Unmarshal([]byte(outJSON), &t.Outputs)
 		_ = json.Unmarshal([]byte(depsJSON), &t.DependsOn)
+		if t.DependsOn == nil {
+			t.DependsOn = []string{}
+		}
 		t.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
 		t.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
 		list = append(list, &t)
