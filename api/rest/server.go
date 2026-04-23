@@ -23,13 +23,14 @@ type RouterConfig struct {
 	OrchestratorHandler *OrchestratorHandler
 	PlansHandler        *PlansHandler
 	ObservationHandler  *ObservationHandler
-	StreamsHandler      *StreamsHandler    // Foundational streams (entity, state, change) per spec v0.2 section 2.2
-	CatalogHandler      *CatalogHandler    // Layer 14 project map
-	PoliciesHandler     *PoliciesHandler   // Policy calibration feedback loop (not in OpenAPI spec yet)
-	StateIndexHandler   *StateIndexHandler // Observed state index (spec v0.2 Layer 10)
-	ClaimsHandler       *ClaimsHandler     // Claims registry for concurrency control (spec v0.2 §4.3)
-	HooksHandler        *HooksHandler      // Change event webhook receiver (spec v0.2 §2.4)
-	PillarsHandler      *PillarsHandler    // Pillar and strategy layer (Layer 15)
+	StreamsHandler      *StreamsHandler      // Foundational streams (entity, state, change) per spec v0.2 section 2.2
+	CatalogHandler      *CatalogHandler      // Layer 14 project map
+	PoliciesHandler     *PoliciesHandler     // Policy calibration feedback loop (not in OpenAPI spec yet)
+	EnvironmentsHandler *EnvironmentsHandler // Environment CRUD (spec 4.1 compound tuple)
+	StateIndexHandler   *StateIndexHandler   // Observed state index (spec v0.2 Layer 10)
+	ClaimsHandler       *ClaimsHandler       // Claims registry for concurrency control (spec v0.2 §4.3)
+	HooksHandler        *HooksHandler        // Change event webhook receiver (spec v0.2 §2.4)
+	PillarsHandler      *PillarsHandler      // Pillar and strategy layer (Layer 15)
 	// WebDist is the Vite outDir (contains index.html and assets/). Empty skips SPA routes.
 	WebDist string
 }
@@ -131,6 +132,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	if cfg.PoliciesHandler != nil {
 		cfg.PoliciesHandler.RegisterRoutes(mux)
+	}
+	if cfg.EnvironmentsHandler != nil {
+		cfg.EnvironmentsHandler.RegisterRoutes(mux)
 	}
 	if cfg.StateIndexHandler != nil {
 		cfg.StateIndexHandler.RegisterRoutes(mux)

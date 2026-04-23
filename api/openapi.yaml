@@ -383,6 +383,159 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StructuredError'
+  /projects/{projectID}/environments:
+    get:
+      operationId: ListEnvironments
+      summary: List all environments for a project
+      parameters:
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Environment'
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+    post:
+      operationId: CreateEnvironment
+      summary: Create a new environment for a project (compound tuple)
+      parameters:
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEnvironmentRequest'
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Environment'
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /environments/{environmentID}:
+    get:
+      operationId: GetEnvironment
+      summary: Get an environment by ID
+      parameters:
+        - name: environmentID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Environment'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+    put:
+      operationId: UpdateEnvironment
+      summary: Update an environment's compound tuple dimensions
+      parameters:
+        - name: environmentID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateEnvironmentRequest'
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Environment'
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+    delete:
+      operationId: DeleteEnvironment
+      summary: Delete an environment (enforces minimum-two constraint)
+      parameters:
+        - name: environmentID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "400":
+          description: Cannot delete (default or minimum constraint)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /environments/{environmentID}/set-default:
+    post:
+      operationId: SetDefaultEnvironment
+      summary: Set an environment as the default for its project
+      parameters:
+        - name: environmentID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Default set
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
   /projects/{projectID}/tickets:
     get:
       operationId: ListTickets
@@ -1446,6 +1599,81 @@ components:
       scheme: bearer
       bearerFormat: JWT
   schemas:
+    Environment:
+      type: object
+      required: [id, project_id, name, slug, infrastructure, data_tenancy, integration_mode, is_default, created_at, updated_at]
+      description: >
+        Compound environment tuple per spec v0.2 section 4.1. Each environment
+        has three dimensions: infrastructure (dev/staging/prod), data tenancy
+        (synthetic/anonymized/real), and integration mode (sandbox/test/live).
+        Ticket states become environment-qualified (e.g. executing-dev).
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+          description: Display name (e.g. "Development", "Staging")
+        slug:
+          type: string
+          description: URL-safe identifier (e.g. "dev", "staging")
+        infrastructure:
+          type: string
+          enum: [dev, staging, prod]
+          description: Infrastructure tier dimension
+        data_tenancy:
+          type: string
+          enum: [synthetic, anonymized, real]
+          description: Data tenancy dimension
+        integration_mode:
+          type: string
+          enum: [sandbox, test, live]
+          description: Integration mode dimension
+        is_default:
+          type: boolean
+          description: Whether this is the default environment for the project
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CreateEnvironmentRequest:
+      type: object
+      required: [name, infrastructure, data_tenancy, integration_mode]
+      properties:
+        name:
+          type: string
+          description: Display name
+        slug:
+          type: string
+          description: URL-safe slug (auto-generated from name if omitted)
+        infrastructure:
+          type: string
+          enum: [dev, staging, prod]
+        data_tenancy:
+          type: string
+          enum: [synthetic, anonymized, real]
+        integration_mode:
+          type: string
+          enum: [sandbox, test, live]
+    UpdateEnvironmentRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        infrastructure:
+          type: string
+          enum: [dev, staging, prod]
+        data_tenancy:
+          type: string
+          enum: [synthetic, anonymized, real]
+        integration_mode:
+          type: string
+          enum: [sandbox, test, live]
     MeStats:
       type: object
       required: [tickets_created, reviews_approved, reviews_rejected]
@@ -1753,6 +1981,9 @@ components:
             type: string
         work_stream_id:
           type: string
+        environment_id:
+          type: string
+          description: Compound environment ID (spec v0.2 section 4.1)
         target_repo:
           type: string
           description: Repository alias for multi-repo projects (from project_repositories). Empty means primary repo.

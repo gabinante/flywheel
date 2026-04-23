@@ -211,6 +211,11 @@ func (s *Service) UpdateWorkStreamID(ctx context.Context, ticketID string, workS
 	return s.store.UpdateWorkStreamID(ctx, ticketID, workStreamID)
 }
 
+// UpdateEnvironmentID sets the environment_id for a ticket. Caller must validate environment exists and belongs to ticket's project.
+func (s *Service) UpdateEnvironmentID(ctx context.Context, ticketID string, environmentID string) error {
+	return s.store.UpdateEnvironmentID(ctx, ticketID, environmentID)
+}
+
 // UpdateTargetRepo sets the target_repo alias for a ticket. Caller must validate the alias exists in project_repositories.
 func (s *Service) UpdateTargetRepo(ctx context.Context, ticketID string, targetRepo string) error {
 	return s.store.UpdateTargetRepo(ctx, ticketID, targetRepo)

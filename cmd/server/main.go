@@ -26,6 +26,7 @@ import (
 	"github.com/gabinante/flywheel/internal/dispatch"
 	"github.com/gabinante/flywheel/internal/embedded"
 	"github.com/gabinante/flywheel/internal/entity"
+	"github.com/gabinante/flywheel/internal/environment"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/investigation"
 	"github.com/gabinante/flywheel/internal/mirror"
@@ -151,6 +152,8 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	reviewSvc := review.NewService(reviewStore, ticketSvc, bus)
 	entityStore := entity.NewStore(pool)
 	entitySvc := entity.NewService(entityStore, bus)
+	envStore := environment.NewStore(pool)
+	envSvc := environment.NewService(envStore, bus)
 	planStore := plan.NewStore(pool)
 	planSvc := plan.NewService(planStore, bus)
 	calibrationStore := policy.NewCalibrationStore(pool)
@@ -456,6 +459,12 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			OrgSvc:     orgSvc,
 			AgentStore: agentStore,
 		},
+		EnvironmentsHandler: &rest.EnvironmentsHandler{
+			EnvSvc:     envSvc,
+			ProjectSvc: projectSvc,
+			OrgSvc:     orgSvc,
+			AgentStore: agentStore,
+		},
 		ClaimsHandler:  &rest.ClaimsHandler{ClaimsSvc: claimsSvc},
 		HooksHandler:   &rest.HooksHandler{Client: hooksClient},
 		PillarsHandler: &rest.PillarsHandler{PillarSvc: pillarSvc},
@@ -520,6 +529,8 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 	execSvc := execution.NewService(execSt, leaseValidator)
 	reviewSt := embedded.NewReviewStore(sqliteDB)
 	reviewSvc := review.NewService(reviewSt, ticketSvc, bus)
+	envSt := embedded.NewEnvironmentStore(sqliteDB)
+	envSvc := environment.NewService(envSt, bus)
 	pillarSt := embedded.NewPillarStore(sqliteDB)
 	pillarSvc := pillar.NewService(pillarSt)
 
@@ -669,6 +680,12 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		MCPHandler:     mcpHandler,
 		MCPSSEHandler:  mcpSSEHandler,
 		AgentsHandler:  &rest.AgentsHandler{AgentSvc: agentSvc},
+		EnvironmentsHandler: &rest.EnvironmentsHandler{
+			EnvSvc:     envSvc,
+			ProjectSvc: projectSvc,
+			OrgSvc:     orgSvc,
+			AgentStore: agentSt,
+		},
 		OrchestratorHandler: &rest.OrchestratorHandler{
 			Service:    orchestratorSvc,
 			ProjectSvc: projectSvc,

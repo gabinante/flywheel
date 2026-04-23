@@ -79,6 +79,11 @@ const (
 	EventPlanRejected   = "plan.rejected"
 	EventPlanSuperseded = "plan.superseded"
 
+	// --- Environment lifecycle events ---
+	EventEnvironmentCreated = "environment.created"
+	EventEnvironmentUpdated = "environment.updated"
+	EventEnvironmentDeleted = "environment.deleted"
+
 	// --- Stream events (spec v0.2 section 2.2) ---
 	EventEntityStreamAppended = "stream.entity.appended"
 	EventStateStreamAppended  = "stream.state.appended"

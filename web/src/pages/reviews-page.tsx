@@ -342,7 +342,6 @@ export function ReviewsPage() {
       cancelled = true
     }
   }, [client, projectId])
-
   // Load trace when a ticket is expanded
   const loadTraceForTicket = useCallback(
     async (ticketId: string) => {
@@ -639,7 +638,7 @@ export function ReviewsPage() {
                   : message.includes('Rejected')
                     ? 'border border-red-500/20 bg-red-500/10 text-red-400'
                     : message.includes('Reopened')
-                      ? 'border border-amber-500/20 bg-amber-500/10 text-amber-400'
+                    ? 'border border-amber-500/20 bg-amber-500/10 text-amber-400'
                       : 'border border-destructive/20 bg-destructive/10 text-destructive'
               }`}
               role="status"
