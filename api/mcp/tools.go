@@ -215,7 +215,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"acceptance_test":  map[string]any{"type": "string", "description": "Acceptance test description (optional)"},
 			"idempotency_key":  map[string]any{"type": "string", "description": "Idempotency key to prevent duplicate creation (optional)"},
 			"work_stream_id":   map[string]any{"type": "string", "description": "Work stream ID to attach this ticket to (optional)"},
-			"depends_on":       map[string]any{"type": "string", "description": "JSON array of ticket IDs this ticket depends on (optional)"},
+			"depends_on":       map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Array of ticket IDs this ticket depends on (optional)"},
 			"target_repo":      map[string]any{"type": "string", "description": "Target repository alias for multi-repo projects (optional, from list_project_repositories; omit for primary repo)"},
 			"agent_id":         map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
@@ -281,12 +281,12 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"required":             []string{"ticket_id"},
 		"additionalProperties": false,
 	}}, wrap(getTicketHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "update_ticket", Description: "Update ticket metadata. Pass project_id and ticket_id. Optional: depends_on (JSON array string), work_stream_id. For title/objective text, use REST PATCH /tickets/{id} with JSON body (title, objective partial merge) or recreate the ticket.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "update_ticket", Description: "Update ticket metadata. Pass project_id and ticket_id. Optional: depends_on (array of ticket ID strings), work_stream_id. For title/objective text, use REST PATCH /tickets/{id} with JSON body (title, objective partial merge) or recreate the ticket.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"project_id":     map[string]any{"type": "string", "description": "Project ID"},
 			"ticket_id":      map[string]any{"type": "string", "description": "Ticket ID"},
-			"depends_on":     map[string]any{"type": "string", "description": "JSON array of ticket ID strings this ticket depends on (optional)"},
+			"depends_on":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Array of ticket ID strings this ticket depends on (optional)"},
 			"work_stream_id": map[string]any{"type": "string", "description": "Work stream ID to attach this ticket to (optional)"},
 			"agent_id":       map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
@@ -601,6 +601,38 @@ func getInt(args map[string]any, key string, def int) int {
 	default:
 		return def
 	}
+}
+
+// getStringSlice extracts a []string from args[key]. It handles three cases:
+// 1. Native JSON array ([]interface{} where each element is a string) — from MCP clients sending arrays.
+// 2. JSON-encoded string (e.g. `["a","b"]`) — from clients following the old schema.
+// 3. Missing or nil — returns nil.
+func getStringSlice(args map[string]any, key string) []string {
+	if args == nil {
+		return nil
+	}
+	v, ok := args[key]
+	if !ok || v == nil {
+		return nil
+	}
+	// Case 1: native array from MCP deserialization ([]interface{}).
+	if arr, ok := v.([]interface{}); ok {
+		out := make([]string, 0, len(arr))
+		for _, elem := range arr {
+			if s, ok := elem.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	// Case 2: JSON-encoded string.
+	if s, ok := v.(string); ok && s != "" {
+		var out []string
+		if err := json.Unmarshal([]byte(s), &out); err == nil {
+			return out
+		}
+	}
+	return nil
 }
 
 func getBool(args map[string]any, key string, def bool) bool {
@@ -1111,9 +1143,9 @@ func createTicketHandler(b *Backend, ctx context.Context, args map[string]any) (
 				return toolErrTriple(apierrors.New(apierrors.CodeNotFound, "work stream not found or does not belong to project", false))
 			}
 		}
-		dependsOn := []string{}
-		if d := getString(args, "depends_on", ""); d != "" {
-			_ = json.Unmarshal([]byte(d), &dependsOn)
+		dependsOn := getStringSlice(args, "depends_on")
+		if dependsOn == nil {
+			dependsOn = []string{}
 		}
 		targetRepo := getString(args, "target_repo", "")
 		// Validate target_repo alias exists if provided and multi-repo is configured.
@@ -1427,12 +1459,8 @@ func updateTicketHandler(b *Backend, ctx context.Context, args map[string]any) (
 		if t.ProjectID != projectID {
 			return toolErrTriple(apierrors.New(apierrors.CodeForbidden, "ticket does not belong to that project", false))
 		}
-		dependsOnStr := getString(args,"depends_on", "")
-		if dependsOnStr != "" {
-			var dependsOn []string
-			if err := json.Unmarshal([]byte(dependsOnStr), &dependsOn); err != nil {
-				return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, "depends_on must be a JSON array of ticket ID strings", false))
-			}
+		dependsOn := getStringSlice(args, "depends_on")
+		if dependsOn != nil {
 			if err := b.Ticket.UpdateDependsOn(ctx, ticketID, dependsOn); err != nil {
 				return toolErrTriple(apierrors.MapError(err))
 			}
