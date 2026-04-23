@@ -23,21 +23,132 @@ const (
 	BearerAuthScopes = "BearerAuth.Scopes"
 )
 
+// Defines values for CodePlanHunksOperation.
+const (
+	Add    CodePlanHunksOperation = "add"
+	Modify CodePlanHunksOperation = "modify"
+	Remove CodePlanHunksOperation = "remove"
+)
+
+// Valid indicates whether the value is a known member of the CodePlanHunksOperation enum.
+func (e CodePlanHunksOperation) Valid() bool {
+	switch e {
+	case Add:
+		return true
+	case Modify:
+		return true
+	case Remove:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateEnvironmentRequestDataTenancy.
+const (
+	CreateEnvironmentRequestDataTenancyAnonymized CreateEnvironmentRequestDataTenancy = "anonymized"
+	CreateEnvironmentRequestDataTenancyReal       CreateEnvironmentRequestDataTenancy = "real"
+	CreateEnvironmentRequestDataTenancySynthetic  CreateEnvironmentRequestDataTenancy = "synthetic"
+)
+
+// Valid indicates whether the value is a known member of the CreateEnvironmentRequestDataTenancy enum.
+func (e CreateEnvironmentRequestDataTenancy) Valid() bool {
+	switch e {
+	case CreateEnvironmentRequestDataTenancyAnonymized:
+		return true
+	case CreateEnvironmentRequestDataTenancyReal:
+		return true
+	case CreateEnvironmentRequestDataTenancySynthetic:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateEnvironmentRequestInfrastructure.
+const (
+	CreateEnvironmentRequestInfrastructureDev     CreateEnvironmentRequestInfrastructure = "dev"
+	CreateEnvironmentRequestInfrastructureProd    CreateEnvironmentRequestInfrastructure = "prod"
+	CreateEnvironmentRequestInfrastructureStaging CreateEnvironmentRequestInfrastructure = "staging"
+)
+
+// Valid indicates whether the value is a known member of the CreateEnvironmentRequestInfrastructure enum.
+func (e CreateEnvironmentRequestInfrastructure) Valid() bool {
+	switch e {
+	case CreateEnvironmentRequestInfrastructureDev:
+		return true
+	case CreateEnvironmentRequestInfrastructureProd:
+		return true
+	case CreateEnvironmentRequestInfrastructureStaging:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateEnvironmentRequestIntegrationMode.
+const (
+	CreateEnvironmentRequestIntegrationModeLive    CreateEnvironmentRequestIntegrationMode = "live"
+	CreateEnvironmentRequestIntegrationModeSandbox CreateEnvironmentRequestIntegrationMode = "sandbox"
+	CreateEnvironmentRequestIntegrationModeTest    CreateEnvironmentRequestIntegrationMode = "test"
+)
+
+// Valid indicates whether the value is a known member of the CreateEnvironmentRequestIntegrationMode enum.
+func (e CreateEnvironmentRequestIntegrationMode) Valid() bool {
+	switch e {
+	case CreateEnvironmentRequestIntegrationModeLive:
+		return true
+	case CreateEnvironmentRequestIntegrationModeSandbox:
+		return true
+	case CreateEnvironmentRequestIntegrationModeTest:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreatePlanRequestBackend.
+const (
+	CreatePlanRequestBackendCode      CreatePlanRequestBackend = "code"
+	CreatePlanRequestBackendDatabase  CreatePlanRequestBackend = "database"
+	CreatePlanRequestBackendDeploy    CreatePlanRequestBackend = "deploy"
+	CreatePlanRequestBackendShell     CreatePlanRequestBackend = "shell"
+	CreatePlanRequestBackendTerraform CreatePlanRequestBackend = "terraform"
+)
+
+// Valid indicates whether the value is a known member of the CreatePlanRequestBackend enum.
+func (e CreatePlanRequestBackend) Valid() bool {
+	switch e {
+	case CreatePlanRequestBackendCode:
+		return true
+	case CreatePlanRequestBackendDatabase:
+		return true
+	case CreatePlanRequestBackendDeploy:
+		return true
+	case CreatePlanRequestBackendShell:
+		return true
+	case CreatePlanRequestBackendTerraform:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateReviewRequestDecision.
 const (
-	Approved CreateReviewRequestDecision = "approved"
-	Rejected CreateReviewRequestDecision = "rejected"
-	Reopened CreateReviewRequestDecision = "reopened"
+	CreateReviewRequestDecisionApproved CreateReviewRequestDecision = "approved"
+	CreateReviewRequestDecisionRejected CreateReviewRequestDecision = "rejected"
+	CreateReviewRequestDecisionReopened CreateReviewRequestDecision = "reopened"
 )
 
 // Valid indicates whether the value is a known member of the CreateReviewRequestDecision enum.
 func (e CreateReviewRequestDecision) Valid() bool {
 	switch e {
-	case Approved:
+	case CreateReviewRequestDecisionApproved:
 		return true
-	case Rejected:
+	case CreateReviewRequestDecisionRejected:
 		return true
-	case Reopened:
+	case CreateReviewRequestDecisionReopened:
 		return true
 	default:
 		return false
@@ -68,6 +179,111 @@ func (e CreateTicketRequestType) Valid() bool {
 	}
 }
 
+// Defines values for DatabasePlanDirection.
+const (
+	Down DatabasePlanDirection = "down"
+	Up   DatabasePlanDirection = "up"
+)
+
+// Valid indicates whether the value is a known member of the DatabasePlanDirection enum.
+func (e DatabasePlanDirection) Valid() bool {
+	switch e {
+	case Down:
+		return true
+	case Up:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeployPlanDeployStrategy.
+const (
+	BlueGreen DeployPlanDeployStrategy = "blue-green"
+	Canary    DeployPlanDeployStrategy = "canary"
+	Recreate  DeployPlanDeployStrategy = "recreate"
+	Rolling   DeployPlanDeployStrategy = "rolling"
+)
+
+// Valid indicates whether the value is a known member of the DeployPlanDeployStrategy enum.
+func (e DeployPlanDeployStrategy) Valid() bool {
+	switch e {
+	case BlueGreen:
+		return true
+	case Canary:
+		return true
+	case Recreate:
+		return true
+	case Rolling:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EnvironmentDataTenancy.
+const (
+	EnvironmentDataTenancyAnonymized EnvironmentDataTenancy = "anonymized"
+	EnvironmentDataTenancyReal       EnvironmentDataTenancy = "real"
+	EnvironmentDataTenancySynthetic  EnvironmentDataTenancy = "synthetic"
+)
+
+// Valid indicates whether the value is a known member of the EnvironmentDataTenancy enum.
+func (e EnvironmentDataTenancy) Valid() bool {
+	switch e {
+	case EnvironmentDataTenancyAnonymized:
+		return true
+	case EnvironmentDataTenancyReal:
+		return true
+	case EnvironmentDataTenancySynthetic:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EnvironmentInfrastructure.
+const (
+	EnvironmentInfrastructureDev     EnvironmentInfrastructure = "dev"
+	EnvironmentInfrastructureProd    EnvironmentInfrastructure = "prod"
+	EnvironmentInfrastructureStaging EnvironmentInfrastructure = "staging"
+)
+
+// Valid indicates whether the value is a known member of the EnvironmentInfrastructure enum.
+func (e EnvironmentInfrastructure) Valid() bool {
+	switch e {
+	case EnvironmentInfrastructureDev:
+		return true
+	case EnvironmentInfrastructureProd:
+		return true
+	case EnvironmentInfrastructureStaging:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EnvironmentIntegrationMode.
+const (
+	EnvironmentIntegrationModeLive    EnvironmentIntegrationMode = "live"
+	EnvironmentIntegrationModeSandbox EnvironmentIntegrationMode = "sandbox"
+	EnvironmentIntegrationModeTest    EnvironmentIntegrationMode = "test"
+)
+
+// Valid indicates whether the value is a known member of the EnvironmentIntegrationMode enum.
+func (e EnvironmentIntegrationMode) Valid() bool {
+	switch e {
+	case EnvironmentIntegrationModeLive:
+		return true
+	case EnvironmentIntegrationModeSandbox:
+		return true
+	case EnvironmentIntegrationModeTest:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for NotImplementedErrorCode.
 const (
 	NotImplementedErrorCodeNotImplemented NotImplementedErrorCode = "not_implemented"
@@ -77,6 +293,180 @@ const (
 func (e NotImplementedErrorCode) Valid() bool {
 	switch e {
 	case NotImplementedErrorCodeNotImplemented:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PlanBackend.
+const (
+	PlanBackendCode      PlanBackend = "code"
+	PlanBackendDatabase  PlanBackend = "database"
+	PlanBackendDeploy    PlanBackend = "deploy"
+	PlanBackendShell     PlanBackend = "shell"
+	PlanBackendTerraform PlanBackend = "terraform"
+)
+
+// Valid indicates whether the value is a known member of the PlanBackend enum.
+func (e PlanBackend) Valid() bool {
+	switch e {
+	case PlanBackendCode:
+		return true
+	case PlanBackendDatabase:
+		return true
+	case PlanBackendDeploy:
+		return true
+	case PlanBackendShell:
+		return true
+	case PlanBackendTerraform:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PlanState.
+const (
+	PlanStateApplied    PlanState = "applied"
+	PlanStateApproved   PlanState = "approved"
+	PlanStateClassified PlanState = "classified"
+	PlanStateDraft      PlanState = "draft"
+	PlanStateRejected   PlanState = "rejected"
+	PlanStateSubmitted  PlanState = "submitted"
+	PlanStateSuperseded PlanState = "superseded"
+)
+
+// Valid indicates whether the value is a known member of the PlanState enum.
+func (e PlanState) Valid() bool {
+	switch e {
+	case PlanStateApplied:
+		return true
+	case PlanStateApproved:
+		return true
+	case PlanStateClassified:
+		return true
+	case PlanStateDraft:
+		return true
+	case PlanStateRejected:
+		return true
+	case PlanStateSubmitted:
+		return true
+	case PlanStateSuperseded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicyChangeEventChangeType.
+const (
+	Broadened PolicyChangeEventChangeType = "broadened"
+	Created   PolicyChangeEventChangeType = "created"
+	Disabled  PolicyChangeEventChangeType = "disabled"
+	Enabled   PolicyChangeEventChangeType = "enabled"
+	Narrowed  PolicyChangeEventChangeType = "narrowed"
+	Updated   PolicyChangeEventChangeType = "updated"
+)
+
+// Valid indicates whether the value is a known member of the PolicyChangeEventChangeType enum.
+func (e PolicyChangeEventChangeType) Valid() bool {
+	switch e {
+	case Broadened:
+		return true
+	case Created:
+		return true
+	case Disabled:
+		return true
+	case Enabled:
+		return true
+	case Narrowed:
+		return true
+	case Updated:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicyDecisionDecision.
+const (
+	PolicyDecisionDecisionAutoApproved   PolicyDecisionDecision = "auto_approved"
+	PolicyDecisionDecisionBlocked        PolicyDecisionDecision = "blocked"
+	PolicyDecisionDecisionRequiredReview PolicyDecisionDecision = "required_review"
+)
+
+// Valid indicates whether the value is a known member of the PolicyDecisionDecision enum.
+func (e PolicyDecisionDecision) Valid() bool {
+	switch e {
+	case PolicyDecisionDecisionAutoApproved:
+		return true
+	case PolicyDecisionDecisionBlocked:
+		return true
+	case PolicyDecisionDecisionRequiredReview:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicyDecisionOutcome.
+const (
+	PolicyDecisionOutcomeIncident PolicyDecisionOutcome = "incident"
+	PolicyDecisionOutcomeRollback PolicyDecisionOutcome = "rollback"
+	PolicyDecisionOutcomeSuccess  PolicyDecisionOutcome = "success"
+)
+
+// Valid indicates whether the value is a known member of the PolicyDecisionOutcome enum.
+func (e PolicyDecisionOutcome) Valid() bool {
+	switch e {
+	case PolicyDecisionOutcomeIncident:
+		return true
+	case PolicyDecisionOutcomeRollback:
+		return true
+	case PolicyDecisionOutcomeSuccess:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicyProposalProposalType.
+const (
+	PolicyProposalProposalTypeBroaden PolicyProposalProposalType = "broaden"
+	PolicyProposalProposalTypeReview  PolicyProposalProposalType = "review"
+)
+
+// Valid indicates whether the value is a known member of the PolicyProposalProposalType enum.
+func (e PolicyProposalProposalType) Valid() bool {
+	switch e {
+	case PolicyProposalProposalTypeBroaden:
+		return true
+	case PolicyProposalProposalTypeReview:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicyProposalStatus.
+const (
+	PolicyProposalStatusAccepted  PolicyProposalStatus = "accepted"
+	PolicyProposalStatusDismissed PolicyProposalStatus = "dismissed"
+	PolicyProposalStatusPending   PolicyProposalStatus = "pending"
+	PolicyProposalStatusRejected  PolicyProposalStatus = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the PolicyProposalStatus enum.
+func (e PolicyProposalStatus) Valid() bool {
+	switch e {
+	case PolicyProposalStatusAccepted:
+		return true
+	case PolicyProposalStatusDismissed:
+		return true
+	case PolicyProposalStatusPending:
+		return true
+	case PolicyProposalStatusRejected:
 		return true
 	default:
 		return false
@@ -95,6 +485,129 @@ func (e ProjectStatus) Valid() bool {
 	case ProjectStatusActive:
 		return true
 	case ProjectStatusClosed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RecordDecisionRequestDecision.
+const (
+	RecordDecisionRequestDecisionAutoApproved   RecordDecisionRequestDecision = "auto_approved"
+	RecordDecisionRequestDecisionBlocked        RecordDecisionRequestDecision = "blocked"
+	RecordDecisionRequestDecisionRequiredReview RecordDecisionRequestDecision = "required_review"
+)
+
+// Valid indicates whether the value is a known member of the RecordDecisionRequestDecision enum.
+func (e RecordDecisionRequestDecision) Valid() bool {
+	switch e {
+	case RecordDecisionRequestDecisionAutoApproved:
+		return true
+	case RecordDecisionRequestDecisionBlocked:
+		return true
+	case RecordDecisionRequestDecisionRequiredReview:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RecordOutcomeRequestOutcome.
+const (
+	RecordOutcomeRequestOutcomeIncident RecordOutcomeRequestOutcome = "incident"
+	RecordOutcomeRequestOutcomeRollback RecordOutcomeRequestOutcome = "rollback"
+	RecordOutcomeRequestOutcomeSuccess  RecordOutcomeRequestOutcome = "success"
+)
+
+// Valid indicates whether the value is a known member of the RecordOutcomeRequestOutcome enum.
+func (e RecordOutcomeRequestOutcome) Valid() bool {
+	switch e {
+	case RecordOutcomeRequestOutcomeIncident:
+		return true
+	case RecordOutcomeRequestOutcomeRollback:
+		return true
+	case RecordOutcomeRequestOutcomeSuccess:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ResolveProposalRequestStatus.
+const (
+	ResolveProposalRequestStatusAccepted  ResolveProposalRequestStatus = "accepted"
+	ResolveProposalRequestStatusDismissed ResolveProposalRequestStatus = "dismissed"
+	ResolveProposalRequestStatusRejected  ResolveProposalRequestStatus = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the ResolveProposalRequestStatus enum.
+func (e ResolveProposalRequestStatus) Valid() bool {
+	switch e {
+	case ResolveProposalRequestStatusAccepted:
+		return true
+	case ResolveProposalRequestStatusDismissed:
+		return true
+	case ResolveProposalRequestStatusRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ShellPlanSideEffectManifestFileOpsAction.
+const (
+	ShellPlanSideEffectManifestFileOpsActionDelete ShellPlanSideEffectManifestFileOpsAction = "delete"
+	ShellPlanSideEffectManifestFileOpsActionRead   ShellPlanSideEffectManifestFileOpsAction = "read"
+	ShellPlanSideEffectManifestFileOpsActionWrite  ShellPlanSideEffectManifestFileOpsAction = "write"
+)
+
+// Valid indicates whether the value is a known member of the ShellPlanSideEffectManifestFileOpsAction enum.
+func (e ShellPlanSideEffectManifestFileOpsAction) Valid() bool {
+	switch e {
+	case ShellPlanSideEffectManifestFileOpsActionDelete:
+		return true
+	case ShellPlanSideEffectManifestFileOpsActionRead:
+		return true
+	case ShellPlanSideEffectManifestFileOpsActionWrite:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ShellPlanSideEffectManifestNetworkOpsMethod.
+const (
+	DELETE  ShellPlanSideEffectManifestNetworkOpsMethod = "DELETE"
+	GET     ShellPlanSideEffectManifestNetworkOpsMethod = "GET"
+	HEAD    ShellPlanSideEffectManifestNetworkOpsMethod = "HEAD"
+	OPTIONS ShellPlanSideEffectManifestNetworkOpsMethod = "OPTIONS"
+	PATCH   ShellPlanSideEffectManifestNetworkOpsMethod = "PATCH"
+	POST    ShellPlanSideEffectManifestNetworkOpsMethod = "POST"
+	PUT     ShellPlanSideEffectManifestNetworkOpsMethod = "PUT"
+	TCP     ShellPlanSideEffectManifestNetworkOpsMethod = "TCP"
+	UDP     ShellPlanSideEffectManifestNetworkOpsMethod = "UDP"
+)
+
+// Valid indicates whether the value is a known member of the ShellPlanSideEffectManifestNetworkOpsMethod enum.
+func (e ShellPlanSideEffectManifestNetworkOpsMethod) Valid() bool {
+	switch e {
+	case DELETE:
+		return true
+	case GET:
+		return true
+	case HEAD:
+		return true
+	case OPTIONS:
+		return true
+	case PATCH:
+		return true
+	case POST:
+		return true
+	case PUT:
+		return true
+	case TCP:
+		return true
+	case UDP:
 		return true
 	default:
 		return false
@@ -155,6 +668,33 @@ func (e StructuredErrorCode) Valid() bool {
 	case StructuredErrorCodeProjectClosed:
 		return true
 	case StructuredErrorCodeUnauthorized:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TerraformPlanResourceChangesChangeAction.
+const (
+	TerraformPlanResourceChangesChangeActionCreate  TerraformPlanResourceChangesChangeAction = "create"
+	TerraformPlanResourceChangesChangeActionDelete  TerraformPlanResourceChangesChangeAction = "delete"
+	TerraformPlanResourceChangesChangeActionNoOp    TerraformPlanResourceChangesChangeAction = "no-op"
+	TerraformPlanResourceChangesChangeActionReplace TerraformPlanResourceChangesChangeAction = "replace"
+	TerraformPlanResourceChangesChangeActionUpdate  TerraformPlanResourceChangesChangeAction = "update"
+)
+
+// Valid indicates whether the value is a known member of the TerraformPlanResourceChangesChangeAction enum.
+func (e TerraformPlanResourceChangesChangeAction) Valid() bool {
+	switch e {
+	case TerraformPlanResourceChangesChangeActionCreate:
+		return true
+	case TerraformPlanResourceChangesChangeActionDelete:
+		return true
+	case TerraformPlanResourceChangesChangeActionNoOp:
+		return true
+	case TerraformPlanResourceChangesChangeActionReplace:
+		return true
+	case TerraformPlanResourceChangesChangeActionUpdate:
 		return true
 	default:
 		return false
@@ -226,22 +766,22 @@ func (e TicketState) Valid() bool {
 
 // Defines values for TicketType.
 const (
-	TicketTypeBug    TicketType = "bug"
-	TicketTypeReview TicketType = "review"
-	TicketTypeSpike  TicketType = "spike"
-	TicketTypeTask   TicketType = "task"
+	Bug    TicketType = "bug"
+	Review TicketType = "review"
+	Spike  TicketType = "spike"
+	Task   TicketType = "task"
 )
 
 // Valid indicates whether the value is a known member of the TicketType enum.
 func (e TicketType) Valid() bool {
 	switch e {
-	case TicketTypeBug:
+	case Bug:
 		return true
-	case TicketTypeReview:
+	case Review:
 		return true
-	case TicketTypeSpike:
+	case Spike:
 		return true
-	case TicketTypeTask:
+	case Task:
 		return true
 	default:
 		return false
@@ -311,6 +851,69 @@ func (e TransitionRequestActor) Valid() bool {
 	case TransitionRequestActorHuman:
 		return true
 	case TransitionRequestActorSystem:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UpdateEnvironmentRequestDataTenancy.
+const (
+	Anonymized UpdateEnvironmentRequestDataTenancy = "anonymized"
+	Real       UpdateEnvironmentRequestDataTenancy = "real"
+	Synthetic  UpdateEnvironmentRequestDataTenancy = "synthetic"
+)
+
+// Valid indicates whether the value is a known member of the UpdateEnvironmentRequestDataTenancy enum.
+func (e UpdateEnvironmentRequestDataTenancy) Valid() bool {
+	switch e {
+	case Anonymized:
+		return true
+	case Real:
+		return true
+	case Synthetic:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UpdateEnvironmentRequestInfrastructure.
+const (
+	Dev     UpdateEnvironmentRequestInfrastructure = "dev"
+	Prod    UpdateEnvironmentRequestInfrastructure = "prod"
+	Staging UpdateEnvironmentRequestInfrastructure = "staging"
+)
+
+// Valid indicates whether the value is a known member of the UpdateEnvironmentRequestInfrastructure enum.
+func (e UpdateEnvironmentRequestInfrastructure) Valid() bool {
+	switch e {
+	case Dev:
+		return true
+	case Prod:
+		return true
+	case Staging:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UpdateEnvironmentRequestIntegrationMode.
+const (
+	Live    UpdateEnvironmentRequestIntegrationMode = "live"
+	Sandbox UpdateEnvironmentRequestIntegrationMode = "sandbox"
+	Test    UpdateEnvironmentRequestIntegrationMode = "test"
+)
+
+// Valid indicates whether the value is a known member of the UpdateEnvironmentRequestIntegrationMode enum.
+func (e UpdateEnvironmentRequestIntegrationMode) Valid() bool {
+	switch e {
+	case Live:
+		return true
+	case Sandbox:
+		return true
+	case Test:
 		return true
 	default:
 		return false
@@ -434,6 +1037,51 @@ func (e GetGitNotesLogParamsType) Valid() bool {
 	}
 }
 
+// Defines values for TransitionPlanJSONBodyAction.
+const (
+	Apply    TransitionPlanJSONBodyAction = "apply"
+	Approve  TransitionPlanJSONBodyAction = "approve"
+	Classify TransitionPlanJSONBodyAction = "classify"
+	Reject   TransitionPlanJSONBodyAction = "reject"
+	Submit   TransitionPlanJSONBodyAction = "submit"
+)
+
+// Valid indicates whether the value is a known member of the TransitionPlanJSONBodyAction enum.
+func (e TransitionPlanJSONBodyAction) Valid() bool {
+	switch e {
+	case Apply:
+		return true
+	case Approve:
+		return true
+	case Classify:
+		return true
+	case Reject:
+		return true
+	case Submit:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListPoliciesParamsEnabled.
+const (
+	False ListPoliciesParamsEnabled = "false"
+	True  ListPoliciesParamsEnabled = "true"
+)
+
+// Valid indicates whether the value is a known member of the ListPoliciesParamsEnabled enum.
+func (e ListPoliciesParamsEnabled) Valid() bool {
+	switch e {
+	case False:
+		return true
+	case True:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListTicketsParamsState.
 const (
 	ListTicketsParamsStateAwaitingInput      ListTicketsParamsState = "awaiting_input"
@@ -518,6 +1166,38 @@ func (e ListWorkStreamsParamsStatus) Valid() bool {
 	}
 }
 
+// Defines values for ListPlansByTicketParamsBackend.
+const (
+	Code      ListPlansByTicketParamsBackend = "code"
+	Database  ListPlansByTicketParamsBackend = "database"
+	Deploy    ListPlansByTicketParamsBackend = "deploy"
+	Shell     ListPlansByTicketParamsBackend = "shell"
+	Terraform ListPlansByTicketParamsBackend = "terraform"
+)
+
+// Valid indicates whether the value is a known member of the ListPlansByTicketParamsBackend enum.
+func (e ListPlansByTicketParamsBackend) Valid() bool {
+	switch e {
+	case Code:
+		return true
+	case Database:
+		return true
+	case Deploy:
+		return true
+	case Shell:
+		return true
+	case Terraform:
+		return true
+	default:
+		return false
+	}
+}
+
+// CalibrationResponse defines model for CalibrationResponse.
+type CalibrationResponse struct {
+	Proposals *[]PolicyProposal `json:"proposals,omitempty"`
+}
+
 // ClaimRequest defines model for ClaimRequest.
 type ClaimRequest struct {
 	AgentId string `json:"agent_id"`
@@ -533,16 +1213,79 @@ type ClaimResponseBody struct {
 	Ticket *Ticket `json:"ticket,omitempty"`
 }
 
+// CodePlan AST diff representation for code changes.
+type CodePlan struct {
+	AfterHash  *string `json:"after_hash,omitempty"`
+	BeforeHash *string `json:"before_hash,omitempty"`
+	FilePath   string  `json:"file_path"`
+	Hunks      []struct {
+		Content   string                 `json:"content"`
+		EndLine   *int                   `json:"end_line,omitempty"`
+		Operation CodePlanHunksOperation `json:"operation"`
+		StartLine *int                   `json:"start_line,omitempty"`
+	} `json:"hunks"`
+	Language string `json:"language"`
+}
+
+// CodePlanHunksOperation defines model for CodePlan.Hunks.Operation.
+type CodePlanHunksOperation string
+
 // CommitNotesResponse defines model for CommitNotesResponse.
 type CommitNotesResponse struct {
 	CommitSha *string            `json:"commit_sha,omitempty"`
 	Notes     *map[string]string `json:"notes,omitempty"`
 }
 
+// CreateEnvironmentRequest defines model for CreateEnvironmentRequest.
+type CreateEnvironmentRequest struct {
+	DataTenancy     CreateEnvironmentRequestDataTenancy     `json:"data_tenancy"`
+	Infrastructure  CreateEnvironmentRequestInfrastructure  `json:"infrastructure"`
+	IntegrationMode CreateEnvironmentRequestIntegrationMode `json:"integration_mode"`
+
+	// Name Display name
+	Name string `json:"name"`
+
+	// Slug URL-safe slug (auto-generated from name if omitted)
+	Slug *string `json:"slug,omitempty"`
+}
+
+// CreateEnvironmentRequestDataTenancy defines model for CreateEnvironmentRequest.DataTenancy.
+type CreateEnvironmentRequestDataTenancy string
+
+// CreateEnvironmentRequestInfrastructure defines model for CreateEnvironmentRequest.Infrastructure.
+type CreateEnvironmentRequestInfrastructure string
+
+// CreateEnvironmentRequestIntegrationMode defines model for CreateEnvironmentRequest.IntegrationMode.
+type CreateEnvironmentRequestIntegrationMode string
+
 // CreateOrgRequest defines model for CreateOrgRequest.
 type CreateOrgRequest struct {
 	Name *string `json:"name,omitempty"`
 	Slug *string `json:"slug,omitempty"`
+}
+
+// CreatePlanRequest defines model for CreatePlanRequest.
+type CreatePlanRequest struct {
+	Backend CreatePlanRequestBackend `json:"backend"`
+
+	// Content Backend-specific content object (must match backend type schema)
+	Content        map[string]interface{} `json:"content"`
+	CreatedBy      *string                `json:"created_by,omitempty"`
+	ExpiresAt      *time.Time             `json:"expires_at,omitempty"`
+	FreshnessStamp *time.Time             `json:"freshness_stamp,omitempty"`
+	TicketId       string                 `json:"ticket_id"`
+}
+
+// CreatePlanRequestBackend defines model for CreatePlanRequest.Backend.
+type CreatePlanRequestBackend string
+
+// CreatePolicyRequest defines model for CreatePolicyRequest.
+type CreatePolicyRequest struct {
+	ActorId     *string      `json:"actor_id,omitempty"`
+	Description *string      `json:"description,omitempty"`
+	MinSample   *int         `json:"min_sample,omitempty"`
+	Name        string       `json:"name"`
+	Rules       *PolicyRules `json:"rules,omitempty"`
 }
 
 // CreateProjectRequest defines model for CreateProjectRequest.
@@ -570,13 +1313,16 @@ type CreateTicketRequest struct {
 	DependsOn *[]string `json:"depends_on,omitempty"`
 
 	// IdempotencyKey Optional. Duplicate requests with the same key return the existing ticket.
-	IdempotencyKey *string                  `json:"idempotency_key,omitempty"`
-	Objective      *Objective               `json:"objective,omitempty"`
-	Priority       *int                     `json:"priority,omitempty"`
-	TicketContext  *TicketContext           `json:"ticket_context,omitempty"`
-	Title          string                   `json:"title"`
-	Type           *CreateTicketRequestType `json:"type,omitempty"`
-	WorkStreamId   *string                  `json:"work_stream_id,omitempty"`
+	IdempotencyKey *string    `json:"idempotency_key,omitempty"`
+	Objective      *Objective `json:"objective,omitempty"`
+	Priority       *int       `json:"priority,omitempty"`
+
+	// TargetRepo Repository alias for multi-repo projects (optional)
+	TargetRepo    *string                  `json:"target_repo,omitempty"`
+	TicketContext *TicketContext           `json:"ticket_context,omitempty"`
+	Title         string                   `json:"title"`
+	Type          *CreateTicketRequestType `json:"type,omitempty"`
+	WorkStreamId  *string                  `json:"work_stream_id,omitempty"`
 }
 
 // CreateTicketRequestType defines model for CreateTicketRequest.Type.
@@ -590,6 +1336,70 @@ type CreateWorkStreamRequest struct {
 	Plan *string `json:"plan,omitempty"`
 	Slug *string `json:"slug,omitempty"`
 }
+
+// DatabasePlan Database migration plan. DDL must be valid SQL — prose fails validation.
+type DatabasePlan struct {
+	DatabaseName *string `json:"database_name,omitempty"`
+
+	// Ddl Must be valid SQL DDL (validated at submission)
+	Ddl           string                `json:"ddl"`
+	Direction     DatabasePlanDirection `json:"direction"`
+	MigrationName string                `json:"migration_name"`
+	RollbackDdl   *string               `json:"rollback_ddl,omitempty"`
+	SchemaVersion *string               `json:"schema_version,omitempty"`
+}
+
+// DatabasePlanDirection defines model for DatabasePlan.Direction.
+type DatabasePlanDirection string
+
+// DeployPlan Deploy plan referencing specific artifact hash and target.
+type DeployPlan struct {
+	ArtifactHash   string                   `json:"artifact_hash"`
+	ArtifactUrl    *string                  `json:"artifact_url,omitempty"`
+	DeployStrategy DeployPlanDeployStrategy `json:"deploy_strategy"`
+	HealthCheckUrl *string                  `json:"health_check_url,omitempty"`
+	Replicas       *int                     `json:"replicas,omitempty"`
+	RollbackHash   *string                  `json:"rollback_hash,omitempty"`
+	Target         string                   `json:"target"`
+}
+
+// DeployPlanDeployStrategy defines model for DeployPlan.DeployStrategy.
+type DeployPlanDeployStrategy string
+
+// Environment Compound environment tuple per spec v0.2 section 4.1. Each environment has three dimensions: infrastructure (dev/staging/prod), data tenancy (synthetic/anonymized/real), and integration mode (sandbox/test/live). Ticket states become environment-qualified (e.g. executing-dev).
+type Environment struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// DataTenancy Data tenancy dimension
+	DataTenancy EnvironmentDataTenancy `json:"data_tenancy"`
+	Id          string                 `json:"id"`
+
+	// Infrastructure Infrastructure tier dimension
+	Infrastructure EnvironmentInfrastructure `json:"infrastructure"`
+
+	// IntegrationMode Integration mode dimension
+	IntegrationMode EnvironmentIntegrationMode `json:"integration_mode"`
+
+	// IsDefault Whether this is the default environment for the project
+	IsDefault bool `json:"is_default"`
+
+	// Name Display name (e.g. "Development", "Staging")
+	Name      string `json:"name"`
+	ProjectId string `json:"project_id"`
+
+	// Slug URL-safe identifier (e.g. "dev", "staging")
+	Slug      string    `json:"slug"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// EnvironmentDataTenancy Data tenancy dimension
+type EnvironmentDataTenancy string
+
+// EnvironmentInfrastructure Infrastructure tier dimension
+type EnvironmentInfrastructure string
+
+// EnvironmentIntegrationMode Integration mode dimension
+type EnvironmentIntegrationMode string
 
 // Escalation defines model for Escalation.
 type Escalation struct {
@@ -690,6 +1500,173 @@ type PendingReviewsResponse struct {
 	Tickets *[]Ticket `json:"tickets,omitempty"`
 }
 
+// Plan defines model for Plan.
+type Plan struct {
+	Backend *PlanBackend `json:"backend,omitempty"`
+
+	// Content Union type — exactly one backend sub-schema is populated. No untyped escape hatch; agent cannot express classification-evading content.
+	Content        *PlanContent `json:"content,omitempty"`
+	CreatedAt      *time.Time   `json:"created_at,omitempty"`
+	CreatedBy      *string      `json:"created_by,omitempty"`
+	ExpiresAt      *time.Time   `json:"expires_at,omitempty"`
+	FreshnessStamp *time.Time   `json:"freshness_stamp,omitempty"`
+	Id             *string      `json:"id,omitempty"`
+	State          *PlanState   `json:"state,omitempty"`
+	TicketId       *string      `json:"ticket_id,omitempty"`
+	UpdatedAt      *time.Time   `json:"updated_at,omitempty"`
+	Version        *int         `json:"version,omitempty"`
+}
+
+// PlanBackend defines model for Plan.Backend.
+type PlanBackend string
+
+// PlanState defines model for Plan.State.
+type PlanState string
+
+// PlanContent Union type — exactly one backend sub-schema is populated. No untyped escape hatch; agent cannot express classification-evading content.
+type PlanContent struct {
+	// Code AST diff representation for code changes.
+	Code *CodePlan `json:"code,omitempty"`
+
+	// Database Database migration plan. DDL must be valid SQL — prose fails validation.
+	Database *DatabasePlan `json:"database,omitempty"`
+
+	// Deploy Deploy plan referencing specific artifact hash and target.
+	Deploy *DeployPlan `json:"deploy,omitempty"`
+
+	// Shell Shell commands with explicit side-effect manifest. No untyped prose allowed.
+	Shell *ShellPlan `json:"shell,omitempty"`
+
+	// Terraform Terraform plan output (JSON).
+	Terraform *TerraformPlan `json:"terraform,omitempty"`
+}
+
+// PlanVersion defines model for PlanVersion.
+type PlanVersion struct {
+	// Content Union type — exactly one backend sub-schema is populated. No untyped escape hatch; agent cannot express classification-evading content.
+	Content   *PlanContent `json:"content,omitempty"`
+	CreatedAt *time.Time   `json:"created_at,omitempty"`
+	CreatedBy *string      `json:"created_by,omitempty"`
+	Id        *string      `json:"id,omitempty"`
+	PlanId    *string      `json:"plan_id,omitempty"`
+	Version   *int         `json:"version,omitempty"`
+}
+
+// Policy defines model for Policy.
+type Policy struct {
+	CreatedAt   *time.Time   `json:"created_at,omitempty"`
+	Description *string      `json:"description,omitempty"`
+	Enabled     *bool        `json:"enabled,omitempty"`
+	Id          *string      `json:"id,omitempty"`
+	MinSample   *int         `json:"min_sample,omitempty"`
+	Name        *string      `json:"name,omitempty"`
+	ProjectId   *string      `json:"project_id,omitempty"`
+	Rules       *PolicyRules `json:"rules,omitempty"`
+	UpdatedAt   *time.Time   `json:"updated_at,omitempty"`
+}
+
+// PolicyChangeEvent defines model for PolicyChangeEvent.
+type PolicyChangeEvent struct {
+	ActorId    *string                      `json:"actor_id,omitempty"`
+	ChangeType *PolicyChangeEventChangeType `json:"change_type,omitempty"`
+	CreatedAt  *time.Time                   `json:"created_at,omitempty"`
+	Id         *string                      `json:"id,omitempty"`
+	NewRules   *PolicyRules                 `json:"new_rules,omitempty"`
+	Notes      *string                      `json:"notes,omitempty"`
+	PolicyId   *string                      `json:"policy_id,omitempty"`
+	PrevRules  *PolicyRules                 `json:"prev_rules,omitempty"`
+}
+
+// PolicyChangeEventChangeType defines model for PolicyChangeEvent.ChangeType.
+type PolicyChangeEventChangeType string
+
+// PolicyChangeEventsResponse defines model for PolicyChangeEventsResponse.
+type PolicyChangeEventsResponse struct {
+	Events *[]PolicyChangeEvent `json:"events,omitempty"`
+}
+
+// PolicyCondition defines model for PolicyCondition.
+type PolicyCondition struct {
+	Field    *string     `json:"field,omitempty"`
+	Label    *string     `json:"label,omitempty"`
+	Operator *string     `json:"operator,omitempty"`
+	Value    interface{} `json:"value,omitempty"`
+}
+
+// PolicyDecision defines model for PolicyDecision.
+type PolicyDecision struct {
+	DecidedAt *time.Time              `json:"decided_at,omitempty"`
+	Decision  *PolicyDecisionDecision `json:"decision,omitempty"`
+	Id        *string                 `json:"id,omitempty"`
+	Outcome   *PolicyDecisionOutcome  `json:"outcome,omitempty"`
+	OutcomeAt *time.Time              `json:"outcome_at,omitempty"`
+	PolicyId  *string                 `json:"policy_id,omitempty"`
+	Reason    *string                 `json:"reason,omitempty"`
+	TicketId  *string                 `json:"ticket_id,omitempty"`
+}
+
+// PolicyDecisionDecision defines model for PolicyDecision.Decision.
+type PolicyDecisionDecision string
+
+// PolicyDecisionOutcome defines model for PolicyDecision.Outcome.
+type PolicyDecisionOutcome string
+
+// PolicyDecisionsResponse defines model for PolicyDecisionsResponse.
+type PolicyDecisionsResponse struct {
+	Decisions *[]PolicyDecision `json:"decisions,omitempty"`
+}
+
+// PolicyHealth defines model for PolicyHealth.
+type PolicyHealth struct {
+	History   *[]PolicyChangeEvent `json:"history,omitempty"`
+	Metrics   *PolicyMetrics       `json:"metrics,omitempty"`
+	Policy    *Policy              `json:"policy,omitempty"`
+	Proposals *[]PolicyProposal    `json:"proposals,omitempty"`
+}
+
+// PolicyListResponse defines model for PolicyListResponse.
+type PolicyListResponse struct {
+	Policies *[]Policy `json:"policies,omitempty"`
+}
+
+// PolicyMetrics defines model for PolicyMetrics.
+type PolicyMetrics struct {
+	AutoApprovalRate     *float64 `json:"auto_approval_rate,omitempty"`
+	IncidentRate         *float64 `json:"incident_rate,omitempty"`
+	PendingOutcomes      *int     `json:"pending_outcomes,omitempty"`
+	PolicyId             *string  `json:"policy_id,omitempty"`
+	RollbackRate         *float64 `json:"rollback_rate,omitempty"`
+	SampleSizeSufficient *bool    `json:"sample_size_sufficient,omitempty"`
+	SuccessRate          *float64 `json:"success_rate,omitempty"`
+	TotalDecisions       *int     `json:"total_decisions,omitempty"`
+}
+
+// PolicyProposal defines model for PolicyProposal.
+type PolicyProposal struct {
+	CreatedAt    *time.Time                  `json:"created_at,omitempty"`
+	Id           *string                     `json:"id,omitempty"`
+	PolicyId     *string                     `json:"policy_id,omitempty"`
+	ProposalType *PolicyProposalProposalType `json:"proposal_type,omitempty"`
+	ResolvedAt   *time.Time                  `json:"resolved_at,omitempty"`
+	ResolvedBy   *string                     `json:"resolved_by,omitempty"`
+	Statistics   *map[string]interface{}     `json:"statistics,omitempty"`
+	Status       *PolicyProposalStatus       `json:"status,omitempty"`
+	Suggestion   *map[string]interface{}     `json:"suggestion,omitempty"`
+}
+
+// PolicyProposalProposalType defines model for PolicyProposal.ProposalType.
+type PolicyProposalProposalType string
+
+// PolicyProposalStatus defines model for PolicyProposal.Status.
+type PolicyProposalStatus string
+
+// PolicyRules defines model for PolicyRules.
+type PolicyRules struct {
+	AutoApproveConditions *[]PolicyCondition `json:"auto_approve_conditions,omitempty"`
+	BlockConditions       *[]PolicyCondition `json:"block_conditions,omitempty"`
+	ReviewConditions      *[]PolicyCondition `json:"review_conditions,omitempty"`
+}
+
 // Project defines model for Project.
 type Project struct {
 	ContextPack *map[string]interface{} `json:"context_pack,omitempty"`
@@ -714,6 +1691,29 @@ type Project struct {
 // ProjectStatus active (default) or closed; list endpoints default to active only.
 type ProjectStatus string
 
+// ProjectHealthResponse defines model for ProjectHealthResponse.
+type ProjectHealthResponse struct {
+	Policies *[]PolicyHealth `json:"policies,omitempty"`
+}
+
+// RecordDecisionRequest defines model for RecordDecisionRequest.
+type RecordDecisionRequest struct {
+	Decision RecordDecisionRequestDecision `json:"decision"`
+	Reason   *string                       `json:"reason,omitempty"`
+	TicketId string                        `json:"ticket_id"`
+}
+
+// RecordDecisionRequestDecision defines model for RecordDecisionRequest.Decision.
+type RecordDecisionRequestDecision string
+
+// RecordOutcomeRequest defines model for RecordOutcomeRequest.
+type RecordOutcomeRequest struct {
+	Outcome RecordOutcomeRequestOutcome `json:"outcome"`
+}
+
+// RecordOutcomeRequestOutcome defines model for RecordOutcomeRequest.Outcome.
+type RecordOutcomeRequestOutcome string
+
 // RenewLeaseRequest defines model for RenewLeaseRequest.
 type RenewLeaseRequest struct {
 	LeaseToken string `json:"lease_token"`
@@ -728,6 +1728,112 @@ type RenewLeaseResponseBody struct {
 type ResolveEscalationRequest struct {
 	Answer     string  `json:"answer"`
 	ReviewerId *string `json:"reviewer_id,omitempty"`
+}
+
+// ResolveProposalRequest defines model for ResolveProposalRequest.
+type ResolveProposalRequest struct {
+	ResolvedBy *string                      `json:"resolved_by,omitempty"`
+	Status     ResolveProposalRequestStatus `json:"status"`
+}
+
+// ResolveProposalRequestStatus defines model for ResolveProposalRequest.Status.
+type ResolveProposalRequestStatus string
+
+// ShellPlan Shell commands with explicit side-effect manifest. No untyped prose allowed.
+type ShellPlan struct {
+	Commands []struct {
+		Command     string  `json:"command"`
+		Description *string `json:"description,omitempty"`
+		Idempotent  *bool   `json:"idempotent,omitempty"`
+		Timeout     *string `json:"timeout,omitempty"`
+	} `json:"commands"`
+	Environment *map[string]string `json:"environment,omitempty"`
+
+	// SideEffectManifest Declarative permission boundary for shell execution. The sandbox enforces this manifest at runtime; the classifier reads it (not the script) to determine risk. Wildcard operations widen classification automatically.
+	SideEffectManifest struct {
+		// CredentialOps Secrets/credentials the script will access.
+		CredentialOps *[]struct {
+			// Name Credential identifier (env var name or secret path)
+			Name string `json:"name"`
+
+			// Purpose Why this credential is needed (for audit)
+			Purpose *string `json:"purpose,omitempty"`
+		} `json:"credential_ops,omitempty"`
+
+		// FileOps File system operations the script may perform.
+		FileOps *[]struct {
+			Action ShellPlanSideEffectManifestFileOpsAction `json:"action"`
+
+			// Path Glob pattern for affected files (e.g., "/app/dist/**")
+			Path string `json:"path"`
+		} `json:"file_ops,omitempty"`
+
+		// NetworkOps Outbound network operations the script may perform.
+		NetworkOps *[]struct {
+			// Endpoint Target host:port or URL pattern
+			Endpoint string `json:"endpoint"`
+
+			// Idempotent Whether this call is safe to retry
+			Idempotent *bool                                       `json:"idempotent,omitempty"`
+			Method     ShellPlanSideEffectManifestNetworkOpsMethod `json:"method"`
+		} `json:"network_ops,omitempty"`
+
+		// ProcessOps Subprocesses the script may spawn.
+		ProcessOps *[]struct {
+			// Args Allowed argument patterns (glob-matched)
+			Args *[]string `json:"args,omitempty"`
+
+			// Binary Executable name or path
+			Binary string `json:"binary"`
+		} `json:"process_ops,omitempty"`
+
+		// ResourceLimits Upper bounds on resource consumption for sandbox enforcement.
+		ResourceLimits *struct {
+			// MaxDiskWriteBytes Maximum total writable bytes (0 = system default)
+			MaxDiskWriteBytes *int64 `json:"max_disk_write_bytes,omitempty"`
+
+			// MaxNetworkCalls Maximum outbound connections (0 = system default)
+			MaxNetworkCalls *int `json:"max_network_calls,omitempty"`
+
+			// MaxRuntimeSeconds Maximum wall-clock time (0 = system default)
+			MaxRuntimeSeconds *int `json:"max_runtime_seconds,omitempty"`
+		} `json:"resource_limits,omitempty"`
+	} `json:"side_effect_manifest"`
+	WorkingDir *string `json:"working_dir,omitempty"`
+}
+
+// ShellPlanSideEffectManifestFileOpsAction defines model for ShellPlan.SideEffectManifest.FileOps.Action.
+type ShellPlanSideEffectManifestFileOpsAction string
+
+// ShellPlanSideEffectManifestNetworkOpsMethod defines model for ShellPlan.SideEffectManifest.NetworkOps.Method.
+type ShellPlanSideEffectManifestNetworkOpsMethod string
+
+// SimulateRequest defines model for SimulateRequest.
+type SimulateRequest struct {
+	CandidateRules PolicyRules `json:"candidate_rules"`
+
+	// Days Number of days of historical tickets to simulate against.
+	Days *int `json:"days,omitempty"`
+}
+
+// SimulationResult defines model for SimulationResult.
+type SimulationResult struct {
+	PolicyId *string `json:"policy_id,omitempty"`
+	Results  *[]struct {
+		Changed         *bool   `json:"changed,omitempty"`
+		CurrentDecision *string `json:"current_decision,omitempty"`
+		NewDecision     *string `json:"new_decision,omitempty"`
+		TicketId        *string `json:"ticket_id,omitempty"`
+	} `json:"results,omitempty"`
+	Summary *struct {
+		ChangeRate         *float64 `json:"change_rate,omitempty"`
+		ChangedDecisions   *int     `json:"changed_decisions,omitempty"`
+		TotalTickets       *int     `json:"total_tickets,omitempty"`
+		WouldAutoApprove   *int     `json:"would_auto_approve,omitempty"`
+		WouldBlock         *int     `json:"would_block,omitempty"`
+		WouldRequireReview *int     `json:"would_require_review,omitempty"`
+	} `json:"summary,omitempty"`
+	TicketsSimulated *int `json:"tickets_simulated,omitempty"`
 }
 
 // StateTransitionEntry defines model for StateTransitionEntry.
@@ -754,12 +1860,33 @@ type StructuredError struct {
 // StructuredErrorCode defines model for StructuredError.Code.
 type StructuredErrorCode string
 
+// TerraformPlan Terraform plan output (JSON).
+type TerraformPlan struct {
+	// PlanJson Must be valid JSON
+	PlanJson        string `json:"plan_json"`
+	Provider        string `json:"provider"`
+	ResourceChanges *[]struct {
+		Address      *string                                   `json:"address,omitempty"`
+		ChangeAction *TerraformPlanResourceChangesChangeAction `json:"change_action,omitempty"`
+		Name         *string                                   `json:"name,omitempty"`
+		Type         *string                                   `json:"type,omitempty"`
+	} `json:"resource_changes,omitempty"`
+	StateVersion *int    `json:"state_version,omitempty"`
+	Workspace    *string `json:"workspace,omitempty"`
+}
+
+// TerraformPlanResourceChangesChangeAction defines model for TerraformPlan.ResourceChanges.ChangeAction.
+type TerraformPlanResourceChangesChangeAction string
+
 // Ticket defines model for Ticket.
 type Ticket struct {
-	AssignedTo    *string                 `json:"assigned_to,omitempty"`
-	CreatedAt     *time.Time              `json:"created_at,omitempty"`
-	CreatedBy     *string                 `json:"created_by,omitempty"`
-	DependsOn     *[]string               `json:"depends_on,omitempty"`
+	AssignedTo *string    `json:"assigned_to,omitempty"`
+	CreatedAt  *time.Time `json:"created_at,omitempty"`
+	CreatedBy  *string    `json:"created_by,omitempty"`
+	DependsOn  *[]string  `json:"depends_on,omitempty"`
+
+	// EnvironmentId Compound environment ID (spec v0.2 section 4.1)
+	EnvironmentId *string                 `json:"environment_id,omitempty"`
 	Id            *string                 `json:"id,omitempty"`
 	Inputs        *map[string]interface{} `json:"inputs,omitempty"`
 	Objective     *Objective              `json:"objective,omitempty"`
@@ -767,12 +1894,15 @@ type Ticket struct {
 	Priority      *int                    `json:"priority,omitempty"`
 	ProjectId     *string                 `json:"project_id,omitempty"`
 	State         *TicketState            `json:"state,omitempty"`
-	TicketContext *TicketContext          `json:"ticket_context,omitempty"`
-	Title         *string                 `json:"title,omitempty"`
-	Type          *TicketType             `json:"type,omitempty"`
-	UpdatedAt     *time.Time              `json:"updated_at,omitempty"`
-	Version       *int                    `json:"version,omitempty"`
-	WorkStreamId  *string                 `json:"work_stream_id,omitempty"`
+
+	// TargetRepo Repository alias for multi-repo projects (from project_repositories). Empty means primary repo.
+	TargetRepo    *string        `json:"target_repo,omitempty"`
+	TicketContext *TicketContext `json:"ticket_context,omitempty"`
+	Title         *string        `json:"title,omitempty"`
+	Type          *TicketType    `json:"type,omitempty"`
+	UpdatedAt     *time.Time     `json:"updated_at,omitempty"`
+	Version       *int           `json:"version,omitempty"`
+	WorkStreamId  *string        `json:"work_stream_id,omitempty"`
 }
 
 // TicketState defines model for Ticket.State.
@@ -826,6 +1956,41 @@ type TransitionRequest struct {
 
 // TransitionRequestActor defines model for TransitionRequest.Actor.
 type TransitionRequestActor string
+
+// UpdateEnvironmentRequest defines model for UpdateEnvironmentRequest.
+type UpdateEnvironmentRequest struct {
+	DataTenancy     *UpdateEnvironmentRequestDataTenancy     `json:"data_tenancy,omitempty"`
+	Infrastructure  *UpdateEnvironmentRequestInfrastructure  `json:"infrastructure,omitempty"`
+	IntegrationMode *UpdateEnvironmentRequestIntegrationMode `json:"integration_mode,omitempty"`
+	Name            *string                                  `json:"name,omitempty"`
+	Slug            *string                                  `json:"slug,omitempty"`
+}
+
+// UpdateEnvironmentRequestDataTenancy defines model for UpdateEnvironmentRequest.DataTenancy.
+type UpdateEnvironmentRequestDataTenancy string
+
+// UpdateEnvironmentRequestInfrastructure defines model for UpdateEnvironmentRequest.Infrastructure.
+type UpdateEnvironmentRequestInfrastructure string
+
+// UpdateEnvironmentRequestIntegrationMode defines model for UpdateEnvironmentRequest.IntegrationMode.
+type UpdateEnvironmentRequestIntegrationMode string
+
+// UpdatePlanContentRequest defines model for UpdatePlanContentRequest.
+type UpdatePlanContentRequest struct {
+	// Content New backend-specific content (re-validated against schema)
+	Content   map[string]interface{} `json:"content"`
+	UpdatedBy *string                `json:"updated_by,omitempty"`
+}
+
+// UpdatePolicyRequest defines model for UpdatePolicyRequest.
+type UpdatePolicyRequest struct {
+	ActorId     *string      `json:"actor_id,omitempty"`
+	Description *string      `json:"description,omitempty"`
+	Enabled     *bool        `json:"enabled,omitempty"`
+	MinSample   *int         `json:"min_sample,omitempty"`
+	Name        *string      `json:"name,omitempty"`
+	Rules       *PolicyRules `json:"rules,omitempty"`
+}
 
 // UpdateProjectRequest defines model for UpdateProjectRequest.
 type UpdateProjectRequest struct {
@@ -926,6 +2091,23 @@ type GetGitNotesLogParams struct {
 // GetGitNotesLogParamsType defines parameters for GetGitNotesLog.
 type GetGitNotesLogParamsType string
 
+// TransitionPlanJSONBody defines parameters for TransitionPlan.
+type TransitionPlanJSONBody struct {
+	Action TransitionPlanJSONBodyAction `json:"action"`
+}
+
+// TransitionPlanJSONBodyAction defines parameters for TransitionPlan.
+type TransitionPlanJSONBodyAction string
+
+// ListPoliciesParams defines parameters for ListPolicies.
+type ListPoliciesParams struct {
+	// Enabled Filter to enabled policies only.
+	Enabled *ListPoliciesParamsEnabled `form:"enabled,omitempty" json:"enabled,omitempty"`
+}
+
+// ListPoliciesParamsEnabled defines parameters for ListPolicies.
+type ListPoliciesParamsEnabled string
+
 // ListTicketsParams defines parameters for ListTickets.
 type ListTicketsParams struct {
 	// WorkStreamId Filter by work stream.
@@ -957,14 +2139,50 @@ type ReleaseLeaseParams struct {
 	LeaseToken *string `form:"lease_token,omitempty" json:"lease_token,omitempty"`
 }
 
+// ListPlansByTicketParams defines parameters for ListPlansByTicket.
+type ListPlansByTicketParams struct {
+	// Backend Filter by backend type
+	Backend *ListPlansByTicketParamsBackend `form:"backend,omitempty" json:"backend,omitempty"`
+}
+
+// ListPlansByTicketParamsBackend defines parameters for ListPlansByTicket.
+type ListPlansByTicketParamsBackend string
+
+// UpdateEnvironmentJSONRequestBody defines body for UpdateEnvironment for application/json ContentType.
+type UpdateEnvironmentJSONRequestBody = UpdateEnvironmentRequest
+
 // CreateOrgJSONRequestBody defines body for CreateOrg for application/json ContentType.
 type CreateOrgJSONRequestBody = CreateOrgRequest
 
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = CreateProjectRequest
 
+// CreatePlanJSONRequestBody defines body for CreatePlan for application/json ContentType.
+type CreatePlanJSONRequestBody = CreatePlanRequest
+
+// UpdatePlanContentJSONRequestBody defines body for UpdatePlanContent for application/json ContentType.
+type UpdatePlanContentJSONRequestBody = UpdatePlanContentRequest
+
+// TransitionPlanJSONRequestBody defines body for TransitionPlan for application/json ContentType.
+type TransitionPlanJSONRequestBody TransitionPlanJSONBody
+
+// UpdatePolicyJSONRequestBody defines body for UpdatePolicy for application/json ContentType.
+type UpdatePolicyJSONRequestBody = UpdatePolicyRequest
+
+// RecordPolicyDecisionJSONRequestBody defines body for RecordPolicyDecision for application/json ContentType.
+type RecordPolicyDecisionJSONRequestBody = RecordDecisionRequest
+
+// SimulateRuleChangeJSONRequestBody defines body for SimulateRuleChange for application/json ContentType.
+type SimulateRuleChangeJSONRequestBody = SimulateRequest
+
 // UpdateProjectJSONRequestBody defines body for UpdateProject for application/json ContentType.
 type UpdateProjectJSONRequestBody = UpdateProjectRequest
+
+// CreateEnvironmentJSONRequestBody defines body for CreateEnvironment for application/json ContentType.
+type CreateEnvironmentJSONRequestBody = CreateEnvironmentRequest
+
+// CreatePolicyJSONRequestBody defines body for CreatePolicy for application/json ContentType.
+type CreatePolicyJSONRequestBody = CreatePolicyRequest
 
 // ClaimTicketJSONRequestBody defines body for ClaimTicket for application/json ContentType.
 type ClaimTicketJSONRequestBody = ClaimRequest
@@ -978,6 +2196,9 @@ type CreateWorkStreamJSONRequestBody = CreateWorkStreamRequest
 // UpdateWorkStreamJSONRequestBody defines body for UpdateWorkStream for application/json ContentType.
 type UpdateWorkStreamJSONRequestBody = UpdateWorkStreamRequest
 
+// ResolveProposalJSONRequestBody defines body for ResolveProposal for application/json ContentType.
+type ResolveProposalJSONRequestBody = ResolveProposalRequest
+
 // UpdateTicketJSONRequestBody defines body for UpdateTicket for application/json ContentType.
 type UpdateTicketJSONRequestBody = UpdateTicketRequest
 
@@ -990,6 +2211,9 @@ type ReleaseLeaseJSONRequestBody ReleaseLeaseJSONBody
 // RenewLeaseJSONRequestBody defines body for RenewLease for application/json ContentType.
 type RenewLeaseJSONRequestBody = RenewLeaseRequest
 
+// RecordTicketOutcomeJSONRequestBody defines body for RecordTicketOutcome for application/json ContentType.
+type RecordTicketOutcomeJSONRequestBody = RecordOutcomeRequest
+
 // CreateReviewJSONRequestBody defines body for CreateReview for application/json ContentType.
 type CreateReviewJSONRequestBody = CreateReviewRequest
 
@@ -1001,6 +2225,18 @@ type TransitionTicketJSONRequestBody = TransitionRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Delete an environment (enforces minimum-two constraint)
+	// (DELETE /environments/{environmentID})
+	DeleteEnvironment(w http.ResponseWriter, r *http.Request, environmentID string)
+	// Get an environment by ID
+	// (GET /environments/{environmentID})
+	GetEnvironment(w http.ResponseWriter, r *http.Request, environmentID string)
+	// Update an environment's compound tuple dimensions
+	// (PUT /environments/{environmentID})
+	UpdateEnvironment(w http.ResponseWriter, r *http.Request, environmentID string)
+	// Set an environment as the default for its project
+	// (POST /environments/{environmentID}/set-default)
+	SetDefaultEnvironment(w http.ResponseWriter, r *http.Request, environmentID string)
 	// Liveness/readiness
 	// (GET /healthz)
 	GetHealthz(w http.ResponseWriter, r *http.Request)
@@ -1031,15 +2267,75 @@ type ServerInterface interface {
 	// List commits with notes (requires repo_path query; server returns 501 if repo not accessible)
 	// (GET /orgs/{orgID}/projects/{projectID}/git-notes/log)
 	GetGitNotesLog(w http.ResponseWriter, r *http.Request, orgID string, projectID string, params GetGitNotesLogParams)
+	// Create a typed execution plan for a ticket
+	// (POST /plans)
+	CreatePlan(w http.ResponseWriter, r *http.Request)
+	// Get a plan by ID
+	// (GET /plans/{planID})
+	GetPlan(w http.ResponseWriter, r *http.Request, planID string)
+	// Update plan content (draft state only, re-validates against backend schema)
+	// (PUT /plans/{planID}/content)
+	UpdatePlanContent(w http.ResponseWriter, r *http.Request, planID string)
+	// Check if a plan is still fresh (not expired for re-plan-before-apply)
+	// (GET /plans/{planID}/freshness)
+	CheckPlanFreshness(w http.ResponseWriter, r *http.Request, planID string)
+	// Transition plan state (submit, classify, approve, apply, reject)
+	// (POST /plans/{planID}/transition)
+	TransitionPlan(w http.ResponseWriter, r *http.Request, planID string)
+	// List version history of a plan
+	// (GET /plans/{planID}/versions)
+	ListPlanVersions(w http.ResponseWriter, r *http.Request, planID string)
+	// Get a single policy by ID
+	// (GET /policies/{policyID})
+	GetPolicy(w http.ResponseWriter, r *http.Request, policyID string)
+	// Update a policy (records a change event in the stream)
+	// (PUT /policies/{policyID})
+	UpdatePolicy(w http.ResponseWriter, r *http.Request, policyID string)
+	// List rolling record of gated decisions with outcomes
+	// (GET /policies/{policyID}/decisions)
+	ListPolicyDecisions(w http.ResponseWriter, r *http.Request, policyID string)
+	// Record a policy decision on a ticket
+	// (POST /policies/{policyID}/decisions)
+	RecordPolicyDecision(w http.ResponseWriter, r *http.Request, policyID string)
+	// Get health view for a single policy with metrics, proposals, and change history
+	// (GET /policies/{policyID}/health)
+	GetPolicyHealth(w http.ResponseWriter, r *http.Request, policyID string)
+	// List auditable change events for a policy (edit history)
+	// (GET /policies/{policyID}/history)
+	ListPolicyChangeEvents(w http.ResponseWriter, r *http.Request, policyID string)
+	// Get computed per-policy metrics (auto-approval rate, rollback rate, incident rate)
+	// (GET /policies/{policyID}/metrics)
+	GetPolicyMetrics(w http.ResponseWriter, r *http.Request, policyID string)
+	// Simulate candidate rule changes against last N days of historical tickets before committing
+	// (POST /policies/{policyID}/simulate)
+	SimulateRuleChange(w http.ResponseWriter, r *http.Request, policyID string)
 
 	// (GET /projects/{projectID})
 	GetProject(w http.ResponseWriter, r *http.Request, projectID string)
 	// Update project (e.g. set status to active or closed)
 	// (PATCH /projects/{projectID})
 	UpdateProject(w http.ResponseWriter, r *http.Request, projectID string)
+	// List all environments for a project
+	// (GET /projects/{projectID}/environments)
+	ListEnvironments(w http.ResponseWriter, r *http.Request, projectID string)
+	// Create a new environment for a project (compound tuple)
+	// (POST /projects/{projectID}/environments)
+	CreateEnvironment(w http.ResponseWriter, r *http.Request, projectID string)
 
 	// (GET /projects/{projectID}/escalations)
 	ListEscalations(w http.ResponseWriter, r *http.Request, projectID string)
+	// List advancement policies for a project
+	// (GET /projects/{projectID}/policies)
+	ListPolicies(w http.ResponseWriter, r *http.Request, projectID string, params ListPoliciesParams)
+	// Create a new advancement policy
+	// (POST /projects/{projectID}/policies)
+	CreatePolicy(w http.ResponseWriter, r *http.Request, projectID string)
+	// Run calibration feedback loop — analyzes metrics and generates broadening or review proposals
+	// (POST /projects/{projectID}/policies/calibrate)
+	RunCalibration(w http.ResponseWriter, r *http.Request, projectID string)
+	// Policy health view showing all policies with outcome statistics, proposals, and edit history
+	// (GET /projects/{projectID}/policies/health)
+	GetProjectPolicyHealth(w http.ResponseWriter, r *http.Request, projectID string)
 
 	// (POST /projects/{projectID}/queue/claim)
 	ClaimTicket(w http.ResponseWriter, r *http.Request, projectID string)
@@ -1064,6 +2360,9 @@ type ServerInterface interface {
 
 	// (PATCH /projects/{projectID}/work-streams/{workStreamID})
 	UpdateWorkStream(w http.ResponseWriter, r *http.Request, projectID string, workStreamID string)
+	// Accept, reject, or dismiss a system-generated proposal (broadening is never automatic)
+	// (POST /proposals/{proposalID}/resolve)
+	ResolveProposal(w http.ResponseWriter, r *http.Request, proposalID string)
 
 	// (GET /tickets/{ticketID})
 	GetTicket(w http.ResponseWriter, r *http.Request, ticketID string)
@@ -1079,6 +2378,12 @@ type ServerInterface interface {
 
 	// (POST /tickets/{ticketID}/lease/renew)
 	RenewLease(w http.ResponseWriter, r *http.Request, ticketID string)
+	// Record the outcome (success, rollback, incident) for all policy decisions on a ticket
+	// (POST /tickets/{ticketID}/outcome)
+	RecordTicketOutcome(w http.ResponseWriter, r *http.Request, ticketID string)
+	// List all plans linked to a ticket
+	// (GET /tickets/{ticketID}/plans)
+	ListPlansByTicket(w http.ResponseWriter, r *http.Request, ticketID string, params ListPlansByTicketParams)
 
 	// (POST /tickets/{ticketID}/reviews)
 	CreateReview(w http.ResponseWriter, r *http.Request, ticketID string)
@@ -1104,6 +2409,106 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// DeleteEnvironment operation middleware
+func (siw *ServerInterfaceWrapper) DeleteEnvironment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "environmentID" -------------
+	var environmentID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environmentID", r.PathValue("environmentID"), &environmentID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environmentID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteEnvironment(w, r, environmentID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetEnvironment operation middleware
+func (siw *ServerInterfaceWrapper) GetEnvironment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "environmentID" -------------
+	var environmentID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environmentID", r.PathValue("environmentID"), &environmentID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environmentID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEnvironment(w, r, environmentID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateEnvironment operation middleware
+func (siw *ServerInterfaceWrapper) UpdateEnvironment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "environmentID" -------------
+	var environmentID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environmentID", r.PathValue("environmentID"), &environmentID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environmentID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateEnvironment(w, r, environmentID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetDefaultEnvironment operation middleware
+func (siw *ServerInterfaceWrapper) SetDefaultEnvironment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "environmentID" -------------
+	var environmentID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environmentID", r.PathValue("environmentID"), &environmentID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environmentID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetDefaultEnvironment(w, r, environmentID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetHealthz operation middleware
 func (siw *ServerInterfaceWrapper) GetHealthz(w http.ResponseWriter, r *http.Request) {
@@ -1447,6 +2852,393 @@ func (siw *ServerInterfaceWrapper) GetGitNotesLog(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// CreatePlan operation middleware
+func (siw *ServerInterfaceWrapper) CreatePlan(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreatePlan(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPlan operation middleware
+func (siw *ServerInterfaceWrapper) GetPlan(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "planID" -------------
+	var planID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "planID", r.PathValue("planID"), &planID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "planID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPlan(w, r, planID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdatePlanContent operation middleware
+func (siw *ServerInterfaceWrapper) UpdatePlanContent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "planID" -------------
+	var planID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "planID", r.PathValue("planID"), &planID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "planID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdatePlanContent(w, r, planID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CheckPlanFreshness operation middleware
+func (siw *ServerInterfaceWrapper) CheckPlanFreshness(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "planID" -------------
+	var planID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "planID", r.PathValue("planID"), &planID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "planID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CheckPlanFreshness(w, r, planID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TransitionPlan operation middleware
+func (siw *ServerInterfaceWrapper) TransitionPlan(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "planID" -------------
+	var planID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "planID", r.PathValue("planID"), &planID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "planID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TransitionPlan(w, r, planID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPlanVersions operation middleware
+func (siw *ServerInterfaceWrapper) ListPlanVersions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "planID" -------------
+	var planID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "planID", r.PathValue("planID"), &planID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "planID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPlanVersions(w, r, planID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPolicy operation middleware
+func (siw *ServerInterfaceWrapper) GetPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "policyID" -------------
+	var policyID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "policyID", r.PathValue("policyID"), &policyID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "policyID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPolicy(w, r, policyID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdatePolicy operation middleware
+func (siw *ServerInterfaceWrapper) UpdatePolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "policyID" -------------
+	var policyID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "policyID", r.PathValue("policyID"), &policyID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "policyID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdatePolicy(w, r, policyID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPolicyDecisions operation middleware
+func (siw *ServerInterfaceWrapper) ListPolicyDecisions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "policyID" -------------
+	var policyID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "policyID", r.PathValue("policyID"), &policyID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "policyID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPolicyDecisions(w, r, policyID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RecordPolicyDecision operation middleware
+func (siw *ServerInterfaceWrapper) RecordPolicyDecision(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "policyID" -------------
+	var policyID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "policyID", r.PathValue("policyID"), &policyID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "policyID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RecordPolicyDecision(w, r, policyID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPolicyHealth operation middleware
+func (siw *ServerInterfaceWrapper) GetPolicyHealth(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "policyID" -------------
+	var policyID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "policyID", r.PathValue("policyID"), &policyID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "policyID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPolicyHealth(w, r, policyID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPolicyChangeEvents operation middleware
+func (siw *ServerInterfaceWrapper) ListPolicyChangeEvents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "policyID" -------------
+	var policyID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "policyID", r.PathValue("policyID"), &policyID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "policyID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPolicyChangeEvents(w, r, policyID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPolicyMetrics operation middleware
+func (siw *ServerInterfaceWrapper) GetPolicyMetrics(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "policyID" -------------
+	var policyID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "policyID", r.PathValue("policyID"), &policyID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "policyID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPolicyMetrics(w, r, policyID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SimulateRuleChange operation middleware
+func (siw *ServerInterfaceWrapper) SimulateRuleChange(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "policyID" -------------
+	var policyID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "policyID", r.PathValue("policyID"), &policyID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "policyID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SimulateRuleChange(w, r, policyID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetProject operation middleware
 func (siw *ServerInterfaceWrapper) GetProject(w http.ResponseWriter, r *http.Request) {
 
@@ -1497,6 +3289,56 @@ func (siw *ServerInterfaceWrapper) UpdateProject(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// ListEnvironments operation middleware
+func (siw *ServerInterfaceWrapper) ListEnvironments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "projectID" -------------
+	var projectID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectID", r.PathValue("projectID"), &projectID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListEnvironments(w, r, projectID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateEnvironment operation middleware
+func (siw *ServerInterfaceWrapper) CreateEnvironment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "projectID" -------------
+	var projectID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectID", r.PathValue("projectID"), &projectID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateEnvironment(w, r, projectID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListEscalations operation middleware
 func (siw *ServerInterfaceWrapper) ListEscalations(w http.ResponseWriter, r *http.Request) {
 
@@ -1513,6 +3355,141 @@ func (siw *ServerInterfaceWrapper) ListEscalations(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListEscalations(w, r, projectID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPolicies operation middleware
+func (siw *ServerInterfaceWrapper) ListPolicies(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "projectID" -------------
+	var projectID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectID", r.PathValue("projectID"), &projectID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPoliciesParams
+
+	// ------------- Optional query parameter "enabled" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "enabled", r.URL.Query(), &params.Enabled, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "enabled", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPolicies(w, r, projectID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreatePolicy operation middleware
+func (siw *ServerInterfaceWrapper) CreatePolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "projectID" -------------
+	var projectID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectID", r.PathValue("projectID"), &projectID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreatePolicy(w, r, projectID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RunCalibration operation middleware
+func (siw *ServerInterfaceWrapper) RunCalibration(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "projectID" -------------
+	var projectID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectID", r.PathValue("projectID"), &projectID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RunCalibration(w, r, projectID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProjectPolicyHealth operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectPolicyHealth(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "projectID" -------------
+	var projectID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectID", r.PathValue("projectID"), &projectID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectPolicyHealth(w, r, projectID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1770,6 +3747,37 @@ func (siw *ServerInterfaceWrapper) UpdateWorkStream(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ResolveProposal operation middleware
+func (siw *ServerInterfaceWrapper) ResolveProposal(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "proposalID" -------------
+	var proposalID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "proposalID", r.PathValue("proposalID"), &proposalID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "proposalID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResolveProposal(w, r, proposalID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetTicket operation middleware
 func (siw *ServerInterfaceWrapper) GetTicket(w http.ResponseWriter, r *http.Request) {
 
@@ -1906,6 +3914,73 @@ func (siw *ServerInterfaceWrapper) RenewLease(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RenewLease(w, r, ticketID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RecordTicketOutcome operation middleware
+func (siw *ServerInterfaceWrapper) RecordTicketOutcome(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "ticketID" -------------
+	var ticketID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "ticketID", r.PathValue("ticketID"), &ticketID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ticketID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RecordTicketOutcome(w, r, ticketID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPlansByTicket operation middleware
+func (siw *ServerInterfaceWrapper) ListPlansByTicket(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "ticketID" -------------
+	var ticketID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "ticketID", r.PathValue("ticketID"), &ticketID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ticketID", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPlansByTicketParams
+
+	// ------------- Optional query parameter "backend" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "backend", r.URL.Query(), &params.Backend, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "backend", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPlansByTicket(w, r, ticketID, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2172,6 +4247,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc("DELETE "+options.BaseURL+"/environments/{environmentID}", wrapper.DeleteEnvironment)
+	m.HandleFunc("GET "+options.BaseURL+"/environments/{environmentID}", wrapper.GetEnvironment)
+	m.HandleFunc("PUT "+options.BaseURL+"/environments/{environmentID}", wrapper.UpdateEnvironment)
+	m.HandleFunc("POST "+options.BaseURL+"/environments/{environmentID}/set-default", wrapper.SetDefaultEnvironment)
 	m.HandleFunc("GET "+options.BaseURL+"/healthz", wrapper.GetHealthz)
 	m.HandleFunc("GET "+options.BaseURL+"/me/stats", wrapper.GetMeStats)
 	m.HandleFunc("GET "+options.BaseURL+"/me/stats/history", wrapper.GetMeStatsHistory)
@@ -2182,9 +4261,29 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/orgs/{orgID}/projects", wrapper.CreateProject)
 	m.HandleFunc("GET "+options.BaseURL+"/orgs/{orgID}/projects/{projectID}/git-notes/commits/{commitSha}", wrapper.GetCommitNotes)
 	m.HandleFunc("GET "+options.BaseURL+"/orgs/{orgID}/projects/{projectID}/git-notes/log", wrapper.GetGitNotesLog)
+	m.HandleFunc("POST "+options.BaseURL+"/plans", wrapper.CreatePlan)
+	m.HandleFunc("GET "+options.BaseURL+"/plans/{planID}", wrapper.GetPlan)
+	m.HandleFunc("PUT "+options.BaseURL+"/plans/{planID}/content", wrapper.UpdatePlanContent)
+	m.HandleFunc("GET "+options.BaseURL+"/plans/{planID}/freshness", wrapper.CheckPlanFreshness)
+	m.HandleFunc("POST "+options.BaseURL+"/plans/{planID}/transition", wrapper.TransitionPlan)
+	m.HandleFunc("GET "+options.BaseURL+"/plans/{planID}/versions", wrapper.ListPlanVersions)
+	m.HandleFunc("GET "+options.BaseURL+"/policies/{policyID}", wrapper.GetPolicy)
+	m.HandleFunc("PUT "+options.BaseURL+"/policies/{policyID}", wrapper.UpdatePolicy)
+	m.HandleFunc("GET "+options.BaseURL+"/policies/{policyID}/decisions", wrapper.ListPolicyDecisions)
+	m.HandleFunc("POST "+options.BaseURL+"/policies/{policyID}/decisions", wrapper.RecordPolicyDecision)
+	m.HandleFunc("GET "+options.BaseURL+"/policies/{policyID}/health", wrapper.GetPolicyHealth)
+	m.HandleFunc("GET "+options.BaseURL+"/policies/{policyID}/history", wrapper.ListPolicyChangeEvents)
+	m.HandleFunc("GET "+options.BaseURL+"/policies/{policyID}/metrics", wrapper.GetPolicyMetrics)
+	m.HandleFunc("POST "+options.BaseURL+"/policies/{policyID}/simulate", wrapper.SimulateRuleChange)
 	m.HandleFunc("GET "+options.BaseURL+"/projects/{projectID}", wrapper.GetProject)
 	m.HandleFunc("PATCH "+options.BaseURL+"/projects/{projectID}", wrapper.UpdateProject)
+	m.HandleFunc("GET "+options.BaseURL+"/projects/{projectID}/environments", wrapper.ListEnvironments)
+	m.HandleFunc("POST "+options.BaseURL+"/projects/{projectID}/environments", wrapper.CreateEnvironment)
 	m.HandleFunc("GET "+options.BaseURL+"/projects/{projectID}/escalations", wrapper.ListEscalations)
+	m.HandleFunc("GET "+options.BaseURL+"/projects/{projectID}/policies", wrapper.ListPolicies)
+	m.HandleFunc("POST "+options.BaseURL+"/projects/{projectID}/policies", wrapper.CreatePolicy)
+	m.HandleFunc("POST "+options.BaseURL+"/projects/{projectID}/policies/calibrate", wrapper.RunCalibration)
+	m.HandleFunc("GET "+options.BaseURL+"/projects/{projectID}/policies/health", wrapper.GetProjectPolicyHealth)
 	m.HandleFunc("POST "+options.BaseURL+"/projects/{projectID}/queue/claim", wrapper.ClaimTicket)
 	m.HandleFunc("GET "+options.BaseURL+"/projects/{projectID}/reviews", wrapper.ListPendingReviews)
 	m.HandleFunc("GET "+options.BaseURL+"/projects/{projectID}/tickets", wrapper.ListTickets)
@@ -2193,11 +4292,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/projects/{projectID}/work-streams", wrapper.CreateWorkStream)
 	m.HandleFunc("GET "+options.BaseURL+"/projects/{projectID}/work-streams/{workStreamID}", wrapper.GetWorkStream)
 	m.HandleFunc("PATCH "+options.BaseURL+"/projects/{projectID}/work-streams/{workStreamID}", wrapper.UpdateWorkStream)
+	m.HandleFunc("POST "+options.BaseURL+"/proposals/{proposalID}/resolve", wrapper.ResolveProposal)
 	m.HandleFunc("GET "+options.BaseURL+"/tickets/{ticketID}", wrapper.GetTicket)
 	m.HandleFunc("PATCH "+options.BaseURL+"/tickets/{ticketID}", wrapper.UpdateTicket)
 	m.HandleFunc("POST "+options.BaseURL+"/tickets/{ticketID}/escalations/{escalationID}/resolve", wrapper.ResolveEscalation)
 	m.HandleFunc("DELETE "+options.BaseURL+"/tickets/{ticketID}/lease", wrapper.ReleaseLease)
 	m.HandleFunc("POST "+options.BaseURL+"/tickets/{ticketID}/lease/renew", wrapper.RenewLease)
+	m.HandleFunc("POST "+options.BaseURL+"/tickets/{ticketID}/outcome", wrapper.RecordTicketOutcome)
+	m.HandleFunc("GET "+options.BaseURL+"/tickets/{ticketID}/plans", wrapper.ListPlansByTicket)
 	m.HandleFunc("POST "+options.BaseURL+"/tickets/{ticketID}/reviews", wrapper.CreateReview)
 	m.HandleFunc("GET "+options.BaseURL+"/tickets/{ticketID}/trace", wrapper.GetTrace)
 	m.HandleFunc("POST "+options.BaseURL+"/tickets/{ticketID}/trace", wrapper.LogStep)
@@ -2205,6 +4307,127 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/tickets/{ticketID}/transitions", wrapper.TransitionTicket)
 
 	return m
+}
+
+type DeleteEnvironmentRequestObject struct {
+	EnvironmentID string `json:"environmentID"`
+}
+
+type DeleteEnvironmentResponseObject interface {
+	VisitDeleteEnvironmentResponse(w http.ResponseWriter) error
+}
+
+type DeleteEnvironment204Response struct {
+}
+
+func (response DeleteEnvironment204Response) VisitDeleteEnvironmentResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteEnvironment400JSONResponse StructuredError
+
+func (response DeleteEnvironment400JSONResponse) VisitDeleteEnvironmentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteEnvironment404JSONResponse StructuredError
+
+func (response DeleteEnvironment404JSONResponse) VisitDeleteEnvironmentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetEnvironmentRequestObject struct {
+	EnvironmentID string `json:"environmentID"`
+}
+
+type GetEnvironmentResponseObject interface {
+	VisitGetEnvironmentResponse(w http.ResponseWriter) error
+}
+
+type GetEnvironment200JSONResponse Environment
+
+func (response GetEnvironment200JSONResponse) VisitGetEnvironmentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetEnvironment404JSONResponse StructuredError
+
+func (response GetEnvironment404JSONResponse) VisitGetEnvironmentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateEnvironmentRequestObject struct {
+	EnvironmentID string `json:"environmentID"`
+	Body          *UpdateEnvironmentJSONRequestBody
+}
+
+type UpdateEnvironmentResponseObject interface {
+	VisitUpdateEnvironmentResponse(w http.ResponseWriter) error
+}
+
+type UpdateEnvironment200JSONResponse Environment
+
+func (response UpdateEnvironment200JSONResponse) VisitUpdateEnvironmentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateEnvironment400JSONResponse StructuredError
+
+func (response UpdateEnvironment400JSONResponse) VisitUpdateEnvironmentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateEnvironment404JSONResponse StructuredError
+
+func (response UpdateEnvironment404JSONResponse) VisitUpdateEnvironmentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetDefaultEnvironmentRequestObject struct {
+	EnvironmentID string `json:"environmentID"`
+}
+
+type SetDefaultEnvironmentResponseObject interface {
+	VisitSetDefaultEnvironmentResponse(w http.ResponseWriter) error
+}
+
+type SetDefaultEnvironment204Response struct {
+}
+
+func (response SetDefaultEnvironment204Response) VisitSetDefaultEnvironmentResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type SetDefaultEnvironment404JSONResponse StructuredError
+
+func (response SetDefaultEnvironment404JSONResponse) VisitSetDefaultEnvironmentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
 }
 
 type GetHealthzRequestObject struct {
@@ -2479,6 +4702,304 @@ func (response GetGitNotesLog501JSONResponse) VisitGetGitNotesLogResponse(w http
 	return json.NewEncoder(w).Encode(response)
 }
 
+type CreatePlanRequestObject struct {
+	Body *CreatePlanJSONRequestBody
+}
+
+type CreatePlanResponseObject interface {
+	VisitCreatePlanResponse(w http.ResponseWriter) error
+}
+
+type CreatePlan201JSONResponse Plan
+
+func (response CreatePlan201JSONResponse) VisitCreatePlanResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreatePlan400JSONResponse StructuredError
+
+func (response CreatePlan400JSONResponse) VisitCreatePlanResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetPlanRequestObject struct {
+	PlanID string `json:"planID"`
+}
+
+type GetPlanResponseObject interface {
+	VisitGetPlanResponse(w http.ResponseWriter) error
+}
+
+type GetPlan200JSONResponse Plan
+
+func (response GetPlan200JSONResponse) VisitGetPlanResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetPlan404JSONResponse StructuredError
+
+func (response GetPlan404JSONResponse) VisitGetPlanResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdatePlanContentRequestObject struct {
+	PlanID string `json:"planID"`
+	Body   *UpdatePlanContentJSONRequestBody
+}
+
+type UpdatePlanContentResponseObject interface {
+	VisitUpdatePlanContentResponse(w http.ResponseWriter) error
+}
+
+type UpdatePlanContent204Response struct {
+}
+
+func (response UpdatePlanContent204Response) VisitUpdatePlanContentResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type UpdatePlanContent400JSONResponse StructuredError
+
+func (response UpdatePlanContent400JSONResponse) VisitUpdatePlanContentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CheckPlanFreshnessRequestObject struct {
+	PlanID string `json:"planID"`
+}
+
+type CheckPlanFreshnessResponseObject interface {
+	VisitCheckPlanFreshnessResponse(w http.ResponseWriter) error
+}
+
+type CheckPlanFreshness200JSONResponse struct {
+	Fresh  *bool   `json:"fresh,omitempty"`
+	PlanId *string `json:"plan_id,omitempty"`
+}
+
+func (response CheckPlanFreshness200JSONResponse) VisitCheckPlanFreshnessResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type TransitionPlanRequestObject struct {
+	PlanID string `json:"planID"`
+	Body   *TransitionPlanJSONRequestBody
+}
+
+type TransitionPlanResponseObject interface {
+	VisitTransitionPlanResponse(w http.ResponseWriter) error
+}
+
+type TransitionPlan200JSONResponse Plan
+
+func (response TransitionPlan200JSONResponse) VisitTransitionPlanResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type TransitionPlan400JSONResponse StructuredError
+
+func (response TransitionPlan400JSONResponse) VisitTransitionPlanResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListPlanVersionsRequestObject struct {
+	PlanID string `json:"planID"`
+}
+
+type ListPlanVersionsResponseObject interface {
+	VisitListPlanVersionsResponse(w http.ResponseWriter) error
+}
+
+type ListPlanVersions200JSONResponse []PlanVersion
+
+func (response ListPlanVersions200JSONResponse) VisitListPlanVersionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetPolicyRequestObject struct {
+	PolicyID string `json:"policyID"`
+}
+
+type GetPolicyResponseObject interface {
+	VisitGetPolicyResponse(w http.ResponseWriter) error
+}
+
+type GetPolicy200JSONResponse Policy
+
+func (response GetPolicy200JSONResponse) VisitGetPolicyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetPolicy404JSONResponse StructuredError
+
+func (response GetPolicy404JSONResponse) VisitGetPolicyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdatePolicyRequestObject struct {
+	PolicyID string `json:"policyID"`
+	Body     *UpdatePolicyJSONRequestBody
+}
+
+type UpdatePolicyResponseObject interface {
+	VisitUpdatePolicyResponse(w http.ResponseWriter) error
+}
+
+type UpdatePolicy200Response struct {
+}
+
+func (response UpdatePolicy200Response) VisitUpdatePolicyResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type UpdatePolicy404JSONResponse StructuredError
+
+func (response UpdatePolicy404JSONResponse) VisitUpdatePolicyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListPolicyDecisionsRequestObject struct {
+	PolicyID string `json:"policyID"`
+}
+
+type ListPolicyDecisionsResponseObject interface {
+	VisitListPolicyDecisionsResponse(w http.ResponseWriter) error
+}
+
+type ListPolicyDecisions200JSONResponse PolicyDecisionsResponse
+
+func (response ListPolicyDecisions200JSONResponse) VisitListPolicyDecisionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type RecordPolicyDecisionRequestObject struct {
+	PolicyID string `json:"policyID"`
+	Body     *RecordPolicyDecisionJSONRequestBody
+}
+
+type RecordPolicyDecisionResponseObject interface {
+	VisitRecordPolicyDecisionResponse(w http.ResponseWriter) error
+}
+
+type RecordPolicyDecision201JSONResponse PolicyDecision
+
+func (response RecordPolicyDecision201JSONResponse) VisitRecordPolicyDecisionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetPolicyHealthRequestObject struct {
+	PolicyID string `json:"policyID"`
+}
+
+type GetPolicyHealthResponseObject interface {
+	VisitGetPolicyHealthResponse(w http.ResponseWriter) error
+}
+
+type GetPolicyHealth200JSONResponse PolicyHealth
+
+func (response GetPolicyHealth200JSONResponse) VisitGetPolicyHealthResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListPolicyChangeEventsRequestObject struct {
+	PolicyID string `json:"policyID"`
+}
+
+type ListPolicyChangeEventsResponseObject interface {
+	VisitListPolicyChangeEventsResponse(w http.ResponseWriter) error
+}
+
+type ListPolicyChangeEvents200JSONResponse PolicyChangeEventsResponse
+
+func (response ListPolicyChangeEvents200JSONResponse) VisitListPolicyChangeEventsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetPolicyMetricsRequestObject struct {
+	PolicyID string `json:"policyID"`
+}
+
+type GetPolicyMetricsResponseObject interface {
+	VisitGetPolicyMetricsResponse(w http.ResponseWriter) error
+}
+
+type GetPolicyMetrics200JSONResponse PolicyMetrics
+
+func (response GetPolicyMetrics200JSONResponse) VisitGetPolicyMetricsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SimulateRuleChangeRequestObject struct {
+	PolicyID string `json:"policyID"`
+	Body     *SimulateRuleChangeJSONRequestBody
+}
+
+type SimulateRuleChangeResponseObject interface {
+	VisitSimulateRuleChangeResponse(w http.ResponseWriter) error
+}
+
+type SimulateRuleChange200JSONResponse SimulationResult
+
+func (response SimulateRuleChange200JSONResponse) VisitSimulateRuleChangeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetProjectRequestObject struct {
 	ProjectID string `json:"projectID"`
 }
@@ -2541,6 +5062,59 @@ func (response UpdateProject404JSONResponse) VisitUpdateProjectResponse(w http.R
 	return json.NewEncoder(w).Encode(response)
 }
 
+type ListEnvironmentsRequestObject struct {
+	ProjectID string `json:"projectID"`
+}
+
+type ListEnvironmentsResponseObject interface {
+	VisitListEnvironmentsResponse(w http.ResponseWriter) error
+}
+
+type ListEnvironments200JSONResponse []Environment
+
+func (response ListEnvironments200JSONResponse) VisitListEnvironmentsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListEnvironments404JSONResponse StructuredError
+
+func (response ListEnvironments404JSONResponse) VisitListEnvironmentsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateEnvironmentRequestObject struct {
+	ProjectID string `json:"projectID"`
+	Body      *CreateEnvironmentJSONRequestBody
+}
+
+type CreateEnvironmentResponseObject interface {
+	VisitCreateEnvironmentResponse(w http.ResponseWriter) error
+}
+
+type CreateEnvironment201JSONResponse Environment
+
+func (response CreateEnvironment201JSONResponse) VisitCreateEnvironmentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateEnvironment400JSONResponse StructuredError
+
+func (response CreateEnvironment400JSONResponse) VisitCreateEnvironmentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type ListEscalationsRequestObject struct {
 	ProjectID string `json:"projectID"`
 }
@@ -2563,6 +5137,85 @@ type ListEscalations500JSONResponse StructuredError
 func (response ListEscalations500JSONResponse) VisitListEscalationsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListPoliciesRequestObject struct {
+	ProjectID string `json:"projectID"`
+	Params    ListPoliciesParams
+}
+
+type ListPoliciesResponseObject interface {
+	VisitListPoliciesResponse(w http.ResponseWriter) error
+}
+
+type ListPolicies200JSONResponse PolicyListResponse
+
+func (response ListPolicies200JSONResponse) VisitListPoliciesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreatePolicyRequestObject struct {
+	ProjectID string `json:"projectID"`
+	Body      *CreatePolicyJSONRequestBody
+}
+
+type CreatePolicyResponseObject interface {
+	VisitCreatePolicyResponse(w http.ResponseWriter) error
+}
+
+type CreatePolicy201JSONResponse Policy
+
+func (response CreatePolicy201JSONResponse) VisitCreatePolicyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreatePolicy400JSONResponse StructuredError
+
+func (response CreatePolicy400JSONResponse) VisitCreatePolicyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type RunCalibrationRequestObject struct {
+	ProjectID string `json:"projectID"`
+}
+
+type RunCalibrationResponseObject interface {
+	VisitRunCalibrationResponse(w http.ResponseWriter) error
+}
+
+type RunCalibration200JSONResponse CalibrationResponse
+
+func (response RunCalibration200JSONResponse) VisitRunCalibrationResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProjectPolicyHealthRequestObject struct {
+	ProjectID string `json:"projectID"`
+}
+
+type GetProjectPolicyHealthResponseObject interface {
+	VisitGetProjectPolicyHealthResponse(w http.ResponseWriter) error
+}
+
+type GetProjectPolicyHealth200JSONResponse ProjectHealthResponse
+
+func (response GetProjectPolicyHealth200JSONResponse) VisitGetProjectPolicyHealthResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -2864,6 +5517,32 @@ func (response UpdateWorkStream500JSONResponse) VisitUpdateWorkStreamResponse(w 
 	return json.NewEncoder(w).Encode(response)
 }
 
+type ResolveProposalRequestObject struct {
+	ProposalID string `json:"proposalID"`
+	Body       *ResolveProposalJSONRequestBody
+}
+
+type ResolveProposalResponseObject interface {
+	VisitResolveProposalResponse(w http.ResponseWriter) error
+}
+
+type ResolveProposal200Response struct {
+}
+
+func (response ResolveProposal200Response) VisitResolveProposalResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type ResolveProposal404JSONResponse StructuredError
+
+func (response ResolveProposal404JSONResponse) VisitResolveProposalResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetTicketRequestObject struct {
 	TicketID string `json:"ticketID"`
 }
@@ -3020,6 +5699,41 @@ type RenewLease404JSONResponse StructuredError
 func (response RenewLease404JSONResponse) VisitRenewLeaseResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type RecordTicketOutcomeRequestObject struct {
+	TicketID string `json:"ticketID"`
+	Body     *RecordTicketOutcomeJSONRequestBody
+}
+
+type RecordTicketOutcomeResponseObject interface {
+	VisitRecordTicketOutcomeResponse(w http.ResponseWriter) error
+}
+
+type RecordTicketOutcome200Response struct {
+}
+
+func (response RecordTicketOutcome200Response) VisitRecordTicketOutcomeResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type ListPlansByTicketRequestObject struct {
+	TicketID string `json:"ticketID"`
+	Params   ListPlansByTicketParams
+}
+
+type ListPlansByTicketResponseObject interface {
+	VisitListPlansByTicketResponse(w http.ResponseWriter) error
+}
+
+type ListPlansByTicket200JSONResponse []Plan
+
+func (response ListPlansByTicket200JSONResponse) VisitListPlansByTicketResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -3192,6 +5906,18 @@ func (response TransitionTicket404JSONResponse) VisitTransitionTicketResponse(w 
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// Delete an environment (enforces minimum-two constraint)
+	// (DELETE /environments/{environmentID})
+	DeleteEnvironment(ctx context.Context, request DeleteEnvironmentRequestObject) (DeleteEnvironmentResponseObject, error)
+	// Get an environment by ID
+	// (GET /environments/{environmentID})
+	GetEnvironment(ctx context.Context, request GetEnvironmentRequestObject) (GetEnvironmentResponseObject, error)
+	// Update an environment's compound tuple dimensions
+	// (PUT /environments/{environmentID})
+	UpdateEnvironment(ctx context.Context, request UpdateEnvironmentRequestObject) (UpdateEnvironmentResponseObject, error)
+	// Set an environment as the default for its project
+	// (POST /environments/{environmentID}/set-default)
+	SetDefaultEnvironment(ctx context.Context, request SetDefaultEnvironmentRequestObject) (SetDefaultEnvironmentResponseObject, error)
 	// Liveness/readiness
 	// (GET /healthz)
 	GetHealthz(ctx context.Context, request GetHealthzRequestObject) (GetHealthzResponseObject, error)
@@ -3222,15 +5948,75 @@ type StrictServerInterface interface {
 	// List commits with notes (requires repo_path query; server returns 501 if repo not accessible)
 	// (GET /orgs/{orgID}/projects/{projectID}/git-notes/log)
 	GetGitNotesLog(ctx context.Context, request GetGitNotesLogRequestObject) (GetGitNotesLogResponseObject, error)
+	// Create a typed execution plan for a ticket
+	// (POST /plans)
+	CreatePlan(ctx context.Context, request CreatePlanRequestObject) (CreatePlanResponseObject, error)
+	// Get a plan by ID
+	// (GET /plans/{planID})
+	GetPlan(ctx context.Context, request GetPlanRequestObject) (GetPlanResponseObject, error)
+	// Update plan content (draft state only, re-validates against backend schema)
+	// (PUT /plans/{planID}/content)
+	UpdatePlanContent(ctx context.Context, request UpdatePlanContentRequestObject) (UpdatePlanContentResponseObject, error)
+	// Check if a plan is still fresh (not expired for re-plan-before-apply)
+	// (GET /plans/{planID}/freshness)
+	CheckPlanFreshness(ctx context.Context, request CheckPlanFreshnessRequestObject) (CheckPlanFreshnessResponseObject, error)
+	// Transition plan state (submit, classify, approve, apply, reject)
+	// (POST /plans/{planID}/transition)
+	TransitionPlan(ctx context.Context, request TransitionPlanRequestObject) (TransitionPlanResponseObject, error)
+	// List version history of a plan
+	// (GET /plans/{planID}/versions)
+	ListPlanVersions(ctx context.Context, request ListPlanVersionsRequestObject) (ListPlanVersionsResponseObject, error)
+	// Get a single policy by ID
+	// (GET /policies/{policyID})
+	GetPolicy(ctx context.Context, request GetPolicyRequestObject) (GetPolicyResponseObject, error)
+	// Update a policy (records a change event in the stream)
+	// (PUT /policies/{policyID})
+	UpdatePolicy(ctx context.Context, request UpdatePolicyRequestObject) (UpdatePolicyResponseObject, error)
+	// List rolling record of gated decisions with outcomes
+	// (GET /policies/{policyID}/decisions)
+	ListPolicyDecisions(ctx context.Context, request ListPolicyDecisionsRequestObject) (ListPolicyDecisionsResponseObject, error)
+	// Record a policy decision on a ticket
+	// (POST /policies/{policyID}/decisions)
+	RecordPolicyDecision(ctx context.Context, request RecordPolicyDecisionRequestObject) (RecordPolicyDecisionResponseObject, error)
+	// Get health view for a single policy with metrics, proposals, and change history
+	// (GET /policies/{policyID}/health)
+	GetPolicyHealth(ctx context.Context, request GetPolicyHealthRequestObject) (GetPolicyHealthResponseObject, error)
+	// List auditable change events for a policy (edit history)
+	// (GET /policies/{policyID}/history)
+	ListPolicyChangeEvents(ctx context.Context, request ListPolicyChangeEventsRequestObject) (ListPolicyChangeEventsResponseObject, error)
+	// Get computed per-policy metrics (auto-approval rate, rollback rate, incident rate)
+	// (GET /policies/{policyID}/metrics)
+	GetPolicyMetrics(ctx context.Context, request GetPolicyMetricsRequestObject) (GetPolicyMetricsResponseObject, error)
+	// Simulate candidate rule changes against last N days of historical tickets before committing
+	// (POST /policies/{policyID}/simulate)
+	SimulateRuleChange(ctx context.Context, request SimulateRuleChangeRequestObject) (SimulateRuleChangeResponseObject, error)
 
 	// (GET /projects/{projectID})
 	GetProject(ctx context.Context, request GetProjectRequestObject) (GetProjectResponseObject, error)
 	// Update project (e.g. set status to active or closed)
 	// (PATCH /projects/{projectID})
 	UpdateProject(ctx context.Context, request UpdateProjectRequestObject) (UpdateProjectResponseObject, error)
+	// List all environments for a project
+	// (GET /projects/{projectID}/environments)
+	ListEnvironments(ctx context.Context, request ListEnvironmentsRequestObject) (ListEnvironmentsResponseObject, error)
+	// Create a new environment for a project (compound tuple)
+	// (POST /projects/{projectID}/environments)
+	CreateEnvironment(ctx context.Context, request CreateEnvironmentRequestObject) (CreateEnvironmentResponseObject, error)
 
 	// (GET /projects/{projectID}/escalations)
 	ListEscalations(ctx context.Context, request ListEscalationsRequestObject) (ListEscalationsResponseObject, error)
+	// List advancement policies for a project
+	// (GET /projects/{projectID}/policies)
+	ListPolicies(ctx context.Context, request ListPoliciesRequestObject) (ListPoliciesResponseObject, error)
+	// Create a new advancement policy
+	// (POST /projects/{projectID}/policies)
+	CreatePolicy(ctx context.Context, request CreatePolicyRequestObject) (CreatePolicyResponseObject, error)
+	// Run calibration feedback loop — analyzes metrics and generates broadening or review proposals
+	// (POST /projects/{projectID}/policies/calibrate)
+	RunCalibration(ctx context.Context, request RunCalibrationRequestObject) (RunCalibrationResponseObject, error)
+	// Policy health view showing all policies with outcome statistics, proposals, and edit history
+	// (GET /projects/{projectID}/policies/health)
+	GetProjectPolicyHealth(ctx context.Context, request GetProjectPolicyHealthRequestObject) (GetProjectPolicyHealthResponseObject, error)
 
 	// (POST /projects/{projectID}/queue/claim)
 	ClaimTicket(ctx context.Context, request ClaimTicketRequestObject) (ClaimTicketResponseObject, error)
@@ -3255,6 +6041,9 @@ type StrictServerInterface interface {
 
 	// (PATCH /projects/{projectID}/work-streams/{workStreamID})
 	UpdateWorkStream(ctx context.Context, request UpdateWorkStreamRequestObject) (UpdateWorkStreamResponseObject, error)
+	// Accept, reject, or dismiss a system-generated proposal (broadening is never automatic)
+	// (POST /proposals/{proposalID}/resolve)
+	ResolveProposal(ctx context.Context, request ResolveProposalRequestObject) (ResolveProposalResponseObject, error)
 
 	// (GET /tickets/{ticketID})
 	GetTicket(ctx context.Context, request GetTicketRequestObject) (GetTicketResponseObject, error)
@@ -3270,6 +6059,12 @@ type StrictServerInterface interface {
 
 	// (POST /tickets/{ticketID}/lease/renew)
 	RenewLease(ctx context.Context, request RenewLeaseRequestObject) (RenewLeaseResponseObject, error)
+	// Record the outcome (success, rollback, incident) for all policy decisions on a ticket
+	// (POST /tickets/{ticketID}/outcome)
+	RecordTicketOutcome(ctx context.Context, request RecordTicketOutcomeRequestObject) (RecordTicketOutcomeResponseObject, error)
+	// List all plans linked to a ticket
+	// (GET /tickets/{ticketID}/plans)
+	ListPlansByTicket(ctx context.Context, request ListPlansByTicketRequestObject) (ListPlansByTicketResponseObject, error)
 
 	// (POST /tickets/{ticketID}/reviews)
 	CreateReview(ctx context.Context, request CreateReviewRequestObject) (CreateReviewResponseObject, error)
@@ -3314,6 +6109,117 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// DeleteEnvironment operation middleware
+func (sh *strictHandler) DeleteEnvironment(w http.ResponseWriter, r *http.Request, environmentID string) {
+	var request DeleteEnvironmentRequestObject
+
+	request.EnvironmentID = environmentID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteEnvironment(ctx, request.(DeleteEnvironmentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteEnvironment")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteEnvironmentResponseObject); ok {
+		if err := validResponse.VisitDeleteEnvironmentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetEnvironment operation middleware
+func (sh *strictHandler) GetEnvironment(w http.ResponseWriter, r *http.Request, environmentID string) {
+	var request GetEnvironmentRequestObject
+
+	request.EnvironmentID = environmentID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEnvironment(ctx, request.(GetEnvironmentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEnvironment")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetEnvironmentResponseObject); ok {
+		if err := validResponse.VisitGetEnvironmentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateEnvironment operation middleware
+func (sh *strictHandler) UpdateEnvironment(w http.ResponseWriter, r *http.Request, environmentID string) {
+	var request UpdateEnvironmentRequestObject
+
+	request.EnvironmentID = environmentID
+
+	var body UpdateEnvironmentJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateEnvironment(ctx, request.(UpdateEnvironmentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateEnvironment")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateEnvironmentResponseObject); ok {
+		if err := validResponse.VisitUpdateEnvironmentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetDefaultEnvironment operation middleware
+func (sh *strictHandler) SetDefaultEnvironment(w http.ResponseWriter, r *http.Request, environmentID string) {
+	var request SetDefaultEnvironmentRequestObject
+
+	request.EnvironmentID = environmentID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetDefaultEnvironment(ctx, request.(SetDefaultEnvironmentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetDefaultEnvironment")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetDefaultEnvironmentResponseObject); ok {
+		if err := validResponse.VisitSetDefaultEnvironmentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GetHealthz operation middleware
@@ -3588,6 +6494,410 @@ func (sh *strictHandler) GetGitNotesLog(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
+// CreatePlan operation middleware
+func (sh *strictHandler) CreatePlan(w http.ResponseWriter, r *http.Request) {
+	var request CreatePlanRequestObject
+
+	var body CreatePlanJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreatePlan(ctx, request.(CreatePlanRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreatePlan")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreatePlanResponseObject); ok {
+		if err := validResponse.VisitCreatePlanResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPlan operation middleware
+func (sh *strictHandler) GetPlan(w http.ResponseWriter, r *http.Request, planID string) {
+	var request GetPlanRequestObject
+
+	request.PlanID = planID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPlan(ctx, request.(GetPlanRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPlan")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPlanResponseObject); ok {
+		if err := validResponse.VisitGetPlanResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdatePlanContent operation middleware
+func (sh *strictHandler) UpdatePlanContent(w http.ResponseWriter, r *http.Request, planID string) {
+	var request UpdatePlanContentRequestObject
+
+	request.PlanID = planID
+
+	var body UpdatePlanContentJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdatePlanContent(ctx, request.(UpdatePlanContentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdatePlanContent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdatePlanContentResponseObject); ok {
+		if err := validResponse.VisitUpdatePlanContentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CheckPlanFreshness operation middleware
+func (sh *strictHandler) CheckPlanFreshness(w http.ResponseWriter, r *http.Request, planID string) {
+	var request CheckPlanFreshnessRequestObject
+
+	request.PlanID = planID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CheckPlanFreshness(ctx, request.(CheckPlanFreshnessRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CheckPlanFreshness")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CheckPlanFreshnessResponseObject); ok {
+		if err := validResponse.VisitCheckPlanFreshnessResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TransitionPlan operation middleware
+func (sh *strictHandler) TransitionPlan(w http.ResponseWriter, r *http.Request, planID string) {
+	var request TransitionPlanRequestObject
+
+	request.PlanID = planID
+
+	var body TransitionPlanJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TransitionPlan(ctx, request.(TransitionPlanRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TransitionPlan")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TransitionPlanResponseObject); ok {
+		if err := validResponse.VisitTransitionPlanResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPlanVersions operation middleware
+func (sh *strictHandler) ListPlanVersions(w http.ResponseWriter, r *http.Request, planID string) {
+	var request ListPlanVersionsRequestObject
+
+	request.PlanID = planID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPlanVersions(ctx, request.(ListPlanVersionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPlanVersions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPlanVersionsResponseObject); ok {
+		if err := validResponse.VisitListPlanVersionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPolicy operation middleware
+func (sh *strictHandler) GetPolicy(w http.ResponseWriter, r *http.Request, policyID string) {
+	var request GetPolicyRequestObject
+
+	request.PolicyID = policyID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPolicy(ctx, request.(GetPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPolicyResponseObject); ok {
+		if err := validResponse.VisitGetPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdatePolicy operation middleware
+func (sh *strictHandler) UpdatePolicy(w http.ResponseWriter, r *http.Request, policyID string) {
+	var request UpdatePolicyRequestObject
+
+	request.PolicyID = policyID
+
+	var body UpdatePolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdatePolicy(ctx, request.(UpdatePolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdatePolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdatePolicyResponseObject); ok {
+		if err := validResponse.VisitUpdatePolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPolicyDecisions operation middleware
+func (sh *strictHandler) ListPolicyDecisions(w http.ResponseWriter, r *http.Request, policyID string) {
+	var request ListPolicyDecisionsRequestObject
+
+	request.PolicyID = policyID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPolicyDecisions(ctx, request.(ListPolicyDecisionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPolicyDecisions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPolicyDecisionsResponseObject); ok {
+		if err := validResponse.VisitListPolicyDecisionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RecordPolicyDecision operation middleware
+func (sh *strictHandler) RecordPolicyDecision(w http.ResponseWriter, r *http.Request, policyID string) {
+	var request RecordPolicyDecisionRequestObject
+
+	request.PolicyID = policyID
+
+	var body RecordPolicyDecisionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RecordPolicyDecision(ctx, request.(RecordPolicyDecisionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RecordPolicyDecision")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RecordPolicyDecisionResponseObject); ok {
+		if err := validResponse.VisitRecordPolicyDecisionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPolicyHealth operation middleware
+func (sh *strictHandler) GetPolicyHealth(w http.ResponseWriter, r *http.Request, policyID string) {
+	var request GetPolicyHealthRequestObject
+
+	request.PolicyID = policyID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPolicyHealth(ctx, request.(GetPolicyHealthRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPolicyHealth")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPolicyHealthResponseObject); ok {
+		if err := validResponse.VisitGetPolicyHealthResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPolicyChangeEvents operation middleware
+func (sh *strictHandler) ListPolicyChangeEvents(w http.ResponseWriter, r *http.Request, policyID string) {
+	var request ListPolicyChangeEventsRequestObject
+
+	request.PolicyID = policyID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPolicyChangeEvents(ctx, request.(ListPolicyChangeEventsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPolicyChangeEvents")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPolicyChangeEventsResponseObject); ok {
+		if err := validResponse.VisitListPolicyChangeEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPolicyMetrics operation middleware
+func (sh *strictHandler) GetPolicyMetrics(w http.ResponseWriter, r *http.Request, policyID string) {
+	var request GetPolicyMetricsRequestObject
+
+	request.PolicyID = policyID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPolicyMetrics(ctx, request.(GetPolicyMetricsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPolicyMetrics")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPolicyMetricsResponseObject); ok {
+		if err := validResponse.VisitGetPolicyMetricsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SimulateRuleChange operation middleware
+func (sh *strictHandler) SimulateRuleChange(w http.ResponseWriter, r *http.Request, policyID string) {
+	var request SimulateRuleChangeRequestObject
+
+	request.PolicyID = policyID
+
+	var body SimulateRuleChangeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SimulateRuleChange(ctx, request.(SimulateRuleChangeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SimulateRuleChange")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SimulateRuleChangeResponseObject); ok {
+		if err := validResponse.VisitSimulateRuleChangeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetProject operation middleware
 func (sh *strictHandler) GetProject(w http.ResponseWriter, r *http.Request, projectID string) {
 	var request GetProjectRequestObject
@@ -3647,6 +6957,65 @@ func (sh *strictHandler) UpdateProject(w http.ResponseWriter, r *http.Request, p
 	}
 }
 
+// ListEnvironments operation middleware
+func (sh *strictHandler) ListEnvironments(w http.ResponseWriter, r *http.Request, projectID string) {
+	var request ListEnvironmentsRequestObject
+
+	request.ProjectID = projectID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListEnvironments(ctx, request.(ListEnvironmentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListEnvironments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListEnvironmentsResponseObject); ok {
+		if err := validResponse.VisitListEnvironmentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateEnvironment operation middleware
+func (sh *strictHandler) CreateEnvironment(w http.ResponseWriter, r *http.Request, projectID string) {
+	var request CreateEnvironmentRequestObject
+
+	request.ProjectID = projectID
+
+	var body CreateEnvironmentJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateEnvironment(ctx, request.(CreateEnvironmentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateEnvironment")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateEnvironmentResponseObject); ok {
+		if err := validResponse.VisitCreateEnvironmentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListEscalations operation middleware
 func (sh *strictHandler) ListEscalations(w http.ResponseWriter, r *http.Request, projectID string) {
 	var request ListEscalationsRequestObject
@@ -3666,6 +7035,118 @@ func (sh *strictHandler) ListEscalations(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListEscalationsResponseObject); ok {
 		if err := validResponse.VisitListEscalationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPolicies operation middleware
+func (sh *strictHandler) ListPolicies(w http.ResponseWriter, r *http.Request, projectID string, params ListPoliciesParams) {
+	var request ListPoliciesRequestObject
+
+	request.ProjectID = projectID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPolicies(ctx, request.(ListPoliciesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPolicies")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPoliciesResponseObject); ok {
+		if err := validResponse.VisitListPoliciesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreatePolicy operation middleware
+func (sh *strictHandler) CreatePolicy(w http.ResponseWriter, r *http.Request, projectID string) {
+	var request CreatePolicyRequestObject
+
+	request.ProjectID = projectID
+
+	var body CreatePolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreatePolicy(ctx, request.(CreatePolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreatePolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreatePolicyResponseObject); ok {
+		if err := validResponse.VisitCreatePolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RunCalibration operation middleware
+func (sh *strictHandler) RunCalibration(w http.ResponseWriter, r *http.Request, projectID string) {
+	var request RunCalibrationRequestObject
+
+	request.ProjectID = projectID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RunCalibration(ctx, request.(RunCalibrationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RunCalibration")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RunCalibrationResponseObject); ok {
+		if err := validResponse.VisitRunCalibrationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectPolicyHealth operation middleware
+func (sh *strictHandler) GetProjectPolicyHealth(w http.ResponseWriter, r *http.Request, projectID string) {
+	var request GetProjectPolicyHealthRequestObject
+
+	request.ProjectID = projectID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectPolicyHealth(ctx, request.(GetProjectPolicyHealthRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectPolicyHealth")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectPolicyHealthResponseObject); ok {
+		if err := validResponse.VisitGetProjectPolicyHealthResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -3913,6 +7394,39 @@ func (sh *strictHandler) UpdateWorkStream(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// ResolveProposal operation middleware
+func (sh *strictHandler) ResolveProposal(w http.ResponseWriter, r *http.Request, proposalID string) {
+	var request ResolveProposalRequestObject
+
+	request.ProposalID = proposalID
+
+	var body ResolveProposalJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResolveProposal(ctx, request.(ResolveProposalRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResolveProposal")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResolveProposalResponseObject); ok {
+		if err := validResponse.VisitResolveProposalResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetTicket operation middleware
 func (sh *strictHandler) GetTicket(w http.ResponseWriter, r *http.Request, ticketID string) {
 	var request GetTicketRequestObject
@@ -4072,6 +7586,66 @@ func (sh *strictHandler) RenewLease(w http.ResponseWriter, r *http.Request, tick
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RenewLeaseResponseObject); ok {
 		if err := validResponse.VisitRenewLeaseResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RecordTicketOutcome operation middleware
+func (sh *strictHandler) RecordTicketOutcome(w http.ResponseWriter, r *http.Request, ticketID string) {
+	var request RecordTicketOutcomeRequestObject
+
+	request.TicketID = ticketID
+
+	var body RecordTicketOutcomeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RecordTicketOutcome(ctx, request.(RecordTicketOutcomeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RecordTicketOutcome")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RecordTicketOutcomeResponseObject); ok {
+		if err := validResponse.VisitRecordTicketOutcomeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPlansByTicket operation middleware
+func (sh *strictHandler) ListPlansByTicket(w http.ResponseWriter, r *http.Request, ticketID string, params ListPlansByTicketParams) {
+	var request ListPlansByTicketRequestObject
+
+	request.TicketID = ticketID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPlansByTicket(ctx, request.(ListPlansByTicketRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPlansByTicket")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPlansByTicketResponseObject); ok {
+		if err := validResponse.VisitListPlansByTicketResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

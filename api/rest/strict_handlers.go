@@ -15,10 +15,12 @@ import (
 	"github.com/gabinante/flywheel/internal/agent"
 	"github.com/gabinante/flywheel/internal/cost"
 	"github.com/gabinante/flywheel/internal/entity"
+	"github.com/gabinante/flywheel/internal/environment"
 	apierrors "github.com/gabinante/flywheel/internal/errors"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/gitnotes"
 	"github.com/gabinante/flywheel/internal/org"
+	"github.com/gabinante/flywheel/internal/plan"
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
 	"github.com/gabinante/flywheel/internal/review"
@@ -37,6 +39,9 @@ type StrictServer struct {
 	TraceSvc      *execution.Service
 	ReviewSvc     *review.Service
 	EntitySvc     *entity.Service
+	EnvSvc        *environment.Service
+	PlanSvc       *plan.Service
+	PolicySvc     PolicyServiceForHandler
 	AgentStore    agent.AgentStore
 	CostSvc       *cost.Service
 }
@@ -59,9 +64,9 @@ func (s *StrictServer) GetMeStats(ctx context.Context, req generated.GetMeStatsR
 		return nil, apierrors.MapError(err)
 	}
 	return generated.GetMeStats200JSONResponse(generated.MeStats{
-		TicketsCreated:   created,
-		ReviewsApproved:  approved,
-		ReviewsRejected:  rejected,
+		TicketsCreated:  created,
+		ReviewsApproved: approved,
+		ReviewsRejected: rejected,
 	}), nil
 }
 
@@ -617,15 +622,15 @@ func (s *StrictServer) CreateReview(ctx context.Context, req generated.CreateRev
 		notes = *body.Notes
 	}
 	switch body.Decision {
-	case generated.Approved:
+	case generated.CreateReviewRequestDecisionApproved:
 		if err := s.ReviewSvc.ApproveTicket(ctx, req.TicketID, reviewerID, notes); err != nil {
 			return nil, apierrors.MapError(err)
 		}
-	case generated.Rejected:
+	case generated.CreateReviewRequestDecisionRejected:
 		if err := s.ReviewSvc.RejectTicket(ctx, req.TicketID, reviewerID, notes); err != nil {
 			return nil, apierrors.MapError(err)
 		}
-	case generated.Reopened:
+	case generated.CreateReviewRequestDecisionReopened:
 		if err := s.ReviewSvc.ReopenTicketForReview(ctx, req.TicketID, reviewerID, notes); err != nil {
 			return nil, apierrors.MapError(err)
 		}
@@ -955,20 +960,20 @@ func ticketToGen(t *ticket.Ticket) generated.Ticket {
 	ver := t.Version
 	prio := int(t.Priority)
 	out := generated.Ticket{
-		Id:        &t.ID,
-		ProjectId: &t.ProjectID,
-		Title:     &t.Title,
-		Type:      (*generated.TicketType)(&t.Type),
-		Priority:  &prio,
-		State:     (*generated.TicketState)(&t.State),
-		Version:   &ver,
-		CreatedAt: &ca,
-		UpdatedAt: &ua,
-		CreatedBy: &t.CreatedBy,
-		AssignedTo: &t.AssignedTo,
-		DependsOn: &t.DependsOn,
-		Inputs:    &t.Inputs,
-		Outputs:   &t.Outputs,
+		Id:            &t.ID,
+		ProjectId:     &t.ProjectID,
+		Title:         &t.Title,
+		Type:          (*generated.TicketType)(&t.Type),
+		Priority:      &prio,
+		State:         (*generated.TicketState)(&t.State),
+		Version:       &ver,
+		CreatedAt:     &ca,
+		UpdatedAt:     &ua,
+		CreatedBy:     &t.CreatedBy,
+		AssignedTo:    &t.AssignedTo,
+		DependsOn:     &t.DependsOn,
+		Inputs:        &t.Inputs,
+		Outputs:       &t.Outputs,
 		Objective:     objectiveToGenPtr(t.Objective),
 		TicketContext: ticketContextToGenPtr(t.Context),
 	}
@@ -1106,10 +1111,10 @@ func escalationToGen(e *review.Escalation) generated.Escalation {
 func leaseToGen(l *queue.Lease) generated.Lease {
 	exp := l.ExpiresAt
 	return generated.Lease{
-		TicketId:   &l.TicketID,
-		AgentId:    &l.AgentID,
-		Token:      &l.Token,
-		ExpiresAt:  &exp,
-		Renewable:  &l.Renewable,
+		TicketId:  &l.TicketID,
+		AgentId:   &l.AgentID,
+		Token:     &l.Token,
+		ExpiresAt: &exp,
+		Renewable: &l.Renewable,
 	}
 }

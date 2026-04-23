@@ -9,7 +9,15 @@ CREATE TABLE IF NOT EXISTS entity_stream (
     id              TEXT        PRIMARY KEY,
     project_id      TEXT        NOT NULL REFERENCES projects(id),
     -- Common shape (spec 2.3)
-    change_type     TEXT        NOT NULL CHECK (change_type IN ('created', 'renamed', 'retired', 'updated')),
+    change_type     TEXT        NOT NULL CHECK (change_type IN (
+        'created',
+        'renamed',
+        'retired',
+        'updated',
+        'instance_created',
+        'instance_retired',
+        'attribute_changed'
+    )),
     affected_entities TEXT[]    NOT NULL DEFAULT '{}',
     before_state    JSONB,
     after_state     JSONB,

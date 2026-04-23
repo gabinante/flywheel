@@ -19,7 +19,6 @@ CREATE TABLE IF NOT EXISTS llm_call_records (
 
 CREATE INDEX IF NOT EXISTS idx_llm_calls_project_time ON llm_call_records (project_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_llm_calls_ticket ON llm_call_records (ticket_id);
-CREATE INDEX IF NOT EXISTS idx_llm_calls_project_month ON llm_call_records (project_id, date_trunc('month', created_at));
 
 -- Budgets: spending limits per project, optionally scoped to ticket or month.
 CREATE TABLE IF NOT EXISTS budgets (

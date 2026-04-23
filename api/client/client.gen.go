@@ -22,21 +22,132 @@ const (
 	BearerAuthScopes = "BearerAuth.Scopes"
 )
 
+// Defines values for CodePlanHunksOperation.
+const (
+	Add    CodePlanHunksOperation = "add"
+	Modify CodePlanHunksOperation = "modify"
+	Remove CodePlanHunksOperation = "remove"
+)
+
+// Valid indicates whether the value is a known member of the CodePlanHunksOperation enum.
+func (e CodePlanHunksOperation) Valid() bool {
+	switch e {
+	case Add:
+		return true
+	case Modify:
+		return true
+	case Remove:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateEnvironmentRequestDataTenancy.
+const (
+	CreateEnvironmentRequestDataTenancyAnonymized CreateEnvironmentRequestDataTenancy = "anonymized"
+	CreateEnvironmentRequestDataTenancyReal       CreateEnvironmentRequestDataTenancy = "real"
+	CreateEnvironmentRequestDataTenancySynthetic  CreateEnvironmentRequestDataTenancy = "synthetic"
+)
+
+// Valid indicates whether the value is a known member of the CreateEnvironmentRequestDataTenancy enum.
+func (e CreateEnvironmentRequestDataTenancy) Valid() bool {
+	switch e {
+	case CreateEnvironmentRequestDataTenancyAnonymized:
+		return true
+	case CreateEnvironmentRequestDataTenancyReal:
+		return true
+	case CreateEnvironmentRequestDataTenancySynthetic:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateEnvironmentRequestInfrastructure.
+const (
+	CreateEnvironmentRequestInfrastructureDev     CreateEnvironmentRequestInfrastructure = "dev"
+	CreateEnvironmentRequestInfrastructureProd    CreateEnvironmentRequestInfrastructure = "prod"
+	CreateEnvironmentRequestInfrastructureStaging CreateEnvironmentRequestInfrastructure = "staging"
+)
+
+// Valid indicates whether the value is a known member of the CreateEnvironmentRequestInfrastructure enum.
+func (e CreateEnvironmentRequestInfrastructure) Valid() bool {
+	switch e {
+	case CreateEnvironmentRequestInfrastructureDev:
+		return true
+	case CreateEnvironmentRequestInfrastructureProd:
+		return true
+	case CreateEnvironmentRequestInfrastructureStaging:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateEnvironmentRequestIntegrationMode.
+const (
+	CreateEnvironmentRequestIntegrationModeLive    CreateEnvironmentRequestIntegrationMode = "live"
+	CreateEnvironmentRequestIntegrationModeSandbox CreateEnvironmentRequestIntegrationMode = "sandbox"
+	CreateEnvironmentRequestIntegrationModeTest    CreateEnvironmentRequestIntegrationMode = "test"
+)
+
+// Valid indicates whether the value is a known member of the CreateEnvironmentRequestIntegrationMode enum.
+func (e CreateEnvironmentRequestIntegrationMode) Valid() bool {
+	switch e {
+	case CreateEnvironmentRequestIntegrationModeLive:
+		return true
+	case CreateEnvironmentRequestIntegrationModeSandbox:
+		return true
+	case CreateEnvironmentRequestIntegrationModeTest:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreatePlanRequestBackend.
+const (
+	CreatePlanRequestBackendCode      CreatePlanRequestBackend = "code"
+	CreatePlanRequestBackendDatabase  CreatePlanRequestBackend = "database"
+	CreatePlanRequestBackendDeploy    CreatePlanRequestBackend = "deploy"
+	CreatePlanRequestBackendShell     CreatePlanRequestBackend = "shell"
+	CreatePlanRequestBackendTerraform CreatePlanRequestBackend = "terraform"
+)
+
+// Valid indicates whether the value is a known member of the CreatePlanRequestBackend enum.
+func (e CreatePlanRequestBackend) Valid() bool {
+	switch e {
+	case CreatePlanRequestBackendCode:
+		return true
+	case CreatePlanRequestBackendDatabase:
+		return true
+	case CreatePlanRequestBackendDeploy:
+		return true
+	case CreatePlanRequestBackendShell:
+		return true
+	case CreatePlanRequestBackendTerraform:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateReviewRequestDecision.
 const (
-	Approved CreateReviewRequestDecision = "approved"
-	Rejected CreateReviewRequestDecision = "rejected"
-	Reopened CreateReviewRequestDecision = "reopened"
+	CreateReviewRequestDecisionApproved CreateReviewRequestDecision = "approved"
+	CreateReviewRequestDecisionRejected CreateReviewRequestDecision = "rejected"
+	CreateReviewRequestDecisionReopened CreateReviewRequestDecision = "reopened"
 )
 
 // Valid indicates whether the value is a known member of the CreateReviewRequestDecision enum.
 func (e CreateReviewRequestDecision) Valid() bool {
 	switch e {
-	case Approved:
+	case CreateReviewRequestDecisionApproved:
 		return true
-	case Rejected:
+	case CreateReviewRequestDecisionRejected:
 		return true
-	case Reopened:
+	case CreateReviewRequestDecisionReopened:
 		return true
 	default:
 		return false
@@ -67,6 +178,111 @@ func (e CreateTicketRequestType) Valid() bool {
 	}
 }
 
+// Defines values for DatabasePlanDirection.
+const (
+	Down DatabasePlanDirection = "down"
+	Up   DatabasePlanDirection = "up"
+)
+
+// Valid indicates whether the value is a known member of the DatabasePlanDirection enum.
+func (e DatabasePlanDirection) Valid() bool {
+	switch e {
+	case Down:
+		return true
+	case Up:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeployPlanDeployStrategy.
+const (
+	BlueGreen DeployPlanDeployStrategy = "blue-green"
+	Canary    DeployPlanDeployStrategy = "canary"
+	Recreate  DeployPlanDeployStrategy = "recreate"
+	Rolling   DeployPlanDeployStrategy = "rolling"
+)
+
+// Valid indicates whether the value is a known member of the DeployPlanDeployStrategy enum.
+func (e DeployPlanDeployStrategy) Valid() bool {
+	switch e {
+	case BlueGreen:
+		return true
+	case Canary:
+		return true
+	case Recreate:
+		return true
+	case Rolling:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EnvironmentDataTenancy.
+const (
+	EnvironmentDataTenancyAnonymized EnvironmentDataTenancy = "anonymized"
+	EnvironmentDataTenancyReal       EnvironmentDataTenancy = "real"
+	EnvironmentDataTenancySynthetic  EnvironmentDataTenancy = "synthetic"
+)
+
+// Valid indicates whether the value is a known member of the EnvironmentDataTenancy enum.
+func (e EnvironmentDataTenancy) Valid() bool {
+	switch e {
+	case EnvironmentDataTenancyAnonymized:
+		return true
+	case EnvironmentDataTenancyReal:
+		return true
+	case EnvironmentDataTenancySynthetic:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EnvironmentInfrastructure.
+const (
+	EnvironmentInfrastructureDev     EnvironmentInfrastructure = "dev"
+	EnvironmentInfrastructureProd    EnvironmentInfrastructure = "prod"
+	EnvironmentInfrastructureStaging EnvironmentInfrastructure = "staging"
+)
+
+// Valid indicates whether the value is a known member of the EnvironmentInfrastructure enum.
+func (e EnvironmentInfrastructure) Valid() bool {
+	switch e {
+	case EnvironmentInfrastructureDev:
+		return true
+	case EnvironmentInfrastructureProd:
+		return true
+	case EnvironmentInfrastructureStaging:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EnvironmentIntegrationMode.
+const (
+	EnvironmentIntegrationModeLive    EnvironmentIntegrationMode = "live"
+	EnvironmentIntegrationModeSandbox EnvironmentIntegrationMode = "sandbox"
+	EnvironmentIntegrationModeTest    EnvironmentIntegrationMode = "test"
+)
+
+// Valid indicates whether the value is a known member of the EnvironmentIntegrationMode enum.
+func (e EnvironmentIntegrationMode) Valid() bool {
+	switch e {
+	case EnvironmentIntegrationModeLive:
+		return true
+	case EnvironmentIntegrationModeSandbox:
+		return true
+	case EnvironmentIntegrationModeTest:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for NotImplementedErrorCode.
 const (
 	NotImplementedErrorCodeNotImplemented NotImplementedErrorCode = "not_implemented"
@@ -76,6 +292,180 @@ const (
 func (e NotImplementedErrorCode) Valid() bool {
 	switch e {
 	case NotImplementedErrorCodeNotImplemented:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PlanBackend.
+const (
+	PlanBackendCode      PlanBackend = "code"
+	PlanBackendDatabase  PlanBackend = "database"
+	PlanBackendDeploy    PlanBackend = "deploy"
+	PlanBackendShell     PlanBackend = "shell"
+	PlanBackendTerraform PlanBackend = "terraform"
+)
+
+// Valid indicates whether the value is a known member of the PlanBackend enum.
+func (e PlanBackend) Valid() bool {
+	switch e {
+	case PlanBackendCode:
+		return true
+	case PlanBackendDatabase:
+		return true
+	case PlanBackendDeploy:
+		return true
+	case PlanBackendShell:
+		return true
+	case PlanBackendTerraform:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PlanState.
+const (
+	PlanStateApplied    PlanState = "applied"
+	PlanStateApproved   PlanState = "approved"
+	PlanStateClassified PlanState = "classified"
+	PlanStateDraft      PlanState = "draft"
+	PlanStateRejected   PlanState = "rejected"
+	PlanStateSubmitted  PlanState = "submitted"
+	PlanStateSuperseded PlanState = "superseded"
+)
+
+// Valid indicates whether the value is a known member of the PlanState enum.
+func (e PlanState) Valid() bool {
+	switch e {
+	case PlanStateApplied:
+		return true
+	case PlanStateApproved:
+		return true
+	case PlanStateClassified:
+		return true
+	case PlanStateDraft:
+		return true
+	case PlanStateRejected:
+		return true
+	case PlanStateSubmitted:
+		return true
+	case PlanStateSuperseded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicyChangeEventChangeType.
+const (
+	Broadened PolicyChangeEventChangeType = "broadened"
+	Created   PolicyChangeEventChangeType = "created"
+	Disabled  PolicyChangeEventChangeType = "disabled"
+	Enabled   PolicyChangeEventChangeType = "enabled"
+	Narrowed  PolicyChangeEventChangeType = "narrowed"
+	Updated   PolicyChangeEventChangeType = "updated"
+)
+
+// Valid indicates whether the value is a known member of the PolicyChangeEventChangeType enum.
+func (e PolicyChangeEventChangeType) Valid() bool {
+	switch e {
+	case Broadened:
+		return true
+	case Created:
+		return true
+	case Disabled:
+		return true
+	case Enabled:
+		return true
+	case Narrowed:
+		return true
+	case Updated:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicyDecisionDecision.
+const (
+	PolicyDecisionDecisionAutoApproved   PolicyDecisionDecision = "auto_approved"
+	PolicyDecisionDecisionBlocked        PolicyDecisionDecision = "blocked"
+	PolicyDecisionDecisionRequiredReview PolicyDecisionDecision = "required_review"
+)
+
+// Valid indicates whether the value is a known member of the PolicyDecisionDecision enum.
+func (e PolicyDecisionDecision) Valid() bool {
+	switch e {
+	case PolicyDecisionDecisionAutoApproved:
+		return true
+	case PolicyDecisionDecisionBlocked:
+		return true
+	case PolicyDecisionDecisionRequiredReview:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicyDecisionOutcome.
+const (
+	PolicyDecisionOutcomeIncident PolicyDecisionOutcome = "incident"
+	PolicyDecisionOutcomeRollback PolicyDecisionOutcome = "rollback"
+	PolicyDecisionOutcomeSuccess  PolicyDecisionOutcome = "success"
+)
+
+// Valid indicates whether the value is a known member of the PolicyDecisionOutcome enum.
+func (e PolicyDecisionOutcome) Valid() bool {
+	switch e {
+	case PolicyDecisionOutcomeIncident:
+		return true
+	case PolicyDecisionOutcomeRollback:
+		return true
+	case PolicyDecisionOutcomeSuccess:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicyProposalProposalType.
+const (
+	PolicyProposalProposalTypeBroaden PolicyProposalProposalType = "broaden"
+	PolicyProposalProposalTypeReview  PolicyProposalProposalType = "review"
+)
+
+// Valid indicates whether the value is a known member of the PolicyProposalProposalType enum.
+func (e PolicyProposalProposalType) Valid() bool {
+	switch e {
+	case PolicyProposalProposalTypeBroaden:
+		return true
+	case PolicyProposalProposalTypeReview:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicyProposalStatus.
+const (
+	PolicyProposalStatusAccepted  PolicyProposalStatus = "accepted"
+	PolicyProposalStatusDismissed PolicyProposalStatus = "dismissed"
+	PolicyProposalStatusPending   PolicyProposalStatus = "pending"
+	PolicyProposalStatusRejected  PolicyProposalStatus = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the PolicyProposalStatus enum.
+func (e PolicyProposalStatus) Valid() bool {
+	switch e {
+	case PolicyProposalStatusAccepted:
+		return true
+	case PolicyProposalStatusDismissed:
+		return true
+	case PolicyProposalStatusPending:
+		return true
+	case PolicyProposalStatusRejected:
 		return true
 	default:
 		return false
@@ -94,6 +484,129 @@ func (e ProjectStatus) Valid() bool {
 	case ProjectStatusActive:
 		return true
 	case ProjectStatusClosed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RecordDecisionRequestDecision.
+const (
+	RecordDecisionRequestDecisionAutoApproved   RecordDecisionRequestDecision = "auto_approved"
+	RecordDecisionRequestDecisionBlocked        RecordDecisionRequestDecision = "blocked"
+	RecordDecisionRequestDecisionRequiredReview RecordDecisionRequestDecision = "required_review"
+)
+
+// Valid indicates whether the value is a known member of the RecordDecisionRequestDecision enum.
+func (e RecordDecisionRequestDecision) Valid() bool {
+	switch e {
+	case RecordDecisionRequestDecisionAutoApproved:
+		return true
+	case RecordDecisionRequestDecisionBlocked:
+		return true
+	case RecordDecisionRequestDecisionRequiredReview:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RecordOutcomeRequestOutcome.
+const (
+	RecordOutcomeRequestOutcomeIncident RecordOutcomeRequestOutcome = "incident"
+	RecordOutcomeRequestOutcomeRollback RecordOutcomeRequestOutcome = "rollback"
+	RecordOutcomeRequestOutcomeSuccess  RecordOutcomeRequestOutcome = "success"
+)
+
+// Valid indicates whether the value is a known member of the RecordOutcomeRequestOutcome enum.
+func (e RecordOutcomeRequestOutcome) Valid() bool {
+	switch e {
+	case RecordOutcomeRequestOutcomeIncident:
+		return true
+	case RecordOutcomeRequestOutcomeRollback:
+		return true
+	case RecordOutcomeRequestOutcomeSuccess:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ResolveProposalRequestStatus.
+const (
+	ResolveProposalRequestStatusAccepted  ResolveProposalRequestStatus = "accepted"
+	ResolveProposalRequestStatusDismissed ResolveProposalRequestStatus = "dismissed"
+	ResolveProposalRequestStatusRejected  ResolveProposalRequestStatus = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the ResolveProposalRequestStatus enum.
+func (e ResolveProposalRequestStatus) Valid() bool {
+	switch e {
+	case ResolveProposalRequestStatusAccepted:
+		return true
+	case ResolveProposalRequestStatusDismissed:
+		return true
+	case ResolveProposalRequestStatusRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ShellPlanSideEffectManifestFileOpsAction.
+const (
+	ShellPlanSideEffectManifestFileOpsActionDelete ShellPlanSideEffectManifestFileOpsAction = "delete"
+	ShellPlanSideEffectManifestFileOpsActionRead   ShellPlanSideEffectManifestFileOpsAction = "read"
+	ShellPlanSideEffectManifestFileOpsActionWrite  ShellPlanSideEffectManifestFileOpsAction = "write"
+)
+
+// Valid indicates whether the value is a known member of the ShellPlanSideEffectManifestFileOpsAction enum.
+func (e ShellPlanSideEffectManifestFileOpsAction) Valid() bool {
+	switch e {
+	case ShellPlanSideEffectManifestFileOpsActionDelete:
+		return true
+	case ShellPlanSideEffectManifestFileOpsActionRead:
+		return true
+	case ShellPlanSideEffectManifestFileOpsActionWrite:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ShellPlanSideEffectManifestNetworkOpsMethod.
+const (
+	DELETE  ShellPlanSideEffectManifestNetworkOpsMethod = "DELETE"
+	GET     ShellPlanSideEffectManifestNetworkOpsMethod = "GET"
+	HEAD    ShellPlanSideEffectManifestNetworkOpsMethod = "HEAD"
+	OPTIONS ShellPlanSideEffectManifestNetworkOpsMethod = "OPTIONS"
+	PATCH   ShellPlanSideEffectManifestNetworkOpsMethod = "PATCH"
+	POST    ShellPlanSideEffectManifestNetworkOpsMethod = "POST"
+	PUT     ShellPlanSideEffectManifestNetworkOpsMethod = "PUT"
+	TCP     ShellPlanSideEffectManifestNetworkOpsMethod = "TCP"
+	UDP     ShellPlanSideEffectManifestNetworkOpsMethod = "UDP"
+)
+
+// Valid indicates whether the value is a known member of the ShellPlanSideEffectManifestNetworkOpsMethod enum.
+func (e ShellPlanSideEffectManifestNetworkOpsMethod) Valid() bool {
+	switch e {
+	case DELETE:
+		return true
+	case GET:
+		return true
+	case HEAD:
+		return true
+	case OPTIONS:
+		return true
+	case PATCH:
+		return true
+	case POST:
+		return true
+	case PUT:
+		return true
+	case TCP:
+		return true
+	case UDP:
 		return true
 	default:
 		return false
@@ -154,6 +667,33 @@ func (e StructuredErrorCode) Valid() bool {
 	case StructuredErrorCodeProjectClosed:
 		return true
 	case StructuredErrorCodeUnauthorized:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TerraformPlanResourceChangesChangeAction.
+const (
+	TerraformPlanResourceChangesChangeActionCreate  TerraformPlanResourceChangesChangeAction = "create"
+	TerraformPlanResourceChangesChangeActionDelete  TerraformPlanResourceChangesChangeAction = "delete"
+	TerraformPlanResourceChangesChangeActionNoOp    TerraformPlanResourceChangesChangeAction = "no-op"
+	TerraformPlanResourceChangesChangeActionReplace TerraformPlanResourceChangesChangeAction = "replace"
+	TerraformPlanResourceChangesChangeActionUpdate  TerraformPlanResourceChangesChangeAction = "update"
+)
+
+// Valid indicates whether the value is a known member of the TerraformPlanResourceChangesChangeAction enum.
+func (e TerraformPlanResourceChangesChangeAction) Valid() bool {
+	switch e {
+	case TerraformPlanResourceChangesChangeActionCreate:
+		return true
+	case TerraformPlanResourceChangesChangeActionDelete:
+		return true
+	case TerraformPlanResourceChangesChangeActionNoOp:
+		return true
+	case TerraformPlanResourceChangesChangeActionReplace:
+		return true
+	case TerraformPlanResourceChangesChangeActionUpdate:
 		return true
 	default:
 		return false
@@ -225,22 +765,22 @@ func (e TicketState) Valid() bool {
 
 // Defines values for TicketType.
 const (
-	TicketTypeBug    TicketType = "bug"
-	TicketTypeReview TicketType = "review"
-	TicketTypeSpike  TicketType = "spike"
-	TicketTypeTask   TicketType = "task"
+	Bug    TicketType = "bug"
+	Review TicketType = "review"
+	Spike  TicketType = "spike"
+	Task   TicketType = "task"
 )
 
 // Valid indicates whether the value is a known member of the TicketType enum.
 func (e TicketType) Valid() bool {
 	switch e {
-	case TicketTypeBug:
+	case Bug:
 		return true
-	case TicketTypeReview:
+	case Review:
 		return true
-	case TicketTypeSpike:
+	case Spike:
 		return true
-	case TicketTypeTask:
+	case Task:
 		return true
 	default:
 		return false
@@ -310,6 +850,69 @@ func (e TransitionRequestActor) Valid() bool {
 	case TransitionRequestActorHuman:
 		return true
 	case TransitionRequestActorSystem:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UpdateEnvironmentRequestDataTenancy.
+const (
+	Anonymized UpdateEnvironmentRequestDataTenancy = "anonymized"
+	Real       UpdateEnvironmentRequestDataTenancy = "real"
+	Synthetic  UpdateEnvironmentRequestDataTenancy = "synthetic"
+)
+
+// Valid indicates whether the value is a known member of the UpdateEnvironmentRequestDataTenancy enum.
+func (e UpdateEnvironmentRequestDataTenancy) Valid() bool {
+	switch e {
+	case Anonymized:
+		return true
+	case Real:
+		return true
+	case Synthetic:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UpdateEnvironmentRequestInfrastructure.
+const (
+	Dev     UpdateEnvironmentRequestInfrastructure = "dev"
+	Prod    UpdateEnvironmentRequestInfrastructure = "prod"
+	Staging UpdateEnvironmentRequestInfrastructure = "staging"
+)
+
+// Valid indicates whether the value is a known member of the UpdateEnvironmentRequestInfrastructure enum.
+func (e UpdateEnvironmentRequestInfrastructure) Valid() bool {
+	switch e {
+	case Dev:
+		return true
+	case Prod:
+		return true
+	case Staging:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UpdateEnvironmentRequestIntegrationMode.
+const (
+	Live    UpdateEnvironmentRequestIntegrationMode = "live"
+	Sandbox UpdateEnvironmentRequestIntegrationMode = "sandbox"
+	Test    UpdateEnvironmentRequestIntegrationMode = "test"
+)
+
+// Valid indicates whether the value is a known member of the UpdateEnvironmentRequestIntegrationMode enum.
+func (e UpdateEnvironmentRequestIntegrationMode) Valid() bool {
+	switch e {
+	case Live:
+		return true
+	case Sandbox:
+		return true
+	case Test:
 		return true
 	default:
 		return false
@@ -433,6 +1036,51 @@ func (e GetGitNotesLogParamsType) Valid() bool {
 	}
 }
 
+// Defines values for TransitionPlanJSONBodyAction.
+const (
+	Apply    TransitionPlanJSONBodyAction = "apply"
+	Approve  TransitionPlanJSONBodyAction = "approve"
+	Classify TransitionPlanJSONBodyAction = "classify"
+	Reject   TransitionPlanJSONBodyAction = "reject"
+	Submit   TransitionPlanJSONBodyAction = "submit"
+)
+
+// Valid indicates whether the value is a known member of the TransitionPlanJSONBodyAction enum.
+func (e TransitionPlanJSONBodyAction) Valid() bool {
+	switch e {
+	case Apply:
+		return true
+	case Approve:
+		return true
+	case Classify:
+		return true
+	case Reject:
+		return true
+	case Submit:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListPoliciesParamsEnabled.
+const (
+	False ListPoliciesParamsEnabled = "false"
+	True  ListPoliciesParamsEnabled = "true"
+)
+
+// Valid indicates whether the value is a known member of the ListPoliciesParamsEnabled enum.
+func (e ListPoliciesParamsEnabled) Valid() bool {
+	switch e {
+	case False:
+		return true
+	case True:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListTicketsParamsState.
 const (
 	ListTicketsParamsStateAwaitingInput      ListTicketsParamsState = "awaiting_input"
@@ -517,6 +1165,38 @@ func (e ListWorkStreamsParamsStatus) Valid() bool {
 	}
 }
 
+// Defines values for ListPlansByTicketParamsBackend.
+const (
+	Code      ListPlansByTicketParamsBackend = "code"
+	Database  ListPlansByTicketParamsBackend = "database"
+	Deploy    ListPlansByTicketParamsBackend = "deploy"
+	Shell     ListPlansByTicketParamsBackend = "shell"
+	Terraform ListPlansByTicketParamsBackend = "terraform"
+)
+
+// Valid indicates whether the value is a known member of the ListPlansByTicketParamsBackend enum.
+func (e ListPlansByTicketParamsBackend) Valid() bool {
+	switch e {
+	case Code:
+		return true
+	case Database:
+		return true
+	case Deploy:
+		return true
+	case Shell:
+		return true
+	case Terraform:
+		return true
+	default:
+		return false
+	}
+}
+
+// CalibrationResponse defines model for CalibrationResponse.
+type CalibrationResponse struct {
+	Proposals *[]PolicyProposal `json:"proposals,omitempty"`
+}
+
 // ClaimRequest defines model for ClaimRequest.
 type ClaimRequest struct {
 	AgentId string `json:"agent_id"`
@@ -532,16 +1212,79 @@ type ClaimResponseBody struct {
 	Ticket *Ticket `json:"ticket,omitempty"`
 }
 
+// CodePlan AST diff representation for code changes.
+type CodePlan struct {
+	AfterHash  *string `json:"after_hash,omitempty"`
+	BeforeHash *string `json:"before_hash,omitempty"`
+	FilePath   string  `json:"file_path"`
+	Hunks      []struct {
+		Content   string                 `json:"content"`
+		EndLine   *int                   `json:"end_line,omitempty"`
+		Operation CodePlanHunksOperation `json:"operation"`
+		StartLine *int                   `json:"start_line,omitempty"`
+	} `json:"hunks"`
+	Language string `json:"language"`
+}
+
+// CodePlanHunksOperation defines model for CodePlan.Hunks.Operation.
+type CodePlanHunksOperation string
+
 // CommitNotesResponse defines model for CommitNotesResponse.
 type CommitNotesResponse struct {
 	CommitSha *string            `json:"commit_sha,omitempty"`
 	Notes     *map[string]string `json:"notes,omitempty"`
 }
 
+// CreateEnvironmentRequest defines model for CreateEnvironmentRequest.
+type CreateEnvironmentRequest struct {
+	DataTenancy     CreateEnvironmentRequestDataTenancy     `json:"data_tenancy"`
+	Infrastructure  CreateEnvironmentRequestInfrastructure  `json:"infrastructure"`
+	IntegrationMode CreateEnvironmentRequestIntegrationMode `json:"integration_mode"`
+
+	// Name Display name
+	Name string `json:"name"`
+
+	// Slug URL-safe slug (auto-generated from name if omitted)
+	Slug *string `json:"slug,omitempty"`
+}
+
+// CreateEnvironmentRequestDataTenancy defines model for CreateEnvironmentRequest.DataTenancy.
+type CreateEnvironmentRequestDataTenancy string
+
+// CreateEnvironmentRequestInfrastructure defines model for CreateEnvironmentRequest.Infrastructure.
+type CreateEnvironmentRequestInfrastructure string
+
+// CreateEnvironmentRequestIntegrationMode defines model for CreateEnvironmentRequest.IntegrationMode.
+type CreateEnvironmentRequestIntegrationMode string
+
 // CreateOrgRequest defines model for CreateOrgRequest.
 type CreateOrgRequest struct {
 	Name *string `json:"name,omitempty"`
 	Slug *string `json:"slug,omitempty"`
+}
+
+// CreatePlanRequest defines model for CreatePlanRequest.
+type CreatePlanRequest struct {
+	Backend CreatePlanRequestBackend `json:"backend"`
+
+	// Content Backend-specific content object (must match backend type schema)
+	Content        map[string]interface{} `json:"content"`
+	CreatedBy      *string                `json:"created_by,omitempty"`
+	ExpiresAt      *time.Time             `json:"expires_at,omitempty"`
+	FreshnessStamp *time.Time             `json:"freshness_stamp,omitempty"`
+	TicketId       string                 `json:"ticket_id"`
+}
+
+// CreatePlanRequestBackend defines model for CreatePlanRequest.Backend.
+type CreatePlanRequestBackend string
+
+// CreatePolicyRequest defines model for CreatePolicyRequest.
+type CreatePolicyRequest struct {
+	ActorId     *string      `json:"actor_id,omitempty"`
+	Description *string      `json:"description,omitempty"`
+	MinSample   *int         `json:"min_sample,omitempty"`
+	Name        string       `json:"name"`
+	Rules       *PolicyRules `json:"rules,omitempty"`
 }
 
 // CreateProjectRequest defines model for CreateProjectRequest.
@@ -569,13 +1312,16 @@ type CreateTicketRequest struct {
 	DependsOn *[]string `json:"depends_on,omitempty"`
 
 	// IdempotencyKey Optional. Duplicate requests with the same key return the existing ticket.
-	IdempotencyKey *string                  `json:"idempotency_key,omitempty"`
-	Objective      *Objective               `json:"objective,omitempty"`
-	Priority       *int                     `json:"priority,omitempty"`
-	TicketContext  *TicketContext           `json:"ticket_context,omitempty"`
-	Title          string                   `json:"title"`
-	Type           *CreateTicketRequestType `json:"type,omitempty"`
-	WorkStreamId   *string                  `json:"work_stream_id,omitempty"`
+	IdempotencyKey *string    `json:"idempotency_key,omitempty"`
+	Objective      *Objective `json:"objective,omitempty"`
+	Priority       *int       `json:"priority,omitempty"`
+
+	// TargetRepo Repository alias for multi-repo projects (optional)
+	TargetRepo    *string                  `json:"target_repo,omitempty"`
+	TicketContext *TicketContext           `json:"ticket_context,omitempty"`
+	Title         string                   `json:"title"`
+	Type          *CreateTicketRequestType `json:"type,omitempty"`
+	WorkStreamId  *string                  `json:"work_stream_id,omitempty"`
 }
 
 // CreateTicketRequestType defines model for CreateTicketRequest.Type.
@@ -589,6 +1335,70 @@ type CreateWorkStreamRequest struct {
 	Plan *string `json:"plan,omitempty"`
 	Slug *string `json:"slug,omitempty"`
 }
+
+// DatabasePlan Database migration plan. DDL must be valid SQL — prose fails validation.
+type DatabasePlan struct {
+	DatabaseName *string `json:"database_name,omitempty"`
+
+	// Ddl Must be valid SQL DDL (validated at submission)
+	Ddl           string                `json:"ddl"`
+	Direction     DatabasePlanDirection `json:"direction"`
+	MigrationName string                `json:"migration_name"`
+	RollbackDdl   *string               `json:"rollback_ddl,omitempty"`
+	SchemaVersion *string               `json:"schema_version,omitempty"`
+}
+
+// DatabasePlanDirection defines model for DatabasePlan.Direction.
+type DatabasePlanDirection string
+
+// DeployPlan Deploy plan referencing specific artifact hash and target.
+type DeployPlan struct {
+	ArtifactHash   string                   `json:"artifact_hash"`
+	ArtifactUrl    *string                  `json:"artifact_url,omitempty"`
+	DeployStrategy DeployPlanDeployStrategy `json:"deploy_strategy"`
+	HealthCheckUrl *string                  `json:"health_check_url,omitempty"`
+	Replicas       *int                     `json:"replicas,omitempty"`
+	RollbackHash   *string                  `json:"rollback_hash,omitempty"`
+	Target         string                   `json:"target"`
+}
+
+// DeployPlanDeployStrategy defines model for DeployPlan.DeployStrategy.
+type DeployPlanDeployStrategy string
+
+// Environment Compound environment tuple per spec v0.2 section 4.1. Each environment has three dimensions: infrastructure (dev/staging/prod), data tenancy (synthetic/anonymized/real), and integration mode (sandbox/test/live). Ticket states become environment-qualified (e.g. executing-dev).
+type Environment struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// DataTenancy Data tenancy dimension
+	DataTenancy EnvironmentDataTenancy `json:"data_tenancy"`
+	Id          string                 `json:"id"`
+
+	// Infrastructure Infrastructure tier dimension
+	Infrastructure EnvironmentInfrastructure `json:"infrastructure"`
+
+	// IntegrationMode Integration mode dimension
+	IntegrationMode EnvironmentIntegrationMode `json:"integration_mode"`
+
+	// IsDefault Whether this is the default environment for the project
+	IsDefault bool `json:"is_default"`
+
+	// Name Display name (e.g. "Development", "Staging")
+	Name      string `json:"name"`
+	ProjectId string `json:"project_id"`
+
+	// Slug URL-safe identifier (e.g. "dev", "staging")
+	Slug      string    `json:"slug"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// EnvironmentDataTenancy Data tenancy dimension
+type EnvironmentDataTenancy string
+
+// EnvironmentInfrastructure Infrastructure tier dimension
+type EnvironmentInfrastructure string
+
+// EnvironmentIntegrationMode Integration mode dimension
+type EnvironmentIntegrationMode string
 
 // Escalation defines model for Escalation.
 type Escalation struct {
@@ -689,19 +1499,188 @@ type PendingReviewsResponse struct {
 	Tickets *[]Ticket `json:"tickets,omitempty"`
 }
 
+// Plan defines model for Plan.
+type Plan struct {
+	Backend *PlanBackend `json:"backend,omitempty"`
+
+	// Content Union type — exactly one backend sub-schema is populated. No untyped escape hatch; agent cannot express classification-evading content.
+	Content        *PlanContent `json:"content,omitempty"`
+	CreatedAt      *time.Time   `json:"created_at,omitempty"`
+	CreatedBy      *string      `json:"created_by,omitempty"`
+	ExpiresAt      *time.Time   `json:"expires_at,omitempty"`
+	FreshnessStamp *time.Time   `json:"freshness_stamp,omitempty"`
+	Id             *string      `json:"id,omitempty"`
+	State          *PlanState   `json:"state,omitempty"`
+	TicketId       *string      `json:"ticket_id,omitempty"`
+	UpdatedAt      *time.Time   `json:"updated_at,omitempty"`
+	Version        *int         `json:"version,omitempty"`
+}
+
+// PlanBackend defines model for Plan.Backend.
+type PlanBackend string
+
+// PlanState defines model for Plan.State.
+type PlanState string
+
+// PlanContent Union type — exactly one backend sub-schema is populated. No untyped escape hatch; agent cannot express classification-evading content.
+type PlanContent struct {
+	// Code AST diff representation for code changes.
+	Code *CodePlan `json:"code,omitempty"`
+
+	// Database Database migration plan. DDL must be valid SQL — prose fails validation.
+	Database *DatabasePlan `json:"database,omitempty"`
+
+	// Deploy Deploy plan referencing specific artifact hash and target.
+	Deploy *DeployPlan `json:"deploy,omitempty"`
+
+	// Shell Shell commands with explicit side-effect manifest. No untyped prose allowed.
+	Shell *ShellPlan `json:"shell,omitempty"`
+
+	// Terraform Terraform plan output (JSON).
+	Terraform *TerraformPlan `json:"terraform,omitempty"`
+}
+
+// PlanVersion defines model for PlanVersion.
+type PlanVersion struct {
+	// Content Union type — exactly one backend sub-schema is populated. No untyped escape hatch; agent cannot express classification-evading content.
+	Content   *PlanContent `json:"content,omitempty"`
+	CreatedAt *time.Time   `json:"created_at,omitempty"`
+	CreatedBy *string      `json:"created_by,omitempty"`
+	Id        *string      `json:"id,omitempty"`
+	PlanId    *string      `json:"plan_id,omitempty"`
+	Version   *int         `json:"version,omitempty"`
+}
+
+// Policy defines model for Policy.
+type Policy struct {
+	CreatedAt   *time.Time   `json:"created_at,omitempty"`
+	Description *string      `json:"description,omitempty"`
+	Enabled     *bool        `json:"enabled,omitempty"`
+	Id          *string      `json:"id,omitempty"`
+	MinSample   *int         `json:"min_sample,omitempty"`
+	Name        *string      `json:"name,omitempty"`
+	ProjectId   *string      `json:"project_id,omitempty"`
+	Rules       *PolicyRules `json:"rules,omitempty"`
+	UpdatedAt   *time.Time   `json:"updated_at,omitempty"`
+}
+
+// PolicyChangeEvent defines model for PolicyChangeEvent.
+type PolicyChangeEvent struct {
+	ActorId    *string                      `json:"actor_id,omitempty"`
+	ChangeType *PolicyChangeEventChangeType `json:"change_type,omitempty"`
+	CreatedAt  *time.Time                   `json:"created_at,omitempty"`
+	Id         *string                      `json:"id,omitempty"`
+	NewRules   *PolicyRules                 `json:"new_rules,omitempty"`
+	Notes      *string                      `json:"notes,omitempty"`
+	PolicyId   *string                      `json:"policy_id,omitempty"`
+	PrevRules  *PolicyRules                 `json:"prev_rules,omitempty"`
+}
+
+// PolicyChangeEventChangeType defines model for PolicyChangeEvent.ChangeType.
+type PolicyChangeEventChangeType string
+
+// PolicyChangeEventsResponse defines model for PolicyChangeEventsResponse.
+type PolicyChangeEventsResponse struct {
+	Events *[]PolicyChangeEvent `json:"events,omitempty"`
+}
+
+// PolicyCondition defines model for PolicyCondition.
+type PolicyCondition struct {
+	Field    *string     `json:"field,omitempty"`
+	Label    *string     `json:"label,omitempty"`
+	Operator *string     `json:"operator,omitempty"`
+	Value    interface{} `json:"value,omitempty"`
+}
+
+// PolicyDecision defines model for PolicyDecision.
+type PolicyDecision struct {
+	DecidedAt *time.Time              `json:"decided_at,omitempty"`
+	Decision  *PolicyDecisionDecision `json:"decision,omitempty"`
+	Id        *string                 `json:"id,omitempty"`
+	Outcome   *PolicyDecisionOutcome  `json:"outcome,omitempty"`
+	OutcomeAt *time.Time              `json:"outcome_at,omitempty"`
+	PolicyId  *string                 `json:"policy_id,omitempty"`
+	Reason    *string                 `json:"reason,omitempty"`
+	TicketId  *string                 `json:"ticket_id,omitempty"`
+}
+
+// PolicyDecisionDecision defines model for PolicyDecision.Decision.
+type PolicyDecisionDecision string
+
+// PolicyDecisionOutcome defines model for PolicyDecision.Outcome.
+type PolicyDecisionOutcome string
+
+// PolicyDecisionsResponse defines model for PolicyDecisionsResponse.
+type PolicyDecisionsResponse struct {
+	Decisions *[]PolicyDecision `json:"decisions,omitempty"`
+}
+
+// PolicyHealth defines model for PolicyHealth.
+type PolicyHealth struct {
+	History   *[]PolicyChangeEvent `json:"history,omitempty"`
+	Metrics   *PolicyMetrics       `json:"metrics,omitempty"`
+	Policy    *Policy              `json:"policy,omitempty"`
+	Proposals *[]PolicyProposal    `json:"proposals,omitempty"`
+}
+
+// PolicyListResponse defines model for PolicyListResponse.
+type PolicyListResponse struct {
+	Policies *[]Policy `json:"policies,omitempty"`
+}
+
+// PolicyMetrics defines model for PolicyMetrics.
+type PolicyMetrics struct {
+	AutoApprovalRate     *float64 `json:"auto_approval_rate,omitempty"`
+	IncidentRate         *float64 `json:"incident_rate,omitempty"`
+	PendingOutcomes      *int     `json:"pending_outcomes,omitempty"`
+	PolicyId             *string  `json:"policy_id,omitempty"`
+	RollbackRate         *float64 `json:"rollback_rate,omitempty"`
+	SampleSizeSufficient *bool    `json:"sample_size_sufficient,omitempty"`
+	SuccessRate          *float64 `json:"success_rate,omitempty"`
+	TotalDecisions       *int     `json:"total_decisions,omitempty"`
+}
+
+// PolicyProposal defines model for PolicyProposal.
+type PolicyProposal struct {
+	CreatedAt    *time.Time                  `json:"created_at,omitempty"`
+	Id           *string                     `json:"id,omitempty"`
+	PolicyId     *string                     `json:"policy_id,omitempty"`
+	ProposalType *PolicyProposalProposalType `json:"proposal_type,omitempty"`
+	ResolvedAt   *time.Time                  `json:"resolved_at,omitempty"`
+	ResolvedBy   *string                     `json:"resolved_by,omitempty"`
+	Statistics   *map[string]interface{}     `json:"statistics,omitempty"`
+	Status       *PolicyProposalStatus       `json:"status,omitempty"`
+	Suggestion   *map[string]interface{}     `json:"suggestion,omitempty"`
+}
+
+// PolicyProposalProposalType defines model for PolicyProposal.ProposalType.
+type PolicyProposalProposalType string
+
+// PolicyProposalStatus defines model for PolicyProposal.Status.
+type PolicyProposalStatus string
+
+// PolicyRules defines model for PolicyRules.
+type PolicyRules struct {
+	AutoApproveConditions *[]PolicyCondition `json:"auto_approve_conditions,omitempty"`
+	BlockConditions       *[]PolicyCondition `json:"block_conditions,omitempty"`
+	ReviewConditions      *[]PolicyCondition `json:"review_conditions,omitempty"`
+}
+
 // Project defines model for Project.
 type Project struct {
 	ContextPack *map[string]interface{} `json:"context_pack,omitempty"`
 	CreatedAt   *time.Time              `json:"created_at,omitempty"`
 
 	// DefaultBranch Branch to checkout when closing a work stream; default "main".
-	DefaultBranch   *string `json:"default_branch,omitempty"`
+	DefaultBranch *string `json:"default_branch,omitempty"`
+
+	// DispatchEnabled Whether the dispatcher picks up tickets for this project (default true).
 	DispatchEnabled *bool   `json:"dispatch_enabled,omitempty"`
 	Id              *string `json:"id,omitempty"`
-	Name          *string `json:"name,omitempty"`
-	OrgId         *string `json:"org_id,omitempty"`
-	RepoUrl       *string `json:"repo_url,omitempty"`
-	Slug          *string `json:"slug,omitempty"`
+	Name            *string `json:"name,omitempty"`
+	OrgId           *string `json:"org_id,omitempty"`
+	RepoUrl         *string `json:"repo_url,omitempty"`
+	Slug            *string `json:"slug,omitempty"`
 
 	// Status active (default) or closed; list endpoints default to active only.
 	Status    *ProjectStatus `json:"status,omitempty"`
@@ -710,6 +1689,29 @@ type Project struct {
 
 // ProjectStatus active (default) or closed; list endpoints default to active only.
 type ProjectStatus string
+
+// ProjectHealthResponse defines model for ProjectHealthResponse.
+type ProjectHealthResponse struct {
+	Policies *[]PolicyHealth `json:"policies,omitempty"`
+}
+
+// RecordDecisionRequest defines model for RecordDecisionRequest.
+type RecordDecisionRequest struct {
+	Decision RecordDecisionRequestDecision `json:"decision"`
+	Reason   *string                       `json:"reason,omitempty"`
+	TicketId string                        `json:"ticket_id"`
+}
+
+// RecordDecisionRequestDecision defines model for RecordDecisionRequest.Decision.
+type RecordDecisionRequestDecision string
+
+// RecordOutcomeRequest defines model for RecordOutcomeRequest.
+type RecordOutcomeRequest struct {
+	Outcome RecordOutcomeRequestOutcome `json:"outcome"`
+}
+
+// RecordOutcomeRequestOutcome defines model for RecordOutcomeRequest.Outcome.
+type RecordOutcomeRequestOutcome string
 
 // RenewLeaseRequest defines model for RenewLeaseRequest.
 type RenewLeaseRequest struct {
@@ -725,6 +1727,112 @@ type RenewLeaseResponseBody struct {
 type ResolveEscalationRequest struct {
 	Answer     string  `json:"answer"`
 	ReviewerId *string `json:"reviewer_id,omitempty"`
+}
+
+// ResolveProposalRequest defines model for ResolveProposalRequest.
+type ResolveProposalRequest struct {
+	ResolvedBy *string                      `json:"resolved_by,omitempty"`
+	Status     ResolveProposalRequestStatus `json:"status"`
+}
+
+// ResolveProposalRequestStatus defines model for ResolveProposalRequest.Status.
+type ResolveProposalRequestStatus string
+
+// ShellPlan Shell commands with explicit side-effect manifest. No untyped prose allowed.
+type ShellPlan struct {
+	Commands []struct {
+		Command     string  `json:"command"`
+		Description *string `json:"description,omitempty"`
+		Idempotent  *bool   `json:"idempotent,omitempty"`
+		Timeout     *string `json:"timeout,omitempty"`
+	} `json:"commands"`
+	Environment *map[string]string `json:"environment,omitempty"`
+
+	// SideEffectManifest Declarative permission boundary for shell execution. The sandbox enforces this manifest at runtime; the classifier reads it (not the script) to determine risk. Wildcard operations widen classification automatically.
+	SideEffectManifest struct {
+		// CredentialOps Secrets/credentials the script will access.
+		CredentialOps *[]struct {
+			// Name Credential identifier (env var name or secret path)
+			Name string `json:"name"`
+
+			// Purpose Why this credential is needed (for audit)
+			Purpose *string `json:"purpose,omitempty"`
+		} `json:"credential_ops,omitempty"`
+
+		// FileOps File system operations the script may perform.
+		FileOps *[]struct {
+			Action ShellPlanSideEffectManifestFileOpsAction `json:"action"`
+
+			// Path Glob pattern for affected files (e.g., "/app/dist/**")
+			Path string `json:"path"`
+		} `json:"file_ops,omitempty"`
+
+		// NetworkOps Outbound network operations the script may perform.
+		NetworkOps *[]struct {
+			// Endpoint Target host:port or URL pattern
+			Endpoint string `json:"endpoint"`
+
+			// Idempotent Whether this call is safe to retry
+			Idempotent *bool                                       `json:"idempotent,omitempty"`
+			Method     ShellPlanSideEffectManifestNetworkOpsMethod `json:"method"`
+		} `json:"network_ops,omitempty"`
+
+		// ProcessOps Subprocesses the script may spawn.
+		ProcessOps *[]struct {
+			// Args Allowed argument patterns (glob-matched)
+			Args *[]string `json:"args,omitempty"`
+
+			// Binary Executable name or path
+			Binary string `json:"binary"`
+		} `json:"process_ops,omitempty"`
+
+		// ResourceLimits Upper bounds on resource consumption for sandbox enforcement.
+		ResourceLimits *struct {
+			// MaxDiskWriteBytes Maximum total writable bytes (0 = system default)
+			MaxDiskWriteBytes *int64 `json:"max_disk_write_bytes,omitempty"`
+
+			// MaxNetworkCalls Maximum outbound connections (0 = system default)
+			MaxNetworkCalls *int `json:"max_network_calls,omitempty"`
+
+			// MaxRuntimeSeconds Maximum wall-clock time (0 = system default)
+			MaxRuntimeSeconds *int `json:"max_runtime_seconds,omitempty"`
+		} `json:"resource_limits,omitempty"`
+	} `json:"side_effect_manifest"`
+	WorkingDir *string `json:"working_dir,omitempty"`
+}
+
+// ShellPlanSideEffectManifestFileOpsAction defines model for ShellPlan.SideEffectManifest.FileOps.Action.
+type ShellPlanSideEffectManifestFileOpsAction string
+
+// ShellPlanSideEffectManifestNetworkOpsMethod defines model for ShellPlan.SideEffectManifest.NetworkOps.Method.
+type ShellPlanSideEffectManifestNetworkOpsMethod string
+
+// SimulateRequest defines model for SimulateRequest.
+type SimulateRequest struct {
+	CandidateRules PolicyRules `json:"candidate_rules"`
+
+	// Days Number of days of historical tickets to simulate against.
+	Days *int `json:"days,omitempty"`
+}
+
+// SimulationResult defines model for SimulationResult.
+type SimulationResult struct {
+	PolicyId *string `json:"policy_id,omitempty"`
+	Results  *[]struct {
+		Changed         *bool   `json:"changed,omitempty"`
+		CurrentDecision *string `json:"current_decision,omitempty"`
+		NewDecision     *string `json:"new_decision,omitempty"`
+		TicketId        *string `json:"ticket_id,omitempty"`
+	} `json:"results,omitempty"`
+	Summary *struct {
+		ChangeRate         *float64 `json:"change_rate,omitempty"`
+		ChangedDecisions   *int     `json:"changed_decisions,omitempty"`
+		TotalTickets       *int     `json:"total_tickets,omitempty"`
+		WouldAutoApprove   *int     `json:"would_auto_approve,omitempty"`
+		WouldBlock         *int     `json:"would_block,omitempty"`
+		WouldRequireReview *int     `json:"would_require_review,omitempty"`
+	} `json:"summary,omitempty"`
+	TicketsSimulated *int `json:"tickets_simulated,omitempty"`
 }
 
 // StateTransitionEntry defines model for StateTransitionEntry.
@@ -751,12 +1859,33 @@ type StructuredError struct {
 // StructuredErrorCode defines model for StructuredError.Code.
 type StructuredErrorCode string
 
+// TerraformPlan Terraform plan output (JSON).
+type TerraformPlan struct {
+	// PlanJson Must be valid JSON
+	PlanJson        string `json:"plan_json"`
+	Provider        string `json:"provider"`
+	ResourceChanges *[]struct {
+		Address      *string                                   `json:"address,omitempty"`
+		ChangeAction *TerraformPlanResourceChangesChangeAction `json:"change_action,omitempty"`
+		Name         *string                                   `json:"name,omitempty"`
+		Type         *string                                   `json:"type,omitempty"`
+	} `json:"resource_changes,omitempty"`
+	StateVersion *int    `json:"state_version,omitempty"`
+	Workspace    *string `json:"workspace,omitempty"`
+}
+
+// TerraformPlanResourceChangesChangeAction defines model for TerraformPlan.ResourceChanges.ChangeAction.
+type TerraformPlanResourceChangesChangeAction string
+
 // Ticket defines model for Ticket.
 type Ticket struct {
-	AssignedTo    *string                 `json:"assigned_to,omitempty"`
-	CreatedAt     *time.Time              `json:"created_at,omitempty"`
-	CreatedBy     *string                 `json:"created_by,omitempty"`
-	DependsOn     *[]string               `json:"depends_on,omitempty"`
+	AssignedTo *string    `json:"assigned_to,omitempty"`
+	CreatedAt  *time.Time `json:"created_at,omitempty"`
+	CreatedBy  *string    `json:"created_by,omitempty"`
+	DependsOn  *[]string  `json:"depends_on,omitempty"`
+
+	// EnvironmentId Compound environment ID (spec v0.2 section 4.1)
+	EnvironmentId *string                 `json:"environment_id,omitempty"`
 	Id            *string                 `json:"id,omitempty"`
 	Inputs        *map[string]interface{} `json:"inputs,omitempty"`
 	Objective     *Objective              `json:"objective,omitempty"`
@@ -764,12 +1893,15 @@ type Ticket struct {
 	Priority      *int                    `json:"priority,omitempty"`
 	ProjectId     *string                 `json:"project_id,omitempty"`
 	State         *TicketState            `json:"state,omitempty"`
-	TicketContext *TicketContext          `json:"ticket_context,omitempty"`
-	Title         *string                 `json:"title,omitempty"`
-	Type          *TicketType             `json:"type,omitempty"`
-	UpdatedAt     *time.Time              `json:"updated_at,omitempty"`
-	Version       *int                    `json:"version,omitempty"`
-	WorkStreamId  *string                 `json:"work_stream_id,omitempty"`
+
+	// TargetRepo Repository alias for multi-repo projects (from project_repositories). Empty means primary repo.
+	TargetRepo    *string        `json:"target_repo,omitempty"`
+	TicketContext *TicketContext `json:"ticket_context,omitempty"`
+	Title         *string        `json:"title,omitempty"`
+	Type          *TicketType    `json:"type,omitempty"`
+	UpdatedAt     *time.Time     `json:"updated_at,omitempty"`
+	Version       *int           `json:"version,omitempty"`
+	WorkStreamId  *string        `json:"work_stream_id,omitempty"`
 }
 
 // TicketState defines model for Ticket.State.
@@ -824,12 +1956,47 @@ type TransitionRequest struct {
 // TransitionRequestActor defines model for TransitionRequest.Actor.
 type TransitionRequestActor string
 
+// UpdateEnvironmentRequest defines model for UpdateEnvironmentRequest.
+type UpdateEnvironmentRequest struct {
+	DataTenancy     *UpdateEnvironmentRequestDataTenancy     `json:"data_tenancy,omitempty"`
+	Infrastructure  *UpdateEnvironmentRequestInfrastructure  `json:"infrastructure,omitempty"`
+	IntegrationMode *UpdateEnvironmentRequestIntegrationMode `json:"integration_mode,omitempty"`
+	Name            *string                                  `json:"name,omitempty"`
+	Slug            *string                                  `json:"slug,omitempty"`
+}
+
+// UpdateEnvironmentRequestDataTenancy defines model for UpdateEnvironmentRequest.DataTenancy.
+type UpdateEnvironmentRequestDataTenancy string
+
+// UpdateEnvironmentRequestInfrastructure defines model for UpdateEnvironmentRequest.Infrastructure.
+type UpdateEnvironmentRequestInfrastructure string
+
+// UpdateEnvironmentRequestIntegrationMode defines model for UpdateEnvironmentRequest.IntegrationMode.
+type UpdateEnvironmentRequestIntegrationMode string
+
+// UpdatePlanContentRequest defines model for UpdatePlanContentRequest.
+type UpdatePlanContentRequest struct {
+	// Content New backend-specific content (re-validated against schema)
+	Content   map[string]interface{} `json:"content"`
+	UpdatedBy *string                `json:"updated_by,omitempty"`
+}
+
+// UpdatePolicyRequest defines model for UpdatePolicyRequest.
+type UpdatePolicyRequest struct {
+	ActorId     *string      `json:"actor_id,omitempty"`
+	Description *string      `json:"description,omitempty"`
+	Enabled     *bool        `json:"enabled,omitempty"`
+	MinSample   *int         `json:"min_sample,omitempty"`
+	Name        *string      `json:"name,omitempty"`
+	Rules       *PolicyRules `json:"rules,omitempty"`
+}
+
 // UpdateProjectRequest defines model for UpdateProjectRequest.
 type UpdateProjectRequest struct {
 	// DefaultBranch Branch to checkout when closing a work stream; default "main".
 	DefaultBranch *string `json:"default_branch,omitempty"`
 
-	// DispatchEnabled Enable or disable automated dispatch for this project.
+	// DispatchEnabled Whether the dispatcher picks up tickets for this project (default true). Takes effect immediately.
 	DispatchEnabled *bool `json:"dispatch_enabled,omitempty"`
 
 	// Name Project display name.
@@ -923,6 +2090,23 @@ type GetGitNotesLogParams struct {
 // GetGitNotesLogParamsType defines parameters for GetGitNotesLog.
 type GetGitNotesLogParamsType string
 
+// TransitionPlanJSONBody defines parameters for TransitionPlan.
+type TransitionPlanJSONBody struct {
+	Action TransitionPlanJSONBodyAction `json:"action"`
+}
+
+// TransitionPlanJSONBodyAction defines parameters for TransitionPlan.
+type TransitionPlanJSONBodyAction string
+
+// ListPoliciesParams defines parameters for ListPolicies.
+type ListPoliciesParams struct {
+	// Enabled Filter to enabled policies only.
+	Enabled *ListPoliciesParamsEnabled `form:"enabled,omitempty" json:"enabled,omitempty"`
+}
+
+// ListPoliciesParamsEnabled defines parameters for ListPolicies.
+type ListPoliciesParamsEnabled string
+
 // ListTicketsParams defines parameters for ListTickets.
 type ListTicketsParams struct {
 	// WorkStreamId Filter by work stream.
@@ -954,14 +2138,50 @@ type ReleaseLeaseParams struct {
 	LeaseToken *string `form:"lease_token,omitempty" json:"lease_token,omitempty"`
 }
 
+// ListPlansByTicketParams defines parameters for ListPlansByTicket.
+type ListPlansByTicketParams struct {
+	// Backend Filter by backend type
+	Backend *ListPlansByTicketParamsBackend `form:"backend,omitempty" json:"backend,omitempty"`
+}
+
+// ListPlansByTicketParamsBackend defines parameters for ListPlansByTicket.
+type ListPlansByTicketParamsBackend string
+
+// UpdateEnvironmentJSONRequestBody defines body for UpdateEnvironment for application/json ContentType.
+type UpdateEnvironmentJSONRequestBody = UpdateEnvironmentRequest
+
 // CreateOrgJSONRequestBody defines body for CreateOrg for application/json ContentType.
 type CreateOrgJSONRequestBody = CreateOrgRequest
 
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = CreateProjectRequest
 
+// CreatePlanJSONRequestBody defines body for CreatePlan for application/json ContentType.
+type CreatePlanJSONRequestBody = CreatePlanRequest
+
+// UpdatePlanContentJSONRequestBody defines body for UpdatePlanContent for application/json ContentType.
+type UpdatePlanContentJSONRequestBody = UpdatePlanContentRequest
+
+// TransitionPlanJSONRequestBody defines body for TransitionPlan for application/json ContentType.
+type TransitionPlanJSONRequestBody TransitionPlanJSONBody
+
+// UpdatePolicyJSONRequestBody defines body for UpdatePolicy for application/json ContentType.
+type UpdatePolicyJSONRequestBody = UpdatePolicyRequest
+
+// RecordPolicyDecisionJSONRequestBody defines body for RecordPolicyDecision for application/json ContentType.
+type RecordPolicyDecisionJSONRequestBody = RecordDecisionRequest
+
+// SimulateRuleChangeJSONRequestBody defines body for SimulateRuleChange for application/json ContentType.
+type SimulateRuleChangeJSONRequestBody = SimulateRequest
+
 // UpdateProjectJSONRequestBody defines body for UpdateProject for application/json ContentType.
 type UpdateProjectJSONRequestBody = UpdateProjectRequest
+
+// CreateEnvironmentJSONRequestBody defines body for CreateEnvironment for application/json ContentType.
+type CreateEnvironmentJSONRequestBody = CreateEnvironmentRequest
+
+// CreatePolicyJSONRequestBody defines body for CreatePolicy for application/json ContentType.
+type CreatePolicyJSONRequestBody = CreatePolicyRequest
 
 // ClaimTicketJSONRequestBody defines body for ClaimTicket for application/json ContentType.
 type ClaimTicketJSONRequestBody = ClaimRequest
@@ -975,6 +2195,9 @@ type CreateWorkStreamJSONRequestBody = CreateWorkStreamRequest
 // UpdateWorkStreamJSONRequestBody defines body for UpdateWorkStream for application/json ContentType.
 type UpdateWorkStreamJSONRequestBody = UpdateWorkStreamRequest
 
+// ResolveProposalJSONRequestBody defines body for ResolveProposal for application/json ContentType.
+type ResolveProposalJSONRequestBody = ResolveProposalRequest
+
 // UpdateTicketJSONRequestBody defines body for UpdateTicket for application/json ContentType.
 type UpdateTicketJSONRequestBody = UpdateTicketRequest
 
@@ -986,6 +2209,9 @@ type ReleaseLeaseJSONRequestBody ReleaseLeaseJSONBody
 
 // RenewLeaseJSONRequestBody defines body for RenewLease for application/json ContentType.
 type RenewLeaseJSONRequestBody = RenewLeaseRequest
+
+// RecordTicketOutcomeJSONRequestBody defines body for RecordTicketOutcome for application/json ContentType.
+type RecordTicketOutcomeJSONRequestBody = RecordOutcomeRequest
 
 // CreateReviewJSONRequestBody defines body for CreateReview for application/json ContentType.
 type CreateReviewJSONRequestBody = CreateReviewRequest
@@ -1069,6 +2295,20 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
+	// DeleteEnvironment request
+	DeleteEnvironment(ctx context.Context, environmentID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetEnvironment request
+	GetEnvironment(ctx context.Context, environmentID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateEnvironmentWithBody request with any body
+	UpdateEnvironmentWithBody(ctx context.Context, environmentID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateEnvironment(ctx context.Context, environmentID string, body UpdateEnvironmentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetDefaultEnvironment request
+	SetDefaultEnvironment(ctx context.Context, environmentID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetHealthz request
 	GetHealthz(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -1103,6 +2343,60 @@ type ClientInterface interface {
 	// GetGitNotesLog request
 	GetGitNotesLog(ctx context.Context, orgID string, projectID string, params *GetGitNotesLogParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// CreatePlanWithBody request with any body
+	CreatePlanWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreatePlan(ctx context.Context, body CreatePlanJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetPlan request
+	GetPlan(ctx context.Context, planID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdatePlanContentWithBody request with any body
+	UpdatePlanContentWithBody(ctx context.Context, planID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdatePlanContent(ctx context.Context, planID string, body UpdatePlanContentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CheckPlanFreshness request
+	CheckPlanFreshness(ctx context.Context, planID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TransitionPlanWithBody request with any body
+	TransitionPlanWithBody(ctx context.Context, planID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	TransitionPlan(ctx context.Context, planID string, body TransitionPlanJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListPlanVersions request
+	ListPlanVersions(ctx context.Context, planID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetPolicy request
+	GetPolicy(ctx context.Context, policyID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdatePolicyWithBody request with any body
+	UpdatePolicyWithBody(ctx context.Context, policyID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdatePolicy(ctx context.Context, policyID string, body UpdatePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListPolicyDecisions request
+	ListPolicyDecisions(ctx context.Context, policyID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RecordPolicyDecisionWithBody request with any body
+	RecordPolicyDecisionWithBody(ctx context.Context, policyID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RecordPolicyDecision(ctx context.Context, policyID string, body RecordPolicyDecisionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetPolicyHealth request
+	GetPolicyHealth(ctx context.Context, policyID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListPolicyChangeEvents request
+	ListPolicyChangeEvents(ctx context.Context, policyID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetPolicyMetrics request
+	GetPolicyMetrics(ctx context.Context, policyID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SimulateRuleChangeWithBody request with any body
+	SimulateRuleChangeWithBody(ctx context.Context, policyID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SimulateRuleChange(ctx context.Context, policyID string, body SimulateRuleChangeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetProject request
 	GetProject(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -1111,8 +2405,30 @@ type ClientInterface interface {
 
 	UpdateProject(ctx context.Context, projectID string, body UpdateProjectJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListEnvironments request
+	ListEnvironments(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateEnvironmentWithBody request with any body
+	CreateEnvironmentWithBody(ctx context.Context, projectID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateEnvironment(ctx context.Context, projectID string, body CreateEnvironmentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListEscalations request
 	ListEscalations(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListPolicies request
+	ListPolicies(ctx context.Context, projectID string, params *ListPoliciesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreatePolicyWithBody request with any body
+	CreatePolicyWithBody(ctx context.Context, projectID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreatePolicy(ctx context.Context, projectID string, body CreatePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RunCalibration request
+	RunCalibration(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetProjectPolicyHealth request
+	GetProjectPolicyHealth(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ClaimTicketWithBody request with any body
 	ClaimTicketWithBody(ctx context.Context, projectID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1146,6 +2462,11 @@ type ClientInterface interface {
 
 	UpdateWorkStream(ctx context.Context, projectID string, workStreamID string, body UpdateWorkStreamJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ResolveProposalWithBody request with any body
+	ResolveProposalWithBody(ctx context.Context, proposalID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ResolveProposal(ctx context.Context, proposalID string, body ResolveProposalJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetTicket request
 	GetTicket(ctx context.Context, ticketID string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -1169,6 +2490,14 @@ type ClientInterface interface {
 
 	RenewLease(ctx context.Context, ticketID string, body RenewLeaseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// RecordTicketOutcomeWithBody request with any body
+	RecordTicketOutcomeWithBody(ctx context.Context, ticketID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RecordTicketOutcome(ctx context.Context, ticketID string, body RecordTicketOutcomeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListPlansByTicket request
+	ListPlansByTicket(ctx context.Context, ticketID string, params *ListPlansByTicketParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// CreateReviewWithBody request with any body
 	CreateReviewWithBody(ctx context.Context, ticketID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -1189,6 +2518,66 @@ type ClientInterface interface {
 	TransitionTicketWithBody(ctx context.Context, ticketID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	TransitionTicket(ctx context.Context, ticketID string, body TransitionTicketJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+func (c *Client) DeleteEnvironment(ctx context.Context, environmentID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteEnvironmentRequest(c.Server, environmentID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetEnvironment(ctx context.Context, environmentID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetEnvironmentRequest(c.Server, environmentID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateEnvironmentWithBody(ctx context.Context, environmentID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateEnvironmentRequestWithBody(c.Server, environmentID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateEnvironment(ctx context.Context, environmentID string, body UpdateEnvironmentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateEnvironmentRequest(c.Server, environmentID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetDefaultEnvironment(ctx context.Context, environmentID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetDefaultEnvironmentRequest(c.Server, environmentID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 func (c *Client) GetHealthz(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1335,6 +2724,246 @@ func (c *Client) GetGitNotesLog(ctx context.Context, orgID string, projectID str
 	return c.Client.Do(req)
 }
 
+func (c *Client) CreatePlanWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreatePlanRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreatePlan(ctx context.Context, body CreatePlanJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreatePlanRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetPlan(ctx context.Context, planID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetPlanRequest(c.Server, planID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdatePlanContentWithBody(ctx context.Context, planID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdatePlanContentRequestWithBody(c.Server, planID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdatePlanContent(ctx context.Context, planID string, body UpdatePlanContentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdatePlanContentRequest(c.Server, planID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CheckPlanFreshness(ctx context.Context, planID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCheckPlanFreshnessRequest(c.Server, planID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TransitionPlanWithBody(ctx context.Context, planID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTransitionPlanRequestWithBody(c.Server, planID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TransitionPlan(ctx context.Context, planID string, body TransitionPlanJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTransitionPlanRequest(c.Server, planID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListPlanVersions(ctx context.Context, planID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListPlanVersionsRequest(c.Server, planID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetPolicy(ctx context.Context, policyID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetPolicyRequest(c.Server, policyID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdatePolicyWithBody(ctx context.Context, policyID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdatePolicyRequestWithBody(c.Server, policyID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdatePolicy(ctx context.Context, policyID string, body UpdatePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdatePolicyRequest(c.Server, policyID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListPolicyDecisions(ctx context.Context, policyID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListPolicyDecisionsRequest(c.Server, policyID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RecordPolicyDecisionWithBody(ctx context.Context, policyID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRecordPolicyDecisionRequestWithBody(c.Server, policyID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RecordPolicyDecision(ctx context.Context, policyID string, body RecordPolicyDecisionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRecordPolicyDecisionRequest(c.Server, policyID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetPolicyHealth(ctx context.Context, policyID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetPolicyHealthRequest(c.Server, policyID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListPolicyChangeEvents(ctx context.Context, policyID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListPolicyChangeEventsRequest(c.Server, policyID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetPolicyMetrics(ctx context.Context, policyID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetPolicyMetricsRequest(c.Server, policyID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SimulateRuleChangeWithBody(ctx context.Context, policyID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSimulateRuleChangeRequestWithBody(c.Server, policyID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SimulateRuleChange(ctx context.Context, policyID string, body SimulateRuleChangeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSimulateRuleChangeRequest(c.Server, policyID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) GetProject(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetProjectRequest(c.Server, projectID)
 	if err != nil {
@@ -1371,8 +3000,104 @@ func (c *Client) UpdateProject(ctx context.Context, projectID string, body Updat
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListEnvironments(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListEnvironmentsRequest(c.Server, projectID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateEnvironmentWithBody(ctx context.Context, projectID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateEnvironmentRequestWithBody(c.Server, projectID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateEnvironment(ctx context.Context, projectID string, body CreateEnvironmentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateEnvironmentRequest(c.Server, projectID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListEscalations(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListEscalationsRequest(c.Server, projectID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListPolicies(ctx context.Context, projectID string, params *ListPoliciesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListPoliciesRequest(c.Server, projectID, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreatePolicyWithBody(ctx context.Context, projectID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreatePolicyRequestWithBody(c.Server, projectID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreatePolicy(ctx context.Context, projectID string, body CreatePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreatePolicyRequest(c.Server, projectID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RunCalibration(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRunCalibrationRequest(c.Server, projectID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetProjectPolicyHealth(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetProjectPolicyHealthRequest(c.Server, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -1527,6 +3252,30 @@ func (c *Client) UpdateWorkStream(ctx context.Context, projectID string, workStr
 	return c.Client.Do(req)
 }
 
+func (c *Client) ResolveProposalWithBody(ctx context.Context, proposalID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResolveProposalRequestWithBody(c.Server, proposalID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ResolveProposal(ctx context.Context, proposalID string, body ResolveProposalJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResolveProposalRequest(c.Server, proposalID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) GetTicket(ctx context.Context, ticketID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetTicketRequest(c.Server, ticketID)
 	if err != nil {
@@ -1635,6 +3384,42 @@ func (c *Client) RenewLease(ctx context.Context, ticketID string, body RenewLeas
 	return c.Client.Do(req)
 }
 
+func (c *Client) RecordTicketOutcomeWithBody(ctx context.Context, ticketID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRecordTicketOutcomeRequestWithBody(c.Server, ticketID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RecordTicketOutcome(ctx context.Context, ticketID string, body RecordTicketOutcomeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRecordTicketOutcomeRequest(c.Server, ticketID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListPlansByTicket(ctx context.Context, ticketID string, params *ListPlansByTicketParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListPlansByTicketRequest(c.Server, ticketID, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) CreateReviewWithBody(ctx context.Context, ticketID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateReviewRequestWithBody(c.Server, ticketID, contentType, body)
 	if err != nil {
@@ -1729,6 +3514,155 @@ func (c *Client) TransitionTicket(ctx context.Context, ticketID string, body Tra
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// NewDeleteEnvironmentRequest generates requests for DeleteEnvironment
+func NewDeleteEnvironmentRequest(server string, environmentID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "environmentID", environmentID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/environments/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetEnvironmentRequest generates requests for GetEnvironment
+func NewGetEnvironmentRequest(server string, environmentID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "environmentID", environmentID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/environments/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateEnvironmentRequest calls the generic UpdateEnvironment builder with application/json body
+func NewUpdateEnvironmentRequest(server string, environmentID string, body UpdateEnvironmentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateEnvironmentRequestWithBody(server, environmentID, "application/json", bodyReader)
+}
+
+// NewUpdateEnvironmentRequestWithBody generates requests for UpdateEnvironment with any type of body
+func NewUpdateEnvironmentRequestWithBody(server string, environmentID string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "environmentID", environmentID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/environments/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewSetDefaultEnvironmentRequest generates requests for SetDefaultEnvironment
+func NewSetDefaultEnvironmentRequest(server string, environmentID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "environmentID", environmentID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/environments/%s/set-default", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
 }
 
 // NewGetHealthzRequest generates requests for GetHealthz
@@ -2211,6 +4145,553 @@ func NewGetGitNotesLogRequest(server string, orgID string, projectID string, par
 	return req, nil
 }
 
+// NewCreatePlanRequest calls the generic CreatePlan builder with application/json body
+func NewCreatePlanRequest(server string, body CreatePlanJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreatePlanRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreatePlanRequestWithBody generates requests for CreatePlan with any type of body
+func NewCreatePlanRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/plans")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetPlanRequest generates requests for GetPlan
+func NewGetPlanRequest(server string, planID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "planID", planID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/plans/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdatePlanContentRequest calls the generic UpdatePlanContent builder with application/json body
+func NewUpdatePlanContentRequest(server string, planID string, body UpdatePlanContentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdatePlanContentRequestWithBody(server, planID, "application/json", bodyReader)
+}
+
+// NewUpdatePlanContentRequestWithBody generates requests for UpdatePlanContent with any type of body
+func NewUpdatePlanContentRequestWithBody(server string, planID string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "planID", planID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/plans/%s/content", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCheckPlanFreshnessRequest generates requests for CheckPlanFreshness
+func NewCheckPlanFreshnessRequest(server string, planID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "planID", planID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/plans/%s/freshness", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewTransitionPlanRequest calls the generic TransitionPlan builder with application/json body
+func NewTransitionPlanRequest(server string, planID string, body TransitionPlanJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewTransitionPlanRequestWithBody(server, planID, "application/json", bodyReader)
+}
+
+// NewTransitionPlanRequestWithBody generates requests for TransitionPlan with any type of body
+func NewTransitionPlanRequestWithBody(server string, planID string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "planID", planID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/plans/%s/transition", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListPlanVersionsRequest generates requests for ListPlanVersions
+func NewListPlanVersionsRequest(server string, planID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "planID", planID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/plans/%s/versions", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetPolicyRequest generates requests for GetPolicy
+func NewGetPolicyRequest(server string, policyID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "policyID", policyID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/policies/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdatePolicyRequest calls the generic UpdatePolicy builder with application/json body
+func NewUpdatePolicyRequest(server string, policyID string, body UpdatePolicyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdatePolicyRequestWithBody(server, policyID, "application/json", bodyReader)
+}
+
+// NewUpdatePolicyRequestWithBody generates requests for UpdatePolicy with any type of body
+func NewUpdatePolicyRequestWithBody(server string, policyID string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "policyID", policyID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/policies/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListPolicyDecisionsRequest generates requests for ListPolicyDecisions
+func NewListPolicyDecisionsRequest(server string, policyID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "policyID", policyID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/policies/%s/decisions", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRecordPolicyDecisionRequest calls the generic RecordPolicyDecision builder with application/json body
+func NewRecordPolicyDecisionRequest(server string, policyID string, body RecordPolicyDecisionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRecordPolicyDecisionRequestWithBody(server, policyID, "application/json", bodyReader)
+}
+
+// NewRecordPolicyDecisionRequestWithBody generates requests for RecordPolicyDecision with any type of body
+func NewRecordPolicyDecisionRequestWithBody(server string, policyID string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "policyID", policyID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/policies/%s/decisions", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetPolicyHealthRequest generates requests for GetPolicyHealth
+func NewGetPolicyHealthRequest(server string, policyID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "policyID", policyID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/policies/%s/health", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListPolicyChangeEventsRequest generates requests for ListPolicyChangeEvents
+func NewListPolicyChangeEventsRequest(server string, policyID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "policyID", policyID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/policies/%s/history", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetPolicyMetricsRequest generates requests for GetPolicyMetrics
+func NewGetPolicyMetricsRequest(server string, policyID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "policyID", policyID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/policies/%s/metrics", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSimulateRuleChangeRequest calls the generic SimulateRuleChange builder with application/json body
+func NewSimulateRuleChangeRequest(server string, policyID string, body SimulateRuleChangeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSimulateRuleChangeRequestWithBody(server, policyID, "application/json", bodyReader)
+}
+
+// NewSimulateRuleChangeRequestWithBody generates requests for SimulateRuleChange with any type of body
+func NewSimulateRuleChangeRequestWithBody(server string, policyID string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "policyID", policyID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/policies/%s/simulate", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetProjectRequest generates requests for GetProject
 func NewGetProjectRequest(server string, projectID string) (*http.Request, error) {
 	var err error
@@ -2292,6 +4773,87 @@ func NewUpdateProjectRequestWithBody(server string, projectID string, contentTyp
 	return req, nil
 }
 
+// NewListEnvironmentsRequest generates requests for ListEnvironments
+func NewListEnvironmentsRequest(server string, projectID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "projectID", projectID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/projects/%s/environments", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateEnvironmentRequest calls the generic CreateEnvironment builder with application/json body
+func NewCreateEnvironmentRequest(server string, projectID string, body CreateEnvironmentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateEnvironmentRequestWithBody(server, projectID, "application/json", bodyReader)
+}
+
+// NewCreateEnvironmentRequestWithBody generates requests for CreateEnvironment with any type of body
+func NewCreateEnvironmentRequestWithBody(server string, projectID string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "projectID", projectID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/projects/%s/environments", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListEscalationsRequest generates requests for ListEscalations
 func NewListEscalationsRequest(server string, projectID string) (*http.Request, error) {
 	var err error
@@ -2309,6 +4871,177 @@ func NewListEscalationsRequest(server string, projectID string) (*http.Request, 
 	}
 
 	operationPath := fmt.Sprintf("/projects/%s/escalations", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListPoliciesRequest generates requests for ListPolicies
+func NewListPoliciesRequest(server string, projectID string, params *ListPoliciesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "projectID", projectID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/projects/%s/policies", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Enabled != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "enabled", *params.Enabled, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreatePolicyRequest calls the generic CreatePolicy builder with application/json body
+func NewCreatePolicyRequest(server string, projectID string, body CreatePolicyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreatePolicyRequestWithBody(server, projectID, "application/json", bodyReader)
+}
+
+// NewCreatePolicyRequestWithBody generates requests for CreatePolicy with any type of body
+func NewCreatePolicyRequestWithBody(server string, projectID string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "projectID", projectID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/projects/%s/policies", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRunCalibrationRequest generates requests for RunCalibration
+func NewRunCalibrationRequest(server string, projectID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "projectID", projectID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/projects/%s/policies/calibrate", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetProjectPolicyHealthRequest generates requests for GetProjectPolicyHealth
+func NewGetProjectPolicyHealthRequest(server string, projectID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "projectID", projectID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/projects/%s/policies/health", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -2724,6 +5457,53 @@ func NewUpdateWorkStreamRequestWithBody(server string, projectID string, workStr
 	return req, nil
 }
 
+// NewResolveProposalRequest calls the generic ResolveProposal builder with application/json body
+func NewResolveProposalRequest(server string, proposalID string, body ResolveProposalJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewResolveProposalRequestWithBody(server, proposalID, "application/json", bodyReader)
+}
+
+// NewResolveProposalRequestWithBody generates requests for ResolveProposal with any type of body
+func NewResolveProposalRequestWithBody(server string, proposalID string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "proposalID", proposalID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/proposals/%s/resolve", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetTicketRequest generates requests for GetTicket
 func NewGetTicketRequest(server string, ticketID string) (*http.Request, error) {
 	var err error
@@ -2971,6 +5751,109 @@ func NewRenewLeaseRequestWithBody(server string, ticketID string, contentType st
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRecordTicketOutcomeRequest calls the generic RecordTicketOutcome builder with application/json body
+func NewRecordTicketOutcomeRequest(server string, ticketID string, body RecordTicketOutcomeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRecordTicketOutcomeRequestWithBody(server, ticketID, "application/json", bodyReader)
+}
+
+// NewRecordTicketOutcomeRequestWithBody generates requests for RecordTicketOutcome with any type of body
+func NewRecordTicketOutcomeRequestWithBody(server string, ticketID string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "ticketID", ticketID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tickets/%s/outcome", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListPlansByTicketRequest generates requests for ListPlansByTicket
+func NewListPlansByTicketRequest(server string, ticketID string, params *ListPlansByTicketParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "ticketID", ticketID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tickets/%s/plans", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Backend != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "backend", *params.Backend, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -3227,6 +6110,20 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
+	// DeleteEnvironmentWithResponse request
+	DeleteEnvironmentWithResponse(ctx context.Context, environmentID string, reqEditors ...RequestEditorFn) (*DeleteEnvironmentResponse, error)
+
+	// GetEnvironmentWithResponse request
+	GetEnvironmentWithResponse(ctx context.Context, environmentID string, reqEditors ...RequestEditorFn) (*GetEnvironmentResponse, error)
+
+	// UpdateEnvironmentWithBodyWithResponse request with any body
+	UpdateEnvironmentWithBodyWithResponse(ctx context.Context, environmentID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateEnvironmentResponse, error)
+
+	UpdateEnvironmentWithResponse(ctx context.Context, environmentID string, body UpdateEnvironmentJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateEnvironmentResponse, error)
+
+	// SetDefaultEnvironmentWithResponse request
+	SetDefaultEnvironmentWithResponse(ctx context.Context, environmentID string, reqEditors ...RequestEditorFn) (*SetDefaultEnvironmentResponse, error)
+
 	// GetHealthzWithResponse request
 	GetHealthzWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthzResponse, error)
 
@@ -3261,6 +6158,60 @@ type ClientWithResponsesInterface interface {
 	// GetGitNotesLogWithResponse request
 	GetGitNotesLogWithResponse(ctx context.Context, orgID string, projectID string, params *GetGitNotesLogParams, reqEditors ...RequestEditorFn) (*GetGitNotesLogResponse, error)
 
+	// CreatePlanWithBodyWithResponse request with any body
+	CreatePlanWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreatePlanResponse, error)
+
+	CreatePlanWithResponse(ctx context.Context, body CreatePlanJSONRequestBody, reqEditors ...RequestEditorFn) (*CreatePlanResponse, error)
+
+	// GetPlanWithResponse request
+	GetPlanWithResponse(ctx context.Context, planID string, reqEditors ...RequestEditorFn) (*GetPlanResponse, error)
+
+	// UpdatePlanContentWithBodyWithResponse request with any body
+	UpdatePlanContentWithBodyWithResponse(ctx context.Context, planID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdatePlanContentResponse, error)
+
+	UpdatePlanContentWithResponse(ctx context.Context, planID string, body UpdatePlanContentJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdatePlanContentResponse, error)
+
+	// CheckPlanFreshnessWithResponse request
+	CheckPlanFreshnessWithResponse(ctx context.Context, planID string, reqEditors ...RequestEditorFn) (*CheckPlanFreshnessResponse, error)
+
+	// TransitionPlanWithBodyWithResponse request with any body
+	TransitionPlanWithBodyWithResponse(ctx context.Context, planID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TransitionPlanResponse, error)
+
+	TransitionPlanWithResponse(ctx context.Context, planID string, body TransitionPlanJSONRequestBody, reqEditors ...RequestEditorFn) (*TransitionPlanResponse, error)
+
+	// ListPlanVersionsWithResponse request
+	ListPlanVersionsWithResponse(ctx context.Context, planID string, reqEditors ...RequestEditorFn) (*ListPlanVersionsResponse, error)
+
+	// GetPolicyWithResponse request
+	GetPolicyWithResponse(ctx context.Context, policyID string, reqEditors ...RequestEditorFn) (*GetPolicyResponse, error)
+
+	// UpdatePolicyWithBodyWithResponse request with any body
+	UpdatePolicyWithBodyWithResponse(ctx context.Context, policyID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdatePolicyResponse, error)
+
+	UpdatePolicyWithResponse(ctx context.Context, policyID string, body UpdatePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdatePolicyResponse, error)
+
+	// ListPolicyDecisionsWithResponse request
+	ListPolicyDecisionsWithResponse(ctx context.Context, policyID string, reqEditors ...RequestEditorFn) (*ListPolicyDecisionsResponse, error)
+
+	// RecordPolicyDecisionWithBodyWithResponse request with any body
+	RecordPolicyDecisionWithBodyWithResponse(ctx context.Context, policyID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RecordPolicyDecisionResponse, error)
+
+	RecordPolicyDecisionWithResponse(ctx context.Context, policyID string, body RecordPolicyDecisionJSONRequestBody, reqEditors ...RequestEditorFn) (*RecordPolicyDecisionResponse, error)
+
+	// GetPolicyHealthWithResponse request
+	GetPolicyHealthWithResponse(ctx context.Context, policyID string, reqEditors ...RequestEditorFn) (*GetPolicyHealthResponse, error)
+
+	// ListPolicyChangeEventsWithResponse request
+	ListPolicyChangeEventsWithResponse(ctx context.Context, policyID string, reqEditors ...RequestEditorFn) (*ListPolicyChangeEventsResponse, error)
+
+	// GetPolicyMetricsWithResponse request
+	GetPolicyMetricsWithResponse(ctx context.Context, policyID string, reqEditors ...RequestEditorFn) (*GetPolicyMetricsResponse, error)
+
+	// SimulateRuleChangeWithBodyWithResponse request with any body
+	SimulateRuleChangeWithBodyWithResponse(ctx context.Context, policyID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SimulateRuleChangeResponse, error)
+
+	SimulateRuleChangeWithResponse(ctx context.Context, policyID string, body SimulateRuleChangeJSONRequestBody, reqEditors ...RequestEditorFn) (*SimulateRuleChangeResponse, error)
+
 	// GetProjectWithResponse request
 	GetProjectWithResponse(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*GetProjectResponse, error)
 
@@ -3269,8 +6220,30 @@ type ClientWithResponsesInterface interface {
 
 	UpdateProjectWithResponse(ctx context.Context, projectID string, body UpdateProjectJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateProjectResponse, error)
 
+	// ListEnvironmentsWithResponse request
+	ListEnvironmentsWithResponse(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*ListEnvironmentsResponse, error)
+
+	// CreateEnvironmentWithBodyWithResponse request with any body
+	CreateEnvironmentWithBodyWithResponse(ctx context.Context, projectID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateEnvironmentResponse, error)
+
+	CreateEnvironmentWithResponse(ctx context.Context, projectID string, body CreateEnvironmentJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateEnvironmentResponse, error)
+
 	// ListEscalationsWithResponse request
 	ListEscalationsWithResponse(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*ListEscalationsResponse, error)
+
+	// ListPoliciesWithResponse request
+	ListPoliciesWithResponse(ctx context.Context, projectID string, params *ListPoliciesParams, reqEditors ...RequestEditorFn) (*ListPoliciesResponse, error)
+
+	// CreatePolicyWithBodyWithResponse request with any body
+	CreatePolicyWithBodyWithResponse(ctx context.Context, projectID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreatePolicyResponse, error)
+
+	CreatePolicyWithResponse(ctx context.Context, projectID string, body CreatePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*CreatePolicyResponse, error)
+
+	// RunCalibrationWithResponse request
+	RunCalibrationWithResponse(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*RunCalibrationResponse, error)
+
+	// GetProjectPolicyHealthWithResponse request
+	GetProjectPolicyHealthWithResponse(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*GetProjectPolicyHealthResponse, error)
 
 	// ClaimTicketWithBodyWithResponse request with any body
 	ClaimTicketWithBodyWithResponse(ctx context.Context, projectID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ClaimTicketResponse, error)
@@ -3304,6 +6277,11 @@ type ClientWithResponsesInterface interface {
 
 	UpdateWorkStreamWithResponse(ctx context.Context, projectID string, workStreamID string, body UpdateWorkStreamJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateWorkStreamResponse, error)
 
+	// ResolveProposalWithBodyWithResponse request with any body
+	ResolveProposalWithBodyWithResponse(ctx context.Context, proposalID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ResolveProposalResponse, error)
+
+	ResolveProposalWithResponse(ctx context.Context, proposalID string, body ResolveProposalJSONRequestBody, reqEditors ...RequestEditorFn) (*ResolveProposalResponse, error)
+
 	// GetTicketWithResponse request
 	GetTicketWithResponse(ctx context.Context, ticketID string, reqEditors ...RequestEditorFn) (*GetTicketResponse, error)
 
@@ -3327,6 +6305,14 @@ type ClientWithResponsesInterface interface {
 
 	RenewLeaseWithResponse(ctx context.Context, ticketID string, body RenewLeaseJSONRequestBody, reqEditors ...RequestEditorFn) (*RenewLeaseResponse, error)
 
+	// RecordTicketOutcomeWithBodyWithResponse request with any body
+	RecordTicketOutcomeWithBodyWithResponse(ctx context.Context, ticketID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RecordTicketOutcomeResponse, error)
+
+	RecordTicketOutcomeWithResponse(ctx context.Context, ticketID string, body RecordTicketOutcomeJSONRequestBody, reqEditors ...RequestEditorFn) (*RecordTicketOutcomeResponse, error)
+
+	// ListPlansByTicketWithResponse request
+	ListPlansByTicketWithResponse(ctx context.Context, ticketID string, params *ListPlansByTicketParams, reqEditors ...RequestEditorFn) (*ListPlansByTicketResponse, error)
+
 	// CreateReviewWithBodyWithResponse request with any body
 	CreateReviewWithBodyWithResponse(ctx context.Context, ticketID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateReviewResponse, error)
 
@@ -3347,6 +6333,98 @@ type ClientWithResponsesInterface interface {
 	TransitionTicketWithBodyWithResponse(ctx context.Context, ticketID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TransitionTicketResponse, error)
 
 	TransitionTicketWithResponse(ctx context.Context, ticketID string, body TransitionTicketJSONRequestBody, reqEditors ...RequestEditorFn) (*TransitionTicketResponse, error)
+}
+
+type DeleteEnvironmentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *StructuredError
+	JSON404      *StructuredError
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteEnvironmentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteEnvironmentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetEnvironmentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Environment
+	JSON404      *StructuredError
+}
+
+// Status returns HTTPResponse.Status
+func (r GetEnvironmentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetEnvironmentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateEnvironmentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Environment
+	JSON400      *StructuredError
+	JSON404      *StructuredError
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateEnvironmentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateEnvironmentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetDefaultEnvironmentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON404      *StructuredError
+}
+
+// Status returns HTTPResponse.Status
+func (r SetDefaultEnvironmentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetDefaultEnvironmentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
 }
 
 type GetHealthzResponse struct {
@@ -3579,6 +6657,321 @@ func (r GetGitNotesLogResponse) StatusCode() int {
 	return 0
 }
 
+type CreatePlanResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *Plan
+	JSON400      *StructuredError
+}
+
+// Status returns HTTPResponse.Status
+func (r CreatePlanResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreatePlanResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetPlanResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Plan
+	JSON404      *StructuredError
+}
+
+// Status returns HTTPResponse.Status
+func (r GetPlanResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetPlanResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdatePlanContentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *StructuredError
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdatePlanContentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdatePlanContentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CheckPlanFreshnessResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *struct {
+		Fresh  *bool   `json:"fresh,omitempty"`
+		PlanId *string `json:"plan_id,omitempty"`
+	}
+}
+
+// Status returns HTTPResponse.Status
+func (r CheckPlanFreshnessResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CheckPlanFreshnessResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type TransitionPlanResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Plan
+	JSON400      *StructuredError
+}
+
+// Status returns HTTPResponse.Status
+func (r TransitionPlanResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TransitionPlanResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListPlanVersionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]PlanVersion
+}
+
+// Status returns HTTPResponse.Status
+func (r ListPlanVersionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListPlanVersionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetPolicyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Policy
+	JSON404      *StructuredError
+}
+
+// Status returns HTTPResponse.Status
+func (r GetPolicyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetPolicyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdatePolicyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON404      *StructuredError
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdatePolicyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdatePolicyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListPolicyDecisionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *PolicyDecisionsResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r ListPolicyDecisionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListPolicyDecisionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RecordPolicyDecisionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *PolicyDecision
+}
+
+// Status returns HTTPResponse.Status
+func (r RecordPolicyDecisionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RecordPolicyDecisionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetPolicyHealthResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *PolicyHealth
+}
+
+// Status returns HTTPResponse.Status
+func (r GetPolicyHealthResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetPolicyHealthResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListPolicyChangeEventsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *PolicyChangeEventsResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r ListPolicyChangeEventsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListPolicyChangeEventsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetPolicyMetricsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *PolicyMetrics
+}
+
+// Status returns HTTPResponse.Status
+func (r GetPolicyMetricsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetPolicyMetricsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SimulateRuleChangeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SimulationResult
+}
+
+// Status returns HTTPResponse.Status
+func (r SimulateRuleChangeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SimulateRuleChangeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetProjectResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3626,6 +7019,52 @@ func (r UpdateProjectResponse) StatusCode() int {
 	return 0
 }
 
+type ListEnvironmentsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]Environment
+	JSON404      *StructuredError
+}
+
+// Status returns HTTPResponse.Status
+func (r ListEnvironmentsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListEnvironmentsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateEnvironmentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *Environment
+	JSON400      *StructuredError
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateEnvironmentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateEnvironmentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListEscalationsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3643,6 +7082,95 @@ func (r ListEscalationsResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ListEscalationsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListPoliciesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *PolicyListResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r ListPoliciesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListPoliciesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreatePolicyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *Policy
+	JSON400      *StructuredError
+}
+
+// Status returns HTTPResponse.Status
+func (r CreatePolicyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreatePolicyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RunCalibrationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *CalibrationResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r RunCalibrationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RunCalibrationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetProjectPolicyHealthResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ProjectHealthResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r GetProjectPolicyHealthResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetProjectPolicyHealthResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -3842,6 +7370,28 @@ func (r UpdateWorkStreamResponse) StatusCode() int {
 	return 0
 }
 
+type ResolveProposalResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON404      *StructuredError
+}
+
+// Status returns HTTPResponse.Status
+func (r ResolveProposalResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ResolveProposalResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetTicketResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3951,6 +7501,49 @@ func (r RenewLeaseResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r RenewLeaseResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RecordTicketOutcomeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// Status returns HTTPResponse.Status
+func (r RecordTicketOutcomeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RecordTicketOutcomeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListPlansByTicketResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]Plan
+}
+
+// Status returns HTTPResponse.Status
+func (r ListPlansByTicketResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListPlansByTicketResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -4073,6 +7666,50 @@ func (r TransitionTicketResponse) StatusCode() int {
 	return 0
 }
 
+// DeleteEnvironmentWithResponse request returning *DeleteEnvironmentResponse
+func (c *ClientWithResponses) DeleteEnvironmentWithResponse(ctx context.Context, environmentID string, reqEditors ...RequestEditorFn) (*DeleteEnvironmentResponse, error) {
+	rsp, err := c.DeleteEnvironment(ctx, environmentID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteEnvironmentResponse(rsp)
+}
+
+// GetEnvironmentWithResponse request returning *GetEnvironmentResponse
+func (c *ClientWithResponses) GetEnvironmentWithResponse(ctx context.Context, environmentID string, reqEditors ...RequestEditorFn) (*GetEnvironmentResponse, error) {
+	rsp, err := c.GetEnvironment(ctx, environmentID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetEnvironmentResponse(rsp)
+}
+
+// UpdateEnvironmentWithBodyWithResponse request with arbitrary body returning *UpdateEnvironmentResponse
+func (c *ClientWithResponses) UpdateEnvironmentWithBodyWithResponse(ctx context.Context, environmentID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateEnvironmentResponse, error) {
+	rsp, err := c.UpdateEnvironmentWithBody(ctx, environmentID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateEnvironmentResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateEnvironmentWithResponse(ctx context.Context, environmentID string, body UpdateEnvironmentJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateEnvironmentResponse, error) {
+	rsp, err := c.UpdateEnvironment(ctx, environmentID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateEnvironmentResponse(rsp)
+}
+
+// SetDefaultEnvironmentWithResponse request returning *SetDefaultEnvironmentResponse
+func (c *ClientWithResponses) SetDefaultEnvironmentWithResponse(ctx context.Context, environmentID string, reqEditors ...RequestEditorFn) (*SetDefaultEnvironmentResponse, error) {
+	rsp, err := c.SetDefaultEnvironment(ctx, environmentID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetDefaultEnvironmentResponse(rsp)
+}
+
 // GetHealthzWithResponse request returning *GetHealthzResponse
 func (c *ClientWithResponses) GetHealthzWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthzResponse, error) {
 	rsp, err := c.GetHealthz(ctx, reqEditors...)
@@ -4179,6 +7816,180 @@ func (c *ClientWithResponses) GetGitNotesLogWithResponse(ctx context.Context, or
 	return ParseGetGitNotesLogResponse(rsp)
 }
 
+// CreatePlanWithBodyWithResponse request with arbitrary body returning *CreatePlanResponse
+func (c *ClientWithResponses) CreatePlanWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreatePlanResponse, error) {
+	rsp, err := c.CreatePlanWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreatePlanResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreatePlanWithResponse(ctx context.Context, body CreatePlanJSONRequestBody, reqEditors ...RequestEditorFn) (*CreatePlanResponse, error) {
+	rsp, err := c.CreatePlan(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreatePlanResponse(rsp)
+}
+
+// GetPlanWithResponse request returning *GetPlanResponse
+func (c *ClientWithResponses) GetPlanWithResponse(ctx context.Context, planID string, reqEditors ...RequestEditorFn) (*GetPlanResponse, error) {
+	rsp, err := c.GetPlan(ctx, planID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetPlanResponse(rsp)
+}
+
+// UpdatePlanContentWithBodyWithResponse request with arbitrary body returning *UpdatePlanContentResponse
+func (c *ClientWithResponses) UpdatePlanContentWithBodyWithResponse(ctx context.Context, planID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdatePlanContentResponse, error) {
+	rsp, err := c.UpdatePlanContentWithBody(ctx, planID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdatePlanContentResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdatePlanContentWithResponse(ctx context.Context, planID string, body UpdatePlanContentJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdatePlanContentResponse, error) {
+	rsp, err := c.UpdatePlanContent(ctx, planID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdatePlanContentResponse(rsp)
+}
+
+// CheckPlanFreshnessWithResponse request returning *CheckPlanFreshnessResponse
+func (c *ClientWithResponses) CheckPlanFreshnessWithResponse(ctx context.Context, planID string, reqEditors ...RequestEditorFn) (*CheckPlanFreshnessResponse, error) {
+	rsp, err := c.CheckPlanFreshness(ctx, planID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCheckPlanFreshnessResponse(rsp)
+}
+
+// TransitionPlanWithBodyWithResponse request with arbitrary body returning *TransitionPlanResponse
+func (c *ClientWithResponses) TransitionPlanWithBodyWithResponse(ctx context.Context, planID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TransitionPlanResponse, error) {
+	rsp, err := c.TransitionPlanWithBody(ctx, planID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTransitionPlanResponse(rsp)
+}
+
+func (c *ClientWithResponses) TransitionPlanWithResponse(ctx context.Context, planID string, body TransitionPlanJSONRequestBody, reqEditors ...RequestEditorFn) (*TransitionPlanResponse, error) {
+	rsp, err := c.TransitionPlan(ctx, planID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTransitionPlanResponse(rsp)
+}
+
+// ListPlanVersionsWithResponse request returning *ListPlanVersionsResponse
+func (c *ClientWithResponses) ListPlanVersionsWithResponse(ctx context.Context, planID string, reqEditors ...RequestEditorFn) (*ListPlanVersionsResponse, error) {
+	rsp, err := c.ListPlanVersions(ctx, planID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListPlanVersionsResponse(rsp)
+}
+
+// GetPolicyWithResponse request returning *GetPolicyResponse
+func (c *ClientWithResponses) GetPolicyWithResponse(ctx context.Context, policyID string, reqEditors ...RequestEditorFn) (*GetPolicyResponse, error) {
+	rsp, err := c.GetPolicy(ctx, policyID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetPolicyResponse(rsp)
+}
+
+// UpdatePolicyWithBodyWithResponse request with arbitrary body returning *UpdatePolicyResponse
+func (c *ClientWithResponses) UpdatePolicyWithBodyWithResponse(ctx context.Context, policyID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdatePolicyResponse, error) {
+	rsp, err := c.UpdatePolicyWithBody(ctx, policyID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdatePolicyResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdatePolicyWithResponse(ctx context.Context, policyID string, body UpdatePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdatePolicyResponse, error) {
+	rsp, err := c.UpdatePolicy(ctx, policyID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdatePolicyResponse(rsp)
+}
+
+// ListPolicyDecisionsWithResponse request returning *ListPolicyDecisionsResponse
+func (c *ClientWithResponses) ListPolicyDecisionsWithResponse(ctx context.Context, policyID string, reqEditors ...RequestEditorFn) (*ListPolicyDecisionsResponse, error) {
+	rsp, err := c.ListPolicyDecisions(ctx, policyID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListPolicyDecisionsResponse(rsp)
+}
+
+// RecordPolicyDecisionWithBodyWithResponse request with arbitrary body returning *RecordPolicyDecisionResponse
+func (c *ClientWithResponses) RecordPolicyDecisionWithBodyWithResponse(ctx context.Context, policyID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RecordPolicyDecisionResponse, error) {
+	rsp, err := c.RecordPolicyDecisionWithBody(ctx, policyID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRecordPolicyDecisionResponse(rsp)
+}
+
+func (c *ClientWithResponses) RecordPolicyDecisionWithResponse(ctx context.Context, policyID string, body RecordPolicyDecisionJSONRequestBody, reqEditors ...RequestEditorFn) (*RecordPolicyDecisionResponse, error) {
+	rsp, err := c.RecordPolicyDecision(ctx, policyID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRecordPolicyDecisionResponse(rsp)
+}
+
+// GetPolicyHealthWithResponse request returning *GetPolicyHealthResponse
+func (c *ClientWithResponses) GetPolicyHealthWithResponse(ctx context.Context, policyID string, reqEditors ...RequestEditorFn) (*GetPolicyHealthResponse, error) {
+	rsp, err := c.GetPolicyHealth(ctx, policyID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetPolicyHealthResponse(rsp)
+}
+
+// ListPolicyChangeEventsWithResponse request returning *ListPolicyChangeEventsResponse
+func (c *ClientWithResponses) ListPolicyChangeEventsWithResponse(ctx context.Context, policyID string, reqEditors ...RequestEditorFn) (*ListPolicyChangeEventsResponse, error) {
+	rsp, err := c.ListPolicyChangeEvents(ctx, policyID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListPolicyChangeEventsResponse(rsp)
+}
+
+// GetPolicyMetricsWithResponse request returning *GetPolicyMetricsResponse
+func (c *ClientWithResponses) GetPolicyMetricsWithResponse(ctx context.Context, policyID string, reqEditors ...RequestEditorFn) (*GetPolicyMetricsResponse, error) {
+	rsp, err := c.GetPolicyMetrics(ctx, policyID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetPolicyMetricsResponse(rsp)
+}
+
+// SimulateRuleChangeWithBodyWithResponse request with arbitrary body returning *SimulateRuleChangeResponse
+func (c *ClientWithResponses) SimulateRuleChangeWithBodyWithResponse(ctx context.Context, policyID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SimulateRuleChangeResponse, error) {
+	rsp, err := c.SimulateRuleChangeWithBody(ctx, policyID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSimulateRuleChangeResponse(rsp)
+}
+
+func (c *ClientWithResponses) SimulateRuleChangeWithResponse(ctx context.Context, policyID string, body SimulateRuleChangeJSONRequestBody, reqEditors ...RequestEditorFn) (*SimulateRuleChangeResponse, error) {
+	rsp, err := c.SimulateRuleChange(ctx, policyID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSimulateRuleChangeResponse(rsp)
+}
+
 // GetProjectWithResponse request returning *GetProjectResponse
 func (c *ClientWithResponses) GetProjectWithResponse(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*GetProjectResponse, error) {
 	rsp, err := c.GetProject(ctx, projectID, reqEditors...)
@@ -4205,6 +8016,32 @@ func (c *ClientWithResponses) UpdateProjectWithResponse(ctx context.Context, pro
 	return ParseUpdateProjectResponse(rsp)
 }
 
+// ListEnvironmentsWithResponse request returning *ListEnvironmentsResponse
+func (c *ClientWithResponses) ListEnvironmentsWithResponse(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*ListEnvironmentsResponse, error) {
+	rsp, err := c.ListEnvironments(ctx, projectID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListEnvironmentsResponse(rsp)
+}
+
+// CreateEnvironmentWithBodyWithResponse request with arbitrary body returning *CreateEnvironmentResponse
+func (c *ClientWithResponses) CreateEnvironmentWithBodyWithResponse(ctx context.Context, projectID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateEnvironmentResponse, error) {
+	rsp, err := c.CreateEnvironmentWithBody(ctx, projectID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateEnvironmentResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateEnvironmentWithResponse(ctx context.Context, projectID string, body CreateEnvironmentJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateEnvironmentResponse, error) {
+	rsp, err := c.CreateEnvironment(ctx, projectID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateEnvironmentResponse(rsp)
+}
+
 // ListEscalationsWithResponse request returning *ListEscalationsResponse
 func (c *ClientWithResponses) ListEscalationsWithResponse(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*ListEscalationsResponse, error) {
 	rsp, err := c.ListEscalations(ctx, projectID, reqEditors...)
@@ -4212,6 +8049,50 @@ func (c *ClientWithResponses) ListEscalationsWithResponse(ctx context.Context, p
 		return nil, err
 	}
 	return ParseListEscalationsResponse(rsp)
+}
+
+// ListPoliciesWithResponse request returning *ListPoliciesResponse
+func (c *ClientWithResponses) ListPoliciesWithResponse(ctx context.Context, projectID string, params *ListPoliciesParams, reqEditors ...RequestEditorFn) (*ListPoliciesResponse, error) {
+	rsp, err := c.ListPolicies(ctx, projectID, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListPoliciesResponse(rsp)
+}
+
+// CreatePolicyWithBodyWithResponse request with arbitrary body returning *CreatePolicyResponse
+func (c *ClientWithResponses) CreatePolicyWithBodyWithResponse(ctx context.Context, projectID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreatePolicyResponse, error) {
+	rsp, err := c.CreatePolicyWithBody(ctx, projectID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreatePolicyResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreatePolicyWithResponse(ctx context.Context, projectID string, body CreatePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*CreatePolicyResponse, error) {
+	rsp, err := c.CreatePolicy(ctx, projectID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreatePolicyResponse(rsp)
+}
+
+// RunCalibrationWithResponse request returning *RunCalibrationResponse
+func (c *ClientWithResponses) RunCalibrationWithResponse(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*RunCalibrationResponse, error) {
+	rsp, err := c.RunCalibration(ctx, projectID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRunCalibrationResponse(rsp)
+}
+
+// GetProjectPolicyHealthWithResponse request returning *GetProjectPolicyHealthResponse
+func (c *ClientWithResponses) GetProjectPolicyHealthWithResponse(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*GetProjectPolicyHealthResponse, error) {
+	rsp, err := c.GetProjectPolicyHealth(ctx, projectID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetProjectPolicyHealthResponse(rsp)
 }
 
 // ClaimTicketWithBodyWithResponse request with arbitrary body returning *ClaimTicketResponse
@@ -4318,6 +8199,23 @@ func (c *ClientWithResponses) UpdateWorkStreamWithResponse(ctx context.Context, 
 	return ParseUpdateWorkStreamResponse(rsp)
 }
 
+// ResolveProposalWithBodyWithResponse request with arbitrary body returning *ResolveProposalResponse
+func (c *ClientWithResponses) ResolveProposalWithBodyWithResponse(ctx context.Context, proposalID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ResolveProposalResponse, error) {
+	rsp, err := c.ResolveProposalWithBody(ctx, proposalID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResolveProposalResponse(rsp)
+}
+
+func (c *ClientWithResponses) ResolveProposalWithResponse(ctx context.Context, proposalID string, body ResolveProposalJSONRequestBody, reqEditors ...RequestEditorFn) (*ResolveProposalResponse, error) {
+	rsp, err := c.ResolveProposal(ctx, proposalID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResolveProposalResponse(rsp)
+}
+
 // GetTicketWithResponse request returning *GetTicketResponse
 func (c *ClientWithResponses) GetTicketWithResponse(ctx context.Context, ticketID string, reqEditors ...RequestEditorFn) (*GetTicketResponse, error) {
 	rsp, err := c.GetTicket(ctx, ticketID, reqEditors...)
@@ -4395,6 +8293,32 @@ func (c *ClientWithResponses) RenewLeaseWithResponse(ctx context.Context, ticket
 	return ParseRenewLeaseResponse(rsp)
 }
 
+// RecordTicketOutcomeWithBodyWithResponse request with arbitrary body returning *RecordTicketOutcomeResponse
+func (c *ClientWithResponses) RecordTicketOutcomeWithBodyWithResponse(ctx context.Context, ticketID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RecordTicketOutcomeResponse, error) {
+	rsp, err := c.RecordTicketOutcomeWithBody(ctx, ticketID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRecordTicketOutcomeResponse(rsp)
+}
+
+func (c *ClientWithResponses) RecordTicketOutcomeWithResponse(ctx context.Context, ticketID string, body RecordTicketOutcomeJSONRequestBody, reqEditors ...RequestEditorFn) (*RecordTicketOutcomeResponse, error) {
+	rsp, err := c.RecordTicketOutcome(ctx, ticketID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRecordTicketOutcomeResponse(rsp)
+}
+
+// ListPlansByTicketWithResponse request returning *ListPlansByTicketResponse
+func (c *ClientWithResponses) ListPlansByTicketWithResponse(ctx context.Context, ticketID string, params *ListPlansByTicketParams, reqEditors ...RequestEditorFn) (*ListPlansByTicketResponse, error) {
+	rsp, err := c.ListPlansByTicket(ctx, ticketID, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListPlansByTicketResponse(rsp)
+}
+
 // CreateReviewWithBodyWithResponse request with arbitrary body returning *CreateReviewResponse
 func (c *ClientWithResponses) CreateReviewWithBodyWithResponse(ctx context.Context, ticketID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateReviewResponse, error) {
 	rsp, err := c.CreateReviewWithBody(ctx, ticketID, contentType, body, reqEditors...)
@@ -4462,6 +8386,138 @@ func (c *ClientWithResponses) TransitionTicketWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseTransitionTicketResponse(rsp)
+}
+
+// ParseDeleteEnvironmentResponse parses an HTTP response from a DeleteEnvironmentWithResponse call
+func ParseDeleteEnvironmentResponse(rsp *http.Response) (*DeleteEnvironmentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteEnvironmentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetEnvironmentResponse parses an HTTP response from a GetEnvironmentWithResponse call
+func ParseGetEnvironmentResponse(rsp *http.Response) (*GetEnvironmentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetEnvironmentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Environment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateEnvironmentResponse parses an HTTP response from a UpdateEnvironmentWithResponse call
+func ParseUpdateEnvironmentResponse(rsp *http.Response) (*UpdateEnvironmentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateEnvironmentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Environment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetDefaultEnvironmentResponse parses an HTTP response from a SetDefaultEnvironmentWithResponse call
+func ParseSetDefaultEnvironmentResponse(rsp *http.Response) (*SetDefaultEnvironmentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetDefaultEnvironmentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
 }
 
 // ParseGetHealthzResponse parses an HTTP response from a GetHealthzWithResponse call
@@ -4791,6 +8847,401 @@ func ParseGetGitNotesLogResponse(rsp *http.Response) (*GetGitNotesLogResponse, e
 	return response, nil
 }
 
+// ParseCreatePlanResponse parses an HTTP response from a CreatePlanWithResponse call
+func ParseCreatePlanResponse(rsp *http.Response) (*CreatePlanResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreatePlanResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Plan
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetPlanResponse parses an HTTP response from a GetPlanWithResponse call
+func ParseGetPlanResponse(rsp *http.Response) (*GetPlanResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetPlanResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Plan
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdatePlanContentResponse parses an HTTP response from a UpdatePlanContentWithResponse call
+func ParseUpdatePlanContentResponse(rsp *http.Response) (*UpdatePlanContentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdatePlanContentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCheckPlanFreshnessResponse parses an HTTP response from a CheckPlanFreshnessWithResponse call
+func ParseCheckPlanFreshnessResponse(rsp *http.Response) (*CheckPlanFreshnessResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CheckPlanFreshnessResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Fresh  *bool   `json:"fresh,omitempty"`
+			PlanId *string `json:"plan_id,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTransitionPlanResponse parses an HTTP response from a TransitionPlanWithResponse call
+func ParseTransitionPlanResponse(rsp *http.Response) (*TransitionPlanResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TransitionPlanResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Plan
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListPlanVersionsResponse parses an HTTP response from a ListPlanVersionsWithResponse call
+func ParseListPlanVersionsResponse(rsp *http.Response) (*ListPlanVersionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListPlanVersionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []PlanVersion
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetPolicyResponse parses an HTTP response from a GetPolicyWithResponse call
+func ParseGetPolicyResponse(rsp *http.Response) (*GetPolicyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetPolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Policy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdatePolicyResponse parses an HTTP response from a UpdatePolicyWithResponse call
+func ParseUpdatePolicyResponse(rsp *http.Response) (*UpdatePolicyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdatePolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListPolicyDecisionsResponse parses an HTTP response from a ListPolicyDecisionsWithResponse call
+func ParseListPolicyDecisionsResponse(rsp *http.Response) (*ListPolicyDecisionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListPolicyDecisionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PolicyDecisionsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRecordPolicyDecisionResponse parses an HTTP response from a RecordPolicyDecisionWithResponse call
+func ParseRecordPolicyDecisionResponse(rsp *http.Response) (*RecordPolicyDecisionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RecordPolicyDecisionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest PolicyDecision
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetPolicyHealthResponse parses an HTTP response from a GetPolicyHealthWithResponse call
+func ParseGetPolicyHealthResponse(rsp *http.Response) (*GetPolicyHealthResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetPolicyHealthResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PolicyHealth
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListPolicyChangeEventsResponse parses an HTTP response from a ListPolicyChangeEventsWithResponse call
+func ParseListPolicyChangeEventsResponse(rsp *http.Response) (*ListPolicyChangeEventsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListPolicyChangeEventsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PolicyChangeEventsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetPolicyMetricsResponse parses an HTTP response from a GetPolicyMetricsWithResponse call
+func ParseGetPolicyMetricsResponse(rsp *http.Response) (*GetPolicyMetricsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetPolicyMetricsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PolicyMetrics
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSimulateRuleChangeResponse parses an HTTP response from a SimulateRuleChangeWithResponse call
+func ParseSimulateRuleChangeResponse(rsp *http.Response) (*SimulateRuleChangeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SimulateRuleChangeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SimulationResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetProjectResponse parses an HTTP response from a GetProjectWithResponse call
 func ParseGetProjectResponse(rsp *http.Response) (*GetProjectResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -4864,6 +9315,72 @@ func ParseUpdateProjectResponse(rsp *http.Response) (*UpdateProjectResponse, err
 	return response, nil
 }
 
+// ParseListEnvironmentsResponse parses an HTTP response from a ListEnvironmentsWithResponse call
+func ParseListEnvironmentsResponse(rsp *http.Response) (*ListEnvironmentsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListEnvironmentsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Environment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateEnvironmentResponse parses an HTTP response from a CreateEnvironmentWithResponse call
+func ParseCreateEnvironmentResponse(rsp *http.Response) (*CreateEnvironmentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateEnvironmentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Environment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListEscalationsResponse parses an HTTP response from a ListEscalationsWithResponse call
 func ParseListEscalationsResponse(rsp *http.Response) (*ListEscalationsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -4891,6 +9408,117 @@ func ParseListEscalationsResponse(rsp *http.Response) (*ListEscalationsResponse,
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListPoliciesResponse parses an HTTP response from a ListPoliciesWithResponse call
+func ParseListPoliciesResponse(rsp *http.Response) (*ListPoliciesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListPoliciesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PolicyListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreatePolicyResponse parses an HTTP response from a CreatePolicyWithResponse call
+func ParseCreatePolicyResponse(rsp *http.Response) (*CreatePolicyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreatePolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Policy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRunCalibrationResponse parses an HTTP response from a RunCalibrationWithResponse call
+func ParseRunCalibrationResponse(rsp *http.Response) (*RunCalibrationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RunCalibrationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CalibrationResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetProjectPolicyHealthResponse parses an HTTP response from a GetProjectPolicyHealthWithResponse call
+func ParseGetProjectPolicyHealthResponse(rsp *http.Response) (*GetProjectPolicyHealthResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetProjectPolicyHealthResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProjectHealthResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	}
 
@@ -5224,6 +9852,32 @@ func ParseUpdateWorkStreamResponse(rsp *http.Response) (*UpdateWorkStreamRespons
 	return response, nil
 }
 
+// ParseResolveProposalResponse parses an HTTP response from a ResolveProposalWithResponse call
+func ParseResolveProposalResponse(rsp *http.Response) (*ResolveProposalResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ResolveProposalResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetTicketResponse parses an HTTP response from a GetTicketWithResponse call
 func ParseGetTicketResponse(rsp *http.Response) (*GetTicketResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -5383,6 +10037,48 @@ func ParseRenewLeaseResponse(rsp *http.Response) (*RenewLeaseResponse, error) {
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRecordTicketOutcomeResponse parses an HTTP response from a RecordTicketOutcomeWithResponse call
+func ParseRecordTicketOutcomeResponse(rsp *http.Response) (*RecordTicketOutcomeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RecordTicketOutcomeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseListPlansByTicketResponse parses an HTTP response from a ListPlansByTicketWithResponse call
+func ParseListPlansByTicketResponse(rsp *http.Response) (*ListPlansByTicketResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListPlansByTicketResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Plan
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	}
 

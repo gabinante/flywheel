@@ -41,16 +41,3 @@ CREATE TABLE entity_instances (
 );
 
 CREATE INDEX entity_instances_entity ON entity_instances(entity_id);
-
--- Entity stream: append-only log of entity lifecycle events
-CREATE TABLE entity_stream (
-    id              TEXT PRIMARY KEY,
-    entity_id       TEXT NOT NULL REFERENCES entities(id),
-    event_type      TEXT NOT NULL,              -- 'created', 'renamed', 'retired', 'instance_created', 'instance_retired', 'attribute_changed'
-    payload         JSONB NOT NULL DEFAULT '{}',
-    actor           TEXT NOT NULL,              -- who/what caused the event
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX entity_stream_entity ON entity_stream(entity_id, created_at);
-CREATE INDEX entity_stream_time ON entity_stream(created_at);

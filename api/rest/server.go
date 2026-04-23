@@ -111,15 +111,8 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	if cfg.PlansHandler != nil {
 		plans := cfg.PlansHandler
-		mux.HandleFunc("POST /plans", plans.create)
-		mux.HandleFunc("GET /plans/{planID}", plans.get)
-		mux.HandleFunc("PUT /plans/{planID}/content", plans.updateContent)
-		mux.HandleFunc("POST /plans/{planID}/transition", plans.transition)
-		mux.HandleFunc("GET /plans/{planID}/versions", plans.versions)
-		mux.HandleFunc("GET /plans/{planID}/freshness", plans.freshness)
 		mux.HandleFunc("POST /plans/{planID}/freshness-check", plans.freshnessCheck)
 		mux.HandleFunc("GET /plans/staleness-config", plans.stalenessConfig)
-		mux.HandleFunc("GET /tickets/{ticketID}/plans", plans.listByTicket)
 	}
 	if cfg.ObservationHandler != nil {
 		cfg.ObservationHandler.RegisterRoutes(mux)
@@ -131,10 +124,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		cfg.CatalogHandler.RegisterRoutes(mux)
 	}
 	if cfg.PoliciesHandler != nil {
-		cfg.PoliciesHandler.RegisterRoutes(mux)
-	}
-	if cfg.EnvironmentsHandler != nil {
-		cfg.EnvironmentsHandler.RegisterRoutes(mux)
+		mux.HandleFunc("POST /decisions/{decisionID}/outcome", cfg.PoliciesHandler.recordOutcome)
 	}
 	if cfg.StateIndexHandler != nil {
 		cfg.StateIndexHandler.RegisterRoutes(mux)

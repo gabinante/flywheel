@@ -189,11 +189,34 @@ func (s *Store) RetireInstance(ctx context.Context, id string) error {
 
 // AppendStreamEvent inserts a new event into the entity stream.
 func (s *Store) AppendStreamEvent(ctx context.Context, evt *StreamEvent) error {
+	entity, err := s.GetEntityByID(ctx, evt.EntityID)
+	if err != nil {
+		return err
+	}
 	payloadJSON, _ := json.Marshal(evt.Payload)
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO entity_stream (id, entity_id, event_type, payload, actor, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6)`,
-		evt.ID, evt.EntityID, evt.EventType, payloadJSON, evt.Actor, evt.CreatedAt)
+	timestamp := evt.CreatedAt
+	if timestamp.IsZero() {
+		timestamp = time.Now().UTC()
+	}
+	_, err = s.pool.Exec(ctx,
+		`INSERT INTO entity_stream (
+			id, project_id, change_type, affected_entities, metadata,
+			initiator_id, initiator_type, timestamp, created_at,
+			entity_id, entity_type, entity_name
+		)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $9, $10, $11)`,
+		evt.ID,
+		entity.ProjectID,
+		evt.EventType,
+		[]string{evt.EntityID},
+		payloadJSON,
+		evt.Actor,
+		initiatorTypeForActor(evt.Actor),
+		timestamp,
+		evt.EntityID,
+		string(entity.Type),
+		entity.LogicalName,
+	)
 	return err
 }
 
@@ -203,25 +226,23 @@ func (s *Store) GetStream(ctx context.Context, entityID string, limit int) ([]*S
 		limit = 100
 	}
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, entity_id, event_type, payload, actor, created_at
-		 FROM entity_stream WHERE entity_id = $1 ORDER BY created_at ASC LIMIT $2`,
+		`SELECT
+			id,
+			entity_id,
+			change_type AS event_type,
+			COALESCE(metadata, '{}'::jsonb) AS payload,
+			initiator_id AS actor,
+			timestamp AS created_at
+		 FROM entity_stream
+		 WHERE entity_id = $1
+		 ORDER BY timestamp ASC
+		 LIMIT $2`,
 		entityID, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var events []*StreamEvent
-	for rows.Next() {
-		var evt StreamEvent
-		var payloadJSON []byte
-		if err := rows.Scan(&evt.ID, &evt.EntityID, &evt.EventType, &payloadJSON, &evt.Actor, &evt.CreatedAt); err != nil {
-			return nil, err
-		}
-		evt.Payload = make(map[string]any)
-		_ = json.Unmarshal(payloadJSON, &evt.Payload)
-		events = append(events, &evt)
-	}
-	return events, rows.Err()
+	return scanStreamEvents(rows)
 }
 
 // GetStreamSince returns stream events since a given time (for tailing).
@@ -230,13 +251,26 @@ func (s *Store) GetStreamSince(ctx context.Context, since time.Time, limit int) 
 		limit = 100
 	}
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, entity_id, event_type, payload, actor, created_at
-		 FROM entity_stream WHERE created_at > $1 ORDER BY created_at ASC LIMIT $2`,
+		`SELECT
+			id,
+			entity_id,
+			change_type AS event_type,
+			COALESCE(metadata, '{}'::jsonb) AS payload,
+			initiator_id AS actor,
+			timestamp AS created_at
+		 FROM entity_stream
+		 WHERE timestamp > $1
+		 ORDER BY timestamp ASC
+		 LIMIT $2`,
 		since, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+	return scanStreamEvents(rows)
+}
+
+func scanStreamEvents(rows pgx.Rows) ([]*StreamEvent, error) {
 	var events []*StreamEvent
 	for rows.Next() {
 		var evt StreamEvent
@@ -304,4 +338,13 @@ func containsSQLState(err error, code string) bool {
 		return pe.SQLState() == code
 	}
 	return false
+}
+
+func initiatorTypeForActor(actor string) string {
+	switch actor {
+	case "", "system", "anonymous":
+		return "system"
+	default:
+		return "agent"
+	}
 }

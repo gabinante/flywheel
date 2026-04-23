@@ -276,6 +276,9 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		TraceSvc:      execSvc,
 		ReviewSvc:     reviewSvc,
 		EntitySvc:     entitySvc,
+		EnvSvc:        envSvc,
+		PlanSvc:       planSvc,
+		PolicySvc:     calibrationSvc,
 		AgentStore:    agentStore,
 		CostSvc:       costSvc,
 	}
@@ -582,6 +585,7 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		QueueSvc:      queueSvc,
 		TraceSvc:      execSvc,
 		ReviewSvc:     reviewSvc,
+		EnvSvc:        envSvc,
 		AgentStore:    agentSt,
 	}
 
