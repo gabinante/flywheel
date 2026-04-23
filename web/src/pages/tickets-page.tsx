@@ -74,6 +74,8 @@ const DONE_STATES: TicketState[] = ['done']
 
 /** Everything except done states — default "open work" view. */
 const OPEN_STATES = ALL_STATES.filter((s) => !DONE_STATES.includes(s))
+const ALL_WORK_STREAMS_VALUE = '__all_work_streams__'
+const ANY_STATE_VALUE = '__any_state__'
 
 function statesInCategory(cat: CategoryId): readonly TicketState[] | null {
   switch (cat) {
@@ -392,6 +394,8 @@ export function TicketsPage() {
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const listRef = useRef<HTMLUListElement>(null)
   const projectLabel = useProjectBreadcrumbLabel(projectId)
+  const workStreamSelectValue = workStreamFilter || ALL_WORK_STREAMS_VALUE
+  const specificStateSelectValue = specificState || ANY_STATE_VALUE
 
   // ---- Fetch work streams ----
   useEffect(() => {
@@ -506,7 +510,7 @@ export function TicketsPage() {
 
   // ---- Select options for styled selects ----
   const workStreamOptions = useMemo(() => {
-    const opts = [{ value: '', label: 'All work streams' }]
+    const opts = [{ value: ALL_WORK_STREAMS_VALUE, label: 'All work streams' }]
     for (const s of streams ?? []) {
       if (s.id) {
         opts.push({ value: s.id, label: s.name ?? s.slug ?? s.id })
@@ -523,7 +527,7 @@ export function TicketsPage() {
   const refineSelectOptions = useMemo(() => {
     const opts = [
       {
-        value: '',
+        value: ANY_STATE_VALUE,
         label: category === 'all' ? 'Any state' : 'Any in this view',
       },
     ]
@@ -643,8 +647,8 @@ export function TicketsPage() {
           <Label htmlFor="work-stream-filter">Work stream</Label>
           <StyledSelect
             id="work-stream-filter"
-            value={workStreamFilter}
-            onValueChange={setWorkStreamFilter}
+            value={workStreamSelectValue}
+            onValueChange={(val) => setWorkStreamFilter(val === ALL_WORK_STREAMS_VALUE ? '' : val)}
             options={workStreamOptions}
             placeholder="All work streams"
             disabled={!streams}
@@ -673,10 +677,10 @@ export function TicketsPage() {
           <Label htmlFor="state-refine">Refine by state</Label>
           <StyledSelect
             id="state-refine"
-            value={specificState}
+            value={specificStateSelectValue}
             onValueChange={(val) => {
               setSelectedIndex(-1)
-              setSpecificState(val as TicketState | '')
+              setSpecificState(val === ANY_STATE_VALUE ? '' : (val as TicketState))
             }}
             options={refineSelectOptions}
           />

@@ -185,7 +185,7 @@ export function OrgsPage() {
                               </Badge>
                             ) : null}
                           </div>
-                          <span className="font-mono text-xs text-muted-foreground truncate">
+                          <span className="block break-all font-mono text-xs leading-relaxed text-muted-foreground">
                             {id}
                           </span>
                         </div>

@@ -152,6 +152,18 @@ function BreakdownList({
   )
 }
 
+function ChartEmptyState({
+  title,
+}: {
+  title: string
+}) {
+  return (
+    <div className="flex h-[320px] items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/[0.03] px-6 text-center text-sm text-muted-foreground">
+      {title}
+    </div>
+  )
+}
+
 export function UsagePage() {
   const { projectId } = useParams<{ orgId: string; projectId: string }>()
   const { token } = useAuth()
@@ -186,6 +198,10 @@ export function UsagePage() {
   const models = usage?.by_model ?? []
   const summary = usage?.summary
   const budgetStatus = usage?.budget_status
+  const hasDailyData = daily.length > 0
+  const hasTaskTypeData = taskType.length > 0
+  const hasAPIData = apiUsage.length > 0
+  const hasWorkerData = workerGroups.length > 0
 
   const tokenSeries = [
     {
@@ -481,6 +497,8 @@ export function UsagePage() {
           <CardContent className="pt-5">
             {loading ? (
               <div className="h-[320px] animate-pulse rounded-3xl bg-white/[0.04]" />
+            ) : !hasDailyData ? (
+              <ChartEmptyState title="No usage points recorded in this window yet." />
             ) : (
               <ReactApexChart options={tokenOptions} series={tokenSeries} type="area" height={320} />
             )}
@@ -500,6 +518,8 @@ export function UsagePage() {
           <CardContent className="pt-5">
             {loading ? (
               <div className="h-[320px] animate-pulse rounded-3xl bg-white/[0.04]" />
+            ) : !hasTaskTypeData ? (
+              <ChartEmptyState title="No task usage has been recorded for this window." />
             ) : (
               <ReactApexChart
                 options={taskTypeOptions}
@@ -523,6 +543,8 @@ export function UsagePage() {
           <CardContent className="pt-5">
             {loading ? (
               <div className="h-[320px] animate-pulse rounded-3xl bg-white/[0.04]" />
+            ) : !hasAPIData ? (
+              <ChartEmptyState title="No API usage data is available for this window." />
             ) : (
               <ReactApexChart
                 options={apiOptions}
@@ -544,6 +566,8 @@ export function UsagePage() {
           <CardContent className="pt-5">
             {loading ? (
               <div className="h-[320px] animate-pulse rounded-3xl bg-white/[0.04]" />
+            ) : !hasWorkerData ? (
+              <ChartEmptyState title="No worker-lane usage has been recorded for this window." />
             ) : (
               <ReactApexChart
                 options={workerOptions}
