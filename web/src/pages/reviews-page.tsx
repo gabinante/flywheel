@@ -1,15 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
+import {
+  CheckCircle2,
+  ChevronDown,
+  ExternalLink,
+  GitPullRequest,
+  Layers,
+  XCircle,
+  RotateCcw,
+} from 'lucide-react'
 
 import { KeyboardShortcutHelp } from '@/components/keyboard-shortcut-help'
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { ReviewQueueCelebration } from '@/components/review-queue-celebration'
-import { StaggerItem, StaggerList } from '@/components/stagger-list'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import type { FlywheelClient } from '@/contexts/auth-context'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
@@ -19,6 +25,10 @@ import type { components } from '@/lib/api/v1'
 
 type Ticket = components['schemas']['Ticket']
 type TraceStep = components['schemas']['TraceStep']
+
+/* ------------------------------------------------------------------ */
+/* Data helpers                                                        */
+/* ------------------------------------------------------------------ */
 
 async function loadPendingReviews(
   client: FlywheelClient,
@@ -47,6 +57,61 @@ async function loadTrace(
   return data?.steps ?? []
 }
 
+/* ------------------------------------------------------------------ */
+/* Priority helpers                                                    */
+/* ------------------------------------------------------------------ */
+
+const PRIORITY_META: Record<
+  number,
+  { label: string; color: string; ring: string; bg: string }
+> = {
+  0: {
+    label: 'P0 Critical',
+    color: 'text-red-400',
+    ring: 'ring-red-500/40',
+    bg: 'bg-red-500/10',
+  },
+  1: {
+    label: 'P1 High',
+    color: 'text-amber-400',
+    ring: 'ring-amber-500/40',
+    bg: 'bg-amber-500/10',
+  },
+  2: {
+    label: 'P2 Normal',
+    color: 'text-emerald-400',
+    ring: 'ring-emerald-500/30',
+    bg: 'bg-emerald-500/8',
+  },
+  3: {
+    label: 'P3 Low',
+    color: 'text-slate-400',
+    ring: 'ring-slate-500/20',
+    bg: 'bg-slate-500/5',
+  },
+}
+
+function getPriorityMeta(priority: number | undefined) {
+  return PRIORITY_META[priority ?? 2] ?? PRIORITY_META[2]
+}
+
+/** Sort tickets by priority (P0 first) then by creation date (oldest first). */
+function sortByPriority(tickets: Ticket[]): Ticket[] {
+  return [...tickets].sort((a, b) => {
+    const pa = a.priority ?? 2
+    const pb = b.priority ?? 2
+    if (pa !== pb) return pa - pb
+    // same priority — earlier created first
+    const ta = a.created_at ?? ''
+    const tb = b.created_at ?? ''
+    return ta.localeCompare(tb)
+  })
+}
+
+/* ------------------------------------------------------------------ */
+/* Subcomponents                                                       */
+/* ------------------------------------------------------------------ */
+
 function TraceSummary({ steps }: { steps: TraceStep[] | null }) {
   if (!steps || steps.length === 0) {
     return (
@@ -65,31 +130,34 @@ function TraceSummary({ steps }: { steps: TraceStep[] | null }) {
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap gap-2 text-xs">
         {counts.tool_call > 0 && (
-          <span className="rounded-lg border border-white/[0.06] bg-white/[0.04] px-2 py-0.5">
+          <span className="rounded-md bg-white/5 px-2 py-0.5 text-emerald-300/80">
             {counts.tool_call} tool call{counts.tool_call !== 1 ? 's' : ''}
           </span>
         )}
         {counts.observation > 0 && (
-          <span className="rounded-lg border border-white/[0.06] bg-white/[0.04] px-2 py-0.5">
-            {counts.observation} observation{counts.observation !== 1 ? 's' : ''}
+          <span className="rounded-md bg-white/5 px-2 py-0.5 text-blue-300/80">
+            {counts.observation} observation
+            {counts.observation !== 1 ? 's' : ''}
           </span>
         )}
         {counts.thought > 0 && (
-          <span className="rounded-lg border border-white/[0.06] bg-white/[0.04] px-2 py-0.5">
+          <span className="rounded-md bg-white/5 px-2 py-0.5 text-purple-300/80">
             {counts.thought} thought{counts.thought !== 1 ? 's' : ''}
           </span>
         )}
         {counts.error > 0 && (
-          <span className="bg-destructive/10 text-destructive rounded-md px-2 py-0.5">
+          <span className="rounded-md bg-red-500/10 px-2 py-0.5 text-red-400">
             {counts.error} error{counts.error !== 1 ? 's' : ''}
           </span>
         )}
       </div>
-      {/* Show last few steps as summary */}
       <ul className="flex flex-col gap-0.5">
         {steps.slice(-3).map((step, i) => (
-          <li key={step.id ?? i} className="text-muted-foreground truncate text-xs">
-            <span className="text-foreground/60 font-mono">{step.type}</span>
+          <li
+            key={step.id ?? i}
+            className="text-muted-foreground truncate text-xs"
+          >
+            <span className="font-mono text-foreground/60">{step.type}</span>
             {step.payload && Object.keys(step.payload).length > 0 ? (
               <span className="ml-1.5 opacity-70">
                 {summarizePayload(step.payload)}
@@ -123,24 +191,32 @@ function OutputsSummary({ outputs }: { outputs: unknown }) {
 
   const summary = typeof o.summary === 'string' ? o.summary.trim() : null
   const prUrl = typeof o.pr_url === 'string' ? o.pr_url : null
+  const filesChanged = Array.isArray(o.files_changed) ? o.files_changed : null
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-2">
       {summary && (
-        <p className="text-muted-foreground text-sm">{summary}</p>
+        <p className="text-sm leading-relaxed text-foreground/80">{summary}</p>
       )}
       {prUrl && (
         <a
           href={prUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-primary text-xs hover:underline"
+          className="group inline-flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-sm text-emerald-400 backdrop-blur-sm transition-colors hover:bg-white/10 hover:text-emerald-300"
         >
-          {prUrl}
+          <GitPullRequest className="size-4" />
+          <span className="truncate">{prUrl.replace('https://github.com/', '')}</span>
+          <ExternalLink className="ml-auto size-3 opacity-50 transition-opacity group-hover:opacity-100" />
         </a>
       )}
+      {filesChanged && filesChanged.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {filesChanged.length} file{filesChanged.length !== 1 ? 's' : ''} changed
+        </p>
+      )}
       {!summary && !prUrl && (
-        <pre className="max-h-24 overflow-auto rounded-xl border border-white/10 bg-white/[0.03] p-2 font-mono text-xs backdrop-blur-sm">
+        <pre className="max-h-24 overflow-auto rounded-lg bg-white/5 p-3 font-mono text-xs text-foreground/70 backdrop-blur-sm">
           {JSON.stringify(o, null, 2)}
         </pre>
       )}
@@ -148,8 +224,75 @@ function OutputsSummary({ outputs }: { outputs: unknown }) {
   )
 }
 
+/* ------------------------------------------------------------------ */
+/* Queue Depth Indicator                                               */
+/* ------------------------------------------------------------------ */
+
+function QueueDepthIndicator({
+  total,
+  currentIndex,
+}: {
+  total: number
+  currentIndex: number
+}) {
+  if (total === 0) return null
+
+  return (
+    <div className="flex items-center gap-3">
+      <Layers className="size-4 text-emerald-400/70" />
+      <div className="flex items-center gap-2">
+        {/* Progress dots */}
+        <div className="flex gap-1">
+          {Array.from({ length: Math.min(total, 10) }, (_, i) => (
+            <motion.div
+              key={i}
+              className={`size-2 rounded-full transition-colors duration-200 ${
+                i === currentIndex
+                  ? 'bg-emerald-400'
+                  : i < currentIndex
+                    ? 'bg-emerald-400/30'
+                    : 'bg-white/10'
+              }`}
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: i * 0.03, type: 'spring', stiffness: 500 }}
+            />
+          ))}
+          {total > 10 && (
+            <span className="ml-1 text-xs text-muted-foreground">
+              +{total - 10}
+            </span>
+          )}
+        </div>
+        <span className="min-w-[3ch] text-right font-mono text-sm tabular-nums text-foreground/80">
+          {currentIndex + 1}/{total}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Kbd helper                                                          */
+/* ------------------------------------------------------------------ */
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded border border-white/10 bg-white/5 px-1 font-mono text-[10px] text-foreground/50">
+      {children}
+    </kbd>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Main page                                                           */
+/* ------------------------------------------------------------------ */
+
 export function ReviewsPage() {
-  const { orgId, projectId } = useParams<{ orgId: string; projectId: string }>()
+  const { orgId, projectId } = useParams<{
+    orgId: string
+    projectId: string
+  }>()
   const { client } = useAuth()
   const [tickets, setTickets] = useState<Ticket[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -163,11 +306,13 @@ export function ReviewsPage() {
   // Keyboard navigation state
   const [activeIndex, setActiveIndex] = useState(0)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
-  const [traceCache, setTraceCache] = useState<Record<string, TraceStep[] | null>>({})
+  const [traceCache, setTraceCache] = useState<
+    Record<string, TraceStep[] | null>
+  >({})
   const itemRefs = useRef<(HTMLLIElement | null)[]>([])
   const notesRefs = useRef<(HTMLTextAreaElement | null)[]>([])
 
-  // Load pending reviews
+  // Load pending reviews (sorted by priority)
   useEffect(() => {
     if (!projectId) return
     let cancelled = false
@@ -179,8 +324,19 @@ export function ReviewsPage() {
         setTickets([])
         return
       }
+      const sorted = sortByPriority(r.tickets)
       setErr(null)
-      setTickets(r.tickets)
+      setTickets(sorted)
+      if (sorted.length > 0) {
+        setActiveIndex(0)
+        setExpandedIds(new Set(sorted[0]?.id ? [sorted[0].id] : []))
+        if (sorted[0]?.id) {
+          void loadTrace(client, sorted[0].id).then((steps) => {
+            if (cancelled || !sorted[0]?.id) return
+            setTraceCache((prev) => ({ ...prev, [sorted[0].id!]: steps }))
+          })
+        }
+      }
     })()
     return () => {
       cancelled = true
@@ -215,34 +371,48 @@ export function ReviewsPage() {
     [loadTraceForTicket],
   )
 
-  // Auto-expand the active ticket when navigating
-  useEffect(() => {
-    if (!tickets || tickets.length === 0) return
-    const ticket = tickets[activeIndex]
-    if (ticket?.id && !expandedIds.has(ticket.id)) {
-      setExpandedIds((prev) => {
-        const next = new Set(prev)
-        next.add(ticket.id!)
-        return next
-      })
-      void loadTraceForTicket(ticket.id)
-    }
-  }, [activeIndex, tickets, expandedIds, loadTraceForTicket])
+  const activateIndex = useCallback(
+    (nextIndex: number, sourceTickets: Ticket[] | null = tickets) => {
+      if (!sourceTickets || sourceTickets.length === 0) {
+        setActiveIndex(0)
+        return
+      }
+      const clamped = Math.max(0, Math.min(nextIndex, sourceTickets.length - 1))
+      setActiveIndex(clamped)
+      const ticket = sourceTickets[clamped]
+      if (ticket?.id) {
+        setExpandedIds((prev) => {
+          if (prev.has(ticket.id!)) return prev
+          const next = new Set(prev)
+          next.add(ticket.id!)
+          return next
+        })
+        void loadTraceForTicket(ticket.id)
+      }
+    },
+    [tickets, loadTraceForTicket],
+  )
 
   // Submit review
-  async function submitReview(ticketId: string, decision: 'approved' | 'rejected' | 'reopened') {
+  const submitReview = useCallback(async (
+    ticketId: string,
+    decision: 'approved' | 'rejected' | 'reopened',
+  ) => {
     if (!projectId || tickets === null) return
     const countBefore = tickets.length
     setBusyId(ticketId)
     setMessage(null)
     setJustEmptiedQueue(false)
-    const { error, response } = await client.POST('/tickets/{ticketID}/reviews', {
-      params: { path: { ticketID: ticketId } },
-      body: {
-        decision,
-        notes: notesById[ticketId]?.trim() || undefined,
+    const { error, response } = await client.POST(
+      '/tickets/{ticketID}/reviews',
+      {
+        params: { path: { ticketID: ticketId } },
+        body: {
+          decision,
+          notes: notesById[ticketId]?.trim() || undefined,
+        },
       },
-    })
+    )
     setBusyId(null)
     if (!response.ok) {
       setMessage(formatApiError(error))
@@ -260,7 +430,6 @@ export function ReviewsPage() {
       delete next[ticketId]
       return next
     })
-    // Remove from trace cache
     setTraceCache((prev) => {
       const next = { ...prev }
       delete next[ticketId]
@@ -271,32 +440,31 @@ export function ReviewsPage() {
       setMessage(r.message)
       return
     }
-    setTickets(r.tickets)
+    const sorted = sortByPriority(r.tickets)
+    setTickets(sorted)
 
-    if (r.tickets.length === 0 && countBefore > 0) {
+    if (sorted.length === 0 && countBefore > 0) {
       setMessage(null)
       setJustEmptiedQueue(true)
       return
     }
-    // Keep active index in bounds
-    if (activeIndex >= r.tickets.length) {
-      setActiveIndex(Math.max(0, r.tickets.length - 1))
+    if (sorted.length > 0) {
+      activateIndex(activeIndex, sorted)
+    } else {
+      setActiveIndex(0)
     }
-  }
+  }, [projectId, tickets, client, notesById, activeIndex, activateIndex])
 
   // Keyboard handler
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      // Don't capture when help overlay is open (it handles its own keys)
       if (showHelp) return
 
-      // Don't capture shortcuts when typing in a textarea/input (except Escape)
       const target = e.target as HTMLElement
       const isInput =
         target.tagName === 'TEXTAREA' ||
         target.tagName === 'INPUT' ||
         target.isContentEditable
-
       if (isInput && e.key !== 'Escape') return
 
       if (!tickets || tickets.length === 0) {
@@ -311,13 +479,13 @@ export function ReviewsPage() {
         case 'j':
         case 'ArrowDown': {
           e.preventDefault()
-          setActiveIndex((prev) => Math.min(prev + 1, tickets.length - 1))
+          activateIndex(activeIndex + 1)
           break
         }
         case 'k':
         case 'ArrowUp': {
           e.preventDefault()
-          setActiveIndex((prev) => Math.max(prev - 1, 0))
+          activateIndex(activeIndex - 1)
           break
         }
         case 'a': {
@@ -376,7 +544,7 @@ export function ReviewsPage() {
 
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [tickets, activeIndex, busyId, showHelp, toggleExpanded])
+  }, [tickets, activeIndex, busyId, showHelp, submitReview, toggleExpanded, activateIndex])
 
   // Scroll active item into view
   useEffect(() => {
@@ -387,22 +555,30 @@ export function ReviewsPage() {
   }, [activeIndex])
 
   if (!orgId || !projectId) {
-    return <p className="text-destructive text-sm">Missing route params.</p>
+    return <p className="text-sm text-destructive">Missing route params.</p>
   }
   if (err) {
-    return <p className="text-destructive text-sm">{err}</p>
+    return <p className="text-sm text-destructive">{err}</p>
   }
   if (!tickets) {
     return <ReviewsPageSkeleton />
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <KeyboardShortcutHelp open={showHelp} onClose={() => setShowHelp(false)} />
+    <motion.div
+      className="flex flex-col gap-6"
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+    >
+      <KeyboardShortcutHelp
+        open={showHelp}
+        onClose={() => setShowHelp(false)}
+      />
 
-      {/* Header */}
-      <div className="flex flex-col gap-1">
-        <p className="text-muted-foreground text-xs">
+      {/* ---- Header ---- */}
+      <div className="flex flex-col gap-3">
+        <p className="text-xs text-muted-foreground">
           <OrgProjectCrumbs
             orgId={orgId}
             projectId={projectId}
@@ -410,233 +586,352 @@ export function ReviewsPage() {
           />
           <span className="px-1">/</span>
           <span className="text-foreground" aria-current="page">
-            Pending reviews
+            Reviews
           </span>
         </p>
+
         <div className="flex items-center justify-between gap-4">
-          <h1 className="text-xl font-semibold tracking-tight">Pending reviews</h1>
           <div className="flex items-center gap-3">
+            <h1 className="text-xl font-semibold tracking-tight">
+              Review queue
+            </h1>
             {tickets.length > 0 && (
-              <span className="text-muted-foreground text-sm tabular-nums">
-                {activeIndex + 1} / {tickets.length}
-              </span>
+              <Badge
+                variant="outline"
+                className="border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+              >
+                {tickets.length} pending
+              </Badge>
             )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <QueueDepthIndicator
+              total={tickets.length}
+              currentIndex={activeIndex}
+            />
             <button
               type="button"
               onClick={() => setShowHelp(true)}
-              className="text-muted-foreground hover:text-foreground rounded-md border border-border px-2 py-0.5 text-xs transition-colors"
+              className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-muted-foreground backdrop-blur-sm transition-colors hover:bg-white/10 hover:text-foreground"
               aria-label="Show keyboard shortcuts"
             >
-              <kbd className="font-mono">?</kbd> shortcuts
+              <Kbd>?</Kbd>
+              <span className="ml-1.5">shortcuts</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* Status messages */}
-      {message && (
-        <p
-          className={
-            message.startsWith('Rejected') || message.startsWith('Reopened')
-              ? 'text-muted-foreground text-sm'
-              : message.includes('failed') || message.includes('Request')
-                ? 'text-destructive text-sm'
-                : 'text-primary text-sm'
-          }
-          role="status"
-        >
-          {message}
-        </p>
-      )}
-
-      {/* Ticket list */}
-      <StaggerList className="flex flex-col gap-3" role="listbox" aria-label="Review queue">
-        {tickets.map((t, idx) => {
-          const isActive = idx === activeIndex
-          const isExpanded = expandedIds.has(t.id ?? '')
-          const trace = traceCache[t.id ?? '']
-
-          return (
-            <StaggerItem
-              key={t.id}
-              ref={(el) => { itemRefs.current[idx] = el }}
-              role="option"
-              aria-selected={isActive}
-              className={`scroll-mt-4 rounded-lg transition-all duration-150 ${
-                isActive
-                  ? 'ring-primary/50 ring-2 ring-offset-1 ring-offset-background'
-                  : ''
+      {/* ---- Status messages ---- */}
+      <AnimatePresence>
+        {message && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <p
+              className={`rounded-lg px-4 py-2 text-sm backdrop-blur-sm ${
+                message.includes('Approved')
+                  ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+                  : message.includes('Rejected')
+                    ? 'border border-red-500/20 bg-red-500/10 text-red-400'
+                    : message.includes('Reopened')
+                      ? 'border border-amber-500/20 bg-amber-500/10 text-amber-400'
+                      : 'border border-destructive/20 bg-destructive/10 text-destructive'
               }`}
+              role="status"
             >
-              <Card
-                className={`transition-colors duration-150 ${
-                  isActive ? 'border-primary/30 bg-primary/[0.03]' : ''
-                }`}
+              {message}
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ---- Ticket stack ---- */}
+      <ul className="flex flex-col gap-3" role="listbox" aria-label="Review queue">
+        <AnimatePresence mode="popLayout">
+          {tickets.map((t, idx) => {
+            const isActive = idx === activeIndex
+            const isExpanded = expandedIds.has(t.id ?? '')
+            const trace = traceCache[t.id ?? '']
+            const pMeta = getPriorityMeta(t.priority)
+
+            return (
+              <motion.li
+                key={t.id}
+                ref={(el) => {
+                  itemRefs.current[idx] = el
+                }}
+                role="option"
+                aria-selected={isActive}
+                layout
+                initial={{ opacity: 0, y: 20, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, x: -80, scale: 0.95 }}
+                transition={{
+                  type: 'spring',
+                  stiffness: 400,
+                  damping: 30,
+                  delay: idx * 0.04,
+                }}
+                className="scroll-mt-4"
               >
-                <CardHeader
-                  className="cursor-pointer select-none"
-                  onClick={() => {
-                    setActiveIndex(idx)
-                    if (t.id) toggleExpanded(t.id)
-                  }}
+                <div
+                  className={`group relative overflow-hidden rounded-xl border backdrop-blur-md transition-all duration-200 ${
+                    isActive
+                      ? `border-emerald-500/30 bg-white/[0.06] ${pMeta.ring} ring-2 ring-offset-1 ring-offset-background`
+                      : 'border-white/10 bg-white/[0.03] hover:border-white/15 hover:bg-white/[0.05]'
+                  }`}
                 >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={`inline-flex size-5 items-center justify-center rounded-full text-xs font-medium transition-colors ${
-                        isActive
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-white/[0.06] text-muted-foreground'
-                      }`}
-                    >
-                      {idx + 1}
-                    </span>
-                    <CardTitle className="text-base">{t.title ?? t.id}</CardTitle>
-                    {t.state && <Badge variant="secondary">{t.state}</Badge>}
-                    <span className="text-muted-foreground ml-auto font-mono text-xs">
-                      {t.id}
-                    </span>
-                  </div>
-                </CardHeader>
+                  <div
+                    className={`absolute left-0 top-0 h-full w-1 rounded-l-xl transition-opacity ${
+                      isActive ? 'opacity-100' : 'opacity-50'
+                    } ${
+                      (t.priority ?? 2) === 0
+                        ? 'bg-red-500'
+                        : (t.priority ?? 2) === 1
+                          ? 'bg-amber-500'
+                          : (t.priority ?? 2) === 3
+                            ? 'bg-slate-500'
+                            : 'bg-emerald-500'
+                    }`}
+                  />
 
-                {/* Expanded inline details */}
-                {isExpanded && (
-                  <CardContent className="flex flex-col gap-4 border-t border-border pt-4">
-                    {/* Objective */}
-                    {t.objective?.description && (
-                      <div>
-                        <h3 className="text-foreground mb-1 text-xs font-medium uppercase tracking-wide">
-                          Objective
-                        </h3>
-                        <p className="text-muted-foreground whitespace-pre-wrap text-sm">
-                          {t.objective.description}
-                        </p>
-                        {t.objective.success_criteria &&
-                          t.objective.success_criteria.length > 0 && (
-                            <ul className="text-muted-foreground mt-2 list-inside list-disc text-sm">
-                              {t.objective.success_criteria.map((c, i) => (
-                                <li key={i}>{c}</li>
-                              ))}
-                            </ul>
+                  <div
+                    className="cursor-pointer select-none px-5 py-4 pl-6"
+                    onClick={() => {
+                      setActiveIndex(idx)
+                      if (t.id) toggleExpanded(t.id)
+                    }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`inline-flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium transition-colors ${
+                          isActive
+                            ? 'bg-emerald-500/20 text-emerald-400'
+                            : 'bg-white/5 text-muted-foreground'
+                        }`}
+                      >
+                        {idx + 1}
+                      </span>
+
+                      <div className="flex min-w-0 flex-1 flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-sm font-medium text-foreground">
+                            {t.title ?? t.id}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <span className="font-mono">{t.id}</span>
+                          {t.state && (
+                            <Badge variant="muted" className="text-[10px]">
+                              {t.state}
+                            </Badge>
                           )}
+                          <span className={pMeta.color}>{pMeta.label}</span>
+                        </div>
                       </div>
+
+                      <motion.div
+                        animate={{ rotate: isExpanded ? 180 : 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <ChevronDown className="size-4 text-muted-foreground" />
+                      </motion.div>
+                    </div>
+                  </div>
+
+                  <AnimatePresence>
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.25, ease: 'easeInOut' }}
+                        className="overflow-hidden"
+                      >
+                        <div className="flex flex-col gap-5 border-t border-white/5 px-5 py-5 pl-6">
+                          {t.objective?.description && (
+                            <div>
+                              <h3 className="mb-1.5 text-[10px] font-medium uppercase tracking-widest text-emerald-400/60">
+                                Objective
+                              </h3>
+                              <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/80">
+                                {t.objective.description}
+                              </p>
+                              {t.objective.success_criteria &&
+                                t.objective.success_criteria.length > 0 && (
+                                  <ul className="mt-2 flex flex-col gap-1">
+                                    {t.objective.success_criteria.map((c, i) => (
+                                      <li
+                                        key={i}
+                                        className="flex items-start gap-2 text-sm text-muted-foreground"
+                                      >
+                                        <span className="mt-1.5 block size-1 shrink-0 rounded-full bg-emerald-500/50" />
+                                        {c}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                            </div>
+                          )}
+
+                          {t.outputs &&
+                            typeof t.outputs === 'object' &&
+                            Object.keys(t.outputs).length > 0 && (
+                              <div>
+                                <h3 className="mb-1.5 text-[10px] font-medium uppercase tracking-widest text-emerald-400/60">
+                                  Outputs
+                                </h3>
+                                <OutputsSummary outputs={t.outputs} />
+                              </div>
+                            )}
+
+                          <div>
+                            <h3 className="mb-1.5 text-[10px] font-medium uppercase tracking-widest text-emerald-400/60">
+                              Execution trace
+                            </h3>
+                            {trace === undefined ? (
+                              <div className="flex flex-col gap-1.5">
+                                <Skeleton className="h-3 w-full" />
+                                <Skeleton className="h-3 w-3/4" />
+                              </div>
+                            ) : (
+                              <TraceSummary steps={trace} />
+                            )}
+                          </div>
+
+                          <label className="flex flex-col gap-1.5">
+                            <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                              Review notes
+                              <Kbd>n</Kbd>
+                            </span>
+                            <textarea
+                              ref={(el) => {
+                                notesRefs.current[idx] = el
+                              }}
+                              className="min-h-[56px] rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 backdrop-blur-sm transition-colors focus:border-emerald-500/30 focus:outline-none focus:ring-1 focus:ring-emerald-500/20"
+                              value={notesById[t.id ?? ''] ?? ''}
+                              onChange={(e) =>
+                                setNotesById((prev) => ({
+                                  ...prev,
+                                  [t.id ?? '']: e.target.value,
+                                }))
+                              }
+                              placeholder="Optional feedback..."
+                              rows={2}
+                            />
+                          </label>
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                              size="sm"
+                              disabled={busyId === t.id}
+                              onClick={() => t.id && submitReview(t.id, 'approved')}
+                              className="border-emerald-500/30 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 focus-visible:ring-emerald-500/30"
+                            >
+                              <CheckCircle2 className="mr-1 size-3.5" />
+                              Approve
+                              <Kbd>a</Kbd>
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              disabled={busyId === t.id}
+                              onClick={() => t.id && submitReview(t.id, 'rejected')}
+                            >
+                              <XCircle className="mr-1 size-3.5" />
+                              Reject
+                              <Kbd>r</Kbd>
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              disabled={busyId === t.id}
+                              onClick={() => t.id && submitReview(t.id, 'reopened')}
+                              className="border border-white/10 bg-white/5 text-foreground/80 hover:bg-white/10"
+                            >
+                              <RotateCcw className="mr-1 size-3.5" />
+                              Reopen
+                              <Kbd>o</Kbd>
+                            </Button>
+                            <Link
+                              to={`/orgs/${orgId}/projects/${projectId}/tickets/${t.id}`}
+                              className="ml-auto flex items-center gap-1 text-xs text-emerald-400/70 transition-colors hover:text-emerald-400"
+                            >
+                              Full detail
+                              <ExternalLink className="size-3" />
+                            </Link>
+                          </div>
+                        </div>
+                      </motion.div>
                     )}
+                  </AnimatePresence>
+                </div>
+              </motion.li>
+            )
+          })}
+        </AnimatePresence>
+      </ul>
 
-                    {/* Outputs */}
-                    {t.outputs &&
-                      typeof t.outputs === 'object' &&
-                      Object.keys(t.outputs).length > 0 && (
-                        <div>
-                          <h3 className="text-foreground mb-1 text-xs font-medium uppercase tracking-wide">
-                            Outputs
-                          </h3>
-                          <OutputsSummary outputs={t.outputs} />
-                        </div>
-                      )}
-
-                    {/* Trace summary */}
-                    <div>
-                      <h3 className="text-foreground mb-1 text-xs font-medium uppercase tracking-wide">
-                        Execution trace
-                      </h3>
-                      {trace === undefined ? (
-                        <div className="flex flex-col gap-1.5">
-                          <Skeleton className="h-3 w-full" />
-                          <Skeleton className="h-3 w-3/4" />
-                        </div>
-                      ) : (
-                        <TraceSummary steps={trace} />
-                      )}
-                    </div>
-
-                    {/* Notes */}
-                    <div className="flex flex-col gap-1.5">
-                      <Label className="text-xs">
-                        Review notes{' '}
-                        <kbd className="rounded-md border border-white/10 bg-white/[0.06] px-1 font-mono text-[10px]">
-                          n
-                        </kbd>
-                      </Label>
-                      <Textarea
-                        ref={(el) => { notesRefs.current[idx] = el }}
-                        className="min-h-[60px]"
-                        value={notesById[t.id ?? ''] ?? ''}
-                        onChange={(e) =>
-                          setNotesById((prev) => ({
-                            ...prev,
-                            [t.id ?? '']: e.target.value,
-                          }))
-                        }
-                        placeholder="Optional feedback…"
-                        rows={2}
-                      />
-                    </div>
-
-                    {/* Action buttons */}
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        size="sm"
-                        disabled={busyId === t.id}
-                        onClick={() => t.id && submitReview(t.id, 'approved')}
-                      >
-                        <span className="mr-1.5 font-mono text-xs opacity-60">a</span>
-                        Approve
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        disabled={busyId === t.id}
-                        onClick={() => t.id && submitReview(t.id, 'rejected')}
-                      >
-                        <span className="mr-1.5 font-mono text-xs opacity-60">r</span>
-                        Reject
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        disabled={busyId === t.id}
-                        onClick={() => t.id && submitReview(t.id, 'reopened')}
-                      >
-                        <span className="mr-1.5 font-mono text-xs opacity-60">o</span>
-                        Reopen
-                      </Button>
-                      <Link
-                        to={`/orgs/${orgId}/projects/${projectId}/tickets/${t.id}`}
-                        className="text-primary ml-auto text-xs hover:underline"
-                      >
-                        Full detail →
-                      </Link>
-                    </div>
-                  </CardContent>
-                )}
-              </Card>
-            </StaggerItem>
-          )
-        })}
-      </StaggerList>
-
-      {/* Empty states */}
+      {/* ---- Empty states ---- */}
       {tickets.length === 0 && justEmptiedQueue && (
-        <ReviewQueueCelebration onDismiss={() => setJustEmptiedQueue(false)} />
+        <ReviewQueueCelebration
+          onDismiss={() => setJustEmptiedQueue(false)}
+        />
       )}
 
       {tickets.length === 0 && !justEmptiedQueue && (
-        <p className="text-muted-foreground text-sm">No tickets awaiting review.</p>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="flex flex-col items-center gap-3 rounded-xl border border-white/5 bg-white/[0.02] py-16 text-center backdrop-blur-sm"
+        >
+          <CheckCircle2 className="size-10 text-emerald-500/30" />
+          <p className="text-sm text-muted-foreground">
+            No tickets awaiting review.
+          </p>
+        </motion.div>
       )}
 
-      {/* Keyboard hint footer */}
+      {/* ---- Keyboard hint footer ---- */}
       {tickets.length > 0 && (
-        <p className="text-muted-foreground text-center text-xs">
-          <kbd className="font-mono">j</kbd>/<kbd className="font-mono">k</kbd> navigate
-          {' · '}
-          <kbd className="font-mono">a</kbd> approve
-          {' · '}
-          <kbd className="font-mono">r</kbd> reject
-          {' · '}
-          <kbd className="font-mono">n</kbd> notes
-          {' · '}
-          <kbd className="font-mono">?</kbd> help
-        </p>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          className="flex items-center justify-center gap-4 py-2 text-xs text-muted-foreground/60"
+        >
+          <span className="flex items-center gap-1">
+            <Kbd>j</Kbd>
+            <Kbd>k</Kbd>
+            navigate
+          </span>
+          <span className="flex items-center gap-1">
+            <Kbd>a</Kbd>
+            approve
+          </span>
+          <span className="flex items-center gap-1">
+            <Kbd>r</Kbd>
+            reject
+          </span>
+          <span className="flex items-center gap-1">
+            <Kbd>o</Kbd>
+            reopen
+          </span>
+          <span className="flex items-center gap-1">
+            <Kbd>n</Kbd>
+            notes
+          </span>
+          <span className="flex items-center gap-1">
+            <Kbd>?</Kbd>
+            help
+          </span>
+        </motion.div>
       )}
-    </div>
+    </motion.div>
   )
 }
