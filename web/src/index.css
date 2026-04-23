@@ -84,39 +84,39 @@
     --sidebar-ring: oklch(0.55 0.12 150);
 }
 
-/* Dark mode — primary theme (dark moss greens) */
+/* Dark mode — primary theme (dark moss greens + glassmorphism translucency) */
 .dark {
     --background: oklch(0.145 0.015 150);
     --foreground: oklch(0.93 0.01 150);
-    --card: oklch(0.19 0.02 150);
+    --card: oklch(0.19 0.02 150 / 60%);
     --card-foreground: oklch(0.93 0.01 150);
     --popover: oklch(0.18 0.01 155 / 80%);
     --popover-foreground: oklch(0.93 0.01 150);
     --primary: oklch(0.72 0.18 150);
     --primary-foreground: oklch(0.145 0.015 150);
-    --secondary: oklch(0.24 0.025 150);
+    --secondary: oklch(0.24 0.025 150 / 50%);
     --secondary-foreground: oklch(0.93 0.01 150);
-    --muted: oklch(0.24 0.025 150);
+    --muted: oklch(0.24 0.025 150 / 40%);
     --muted-foreground: oklch(0.65 0.03 150);
-    --accent: oklch(0.24 0.025 150);
+    --accent: oklch(0.24 0.025 150 / 50%);
     --accent-foreground: oklch(0.93 0.01 150);
     --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(0.55 0.05 150 / 12%);
-    --input: oklch(0.55 0.05 150 / 18%);
-    --ring: oklch(0.72 0.18 150);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 12%);
+    --ring: oklch(0.72 0.18 150 / 40%);
     --chart-1: oklch(0.72 0.18 150);
     --chart-2: oklch(0.55 0.12 150);
     --chart-3: oklch(0.42 0.08 150);
     --chart-4: oklch(0.35 0.06 150);
     --chart-5: oklch(0.27 0.04 150);
-    --sidebar: oklch(0.125 0.018 150);
+    --sidebar: oklch(0.125 0.018 150 / 80%);
     --sidebar-foreground: oklch(0.93 0.01 150);
     --sidebar-primary: oklch(0.72 0.18 150);
     --sidebar-primary-foreground: oklch(0.145 0.015 150);
-    --sidebar-accent: oklch(0.22 0.025 150);
+    --sidebar-accent: oklch(0.22 0.025 150 / 50%);
     --sidebar-accent-foreground: oklch(0.93 0.01 150);
-    --sidebar-border: oklch(0.55 0.05 150 / 12%);
-    --sidebar-ring: oklch(0.72 0.18 150);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.72 0.18 150 / 40%);
 }
 
 @layer base {
@@ -202,6 +202,57 @@
   }
   50% {
     transform: rotate(6deg) scale(1.12);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Landing page — floating orbs                                       */
+/* ------------------------------------------------------------------ */
+
+@keyframes landing-drift {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(30px, -20px) scale(1.05);
+  }
+  66% {
+    transform: translate(-20px, 15px) scale(0.97);
+  }
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+.landing-orb {
+  will-change: transform;
+  animation: landing-drift 20s ease-in-out infinite;
+}
+.landing-orb-1 {
+  animation-duration: 22s;
+}
+.landing-orb-2 {
+  animation-duration: 26s;
+  animation-delay: -8s;
+}
+.landing-orb-3 {
+  animation-duration: 30s;
+  animation-delay: -14s;
+}
+
+/* Hero heading entrance */
+.landing-hero-heading {
+  animation: landing-heading-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes landing-heading-in {
+  0% {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
