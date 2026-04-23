@@ -215,7 +215,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"acceptance_test":  map[string]any{"type": "string", "description": "Acceptance test description (optional)"},
 			"idempotency_key":  map[string]any{"type": "string", "description": "Idempotency key to prevent duplicate creation (optional)"},
 			"work_stream_id":   map[string]any{"type": "string", "description": "Work stream ID to attach this ticket to (optional)"},
-			"depends_on":       map[string]any{"type": "string", "description": "JSON array of ticket IDs this ticket depends on (optional)"},
+			"depends_on":       map[string]any{"type": "array", "description": "Array of ticket IDs this ticket depends on (optional)", "items": map[string]any{"type": "string"}},
 			"target_repo":      map[string]any{"type": "string", "description": "Target repository alias for multi-repo projects (optional, from list_project_repositories; omit for primary repo)"},
 			"agent_id":         map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
@@ -286,7 +286,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"properties": map[string]any{
 			"project_id":     map[string]any{"type": "string", "description": "Project ID"},
 			"ticket_id":      map[string]any{"type": "string", "description": "Ticket ID"},
-			"depends_on":     map[string]any{"type": "string", "description": "JSON array of ticket ID strings this ticket depends on (optional)"},
+			"depends_on":     map[string]any{"type": "array", "description": "Array of ticket ID strings this ticket depends on (optional)", "items": map[string]any{"type": "string"}},
 			"work_stream_id": map[string]any{"type": "string", "description": "Work stream ID to attach this ticket to (optional)"},
 			"agent_id":       map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
@@ -568,6 +568,42 @@ func requireString(args map[string]any, key string) (string, error) {
 		return "", fmt.Errorf("%s must be a string", key)
 	}
 	return s, nil
+}
+
+// getStringArray extracts a []string from args[key]. It handles three formats:
+// 1. Native JSON array ([]interface{} from JSON decoding) — e.g. MCP clients sending ["a","b"]
+// 2. JSON-encoded string — e.g. "[\"a\",\"b\"]"
+// 3. Missing/nil — returns nil
+func getStringArray(args map[string]any, key string) []string {
+	if args == nil {
+		return nil
+	}
+	v, ok := args[key]
+	if !ok || v == nil {
+		return nil
+	}
+	// Case 1: native JSON array ([]interface{} from JSON decoding)
+	if arr, ok := v.([]interface{}); ok {
+		out := make([]string, 0, len(arr))
+		for _, elem := range arr {
+			if s, ok := elem.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	// Case 2: already a []string (rare, but possible)
+	if arr, ok := v.([]string); ok {
+		return arr
+	}
+	// Case 3: JSON-encoded string containing an array
+	if s, ok := v.(string); ok && s != "" {
+		var out []string
+		if err := json.Unmarshal([]byte(s), &out); err == nil {
+			return out
+		}
+	}
+	return nil
 }
 
 func getString(args map[string]any, key, def string) string {
@@ -1111,9 +1147,9 @@ func createTicketHandler(b *Backend, ctx context.Context, args map[string]any) (
 				return toolErrTriple(apierrors.New(apierrors.CodeNotFound, "work stream not found or does not belong to project", false))
 			}
 		}
-		dependsOn := []string{}
-		if d := getString(args, "depends_on", ""); d != "" {
-			_ = json.Unmarshal([]byte(d), &dependsOn)
+		dependsOn := getStringArray(args, "depends_on")
+		if dependsOn == nil {
+			dependsOn = []string{}
 		}
 		targetRepo := getString(args, "target_repo", "")
 		// Validate target_repo alias exists if provided and multi-repo is configured.
@@ -1427,12 +1463,7 @@ func updateTicketHandler(b *Backend, ctx context.Context, args map[string]any) (
 		if t.ProjectID != projectID {
 			return toolErrTriple(apierrors.New(apierrors.CodeForbidden, "ticket does not belong to that project", false))
 		}
-		dependsOnStr := getString(args,"depends_on", "")
-		if dependsOnStr != "" {
-			var dependsOn []string
-			if err := json.Unmarshal([]byte(dependsOnStr), &dependsOn); err != nil {
-				return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, "depends_on must be a JSON array of ticket ID strings", false))
-			}
+		if dependsOn := getStringArray(args, "depends_on"); dependsOn != nil {
 			if err := b.Ticket.UpdateDependsOn(ctx, ticketID, dependsOn); err != nil {
 				return toolErrTriple(apierrors.MapError(err))
 			}
