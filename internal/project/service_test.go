@@ -55,6 +55,10 @@ func (m *mockProjectStore) UpdateContextPack(ctx context.Context, projectID stri
 	return m.updatePackErr
 }
 
+func (m *mockProjectStore) UpdateDispatchEnabled(ctx context.Context, projectID string, enabled bool) error {
+	return m.updateErr
+}
+
 func TestService_CreateProject_Slugify(t *testing.T) {
 	store := &mockProjectStore{}
 	svc := NewService(store)
@@ -239,6 +243,42 @@ func TestService_UpdateContextPack_StoreError(t *testing.T) {
 	err := svc.UpdateContextPack(ctx, "p1", ContextPack{})
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestService_UpdateDispatchEnabled(t *testing.T) {
+	store := &mockProjectStore{}
+	svc := NewService(store)
+	ctx := context.Background()
+
+	err := svc.UpdateDispatchEnabled(ctx, "p1", true)
+	if err != nil {
+		t.Fatalf("UpdateDispatchEnabled: %v", err)
+	}
+}
+
+func TestService_UpdateDispatchEnabled_StoreError(t *testing.T) {
+	store := &mockProjectStore{updateErr: ErrProjectNotFound}
+	svc := NewService(store)
+	ctx := context.Background()
+
+	err := svc.UpdateDispatchEnabled(ctx, "p1", false)
+	if err != ErrProjectNotFound {
+		t.Errorf("got err %v", err)
+	}
+}
+
+func TestService_CreateProject_DispatchEnabledByDefault(t *testing.T) {
+	store := &mockProjectStore{}
+	svc := NewService(store)
+	ctx := context.Background()
+
+	p, err := svc.CreateProject(ctx, "org1", "Test", "", "", nil)
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	if !p.DispatchEnabled {
+		t.Error("DispatchEnabled should default to true")
 	}
 }
 

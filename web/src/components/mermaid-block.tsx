@@ -47,7 +47,7 @@ function MermaidBlockMounted({ chart }: { chart: string }) {
 
   if (err) {
     return (
-      <div className="border-border bg-muted/30 my-2 rounded-md border p-2 text-xs">
+      <div className="my-2 rounded-xl border border-white/10 bg-white/[0.03] p-2 text-xs backdrop-blur-sm">
         <p className="text-destructive mb-1 font-medium">Mermaid</p>
         <p className="text-muted-foreground mb-2">{err}</p>
         <pre className="text-foreground overflow-x-auto font-mono whitespace-pre-wrap">
@@ -60,7 +60,7 @@ function MermaidBlockMounted({ chart }: { chart: string }) {
   return (
     <div
       ref={containerRef}
-      className="border-border bg-muted/20 my-2 overflow-x-auto rounded-md border p-2 [&_svg]:max-w-none"
+      className="my-2 overflow-x-auto rounded-xl border border-white/10 bg-white/[0.03] p-2 backdrop-blur-sm [&_svg]:max-w-none"
       aria-label="Mermaid diagram"
     />
   )

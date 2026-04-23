@@ -2,7 +2,7 @@
 -- Stores the output of AST analysis (Tree-sitter or Go AST) so agents can query
 -- callers, callees, importers, blast radius, and symbol metadata.
 
-CREATE TABLE code_symbols (
+CREATE TABLE IF NOT EXISTS code_symbols (
     id          TEXT PRIMARY KEY,           -- file:SymbolName (stable within a project)
     project_id  TEXT NOT NULL REFERENCES projects(id),
     name        TEXT NOT NULL,
@@ -18,14 +18,14 @@ CREATE TABLE code_symbols (
     indexed_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX code_symbols_project   ON code_symbols(project_id);
-CREATE INDEX code_symbols_name      ON code_symbols(project_id, name);
-CREATE INDEX code_symbols_file      ON code_symbols(project_id, file);
-CREATE INDEX code_symbols_language  ON code_symbols(project_id, language);
-CREATE INDEX code_symbols_kind      ON code_symbols(project_id, kind);
+CREATE INDEX IF NOT EXISTS code_symbols_project   ON code_symbols(project_id);
+CREATE INDEX IF NOT EXISTS code_symbols_name      ON code_symbols(project_id, name);
+CREATE INDEX IF NOT EXISTS code_symbols_file      ON code_symbols(project_id, file);
+CREATE INDEX IF NOT EXISTS code_symbols_language  ON code_symbols(project_id, language);
+CREATE INDEX IF NOT EXISTS code_symbols_kind      ON code_symbols(project_id, kind);
 
 -- Call edges: caller -> callee relationships extracted from AST.
-CREATE TABLE code_edges (
+CREATE TABLE IF NOT EXISTS code_edges (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     project_id  TEXT NOT NULL REFERENCES projects(id),
     caller_id   TEXT NOT NULL,              -- references code_symbols(id)
@@ -36,12 +36,12 @@ CREATE TABLE code_edges (
     indexed_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX code_edges_project     ON code_edges(project_id);
-CREATE INDEX code_edges_caller      ON code_edges(project_id, caller_id);
-CREATE INDEX code_edges_callee      ON code_edges(project_id, callee_id);
+CREATE INDEX IF NOT EXISTS code_edges_project     ON code_edges(project_id);
+CREATE INDEX IF NOT EXISTS code_edges_caller      ON code_edges(project_id, caller_id);
+CREATE INDEX IF NOT EXISTS code_edges_callee      ON code_edges(project_id, callee_id);
 
 -- Import edges: file -> package relationships.
-CREATE TABLE code_imports (
+CREATE TABLE IF NOT EXISTS code_imports (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     project_id  TEXT NOT NULL REFERENCES projects(id),
     file        TEXT NOT NULL,
@@ -50,11 +50,11 @@ CREATE TABLE code_imports (
     indexed_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX code_imports_project   ON code_imports(project_id);
-CREATE INDEX code_imports_package   ON code_imports(project_id, package);
+CREATE INDEX IF NOT EXISTS code_imports_project   ON code_imports(project_id);
+CREATE INDEX IF NOT EXISTS code_imports_package   ON code_imports(project_id, package);
 
 -- Index status: tracks when each project was last indexed.
-CREATE TABLE code_index_status (
+CREATE TABLE IF NOT EXISTS code_index_status (
     project_id     TEXT PRIMARY KEY REFERENCES projects(id),
     last_commit_sha TEXT NOT NULL DEFAULT '',
     last_indexed_at TIMESTAMPTZ NOT NULL DEFAULT now(),

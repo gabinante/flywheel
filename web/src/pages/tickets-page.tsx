@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   ClipboardList,
@@ -22,9 +22,11 @@ import {
 
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
 import { StyledSelect } from '@/components/ui/styled-select'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
+import { TicketsPageSkeleton } from '@/components/ui/skeleton'
 import { formatApiError } from '@/lib/api/client'
 import { cn } from '@/lib/utils'
 import type { components } from '@/lib/api/v1'
@@ -490,6 +492,7 @@ export function TicketsPage() {
 
   // ---- Filter helpers ----
   function setWorkStreamFilter(id: string) {
+    setSelectedIndex(-1)
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev)
@@ -531,8 +534,15 @@ export function TicketsPage() {
   }, [category, refineOptions])
 
   // ---- Keyboard navigation ----
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
+  function scrollToIndex(index: number) {
+    const list = listRef.current
+    if (!list) return
+    const items = list.querySelectorAll('[data-ticket-id]')
+    items[index]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       if (!tickets || tickets.length === 0) return
 
       // Don't capture keystrokes when a select/input is focused
@@ -571,26 +581,11 @@ export function TicketsPage() {
           break
         }
       }
-    },
-    [tickets, selectedIndex, orgId, projectId, navigate],
-  )
+    }
 
-  function scrollToIndex(index: number) {
-    const list = listRef.current
-    if (!list) return
-    const items = list.querySelectorAll('[data-ticket-id]')
-    items[index]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  }
-
-  useEffect(() => {
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [handleKeyDown])
-
-  // Reset selection on filter change
-  useEffect(() => {
-    setSelectedIndex(-1)
-  }, [category, specificState, workStreamFilter])
+  }, [tickets, selectedIndex, orgId, projectId, navigate])
 
   // ---- Guard clauses ----
   if (!orgId || !projectId) {
@@ -600,29 +595,7 @@ export function TicketsPage() {
     return <p className="text-destructive text-sm">{err}</p>
   }
   if (!tickets) {
-    return (
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <p className="text-muted-foreground text-xs">
-            <OrgProjectCrumbs orgId={orgId} projectId={projectId} projectLabel={projectLabel} />
-            <span className="px-1">/</span>
-            <span className="text-foreground" aria-current="page">Tickets</span>
-          </p>
-          <h1 className="text-xl font-semibold tracking-tight">Tickets</h1>
-        </div>
-        {/* Skeleton loading state */}
-        <div className="flex gap-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-8 w-40 animate-pulse rounded-lg bg-white/5" />
-          ))}
-        </div>
-        <div className="flex flex-col gap-3">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-20 animate-pulse rounded-xl border border-white/5 bg-white/[0.02]" />
-          ))}
-        </div>
-      </div>
-    )
+    return <TicketsPageSkeleton />
   }
 
   // ---- Render ----
@@ -667,9 +640,7 @@ export function TicketsPage() {
       {/* Filter bar */}
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
         <div className="flex flex-col gap-1.5">
-          <label className="text-muted-foreground text-xs font-medium" htmlFor="work-stream-filter">
-            Work stream
-          </label>
+          <Label htmlFor="work-stream-filter">Work stream</Label>
           <StyledSelect
             id="work-stream-filter"
             value={workStreamFilter}
@@ -680,13 +651,12 @@ export function TicketsPage() {
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <label className="text-muted-foreground text-xs font-medium" htmlFor="category-filter">
-            View
-          </label>
+          <Label htmlFor="category-filter">View</Label>
           <StyledSelect
             id="category-filter"
             value={category}
             onValueChange={(val) => {
+              setSelectedIndex(-1)
               const next = val as CategoryId
               setCategory(next)
               const allowed = statesInCategory(next)
@@ -700,13 +670,14 @@ export function TicketsPage() {
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <label className="text-muted-foreground text-xs font-medium" htmlFor="state-refine">
-            Refine by state
-          </label>
+          <Label htmlFor="state-refine">Refine by state</Label>
           <StyledSelect
             id="state-refine"
             value={specificState}
-            onValueChange={(val) => setSpecificState(val as TicketState | '')}
+            onValueChange={(val) => {
+              setSelectedIndex(-1)
+              setSpecificState(val as TicketState | '')
+            }}
             options={refineSelectOptions}
           />
         </div>

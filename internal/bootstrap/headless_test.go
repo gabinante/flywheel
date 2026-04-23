@@ -15,7 +15,7 @@ import (
 func TestHeadlessConfigFromEnv(t *testing.T) {
 	// Set test env vars.
 	t.Setenv("WARRANT_REPO_PATH", "/test/repo")
-	t.Setenv("ANTHROPIC_API_KEY", "sk-test")
+	t.Setenv("DISPATCH_AGENT_API_KEY", "sk-test")
 	t.Setenv("AUTONOMY_MODE", "supervised")
 	t.Setenv("WARRANT_DATA_DIR", "/test/data")
 
@@ -24,8 +24,8 @@ func TestHeadlessConfigFromEnv(t *testing.T) {
 	if cfg.RepoPath != "/test/repo" {
 		t.Errorf("expected /test/repo, got %q", cfg.RepoPath)
 	}
-	if cfg.AnthropicKey != "sk-test" {
-		t.Errorf("expected sk-test, got %q", cfg.AnthropicKey)
+	if cfg.DispatchCredential != "sk-test" {
+		t.Errorf("expected sk-test, got %q", cfg.DispatchCredential)
 	}
 	if cfg.AutonomyMode != "supervised" {
 		t.Errorf("expected supervised, got %q", cfg.AutonomyMode)
@@ -38,6 +38,8 @@ func TestHeadlessConfigFromEnv(t *testing.T) {
 func TestHeadlessConfigDefaults(t *testing.T) {
 	// Clear relevant env vars.
 	t.Setenv("WARRANT_REPO_PATH", "")
+	t.Setenv("DISPATCH_AGENT_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
 	t.Setenv("ANTHROPIC_API_KEY", "")
 	t.Setenv("AUTONOMY_MODE", "")
 	t.Setenv("WARRANT_DATA_DIR", "")
@@ -50,6 +52,20 @@ func TestHeadlessConfigDefaults(t *testing.T) {
 	}
 	if cfg.AutonomyMode != "sandbox" {
 		t.Errorf("expected sandbox default, got %q", cfg.AutonomyMode)
+	}
+}
+
+func TestHeadlessConfigFromEnvOpenAIKeyFallback(t *testing.T) {
+	t.Setenv("WARRANT_REPO_PATH", "")
+	t.Setenv("DISPATCH_AGENT_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "sk-openai")
+	t.Setenv("ANTHROPIC_API_KEY", "sk-anthropic")
+	t.Setenv("AUTONOMY_MODE", "")
+	t.Setenv("WARRANT_DATA_DIR", "")
+
+	cfg := HeadlessConfigFromEnv()
+	if cfg.DispatchCredential != "sk-openai" {
+		t.Fatalf("expected OPENAI_API_KEY fallback, got %q", cfg.DispatchCredential)
 	}
 }
 
@@ -79,10 +95,10 @@ func TestRunHeadless(t *testing.T) {
 
 	// Run headless bootstrap.
 	cfg := &HeadlessConfig{
-		RepoPath:     repoDir,
-		AnthropicKey: "sk-test-key",
-		AutonomyMode: "sandbox",
-		DataDir:      dataDir,
+		RepoPath:           repoDir,
+		DispatchCredential: "sk-test-key",
+		AutonomyMode:       "sandbox",
+		DataDir:            dataDir,
 	}
 
 	result, err := RunHeadless(ctx, cfg, orgSvc, projSvc, agentSvc)
