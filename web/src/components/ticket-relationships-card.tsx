@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, GitBranch } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
+import { Skeleton } from '@/components/ui/skeleton'
 import type { components } from '@/lib/api/v1'
 
 type Ticket = components['schemas']['Ticket']
@@ -158,9 +159,9 @@ export function TicketRelationshipsCard({
           </div>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-2 text-muted-foreground text-sm">
-            <div className="size-3 animate-pulse rounded-full bg-muted-foreground/20" />
-            Loading relationships...
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-3/4" />
           </div>
         </CardContent>
       </Card>

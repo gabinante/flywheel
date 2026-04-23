@@ -108,11 +108,14 @@ function OutputValue({ value }: { value: unknown }) {
 
     // JSON detection
     if (looksLikeJson(trimmed)) {
+      let formattedJson: string | null = null
       try {
-        const formatted = JSON.stringify(JSON.parse(trimmed), null, 2)
-        return <SyntaxBlock content={formatted} language="json" />
+        formattedJson = JSON.stringify(JSON.parse(trimmed), null, 2)
       } catch {
         // Not valid JSON, fall through
+      }
+      if (formattedJson) {
+        return <SyntaxBlock content={formattedJson} language="json" />
       }
     }
 

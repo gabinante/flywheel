@@ -8,9 +8,10 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/use-auth'
 import { formatApiError } from '@/lib/api/client'
-import { cn } from '@/lib/utils'
 
 type TicketReviewPanelProps = {
   ticketId: string
@@ -77,24 +78,18 @@ export function TicketReviewPanel({
             Add feedback note...
           </button>
         ) : (
-          <label className="flex flex-col gap-1.5">
-            <span className="text-muted-foreground text-xs font-medium">
-              Feedback (optional)
-            </span>
-            <textarea
-              className={cn(
-                'min-h-[80px] rounded-lg border bg-white/[0.03] px-3 py-2.5 text-sm transition-colors',
-                'border-white/[0.08] placeholder:text-muted-foreground/40',
-                'focus:border-white/[0.15] focus:outline-none focus:ring-1 focus:ring-white/[0.08]',
-                'disabled:opacity-50',
-              )}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="review-feedback">Feedback (optional)</Label>
+            <Textarea
+              id="review-feedback"
+              className="min-h-[88px]"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               disabled={busy}
-              rows={3}
+              rows={4}
               placeholder="Share your review notes..."
             />
-          </label>
+          </div>
         )}
 
         {/* Action buttons - prominent and clear */}

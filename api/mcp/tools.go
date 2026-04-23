@@ -29,6 +29,88 @@ import (
 
 type sessionContextKey struct{}
 
+// ToolScope categorizes MCP tools by their access level for defense-in-depth.
+// Read tools need no confirmation; write tools that affect only Flywheel state
+// are allowed for coordinators; write tools with external side effects require
+// human confirmation; forbidden tools are structurally blocked for coordinators.
+type ToolScope string
+
+const (
+	// ToolScopeRead indicates a read-only tool with no side effects.
+	ToolScopeRead ToolScope = "read"
+	// ToolScopeWriteInternal indicates a tool that mutates Flywheel state only (tickets, streams).
+	ToolScopeWriteInternal ToolScope = "write_internal"
+	// ToolScopeWriteExternal indicates a tool with external side effects requiring confirmation.
+	ToolScopeWriteExternal ToolScope = "write_external"
+	// ToolScopeForbiddenCoordinator indicates a tool structurally forbidden for coordinator role.
+	ToolScopeForbiddenCoordinator ToolScope = "forbidden_coordinator"
+)
+
+// ToolScopeRegistry maps tool names to their scope classification.
+// This registry enforces defense-in-depth: write tools with external effects
+// require human confirmation flows, and forbidden tools are structurally blocked
+// for the coordinator role regardless of what external content may instruct.
+var ToolScopeRegistry = map[string]ToolScope{
+	// Read-only tools (no confirmation needed)
+	"list_orgs":             ToolScopeRead,
+	"list_projects":         ToolScopeRead,
+	"get_project_context":   ToolScopeRead,
+	"list_tickets":          ToolScopeRead,
+	"get_ticket":            ToolScopeRead,
+	"list_work_streams":     ToolScopeRead,
+	"get_work_stream":       ToolScopeRead,
+	"list_pending_reviews":  ToolScopeRead,
+	"get_trace":             ToolScopeRead,
+	"flywheel_show_git_notes": ToolScopeRead,
+	"flywheel_log_git_notes":  ToolScopeRead,
+	"flywheel_diff_git_notes": ToolScopeRead,
+
+	// Write tools — internal Flywheel state only (allowed for coordinator)
+	"create_project":           ToolScopeWriteInternal,
+	"update_project_context":   ToolScopeWriteInternal,
+	"update_project_status":    ToolScopeWriteInternal,
+	"create_ticket":            ToolScopeWriteInternal,
+	"update_ticket":            ToolScopeWriteInternal,
+	"create_work_stream":       ToolScopeWriteInternal,
+	"update_work_stream":       ToolScopeWriteInternal,
+	"update_work_stream_plan":  ToolScopeWriteInternal,
+
+	// Write tools — worker lifecycle (internal but role-scoped)
+	"claim_ticket":    ToolScopeWriteInternal,
+	"start_ticket":    ToolScopeWriteInternal,
+	"log_step":        ToolScopeWriteInternal,
+	"submit_ticket":   ToolScopeWriteInternal,
+	"escalate_ticket": ToolScopeWriteInternal,
+	"renew_lease":     ToolScopeWriteInternal,
+	"force_release_lease": ToolScopeWriteInternal,
+
+	// Write tools — external side effects (require human confirmation)
+	"flywheel_add_git_note":  ToolScopeWriteExternal,
+	"flywheel_sync_git_notes": ToolScopeWriteExternal,
+
+	// Review tools — human-gated by design
+	"approve_ticket": ToolScopeForbiddenCoordinator,
+	"reject_ticket":  ToolScopeForbiddenCoordinator,
+	"reopen_ticket":  ToolScopeForbiddenCoordinator,
+}
+
+// GetToolScope returns the scope classification for a tool name.
+// Unknown tools default to ToolScopeWriteExternal (require confirmation).
+func GetToolScope(toolName string) ToolScope {
+	if scope, ok := ToolScopeRegistry[toolName]; ok {
+		return scope
+	}
+	// Default: unknown tools require confirmation (defense-in-depth)
+	return ToolScopeWriteExternal
+}
+
+// IsWriteToolRequiringConfirmation returns true if the tool has external side effects
+// and should require human confirmation before execution.
+func IsWriteToolRequiringConfirmation(toolName string) bool {
+	scope := GetToolScope(toolName)
+	return scope == ToolScopeWriteExternal || scope == ToolScopeForbiddenCoordinator
+}
+
 // wrapFn is the signature for the wrap closure used when registering tools.
 type wrapFn = func(func(*Backend, context.Context, map[string]any) (*mcp.CallToolResult, any, error)) func(context.Context, *mcp.CallToolRequest, map[string]any) (*mcp.CallToolResult, any, error)
 
@@ -283,6 +365,16 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"required":             []string{"ticket_id"},
 		"additionalProperties": false,
 	}}, wrap(forceReleaseLeaseHandler))
+	mcp.AddTool(s, &mcp.Tool{Name: "rollback_ticket", Description: "Initiate a stage-specific rollback for a ticket. Behavior depends on the ticket's current lifecycle stage:\n- Executing: discard worktree, release claims, return to draft for re-planning.\n- Awaiting validation / Validated (pre-deploy): revert diff, release claims, return to draft.\n- Deploying / Observing (post-deploy): redeploy previous version, release claims. For production: auto-creates an incident ticket.\n- Closed (post-observation): creates a new rollback ticket for structural code revert (original stays closed).\nRollback is not available from draft, specced, planning, or awaiting_input states.", InputSchema: map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"ticket_id": map[string]any{"type": "string", "description": "Ticket ID to roll back"},
+			"reason":    map[string]any{"type": "string", "description": "Reason for the rollback"},
+			"agent_id":  map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+		},
+		"required":             []string{"ticket_id", "reason"},
+		"additionalProperties": false,
+	}}, wrap(rollbackTicketHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "list_pending_reviews", Description: "List tickets in awaiting_review for a project. Use this when the user asks 'what needs my review?' or 'show pending reviews'. Returns full tickets so you can summarize them in chat; use get_trace(ticket_id) to show execution steps for each.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -1604,6 +1696,30 @@ func forceReleaseLeaseHandler(b *Backend, ctx context.Context, args map[string]a
 		return toolErrTriple(apierrors.MapError(err))
 	}
 	return jsonResult(map[string]any{"ok": true, "ticket_id": ticketID, "message": "Ticket returned to pending; use claim_ticket to claim it."})
+}
+
+func rollbackTicketHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
+	ticketID, err := requireString(args, "ticket_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	reason, err := requireString(args, "reason")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	agentID, err := getAgentIDFromArgs(ctx, args)
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	if b.Rollback == nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInternal, "rollback service not configured", false))
+	}
+	actor := ticket.Actor{ID: agentID, Type: ticket.ActorHuman}
+	result, err := b.Rollback.Rollback(ctx, ticketID, actor, reason)
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	return jsonResult(result)
 }
 
 func listPendingReviewsHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {

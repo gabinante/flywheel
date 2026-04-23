@@ -16,11 +16,13 @@ type StaleTicketLister interface {
 }
 
 // Scheduler runs background jobs: expire leases and react to ticket.done for unblocked.
+// Supports both legacy Bus and DurableEventBus for at-least-once event delivery.
 type Scheduler struct {
 	leases             LeaseStore
 	ticketSvc          TicketTransitioner
 	ticketList         TicketListerForQueue
 	bus                events.Bus
+	durableBus         events.DurableEventBus // nil if bus doesn't support durability
 	pollInterval       time.Duration
 	batchSize          int64
 	staleLister        StaleTicketLister
@@ -32,7 +34,7 @@ func NewScheduler(leases LeaseStore, ticketSvc TicketTransitioner, ticketList Ti
 	if pollInterval <= 0 {
 		pollInterval = 30 * time.Second
 	}
-	return &Scheduler{
+	s := &Scheduler{
 		leases:       leases,
 		ticketSvc:    ticketSvc,
 		ticketList:   ticketList,
@@ -40,6 +42,11 @@ func NewScheduler(leases LeaseStore, ticketSvc TicketTransitioner, ticketList Ti
 		pollInterval: pollInterval,
 		batchSize:    50,
 	}
+	// Detect if bus supports durable event delivery.
+	if durable, ok := bus.(events.DurableEventBus); ok {
+		s.durableBus = durable
+	}
+	return s
 }
 
 // EnableStalenessSwitch enables the DB staleness sweep (Layer 3 recovery).
@@ -132,7 +139,7 @@ func (s *Scheduler) sweepStaleTickets(ctx context.Context) {
 }
 
 func (s *Scheduler) subscribeTicketDone(ctx context.Context) {
-	s.bus.Subscribe(events.EventTicketDone, func(ctx context.Context, ev events.Event) {
+	handler := func(ctx context.Context, ev events.Event) {
 		ticketID, _ := ev.Payload["ticket_id"].(string)
 		if ticketID == "" {
 			return
@@ -171,8 +178,15 @@ func (s *Scheduler) subscribeTicketDone(ctx context.Context) {
 				continue
 			}
 			if ticket.IsUnblocked(p, deps) {
-				_ = s.bus.Publish(ctx, events.Event{Type: events.EventTicketUnblocked, Payload: map[string]any{"ticket_id": p.ID}})
+				_ = s.bus.Publish(ctx, events.NewEvent(events.EventTicketUnblocked, map[string]any{"ticket_id": p.ID}).WithEntityKey("ticket:"+p.ID))
 			}
 		}
-	})
+	}
+
+	// Use pattern subscription if durable bus available; otherwise exact match.
+	if s.durableBus != nil {
+		_ = s.durableBus.SubscribePattern("ticket.closed", "scheduler:unblock", handler)
+	} else {
+		s.bus.Subscribe(events.EventTicketDone, handler)
+	}
 }

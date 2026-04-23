@@ -8,9 +8,10 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/use-auth'
 import { formatApiError } from '@/lib/api/client'
-import { cn } from '@/lib/utils'
 
 type TicketReopenPanelProps = {
   ticketId: string
@@ -85,24 +86,18 @@ export function TicketReopenPanel({
             <p className="text-destructive text-sm">{formError}</p>
           </div>
         ) : null}
-        <label className="flex flex-col gap-1.5">
-          <span className="text-muted-foreground text-xs font-medium">
-            Reason (optional)
-          </span>
-          <textarea
-            className={cn(
-              'min-h-[64px] rounded-lg border bg-white/[0.03] px-3 py-2.5 text-sm transition-colors',
-              'border-white/[0.08] placeholder:text-muted-foreground/40',
-              'focus:border-white/[0.15] focus:outline-none focus:ring-1 focus:ring-white/[0.08]',
-              'disabled:opacity-50',
-            )}
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="reopen-note">Reason (optional)</Label>
+          <Textarea
+            id="reopen-note"
+            className="min-h-[72px]"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             disabled={busy}
             rows={2}
             placeholder="Why reopen..."
           />
-        </label>
+        </div>
         <div className="flex gap-2">
           <Button
             type="button"

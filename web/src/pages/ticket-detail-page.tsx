@@ -16,18 +16,25 @@ import { TicketOutputsCard } from '@/components/ticket-outputs'
 import { TicketRelationshipsCard } from '@/components/ticket-relationships-card'
 import { TicketReopenPanel } from '@/components/ticket-reopen-panel'
 import { TicketReviewPanel } from '@/components/ticket-review-panel'
+import { TicketTimeline } from '@/components/ticket-timeline'
 import { WorkStreamSummaryCard } from '@/components/work-stream-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
+import { DetailPageSkeleton } from '@/components/ui/skeleton'
 import { formatApiError } from '@/lib/api/client'
 import { cn } from '@/lib/utils'
 import type { components } from '@/lib/api/v1'
 
 type Ticket = components['schemas']['Ticket']
 type WorkStream = components['schemas']['WorkStream']
+type ProjectTicketsState = {
+  projectId: string | null
+  tickets: Ticket[] | null
+  error: string | null
+}
 
 type ReviewBanner =
   | { kind: 'reopened' }
@@ -79,11 +86,20 @@ export function TicketDetailPage() {
   const [workStreamErr, setWorkStreamErr] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [reviewBanner, setReviewBanner] = useState<ReviewBanner | null>(null)
-  const [projectTickets, setProjectTickets] = useState<Ticket[] | null>(null)
-  const [projectTicketsErr, setProjectTicketsErr] = useState<string | null>(
-    null,
-  )
+  const [projectTicketsState, setProjectTicketsState] = useState<ProjectTicketsState>({
+    projectId: null,
+    tickets: null,
+    error: null,
+  })
   const projectLabel = useProjectBreadcrumbLabel(projectId)
+  const projectTickets =
+    projectTicketsState.projectId === projectId
+      ? projectTicketsState.tickets
+      : null
+  const projectTicketsErr =
+    projectTicketsState.projectId === projectId
+      ? projectTicketsState.error
+      : null
 
   const reloadTicket = useCallback(async () => {
     if (!ticketId) return
@@ -175,21 +191,26 @@ export function TicketDetailPage() {
   useEffect(() => {
     if (!projectId) return
     let cancelled = false
-    setProjectTickets(null)
-    setProjectTicketsErr(null)
+    const currentProjectId = projectId
     void (async () => {
       const { data, error, response } = await client.GET(
         '/projects/{projectID}/tickets',
-        { params: { path: { projectID: projectId } } },
+        { params: { path: { projectID: currentProjectId } } },
       )
       if (cancelled) return
       if (!response.ok) {
-        setProjectTicketsErr(formatApiError(error))
-        setProjectTickets([])
+        setProjectTicketsState({
+          projectId: currentProjectId,
+          tickets: [],
+          error: formatApiError(error),
+        })
         return
       }
-      setProjectTicketsErr(null)
-      setProjectTickets(data ?? [])
+      setProjectTicketsState({
+        projectId: currentProjectId,
+        tickets: data ?? [],
+        error: null,
+      })
     })()
     return () => {
       cancelled = true
@@ -237,18 +258,7 @@ export function TicketDetailPage() {
     return <p className="text-destructive text-sm">{err}</p>
   }
   if (ticket === undefined) {
-    return (
-      <div className="flex flex-col gap-4">
-        {/* Skeleton loading */}
-        <div className="flex flex-col gap-2">
-          <div className="h-3 w-48 animate-pulse rounded bg-muted/30" />
-          <div className="h-6 w-72 animate-pulse rounded bg-muted/30" />
-          <div className="h-3 w-32 animate-pulse rounded bg-muted/30" />
-        </div>
-        <div className="h-8 w-full animate-pulse rounded-lg bg-muted/20" />
-        <div className="h-32 w-full animate-pulse rounded-xl bg-muted/20" />
-      </div>
-    )
+    return <DetailPageSkeleton />
   }
   if (!ticket) {
     return <p className="text-muted-foreground text-sm">Ticket not found.</p>
@@ -390,9 +400,14 @@ export function TicketDetailPage() {
         </Card>
       ) : null}
 
-      {/* ── Review banner (after review action) ────────── */}
+      <TicketTimeline
+        ticketId={ticketId}
+        currentState={ticket.state}
+        createdAt={ticket.created_at}
+      />
+
       {reviewBanner?.kind === 'reopened' ? (
-        <Card className="border-primary/20 bg-primary/[0.04]">
+        <Card className="border-primary/20 bg-primary/[0.07] backdrop-blur-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">Back in review queue</CardTitle>
           </CardHeader>
@@ -435,8 +450,8 @@ export function TicketDetailPage() {
           className={
             reviewBanner.decision === 'rejected' &&
             (reviewBanner.kind === 'simple' || reviewBanner.kind === 'followup-error')
-              ? 'border-destructive/20 bg-destructive/[0.04]'
-              : 'border-primary/20 bg-primary/[0.04]'
+              ? 'border-destructive/20 bg-destructive/[0.07] backdrop-blur-sm'
+              : 'border-primary/20 bg-primary/[0.07] backdrop-blur-sm'
           }
         >
           <CardHeader className="pb-2">
@@ -537,7 +552,18 @@ export function TicketDetailPage() {
             ) : null}
           </div>
         )
-      ) : null}
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Work stream</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground text-sm">
+              This ticket is not associated with a work stream.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Outputs ────────────────────────────────────── */}
       <TicketOutputsCard outputs={ticket.outputs} />

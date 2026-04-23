@@ -24,6 +24,15 @@ make docker-up         # docker compose up -d
 make migrate           # Run DB migrations (non-Docker deploys)
 cd web && npm run dev  # Vite dev server on :5173, proxies to :8080
 cd web && npm run gen:api  # Regenerate TS API client from openapi.yaml
+
+# Flywheel launchd service (auto-starts on login, restarts on crash)
+launchctl load ~/Library/LaunchAgents/com.flywheel.server.plist    # enable
+launchctl unload ~/Library/LaunchAgents/com.flywheel.server.plist  # disable
+launchctl stop com.flywheel.server                                 # restart
+launchctl list | grep flywheel                                     # check status
+
+# After code changes, rebuild then restart:
+go build -o bin/flywheel-server ./cmd/server && launchctl stop com.flywheel.server
 ```
 
 ## Product posture
@@ -94,6 +103,18 @@ When adding or touching a layer, ask: **is this novel, pluggable-with-default, o
 - **Event-driven, not request-driven.** State transitions emit events. Workers subscribe. Don't write synchronous request-response for long-running work. The UI subscribes to events for real-time updates.
 - **Sandboxed workers.** Worker code runs in containers with controlled egress. Don't mount the Docker socket or home directories into workers. Respect time/resource limits.
 - **Secrets.** Never read from `.env` directly in application code — use `varlock load` or `varlock run`. Never log secrets. When adding a new integration, add its secret names to the relevant `.env.schema` with proper `@sensitive` annotations, then fetch via varlock. The coordinator should never have raw secret values in context.
+
+## Database migrations
+
+Files in `db/migrations/` use **timestamp-based** prefixes (`YYYYMMDDHHmmss`),
+not sequential numbers. This prevents collisions when parallel workers create
+migrations on separate branches.
+
+Format: `YYYYMMDDHHmmss_description.{up,down}.sql`
+Generate: `date -u +%Y%m%d%H%M%S`
+Helper: `make migrate-create NAME=add_users_table`
+
+Legacy migrations 000001–000020 use sequential numbering and remain valid.
 
 ## Secrets management (varlock)
 
