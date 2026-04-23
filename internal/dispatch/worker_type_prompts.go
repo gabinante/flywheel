@@ -246,7 +246,9 @@ func workerTypeWorkflow(wt WorkerType, projectID, ticketID string) string {
 				"   - If the PR already exists (e.g. on a retry), skip creation.\n"+
 				"6. Call `submit_ticket` with `ticket_id`, `lease_token`, and `outputs`. Include the PR URL in outputs.\n"+
 				"7. If blocked, use `escalate_ticket` to ask for human help.\n\n"+
-				"**IMPORTANT:** You MUST call claim_ticket first before doing any work.",
+				"**IMPORTANT:** You MUST call claim_ticket first before doing any work.\n\n"+
+				"**Database migrations:** Use timestamp naming: `YYYYMMDDHHmmss_description.up.sql`. "+
+				"Generate prefix with `date -u +%%Y%%m%%d%%H%%M%%S`. NEVER use sequential numbers.",
 			projectID,
 		)
 

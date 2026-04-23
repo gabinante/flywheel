@@ -1,13 +1,18 @@
 package dispatch
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
 
-// AgentDriver encapsulates agent-specific behavior for the dispatch system.
-// The dispatch infrastructure (worktree management, MCP config generation,
-// prompt assembly, Docker resource limits, and event handling) remains
-// agent-agnostic. Only the CLI invocation and environment differ per agent.
+// AgentDriver encapsulates harness-specific behavior for CLI and Docker workers.
+// API-native runners do not use AgentDriver directly; they own their own request
+// and tool execution loop. The dispatch infrastructure (worktree management, MCP
+// config generation, prompt assembly, Docker resource limits, and event handling)
+// remains agent-agnostic.
 //
-// To add a new agent driver:
+// To add a new CLI or Docker agent driver:
 //  1. Implement the AgentDriver interface.
 //  2. Register it in the driverRegistry map below.
 //  3. Set DISPATCH_AGENT_DRIVER=<name> in your environment.
@@ -17,11 +22,14 @@ type AgentDriver interface {
 	// Name returns the driver identifier for logging and config selection.
 	Name() string
 
-	// BuildCLIArgs returns the executable path and arguments for host-mode execution.
-	// The returned exe is the binary to invoke; args are its CLI arguments.
+	// Executable returns the binary to invoke for host-mode execution.
+	Executable() string
+
+	// BuildCLIArgs returns the CLI arguments for host-mode execution.
 	// systemPrompt and taskMessage are the assembled prompt strings.
-	// mcpConfigPath is the path to the written MCP config JSON file.
-	BuildCLIArgs(systemPrompt, taskMessage, mcpConfigPath string) (exe string, args []string)
+	// mcp provides both SSE and streamable HTTP endpoint details.
+	// mcpConfigPath is the path to the written Claude-compatible MCP config file.
+	BuildCLIArgs(systemPrompt, taskMessage string, mcp mcpConnection, mcpConfigPath string) []string
 
 	// BuildDockerCmd returns the shell command to run inside a Docker container.
 	// Standard file mount paths:
@@ -29,7 +37,7 @@ type AgentDriver interface {
 	//   /tmp/task-prompt.txt    — task message content
 	//   /tmp/mcp-config.json   — MCP server configuration
 	// branch is the git branch to check out inside the container.
-	BuildDockerCmd(branch string) string
+	BuildDockerCmd(branch string, mcp mcpConnection) string
 
 	// DockerImage returns the preferred Docker image for this agent.
 	// Return empty string to use the default from DispatchConfig.DockerImage.
@@ -40,13 +48,22 @@ type AgentDriver interface {
 	FormatPrompt(systemPrompt string) string
 
 	// Env returns environment configuration for the agent process.
-	Env() DriverEnv
+	Env(systemPrompt, taskMessage string, mcp mcpConnection, mcpConfigPath string) DriverEnv
 
 	// ResolveCredential resolves the agent's API credential.
 	// For agents with dynamic credential sources (e.g., OAuth keychain),
 	// this returns the resolved credential. Falls back to staticKey if no
 	// dynamic source is available. Return empty string if no credential is needed.
 	ResolveCredential(staticKey string) string
+
+	// CredentialEnvName is the environment variable name used to pass the
+	// resolved credential into Docker workers. Return empty when not applicable.
+	CredentialEnvName() string
+
+	// DefaultAllowedHosts returns the default firewall allowlist for dockerized
+	// workers when DISPATCH_DOCKER_FIREWALL is enabled and no explicit host list
+	// is configured.
+	DefaultAllowedHosts() []string
 
 	// ExtraDockerArgs returns additional docker run arguments (e.g., volumes, env vars)
 	// specific to this agent. These are appended before the image name.
@@ -68,6 +85,7 @@ type DriverEnv struct {
 // driverRegistry maps driver names to constructor functions.
 var driverRegistry = map[string]func(cfg DriverConfig) AgentDriver{
 	"claude":  func(cfg DriverConfig) AgentDriver { return NewClaudeDriver(cfg) },
+	"codex":   func(cfg DriverConfig) AgentDriver { return NewCodexDriver(cfg) },
 	"generic": func(cfg DriverConfig) AgentDriver { return NewGenericDriver(cfg) },
 }
 
@@ -85,7 +103,7 @@ type DriverConfig struct {
 func LookupDriver(name string, cfg DriverConfig) (AgentDriver, error) {
 	ctor, ok := driverRegistry[name]
 	if !ok {
-		return nil, fmt.Errorf("unknown agent driver %q (available: claude, generic)", name)
+		return nil, fmt.Errorf("unknown agent driver %q (available: %s)", name, strings.Join(AvailableDrivers(), ", "))
 	}
 	return ctor(cfg), nil
 }
@@ -94,4 +112,14 @@ func LookupDriver(name string, cfg DriverConfig) (AgentDriver, error) {
 // Use this in init() functions to add custom drivers.
 func RegisterDriver(name string, ctor func(cfg DriverConfig) AgentDriver) {
 	driverRegistry[name] = ctor
+}
+
+// AvailableDrivers returns the registered driver names in stable order.
+func AvailableDrivers() []string {
+	names := make([]string, 0, len(driverRegistry))
+	for name := range driverRegistry {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }

@@ -26,25 +26,27 @@ func NewClaudeDriver(cfg DriverConfig) *ClaudeDriver {
 
 func (d *ClaudeDriver) Name() string { return "claude" }
 
-// BuildCLIArgs returns the claude CLI invocation for host-mode execution.
-func (d *ClaudeDriver) BuildCLIArgs(systemPrompt, taskMessage, mcpConfigPath string) (string, []string) {
-	exe := d.CLIPath
-	if exe == "" {
-		exe = "claude"
+func (d *ClaudeDriver) Executable() string {
+	if d.CLIPath == "" {
+		return "claude"
 	}
-	args := []string{
+	return d.CLIPath
+}
+
+// BuildCLIArgs returns the claude CLI invocation for host-mode execution.
+func (d *ClaudeDriver) BuildCLIArgs(systemPrompt, taskMessage string, _ mcpConnection, mcpConfigPath string) []string {
+	return []string{
 		"--print",
 		"--dangerously-skip-permissions",
 		"--system-prompt", systemPrompt,
 		taskMessage,
 		"--mcp-config", mcpConfigPath,
 	}
-	return exe, args
 }
 
 // BuildDockerCmd returns the shell command to run claude inside a container.
 // All long inputs are read from mounted files to avoid shell escaping issues.
-func (d *ClaudeDriver) BuildDockerCmd(branch string) string {
+func (d *ClaudeDriver) BuildDockerCmd(branch string, _ mcpConnection) string {
 	return fmt.Sprintf(
 		`set -e
 git clone /repo /workspace 2>/dev/null
@@ -64,7 +66,7 @@ func (d *ClaudeDriver) FormatPrompt(systemPrompt string) string { return systemP
 // Env returns Claude-specific environment configuration.
 // Removes CLAUDECODE (prevents nested sessions) and ANTHROPIC_API_KEY
 // (forces OAuth session reuse). Adds CLAUDE_CODE_ENTRYPOINT marker.
-func (d *ClaudeDriver) Env() DriverEnv {
+func (d *ClaudeDriver) Env(_, _ string, _ mcpConnection, _ string) DriverEnv {
 	return DriverEnv{
 		FilterPrefixes: []string{"CLAUDECODE=", "ANTHROPIC_API_KEY="},
 		Set: map[string]string{
@@ -80,6 +82,12 @@ func (d *ClaudeDriver) ResolveCredential(staticKey string) string {
 		return token
 	}
 	return staticKey
+}
+
+func (d *ClaudeDriver) CredentialEnvName() string { return "ANTHROPIC_API_KEY" }
+
+func (d *ClaudeDriver) DefaultAllowedHosts() []string {
+	return []string{"api.anthropic.com", "registry.npmjs.org", "github.com"}
 }
 
 // ExtraDockerArgs returns the persistent .claude data directory mount.

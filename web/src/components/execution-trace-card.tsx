@@ -12,6 +12,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/contexts/use-auth'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
@@ -79,10 +80,10 @@ function TraceStepRow({ step }: { step: TraceStep }) {
 
   return (
     <div
-      className={`rounded-lg border transition-colors ${
+      className={`rounded-xl border transition-colors backdrop-blur-sm ${
         isError
-          ? 'border-red-500/30 bg-red-500/5'
-          : 'border-border/50 bg-muted/20 hover:bg-muted/40'
+          ? 'border-red-500/20 bg-red-500/[0.07]'
+          : 'border-white/[0.06] bg-white/[0.03] hover:bg-white/[0.06]'
       }`}
     >
       <button
@@ -117,7 +118,7 @@ function TraceStepRow({ step }: { step: TraceStep }) {
       </button>
 
       {expanded && hasPayload ? (
-        <div className="border-t border-border/30 px-3 py-2.5">
+        <div className="border-t border-white/[0.06] px-3 py-2.5">
           <pre className="max-h-64 overflow-auto whitespace-pre-wrap font-mono text-xs text-muted-foreground">
             {JSON.stringify(step.payload, null, 2)}
           </pre>
@@ -209,9 +210,11 @@ export function ExecutionTraceCard({
           <CardTitle className="text-sm">Execution Trace</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-2 text-muted-foreground text-sm">
-            <RefreshCw className="size-3.5 animate-spin" />
-            Loading trace…
+          <div className="flex flex-col gap-1.5">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-10 w-full rounded-lg" />
+            <Skeleton className="h-10 w-full rounded-lg" />
+            <Skeleton className="h-10 w-full rounded-lg" />
           </div>
         </CardContent>
       </Card>

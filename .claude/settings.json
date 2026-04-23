@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__flywheel__*"
+    ]
+  },
+  "mcpServers": {
+    "flywheel": {
+      "url": "http://localhost:8080/mcp",
+      "headers": {}
+    }
+  }
+}

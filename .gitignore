@@ -6,4 +6,6 @@
 web/node_modules
 web/dist
 
+/bin/
+/logs/
 .DS_Store

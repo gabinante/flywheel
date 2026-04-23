@@ -1,6 +1,6 @@
 -- pillar_entries: per-entity pillar strategy records (Layer 15).
 -- Seven fixed pillars: observability, mutability, scalability, availability, security, resiliency, cost.
-CREATE TABLE pillar_entries (
+CREATE TABLE IF NOT EXISTS pillar_entries (
     id              TEXT PRIMARY KEY,
     project_id      TEXT NOT NULL REFERENCES projects(id),
     entity_id       TEXT NOT NULL,  -- references catalog entity by ID (cross-layer)
@@ -26,13 +26,13 @@ CREATE TABLE pillar_entries (
     UNIQUE (project_id, entity_id, pillar_type)
 );
 
-CREATE INDEX idx_pillar_entries_project ON pillar_entries(project_id);
-CREATE INDEX idx_pillar_entries_entity ON pillar_entries(entity_id);
-CREATE INDEX idx_pillar_entries_type ON pillar_entries(pillar_type);
-CREATE INDEX idx_pillar_entries_review ON pillar_entries(next_review_at) WHERE next_review_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_pillar_entries_project ON pillar_entries(project_id);
+CREATE INDEX IF NOT EXISTS idx_pillar_entries_entity ON pillar_entries(entity_id);
+CREATE INDEX IF NOT EXISTS idx_pillar_entries_type ON pillar_entries(pillar_type);
+CREATE INDEX IF NOT EXISTS idx_pillar_entries_review ON pillar_entries(next_review_at) WHERE next_review_at IS NOT NULL;
 
 -- pillar_claims: structured assertions citing map entities as evidence.
-CREATE TABLE pillar_claims (
+CREATE TABLE IF NOT EXISTS pillar_claims (
     id               TEXT PRIMARY KEY,
     pillar_entry_id  TEXT NOT NULL REFERENCES pillar_entries(id),
     statement        TEXT NOT NULL,
@@ -49,11 +49,11 @@ CREATE TABLE pillar_claims (
     ))
 );
 
-CREATE INDEX idx_pillar_claims_entry ON pillar_claims(pillar_entry_id);
-CREATE INDEX idx_pillar_claims_entity_ref ON pillar_claims(entity_ref_id);
+CREATE INDEX IF NOT EXISTS idx_pillar_claims_entry ON pillar_claims(pillar_entry_id);
+CREATE INDEX IF NOT EXISTS idx_pillar_claims_entity_ref ON pillar_claims(entity_ref_id);
 
 -- pillar_evaluations: continuous evaluation loop results.
-CREATE TABLE pillar_evaluations (
+CREATE TABLE IF NOT EXISTS pillar_evaluations (
     id               TEXT PRIMARY KEY,
     pillar_entry_id  TEXT NOT NULL REFERENCES pillar_entries(id),
     check_type       TEXT NOT NULL,
@@ -67,4 +67,4 @@ CREATE TABLE pillar_evaluations (
     CONSTRAINT pillar_eval_outcome CHECK (outcome IN ('pass', 'warn', 'fail'))
 );
 
-CREATE INDEX idx_pillar_evaluations_entry ON pillar_evaluations(pillar_entry_id, evaluated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_pillar_evaluations_entry ON pillar_evaluations(pillar_entry_id, evaluated_at DESC);

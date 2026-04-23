@@ -21,16 +21,16 @@ import (
 
 // WizardResult is the output of the first-run wizard.
 type WizardResult struct {
-	RepoPath       string
-	AnthropicKey   string
-	AutonomyMode   string // "sandbox", "supervised", "autonomous"
-	ProjectMap     *ProjectMap
-	OrgID          string
-	ProjectID      string
-	AgentID        string
-	AgentAPIKey    string
-	JWTSecret      string
-	DataDir        string
+	RepoPath           string
+	DispatchCredential string
+	AutonomyMode       string // "sandbox", "supervised", "autonomous"
+	ProjectMap         *ProjectMap
+	OrgID              string
+	ProjectID          string
+	AgentID            string
+	AgentAPIKey        string
+	JWTSecret          string
+	DataDir            string
 }
 
 // OrgCreator can create orgs and add members (org.Service).
@@ -74,10 +74,10 @@ func RunWizard(ctx context.Context, orgSvc OrgCreator, projectSvc ProjectCreator
 	repoPath, _ = filepath.Abs(repoPath)
 	result.RepoPath = repoPath
 
-	// 2. Anthropic API key
-	fmt.Print("Anthropic API key (for dispatching agents) [skip]: ")
+	// 2. Optional provider credential for dispatched agents.
+	fmt.Print("Dispatch agent API key (optional) [skip]: ")
 	apiKey := readLine(reader)
-	result.AnthropicKey = apiKey
+	result.DispatchCredential = apiKey
 
 	// 3. Autonomy posture
 	fmt.Println()
@@ -186,6 +186,7 @@ func RunWizard(ctx context.Context, orgSvc OrgCreator, projectSvc ProjectCreator
 	fmt.Println()
 	fmt.Println("  Server is starting on :8080 ...")
 	fmt.Println("  Connect Claude Code:  claude --mcp-server warrant=http://localhost:8080/mcp")
+	fmt.Println("  Connect Codex:        codex mcp add flywheel --url http://localhost:8080/mcp")
 	fmt.Printf("  Set API key header:   Authorization: Bearer %s\n", apiKey)
 	fmt.Println()
 
@@ -262,8 +263,8 @@ func writeConfigFile(path string, result *WizardResult) error {
 	lines = append(lines, fmt.Sprintf("JWT_SECRET=%s", result.JWTSecret))
 	lines = append(lines, fmt.Sprintf("DISPATCH_PROJECT_ID=%s", result.ProjectID))
 	lines = append(lines, fmt.Sprintf("DISPATCH_API_KEY=%s", result.AgentAPIKey))
-	if result.AnthropicKey != "" {
-		lines = append(lines, fmt.Sprintf("ANTHROPIC_API_KEY=%s", result.AnthropicKey))
+	if result.DispatchCredential != "" {
+		lines = append(lines, fmt.Sprintf("DISPATCH_AGENT_API_KEY=%s", result.DispatchCredential))
 	}
 	lines = append(lines, fmt.Sprintf("AUTONOMY_MODE=%s", result.AutonomyMode))
 	lines = append(lines, "")

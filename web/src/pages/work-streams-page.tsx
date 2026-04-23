@@ -15,6 +15,7 @@ import {
 import { Progress } from '@/components/ui/progress'
 import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/contexts/use-auth'
+import { Skeleton, WorkStreamsPageSkeleton } from '@/components/ui/skeleton'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 
@@ -287,7 +288,7 @@ export function WorkStreamsPage() {
     return <p className="text-destructive text-sm">{projectErr}</p>
   }
   if (project === undefined) {
-    return <p className="text-muted-foreground text-sm">Loading...</p>
+    return <WorkStreamsPageSkeleton />
   }
   if (!project) {
     return <p className="text-muted-foreground text-sm">Project not found.</p>
@@ -372,12 +373,9 @@ export function WorkStreamsPage() {
           ) : null}
 
           {!streamsErr && streams === null ? (
-            <div className="flex flex-col gap-3">
-              {[1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  className="h-24 animate-pulse rounded-xl bg-white/5"
-                />
+            <div className="flex flex-col gap-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-14 w-full rounded-lg" />
               ))}
             </div>
           ) : !streamsErr && streams?.length === 0 ? (
