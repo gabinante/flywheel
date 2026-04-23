@@ -1,6 +1,9 @@
 import { Link } from 'react-router-dom'
+import { ArrowDown, ArrowUp, GitBranch } from 'lucide-react'
 
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { components } from '@/lib/api/v1'
 
@@ -14,6 +17,118 @@ function ticketMap(tickets: Ticket[]): Map<string, Ticket> {
   return m
 }
 
+const STATE_STYLES: Record<string, { className: string; label: string }> = {
+  pending: {
+    className: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30',
+    label: 'Pending',
+  },
+  claimed: {
+    className: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
+    label: 'Claimed',
+  },
+  executing: {
+    className: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+    label: 'Executing',
+  },
+  awaiting_review: {
+    className: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
+    label: 'Review',
+  },
+  done: {
+    className: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+    label: 'Done',
+  },
+  blocked: {
+    className: 'bg-orange-500/15 text-orange-300 border-orange-500/30',
+    label: 'Blocked',
+  },
+  needs_human: {
+    className: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30',
+    label: 'Needs Human',
+  },
+  failed: {
+    className: 'bg-red-500/15 text-red-300 border-red-500/30',
+    label: 'Failed',
+  },
+}
+
+function RelationshipCard({
+  orgId,
+  projectId,
+  ticket,
+  direction,
+}: {
+  orgId: string
+  projectId: string
+  ticket: Ticket
+  direction: 'depends_on' | 'blocks'
+}) {
+  const state = ticket.state ?? 'pending'
+  const stateStyle = STATE_STYLES[state] ?? STATE_STYLES.pending
+
+  return (
+    <Link
+      to={`/orgs/${orgId}/projects/${projectId}/tickets/${encodeURIComponent(ticket.id ?? '')}`}
+      className={cn(
+        'group flex items-start gap-3 rounded-lg border px-3 py-2.5 transition-all duration-150',
+        'border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/[0.1]',
+      )}
+    >
+      {/* Direction indicator */}
+      <div className="mt-0.5 shrink-0">
+        {direction === 'depends_on' ? (
+          <ArrowDown className="size-3.5 text-muted-foreground/50" />
+        ) : (
+          <ArrowUp className="size-3.5 text-muted-foreground/50" />
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <span className="text-sm font-medium text-foreground group-hover:text-foreground/90 truncate">
+          {ticket.title?.trim() || ticket.id}
+        </span>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[10px] text-muted-foreground/50">
+            {ticket.id}
+          </span>
+          <Badge
+            variant="outline"
+            className={cn('px-1.5 py-0 text-[9px]', stateStyle.className)}
+          >
+            {stateStyle.label}
+          </Badge>
+        </div>
+      </div>
+    </Link>
+  )
+}
+
+function UnresolvedCard({
+  orgId,
+  projectId,
+  id,
+}: {
+  orgId: string
+  projectId: string
+  id: string
+}) {
+  return (
+    <Link
+      to={`/orgs/${orgId}/projects/${projectId}/tickets/${encodeURIComponent(id)}`}
+      className={cn(
+        'group flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-all duration-150',
+        'border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/[0.1]',
+      )}
+    >
+      <ArrowDown className="size-3.5 shrink-0 text-muted-foreground/50" />
+      <span className="font-mono text-sm text-muted-foreground group-hover:text-foreground/80">
+        {id}
+      </span>
+    </Link>
+  )
+}
+
 export type TicketRelationshipsCardProps = {
   orgId: string
   projectId: string
@@ -21,30 +136,6 @@ export type TicketRelationshipsCardProps = {
   /** Resolved project ticket list; `null` means still loading. */
   projectTickets: Ticket[] | null
   projectTicketsError: string | null
-}
-
-function DepRow({
-  orgId,
-  projectId,
-  id,
-  label,
-}: {
-  orgId: string
-  projectId: string
-  id: string
-  label: string
-}) {
-  return (
-    <li>
-      <Link
-        className="text-primary hover:underline"
-        to={`/orgs/${orgId}/projects/${projectId}/tickets/${encodeURIComponent(id)}`}
-      >
-        {label}
-      </Link>
-      <span className="text-muted-foreground font-mono text-xs"> · {id}</span>
-    </li>
-  )
 }
 
 /** Depends on + Blocks (reverse) for a single ticket. */
@@ -62,7 +153,10 @@ export function TicketRelationshipsCard({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Dependencies</CardTitle>
+          <div className="flex items-center gap-2">
+            <GitBranch className="text-muted-foreground size-4" />
+            <CardTitle className="text-sm">Relationships</CardTitle>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col gap-2">
@@ -92,83 +186,83 @@ export function TicketRelationshipsCard({
       return (
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Dependencies</CardTitle>
+            <div className="flex items-center gap-2">
+              <GitBranch className="text-muted-foreground size-4" />
+              <CardTitle className="text-sm">Relationships</CardTitle>
+            </div>
           </CardHeader>
           <CardContent className="flex flex-col gap-2 text-sm">
             <p className="text-destructive">{projectTicketsError}</p>
-            <p className="text-muted-foreground text-sm">
-              Could not load project tickets to verify blocking relationships.
-            </p>
           </CardContent>
         </Card>
       )
     }
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Dependencies</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground text-sm">No ticket dependencies.</p>
-        </CardContent>
-      </Card>
-    )
+    return null
   }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm">Dependencies</CardTitle>
+        <div className="flex items-center gap-2">
+          <GitBranch className="text-muted-foreground size-4" />
+          <CardTitle className="text-sm">Relationships</CardTitle>
+        </div>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4 text-sm">
+      <CardContent className="flex flex-col gap-5">
         {projectTicketsError ? (
           <p className="text-destructive text-sm">{projectTicketsError}</p>
         ) : null}
+
         {hasDeps ? (
           <div className="flex flex-col gap-2">
-            <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+            <p className="flex items-center gap-1.5 text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
+              <ArrowDown className="size-3" />
               Depends on
             </p>
-            <ul className="list-inside list-disc space-y-1">
+            <div className="flex flex-col gap-1.5">
               {dependsOn.map((id) => {
                 const other = byId.get(id)
-                const label = other?.title?.trim() || id
+                if (other) {
+                  return (
+                    <RelationshipCard
+                      key={id}
+                      orgId={orgId}
+                      projectId={projectId}
+                      ticket={other}
+                      direction="depends_on"
+                    />
+                  )
+                }
                 return (
-                  <DepRow
+                  <UnresolvedCard
                     key={id}
                     orgId={orgId}
                     projectId={projectId}
                     id={id}
-                    label={label}
                   />
                 )
               })}
-            </ul>
+            </div>
           </div>
-        ) : (
-          <p className="text-muted-foreground text-sm">
-            This ticket does not depend on other tickets.
-          </p>
-        )}
+        ) : null}
+
         {hasBlocks ? (
           <div className="flex flex-col gap-2">
-            <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+            <p className="flex items-center gap-1.5 text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
+              <ArrowUp className="size-3" />
               Blocks
             </p>
-            <p className="text-muted-foreground text-xs">
-              Other tickets that list this ticket in &quot;depends on&quot;:
-            </p>
-            <ul className="list-inside list-disc space-y-1">
+            <div className="flex flex-col gap-1.5">
               {blocks.map((t) => (
-                <DepRow
+                <RelationshipCard
                   key={t.id}
                   orgId={orgId}
                   projectId={projectId}
-                  id={t.id!}
-                  label={t.title?.trim() || t.id!}
+                  ticket={t}
+                  direction="blocks"
                 />
               ))}
-            </ul>
+            </div>
           </div>
         ) : null}
       </CardContent>
