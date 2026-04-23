@@ -8,7 +8,7 @@ Work is tracked as **tickets** with an objective. Tickets move from a project **
 
 ## How it works
 
-**Agents** connect over **MCP** (e.g. Cursor) or the **REST API**. They **claim** a ticket from the queue, get the full ticket plus that project’s context, **log steps** while working, then **submit** (or escalate) for a human. **Humans** use the web UI or REST to review, approve, reject, or resolve escalations. Sign-in is usually **GitHub OAuth**; agents can also use API keys where that fits.
+**Agents** connect over **MCP** (e.g. Cursor, Codex, Claude Code) or the **REST API**. They **claim** a ticket from the queue, get the full ticket plus that project’s context, **log steps** while working, then **submit** (or escalate) for a human. **Humans** use the web UI or REST to review, approve, reject, or resolve escalations. Sign-in is usually **GitHub OAuth**; agents can also use API keys where that fits.
 
 One **Go server** serves the REST API, **MCP** at `/mcp`, and the web UI. Optional **git notes** can tie traces or decisions to your repository ([docs/git-notes.md](docs/git-notes.md)).
 
@@ -58,7 +58,16 @@ Vite defaults to port **5173** and proxies API calls to `127.0.0.1:8080` (change
 
 ## Config
 
-Everything lives in `.env.example` with comments. The usual suspects: `PORT`, `DATABASE_URL`, `REDIS_URL`, and for OAuth: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `JWT_SECRET`. More in [docs/deployment.md](docs/deployment.md).
+Everything lives in `.env.example` with comments. The usual suspects: `PORT`, `DATABASE_URL`, `REDIS_URL`, and for OAuth: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `JWT_SECRET`. Dispatch now splits **runner** from **driver**:
+
+- `DISPATCH_AGENT_RUNNER=cli|docker|openai-responses`
+- `DISPATCH_AGENT_DRIVER=claude|codex|generic` for CLI or Docker harnesses
+- `DISPATCH_AGENT_API_KEY` as the generic explicit credential, with `OPENAI_API_KEY` as the fallback for Codex/OpenAI runners and `ANTHROPIC_API_KEY` retained as a Claude fallback
+- `ORCHESTRATOR_AGENT_*` to give the command-center chat its own stronger planner profile without forcing the background dispatch workers onto the same model or runner
+
+A common setup is a strong command-center orchestrator (`openai-responses` with `xhigh`, or your preferred Claude/Codex harness) paired with cheaper `DISPATCH_*` workers for implementation tickets.
+
+More in [docs/deployment.md](docs/deployment.md) and [internal/dispatch/DRIVERS.md](internal/dispatch/DRIVERS.md).
 
 ## API surface
 

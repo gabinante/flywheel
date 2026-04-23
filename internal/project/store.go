@@ -34,9 +34,9 @@ func (s *Store) Create(ctx context.Context, p *Project) error {
 		defaultBranch = "main"
 	}
 	_, err = s.pool.Exec(ctx,
-		`INSERT INTO projects (id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		p.ID, p.OrgID, p.Name, p.Slug, p.RepoURL, defaultBranch, p.TechStack, packJSON, status, p.CreatedAt)
+		`INSERT INTO projects (id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		p.ID, p.OrgID, p.Name, p.Slug, p.RepoURL, defaultBranch, p.TechStack, packJSON, status, p.DispatchEnabled, p.CreatedAt)
 	if err != nil {
 		return err
 	}
@@ -53,9 +53,9 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Project, error) {
 	var repoURL sql.NullString
 	var defaultBranch sql.NullString
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, created_at
+		`SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, created_at
 		 FROM projects WHERE id = $1`, id).
-		Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techStack, &packJSON, &p.Status, &p.CreatedAt)
+		Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techStack, &packJSON, &p.Status, &p.DispatchEnabled, &p.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +76,7 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Project, error) {
 
 // ListByOrgID returns projects for an org. statusFilter: "" or "active" = active only, "closed" = closed only, "all" = no filter.
 func (s *Store) ListByOrgID(ctx context.Context, orgID string, statusFilter string) ([]Project, error) {
-	q := `SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, created_at
+	q := `SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, created_at
 		  FROM projects WHERE org_id = $1`
 	args := []any{orgID}
 	if statusFilter == "" || statusFilter == "active" {
@@ -96,7 +96,7 @@ func (s *Store) ListByOrgID(ctx context.Context, orgID string, statusFilter stri
 		var packJSON []byte
 		var techStack []string
 		var repoURL, defaultBranch sql.NullString
-		if err := rows.Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techStack, &packJSON, &p.Status, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techStack, &packJSON, &p.Status, &p.DispatchEnabled, &p.CreatedAt); err != nil {
 			return nil, err
 		}
 		if repoURL.Valid {
@@ -184,6 +184,18 @@ func (s *Store) UpdateDefaultBranch(ctx context.Context, projectID, branch strin
 		b = "main"
 	}
 	res, err := s.pool.Exec(ctx, `UPDATE projects SET default_branch = $1 WHERE id = $2`, b, projectID)
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return ErrProjectNotFound
+	}
+	return nil
+}
+
+// UpdateDispatchEnabled sets whether the dispatcher picks up tickets for this project.
+func (s *Store) UpdateDispatchEnabled(ctx context.Context, projectID string, enabled bool) error {
+	res, err := s.pool.Exec(ctx, `UPDATE projects SET dispatch_enabled = $1 WHERE id = $2`, enabled, projectID)
 	if err != nil {
 		return err
 	}

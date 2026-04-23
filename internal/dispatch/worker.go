@@ -48,42 +48,6 @@ type Worker interface {
 	Spawn(ctx context.Context, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL string) (*WorkerResult, error)
 }
 
-// mcpConfig is the MCP configuration file structure.
-type mcpConfig struct {
-	MCPServers map[string]mcpServerConfig `json:"mcpServers"`
-}
-
-type mcpServerConfig struct {
-	Type    string            `json:"type"`
-	URL     string            `json:"url"`
-	Headers map[string]string `json:"headers,omitempty"`
-}
-
-func buildMCPConfig(serverURL, apiKey string) mcpConfig {
-	return buildMCPConfigForType("", serverURL, apiKey)
-}
-
-// buildMCPConfigForType creates an MCP config with optional tool filtering
-// based on worker type. When workerType is empty, all tools are available.
-func buildMCPConfigForType(workerType WorkerType, serverURL, apiKey string) mcpConfig {
-	// Append worker_type query parameter so the MCP server can enforce
-	// tool access on the server side as well.
-	sseURL := serverURL + "/sse"
-	if workerType != "" && workerType.IsValid() {
-		sseURL += "?worker_type=" + string(workerType)
-	}
-
-	serverCfg := mcpServerConfig{Type: "sse", URL: sseURL}
-	if apiKey != "" {
-		serverCfg.Headers = map[string]string{"X-API-Key": apiKey}
-	}
-	return mcpConfig{
-		MCPServers: map[string]mcpServerConfig{
-			"flywheel": serverCfg,
-		},
-	}
-}
-
 func buildTaskPrompt(ticketID, projectID string) string {
 	return buildTypedTaskPrompt("", ticketID, projectID)
 }
@@ -161,9 +125,11 @@ func (w *CLIWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt
 	// Apply driver's prompt formatting.
 	systemPrompt = w.Driver.FormatPrompt(systemPrompt)
 
+	mcpConn := buildMCPConnection(serverURL, w.APIKey)
+
 	// Write temporary MCP config file for this worker.
 	mcpCfgPath := filepath.Join(workDir, ".flywheel-mcp-config.json")
-	cfgBytes, err := json.Marshal(buildMCPConfig(serverURL, w.APIKey))
+	cfgBytes, err := json.Marshal(mcpConn.SSEConfig())
 	if err != nil {
 		return nil, fmt.Errorf("marshal mcp config: %w", err)
 	}
@@ -173,13 +139,14 @@ func (w *CLIWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt
 	defer os.Remove(mcpCfgPath)
 
 	// Get executable and arguments from the driver.
-	exe, args := w.Driver.BuildCLIArgs(systemPrompt, taskMessage, mcpCfgPath)
+	exe := w.Driver.Executable()
+	args := w.Driver.BuildCLIArgs(systemPrompt, taskMessage, mcpConn, mcpCfgPath)
 
 	cmd := exec.CommandContext(ctx, exe, args...)
 	cmd.Dir = workDir
 
 	// Build environment: start with parent env, apply driver's filters and additions.
-	driverEnv := w.Driver.Env()
+	driverEnv := w.Driver.Env(systemPrompt, taskMessage, mcpConn, mcpCfgPath)
 	var env []string
 	for _, e := range os.Environ() {
 		filtered := false
@@ -196,17 +163,6 @@ func (w *CLIWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt
 	for k, v := range driverEnv.Set {
 		env = append(env, k+"="+v)
 	}
-
-	// For generic drivers, inject prompt info via environment.
-	if w.Driver.Name() == "generic" {
-		env = append(env,
-			"FLYWHEEL_SYSTEM_PROMPT="+systemPrompt,
-			"FLYWHEEL_TASK_MESSAGE="+taskMessage,
-			"FLYWHEEL_MCP_CONFIG_PATH="+mcpCfgPath,
-		)
-	}
-
-	env = append(env, "CLAUDE_CODE_ENTRYPOINT=flywheel-dispatch")
 
 	cmd.Env = env
 
@@ -235,7 +191,7 @@ type DockerWorker struct {
 	Image        string      // Docker image (overrides driver's DockerImage if set)
 	APIKey       string      // Flywheel API key for MCP authentication
 	RepoDir      string      // host path to the git repository to mount
-	AnthropicKey string      // static API key for agent inside the container
+	AgentAPIKey  string      // static API key for the selected agent inside the container
 	Memory       string      // container memory limit (default: "4g")
 	CPUs         string      // container CPU limit (default: "2")
 	PIDsLimit    string      // container PID limit (default: "256")
@@ -267,8 +223,9 @@ func (w *DockerWorker) Spawn(ctx context.Context, ticketID, projectID, systemPro
 	// MCP config: rewrite localhost → host.docker.internal for container access.
 	containerServerURL := strings.Replace(serverURL, "localhost", "host.docker.internal", 1)
 	containerServerURL = strings.Replace(containerServerURL, "127.0.0.1", "host.docker.internal", 1)
+	mcpConn := buildMCPConnection(containerServerURL, w.APIKey)
 	mcpCfgPath := filepath.Join(tmpDir, "mcp-config.json")
-	cfgBytes, err := json.Marshal(buildMCPConfig(containerServerURL, w.APIKey))
+	cfgBytes, err := json.Marshal(mcpConn.SSEConfig())
 	if err != nil {
 		return nil, fmt.Errorf("marshal mcp config: %w", err)
 	}
@@ -302,9 +259,9 @@ func (w *DockerWorker) Spawn(ctx context.Context, ticketID, projectID, systemPro
 	}
 
 	// Resolve the API credential via the driver (e.g., OAuth token for Claude).
-	credential := w.Driver.ResolveCredential(w.AnthropicKey)
+	credential := w.Driver.ResolveCredential(w.AgentAPIKey)
 	if credential != "" {
-		if credential != w.AnthropicKey {
+		if credential != w.AgentAPIKey {
 			log.Printf("dispatch: using dynamic credential for worker %s", ticketID)
 		} else {
 			log.Printf("dispatch: using static credential for worker %s", ticketID)
@@ -333,11 +290,13 @@ func (w *DockerWorker) Spawn(ctx context.Context, ticketID, projectID, systemPro
 
 	// Add credential as environment variable if available.
 	if credential != "" {
-		args = append(args, "-e", "ANTHROPIC_API_KEY="+credential)
+		if envName := w.Driver.CredentialEnvName(); envName != "" {
+			args = append(args, "-e", envName+"="+credential)
+		}
 	}
 
 	// Add driver-specific environment variables.
-	driverEnv := w.Driver.Env()
+	driverEnv := w.Driver.Env(systemPrompt, taskMessage, mcpConn, "/tmp/mcp-config.json")
 	for k, v := range driverEnv.Set {
 		args = append(args, "-e", k+"="+v)
 	}
@@ -354,7 +313,11 @@ func (w *DockerWorker) Spawn(ctx context.Context, ticketID, projectID, systemPro
 		)
 		allowedHosts := w.AllowedHosts
 		if allowedHosts == "" {
-			allowedHosts = "api.anthropic.com,registry.npmjs.org,github.com"
+			if defaults := w.Driver.DefaultAllowedHosts(); len(defaults) > 0 {
+				allowedHosts = strings.Join(defaults, ",")
+			} else {
+				allowedHosts = "registry.npmjs.org,github.com"
+			}
 		}
 		args = append(args, "-e", "FLYWHEEL_ALLOWED_HOSTS="+allowedHosts)
 	}
@@ -363,7 +326,7 @@ func (w *DockerWorker) Spawn(ctx context.Context, ticketID, projectID, systemPro
 	args = append(args, image)
 
 	// Get the agent-specific command from the driver.
-	agentCmd := w.Driver.BuildDockerCmd(branch)
+	agentCmd := w.Driver.BuildDockerCmd(branch, mcpConn)
 	args = append(args, agentCmd)
 
 	cmd := exec.CommandContext(ctx, "docker", args...)

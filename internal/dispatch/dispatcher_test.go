@@ -209,7 +209,7 @@ func TestNewDispatcherDockerWorker(t *testing.T) {
 		DockerCPUs:    "4",
 		APIKey:        "key-456",
 		RepoDir:       "/repo",
-		AnthropicKey:  "sk-test",
+		AgentAPIKey:   "sk-test",
 	}
 
 	d := New(cfg, bus, tg, pg)
@@ -238,10 +238,10 @@ func TestNewDispatcherGenericDriver(t *testing.T) {
 	pg := newMockProjectGetter()
 
 	cfg := Config{
-		MaxWorkers:  1,
-		AgentDriver: "generic",
+		MaxWorkers:   1,
+		AgentDriver:  "generic",
 		AgentCLIPath: "/usr/bin/opencode",
-		RepoDir:     "/repo",
+		RepoDir:      "/repo",
 	}
 
 	d := New(cfg, bus, tg, pg)
@@ -251,6 +251,33 @@ func TestNewDispatcherGenericDriver(t *testing.T) {
 	}
 	if cliWorker.Driver.Name() != "generic" {
 		t.Errorf("expected generic driver, got %q", cliWorker.Driver.Name())
+	}
+}
+
+func TestNewDispatcherOpenAIResponsesWorker(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter()
+	pg := newMockProjectGetter()
+
+	cfg := Config{
+		MaxWorkers:  1,
+		AgentRunner: RunnerOpenAIResponses,
+		AgentAPIKey: "sk-openai",
+		APIKey:      "wf-key",
+		RepoDir:     "/repo",
+		AgentModel:  "gpt-5.2-codex",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	apiWorker, ok := d.worker.(*OpenAIResponsesWorker)
+	if !ok {
+		t.Fatal("expected OpenAIResponsesWorker when AgentRunner=openai-responses")
+	}
+	if apiWorker.Config.Model != "gpt-5.2-codex" {
+		t.Errorf("expected model gpt-5.2-codex, got %q", apiWorker.Config.Model)
+	}
+	if apiWorker.Config.APIKey != "sk-openai" {
+		t.Errorf("expected API key sk-openai, got %q", apiWorker.Config.APIKey)
 	}
 }
 
@@ -792,9 +819,9 @@ func TestRunWorkerProjectNotFound(t *testing.T) {
 
 // mockLeaseReleaser implements LeaseReleaser for tests.
 type mockLeaseReleaser struct {
-	mu       sync.Mutex
-	calls    []string // ticket IDs passed to ForceReleaseLease
-	err      error    // error to return
+	mu    sync.Mutex
+	calls []string // ticket IDs passed to ForceReleaseLease
+	err   error    // error to return
 }
 
 func (m *mockLeaseReleaser) ForceReleaseLease(_ context.Context, ticketID string) error {
@@ -1245,7 +1272,7 @@ func TestHandleWorkerExit_ConcurrentWorkers(t *testing.T) {
 }
 
 func TestEventBusIntegration(t *testing.T) {
-	proj := &project.Project{ID: "p-1", Name: "test"}
+	proj := &project.Project{ID: "p-1", Name: "test", DispatchEnabled: true}
 	tk := &ticket.Ticket{
 		ID:        "t-evt",
 		ProjectID: "p-1",
@@ -1287,6 +1314,279 @@ func TestEventBusIntegration(t *testing.T) {
 
 	if worker.callCount() != 1 {
 		t.Errorf("expected 1 worker call from event, got %d", worker.callCount())
+	}
+}
+
+func TestDispatchDisabledSkipsTickets(t *testing.T) {
+	// When dispatch_enabled=false, the dispatcher should skip the project's tickets.
+	proj := &project.Project{ID: "p-1", Name: "test", DispatchEnabled: false}
+	tk := &ticket.Ticket{
+		ID:        "t-disabled",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+		Title:     "disabled dispatch test",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	worker := &mockWorker{}
+	cfg := Config{
+		MaxWorkers:    5,
+		ProjectID:     "p-1",
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d.Start(ctx)
+	defer d.Stop()
+
+	// Publish a ticket.created event for the disabled project.
+	_ = bus.Publish(ctx, events.Event{
+		Type:    events.EventTicketCreated,
+		Payload: map[string]any{"ticket_id": "t-disabled"},
+	})
+
+	// Wait for the goroutine to process.
+	time.Sleep(500 * time.Millisecond)
+
+	if worker.callCount() != 0 {
+		t.Errorf("expected 0 worker calls when dispatch disabled, got %d", worker.callCount())
+	}
+}
+
+func TestDispatchEnabledAllowsTickets(t *testing.T) {
+	// When dispatch_enabled=true, the dispatcher should process the project's tickets.
+	proj := &project.Project{ID: "p-1", Name: "test", DispatchEnabled: true}
+	tk := &ticket.Ticket{
+		ID:        "t-enabled",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+		Title:     "enabled dispatch test",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	worker := &mockWorker{}
+	cfg := Config{
+		MaxWorkers:    5,
+		ProjectID:     "p-1",
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d.Start(ctx)
+	defer d.Stop()
+
+	// Publish a ticket.created event for the enabled project.
+	_ = bus.Publish(ctx, events.Event{
+		Type:    events.EventTicketCreated,
+		Payload: map[string]any{"ticket_id": "t-enabled"},
+	})
+
+	// Wait for the goroutine to process.
+	time.Sleep(500 * time.Millisecond)
+
+	if worker.callCount() != 1 {
+		t.Errorf("expected 1 worker call when dispatch enabled, got %d", worker.callCount())
+	}
+}
+
+// --- Ticket Transitioner Tests (post-merge lifecycle) ---
+
+// mockTicketTransitioner records TransitionTicket calls.
+type mockTicketTransitioner struct {
+	mu          sync.Mutex
+	transitions []mockTransition
+	err         error  // error to return (nil = success)
+	failOn      string // trigger name to fail on (empty = never fail)
+}
+
+type mockTransition struct {
+	ID      string
+	Trigger string
+	Actor   ticket.Actor
+}
+
+func (m *mockTicketTransitioner) TransitionTicket(_ context.Context, id string, trigger string, actor ticket.Actor, _ map[string]any) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.transitions = append(m.transitions, mockTransition{ID: id, Trigger: trigger, Actor: actor})
+	if m.failOn != "" && trigger == m.failOn {
+		return m.err
+	}
+	return nil
+}
+
+func (m *mockTicketTransitioner) transitionCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.transitions)
+}
+
+func (m *mockTicketTransitioner) triggers() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var result []string
+	for _, t := range m.transitions {
+		result = append(result, t.Trigger)
+	}
+	return result
+}
+
+func TestCloseMergedTicket_HappyPath(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter()
+	pg := newMockProjectGetter()
+	cfg := Config{MaxWorkers: 5}
+
+	d := New(cfg, bus, tg, pg)
+	trans := &mockTicketTransitioner{}
+	d.SetTicketTransitioner(trans)
+
+	// Seed a merge attempt to verify it gets cleared.
+	d.mu.Lock()
+	d.mergeAttempts["t-1"] = 3
+	d.mu.Unlock()
+
+	tk := &ticket.Ticket{ID: "t-1", ProjectID: "p-1", State: ticket.StateValidated}
+	d.closeMergedTicket(context.Background(), tk)
+
+	if trans.transitionCount() != 3 {
+		t.Fatalf("expected 3 transitions, got %d", trans.transitionCount())
+	}
+	triggers := trans.triggers()
+	expected := []string{ticket.TriggerDeploy, ticket.TriggerObserve, ticket.TriggerClose}
+	for i, exp := range expected {
+		if triggers[i] != exp {
+			t.Errorf("transition %d: expected %q, got %q", i, exp, triggers[i])
+		}
+	}
+
+	// Verify merge attempts cleared.
+	d.mu.Lock()
+	remaining := d.mergeAttempts["t-1"]
+	d.mu.Unlock()
+	if remaining != 0 {
+		t.Errorf("expected merge attempts cleared, got %d", remaining)
+	}
+}
+
+func TestCloseMergedTicket_NilTransitioner(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter()
+	pg := newMockProjectGetter()
+	cfg := Config{MaxWorkers: 5}
+
+	d := New(cfg, bus, tg, pg)
+	// Note: NOT setting ticketTransitioner — it's nil.
+
+	tk := &ticket.Ticket{ID: "t-1", ProjectID: "p-1", State: ticket.StateValidated}
+
+	// Should not panic.
+	d.closeMergedTicket(context.Background(), tk)
+}
+
+func TestCloseMergedTicket_TransitionError(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter()
+	pg := newMockProjectGetter()
+	cfg := Config{MaxWorkers: 5}
+
+	d := New(cfg, bus, tg, pg)
+	trans := &mockTicketTransitioner{
+		failOn: ticket.TriggerObserve,
+		err:    fmt.Errorf("transition failed"),
+	}
+	d.SetTicketTransitioner(trans)
+
+	tk := &ticket.Ticket{ID: "t-1", ProjectID: "p-1", State: ticket.StateValidated}
+	d.closeMergedTicket(context.Background(), tk)
+
+	// Should have attempted deploy (success) and observe (failure), then stopped.
+	if trans.transitionCount() != 2 {
+		t.Errorf("expected 2 transitions (stopped at observe), got %d", trans.transitionCount())
+	}
+}
+
+func TestAutoMergePR_StateGuard(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tk := &ticket.Ticket{
+		ID:        "t-guard",
+		ProjectID: "p-1",
+		State:     ticket.StateClosed, // not validated — should be skipped
+		Outputs:   map[string]any{"pr_url": "https://github.com/test/pr/1"},
+	}
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter()
+	cfg := Config{MaxWorkers: 5, RepoDir: t.TempDir(), WorktreeDir: t.TempDir()}
+
+	d := New(cfg, bus, tg, pg)
+	trans := &mockTicketTransitioner{}
+	d.SetTicketTransitioner(trans)
+
+	d.autoMergePR(context.Background(), tk, "https://github.com/test/pr/1")
+
+	// No transitions should happen — state guard blocks.
+	if trans.transitionCount() != 0 {
+		t.Errorf("expected 0 transitions (state guard), got %d", trans.transitionCount())
+	}
+}
+
+func TestAutoMergePR_Escalation(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tk := &ticket.Ticket{
+		ID:        "t-esc",
+		ProjectID: "p-1",
+		State:     ticket.StateValidated,
+		Outputs:   map[string]any{"pr_url": "https://github.com/test/pr/1"},
+	}
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter()
+	cfg := Config{MaxWorkers: 5, RepoDir: t.TempDir(), WorktreeDir: t.TempDir()}
+
+	d := New(cfg, bus, tg, pg)
+
+	// Seed merge attempts at threshold.
+	d.mu.Lock()
+	d.mergeAttempts["t-esc"] = maxMergeAttempts
+	d.mu.Unlock()
+
+	// Subscribe to escalation events.
+	var escalated []events.Event
+	bus.Subscribe(events.EventTicketEscalated, func(_ context.Context, e events.Event) {
+		escalated = append(escalated, e)
+	})
+
+	d.autoMergePR(context.Background(), tk, "https://github.com/test/pr/1")
+
+	if len(escalated) != 1 {
+		t.Fatalf("expected 1 escalation event, got %d", len(escalated))
+	}
+	if escalated[0].Payload["ticket_id"] != "t-esc" {
+		t.Errorf("expected ticket_id=t-esc, got %v", escalated[0].Payload["ticket_id"])
+	}
+	if escalated[0].Payload["source"] != "auto_merge" {
+		t.Errorf("expected source=auto_merge, got %v", escalated[0].Payload["source"])
 	}
 }
 

@@ -41,133 +41,154 @@ type LeaseReleaser interface {
 	ForceReleaseLease(ctx context.Context, ticketID string) error
 }
 
+// TicketTransitioner applies state transitions to tickets.
+// Matches the ticket.Service.TransitionTicket signature.
+type TicketTransitioner interface {
+	TransitionTicket(ctx context.Context, id string, trigger string, actor ticket.Actor, payload map[string]any) error
+}
+
+// maxMergeAttempts is the number of merge failures before escalating to a human.
+const maxMergeAttempts = 5
+
 // Config holds dispatcher settings.
 type Config struct {
-	MaxWorkers   int
-	ClaudePath   string
-	WorktreeDir  string
-	RepoDir      string // path to the main git repository
-	ServerURL    string // Flywheel server URL for MCP connections
-	AgentID      string // agent identity for workers
-	APIKey       string // Flywheel API key for worker MCP authentication
-	ProjectID    string // only dispatch tickets for this project (empty = all)
-	AutoApprove        bool          // auto-approve tickets when acceptance tests pass
-	ReconcileInterval  time.Duration  // periodic reconciliation interval (default: 60s)
+	MaxWorkers        int
+	ClaudePath        string
+	WorktreeDir       string
+	RepoDir           string        // path to the main git repository
+	ServerURL         string        // Flywheel server URL for MCP connections
+	AgentID           string        // agent identity for workers
+	APIKey            string        // Flywheel API key for worker MCP authentication
+	ProjectID         string        // only dispatch tickets for this project (empty = all)
+	AutoApprove       bool          // auto-approve tickets when acceptance tests pass
+	ReconcileInterval time.Duration // periodic reconciliation interval (default: 60s)
+	AgentRunner       string        // execution backend: cli, docker, openai-responses
 	// Agent driver selection.
-	AgentDriver  string // driver name: "claude" (default), "generic", or custom
-	AgentCLIPath string // override CLI path for the agent binary
-	AgentArgs    []string // extra static arguments for the agent command
+	AgentDriver          string   // driver name: "claude" (default), "generic", or custom
+	AgentCLIPath         string   // override CLI path for the agent binary
+	AgentArgs            []string // extra static arguments for the agent command
+	AgentModel           string   // API-native model name (used by openai-responses)
+	AgentReasoningEffort string   // API-native reasoning effort
+	AgentAPIBaseURL      string   // API-native base URL
 	// Docker isolation settings.
 	DockerEnabled  bool
 	DockerImage    string
 	DockerMemory   string
 	DockerCPUs     string
 	DockerFirewall bool
-	AnthropicKey   string
+	AgentAPIKey    string
 }
 
 // Dispatcher listens for ticket events and spawns workers.
+// Supports both the legacy Bus interface (exact Subscribe) and the new DurableEventBus
+// (pattern-based SubscribePattern) for at-least-once delivery.
 type Dispatcher struct {
-	cfg           Config
-	bus           events.Bus
-	tickets       TicketGetter
-	projects      ProjectGetter
-	worker        Worker
-	worktrees     *WorktreeManager
-	clones        *MultiRepoCloneManager // nil-safe: only used for multi-repo projects
-	repoResolver  RepoResolver            // nil-safe: only used for multi-repo projects
-	leaseReleaser LeaseReleaser           // nil-safe: if nil, worker exit does not release lease (Layer 2 TTL handles it)
+	cfg                Config
+	bus                events.Bus
+	durableBus         events.DurableEventBus // nil if bus doesn't support durability
+	tickets            TicketGetter
+	projects           ProjectGetter
+	worker             Worker
+	worktrees          *WorktreeManager
+	clones             *MultiRepoCloneManager // nil-safe: only used for multi-repo projects
+	repoResolver       RepoResolver           // nil-safe: only used for multi-repo projects
+	leaseReleaser      LeaseReleaser          // nil-safe: if nil, worker exit does not release lease (Layer 2 TTL handles it)
+	ticketTransitioner TicketTransitioner     // nil-safe: if nil, merged tickets are not auto-closed
 
-	mu         sync.Mutex
-	active     map[string]context.CancelFunc // ticketID → cancel
-	wg         sync.WaitGroup
-	scanning   int32              // atomic CAS guard for reconcile
-	stopCancel context.CancelFunc // cancels the internal context on Stop()
+	mu            sync.Mutex
+	active        map[string]context.CancelFunc // ticketID → cancel
+	mergeAttempts map[string]int                // ticketID → failed merge count
+	wg            sync.WaitGroup
+	scanning      int32              // atomic CAS guard for reconcile
+	stopCancel    context.CancelFunc // cancels the internal context on Stop()
 }
 
 // New creates a dispatcher that subscribes to the event bus.
 func New(cfg Config, bus events.Bus, tickets TicketGetter, projects ProjectGetter) *Dispatcher {
-	// Resolve the agent driver.
-	driverName := cfg.AgentDriver
-	if driverName == "" {
-		driverName = "claude"
-	}
-	cliPath := cfg.AgentCLIPath
-	if cliPath == "" {
-		cliPath = cfg.ClaudePath // backward compat
-	}
-	driver, err := LookupDriver(driverName, DriverConfig{
-		CLIPath:   cliPath,
-		ExtraArgs: cfg.AgentArgs,
-	})
-	if err != nil {
-		log.Printf("dispatch: %v, falling back to claude driver", err)
-		driver = NewClaudeDriver(DriverConfig{CLIPath: cliPath})
-	}
-
-	var worker Worker
-	if cfg.DockerEnabled {
-		worker = &DockerWorker{
-			Driver:       driver,
-			Image:        cfg.DockerImage,
-			APIKey:       cfg.APIKey,
-			RepoDir:      cfg.RepoDir,
-			AnthropicKey: cfg.AnthropicKey,
-			Memory:       cfg.DockerMemory,
-			CPUs:         cfg.DockerCPUs,
-			Firewall:     cfg.DockerFirewall,
-		}
-	} else {
-		worker = &CLIWorker{
-			Driver: driver,
-			APIKey: cfg.APIKey,
-		}
-	}
 	d := &Dispatcher{
 		cfg:      cfg,
 		bus:      bus,
 		tickets:  tickets,
 		projects: projects,
-		worker:   worker,
+		worker:   NewWorker(cfg),
 		worktrees: &WorktreeManager{
 			BaseDir: cfg.WorktreeDir,
 			RepoDir: cfg.RepoDir,
 		},
-		clones: NewMultiRepoCloneManager(filepath.Join(cfg.WorktreeDir, ".clones")),
-		active: make(map[string]context.CancelFunc),
+		clones:        NewMultiRepoCloneManager(filepath.Join(cfg.WorktreeDir, ".clones")),
+		active:        make(map[string]context.CancelFunc),
+		mergeAttempts: make(map[string]int),
+	}
+	// Detect if bus supports durable event delivery.
+	if durable, ok := bus.(events.DurableEventBus); ok {
+		d.durableBus = durable
 	}
 	return d
 }
 
 // Start subscribes to events and begins dispatching. Call Stop to shut down.
+// When a DurableEventBus is available, uses pattern-based subscriptions with
+// at-least-once delivery guarantees. Falls back to exact subscriptions on legacy Bus.
 func (d *Dispatcher) Start(ctx context.Context) {
 	// Derive an internal context so Stop() can cancel background goroutines
 	// even if the caller's context is still alive.
 	ctx, d.stopCancel = context.WithCancel(ctx)
 
-	d.bus.Subscribe(events.EventTicketCreated, func(_ context.Context, e events.Event) {
-		d.handleTicketReady(ctx, e)
-	})
-	d.bus.Subscribe(events.EventTicketUnblocked, func(_ context.Context, e events.Event) {
-		d.handleTicketReady(ctx, e)
-	})
-	d.bus.Subscribe(events.EventTicketRejected, func(_ context.Context, e events.Event) {
-		d.handleTicketRejected(ctx, e)
-	})
-	d.bus.Subscribe(events.EventTicketSubmitted, func(_ context.Context, e events.Event) {
-		d.handleTicketSubmitted(ctx, e)
-	})
-	d.bus.Subscribe(events.EventTicketDone, func(_ context.Context, e events.Event) {
-		d.handleTicketDone(ctx, e)
-	})
-	d.bus.Subscribe(events.EventTicketApproved, func(_ context.Context, e events.Event) {
-		d.handleTicketDone(ctx, e)
-	})
-	d.bus.Subscribe(events.EventTestsFailed, func(_ context.Context, e events.Event) {
-		d.handleTestsFailed(ctx, e)
-	})
+	if d.durableBus != nil {
+		// Use pattern-based subscriptions for durable delivery.
+		_ = d.durableBus.SubscribePattern("ticket.created", "dispatcher:ready", func(_ context.Context, e events.Event) {
+			d.handleTicketReady(ctx, e)
+		})
+		_ = d.durableBus.SubscribePattern("ticket.unblocked", "dispatcher:ready", func(_ context.Context, e events.Event) {
+			d.handleTicketReady(ctx, e)
+		})
+		_ = d.durableBus.SubscribePattern("ticket.rejected", "dispatcher:rejected", func(_ context.Context, e events.Event) {
+			d.handleTicketRejected(ctx, e)
+		})
+		_ = d.durableBus.SubscribePattern("ticket.submitted", "dispatcher:submitted", func(_ context.Context, e events.Event) {
+			d.handleTicketSubmitted(ctx, e)
+		})
+		_ = d.durableBus.SubscribePattern("ticket.closed", "dispatcher:done", func(_ context.Context, e events.Event) {
+			d.handleTicketDone(ctx, e)
+		})
+		_ = d.durableBus.SubscribePattern("ticket.approved", "dispatcher:done", func(_ context.Context, e events.Event) {
+			d.handleTicketDone(ctx, e)
+		})
+		_ = d.durableBus.SubscribePattern("tests.failed", "dispatcher:tests-failed", func(_ context.Context, e events.Event) {
+			d.handleTestsFailed(ctx, e)
+		})
+		_ = d.durableBus.SubscribePattern("ticket.rolled_back", "dispatcher:rolled-back", func(_ context.Context, e events.Event) {
+			d.handleTicketRolledBack(ctx, e)
+		})
+	} else {
+		// Legacy exact subscriptions (backward compatible).
+		d.bus.Subscribe(events.EventTicketCreated, func(_ context.Context, e events.Event) {
+			d.handleTicketReady(ctx, e)
+		})
+		d.bus.Subscribe(events.EventTicketUnblocked, func(_ context.Context, e events.Event) {
+			d.handleTicketReady(ctx, e)
+		})
+		d.bus.Subscribe(events.EventTicketRejected, func(_ context.Context, e events.Event) {
+			d.handleTicketRejected(ctx, e)
+		})
+		d.bus.Subscribe(events.EventTicketSubmitted, func(_ context.Context, e events.Event) {
+			d.handleTicketSubmitted(ctx, e)
+		})
+		d.bus.Subscribe(events.EventTicketDone, func(_ context.Context, e events.Event) {
+			d.handleTicketDone(ctx, e)
+		})
+		d.bus.Subscribe(events.EventTicketApproved, func(_ context.Context, e events.Event) {
+			d.handleTicketDone(ctx, e)
+		})
+		d.bus.Subscribe(events.EventTestsFailed, func(_ context.Context, e events.Event) {
+			d.handleTestsFailed(ctx, e)
+		})
+		d.bus.Subscribe(events.EventTicketRolledBack, func(_ context.Context, e events.Event) {
+			d.handleTicketRolledBack(ctx, e)
+		})
+	}
 
-	log.Printf("dispatch: started (max_workers=%d, worktree_dir=%s, project=%s)", d.cfg.MaxWorkers, d.cfg.WorktreeDir, d.cfg.ProjectID)
+	log.Printf("dispatch: started (max_workers=%d, worktree_dir=%s, project=%s, durable=%v)", d.cfg.MaxWorkers, d.cfg.WorktreeDir, d.cfg.ProjectID, d.durableBus != nil)
 
 	// Scan for existing pending tickets on startup.
 	go d.reconcile(ctx)
@@ -214,6 +235,12 @@ func (d *Dispatcher) SetLeaseReleaser(lr LeaseReleaser) {
 	d.leaseReleaser = lr
 }
 
+// SetTicketTransitioner configures the ticket transitioner for post-merge lifecycle.
+// Call this after construction to wire the ticket service without circular imports.
+func (d *Dispatcher) SetTicketTransitioner(tt TicketTransitioner) {
+	d.ticketTransitioner = tt
+}
+
 // SetRepoResolver configures multi-repo resolution. When set, tickets with
 // target_repo are resolved to the correct repository for worktree creation.
 func (d *Dispatcher) SetRepoResolver(rr RepoResolver) {
@@ -246,6 +273,9 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 		log.Printf("dispatch: scan awaiting_review: %v", err)
 	} else {
 		for _, t := range reviewing {
+			if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
+				continue
+			}
 			d.spawnReviewer(ctx, t)
 		}
 	}
@@ -256,6 +286,9 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 		log.Printf("dispatch: scan validated: %v", err)
 	} else {
 		for _, t := range validated {
+			if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
+				continue
+			}
 			prURL, ok := t.Outputs["pr_url"].(string)
 			if !ok || prURL == "" {
 				continue
@@ -277,8 +310,22 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 	}
 	log.Printf("dispatch: scan found %d pending tickets", len(pending))
 	for _, t := range pending {
+		if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
+			continue
+		}
 		d.tryDispatch(ctx, t)
 	}
+}
+
+// isProjectDispatchEnabled checks whether dispatch is enabled for a project.
+// Returns true if the project cannot be found (fail-open for backward compat
+// with the legacy DISPATCH_PROJECT_ID single-project approach).
+func (d *Dispatcher) isProjectDispatchEnabled(ctx context.Context, projectID string) bool {
+	proj, err := d.projects.GetProject(ctx, projectID)
+	if err != nil || proj == nil {
+		return true // fail-open: don't block dispatch if project lookup fails
+	}
+	return proj.DispatchEnabled
 }
 
 func (d *Dispatcher) handleTicketReady(ctx context.Context, e events.Event) {
@@ -294,8 +341,13 @@ func (d *Dispatcher) handleTicketReady(ctx context.Context, e events.Event) {
 		return
 	}
 
-	// Filter by project if configured.
+	// Filter by project if configured (legacy env var approach).
 	if d.cfg.ProjectID != "" && t.ProjectID != d.cfg.ProjectID {
+		return
+	}
+
+	// Check per-project dispatch toggle.
+	if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
 		return
 	}
 
@@ -316,6 +368,9 @@ func (d *Dispatcher) handleTicketRejected(ctx context.Context, e events.Event) {
 		return
 	}
 	if d.cfg.ProjectID != "" && t.ProjectID != d.cfg.ProjectID {
+		return
+	}
+	if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
 		return
 	}
 	if t.State != ticket.StateExecuting {
@@ -346,6 +401,41 @@ func (d *Dispatcher) handleTestsFailed(ctx context.Context, e events.Event) {
 	if prURL != "" {
 		d.spawnConflictResolver(ctx, t, prURL)
 	}
+}
+
+// handleTicketRolledBack cancels any active worker and cleans up when a ticket is rolled back.
+func (d *Dispatcher) handleTicketRolledBack(_ context.Context, e events.Event) {
+	ticketID, _ := e.Payload["ticket_id"].(string)
+	if ticketID == "" {
+		return
+	}
+
+	// Cancel any active worker for this ticket.
+	d.mu.Lock()
+	if cancel, ok := d.active[ticketID]; ok {
+		cancel()
+		delete(d.active, ticketID)
+	}
+	// Also cancel reviewer if running.
+	if cancel, ok := d.active["review:"+ticketID]; ok {
+		cancel()
+		delete(d.active, "review:"+ticketID)
+	}
+	// Also cancel conflict resolver if running.
+	if cancel, ok := d.active["resolve:"+ticketID]; ok {
+		cancel()
+		delete(d.active, "resolve:"+ticketID)
+	}
+	d.mu.Unlock()
+
+	// Worktree cleanup is handled by the rollback service, but clean up
+	// any remaining worktree as a safety net.
+	if err := d.worktrees.Remove(ticketID); err != nil {
+		// Not critical — the rollback service may have already removed it.
+		log.Printf("dispatch: rollback worktree cleanup %s: %v (may already be removed)", ticketID, err)
+	}
+
+	log.Printf("dispatch: ticket %s rolled back — worker cancelled, worktree cleaned", ticketID)
 }
 
 func (d *Dispatcher) tryDispatch(ctx context.Context, t *ticket.Ticket) {
@@ -395,6 +485,9 @@ func (d *Dispatcher) handleTicketSubmitted(ctx context.Context, e events.Event) 
 		return
 	}
 	if d.cfg.ProjectID != "" && t.ProjectID != d.cfg.ProjectID {
+		return
+	}
+	if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
 		return
 	}
 	if t.State != ticket.StateAwaitingReview {
@@ -736,10 +829,26 @@ func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
 	return nil
 }
 
-// autoMergePR merges the PR after a ticket is approved.
+// autoMergePR merges the PR after a ticket is approved/validated.
 // It first validates that CI checks pass, then merges. If the merge fails due
-// to conflicts, it spawns a conflict resolver worker.
+// to conflicts, it spawns a conflict resolver worker. On success, it advances
+// the ticket through deploying → observing → closed.
 func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL string) {
+	// State guard: only merge from validated state. Prevents re-entrancy when
+	// ticket.closed event re-enters handleTicketDone.
+	if t.State != ticket.StateValidated {
+		return
+	}
+
+	// Check escalation threshold before attempting.
+	d.mu.Lock()
+	attempts := d.mergeAttempts[t.ID]
+	d.mu.Unlock()
+	if attempts >= maxMergeAttempts {
+		d.escalateMergeFailure(ctx, t, fmt.Sprintf("merge failed %d times", attempts))
+		return
+	}
+
 	_ = d.worktrees.Remove(t.ID)
 
 	// Validate CI checks before attempting merge.
@@ -753,6 +862,11 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 	if err != nil {
 		output := string(out)
 		log.Printf("dispatch: auto-merge %s failed: %v\n%s", t.ID, err, output)
+
+		d.mu.Lock()
+		d.mergeAttempts[t.ID]++
+		d.mu.Unlock()
+
 		if strings.Contains(output, "not mergeable") || strings.Contains(output, "CONFLICT") || strings.Contains(output, "cannot be cleanly created") {
 			d.spawnConflictResolver(ctx, t, prURL)
 		}
@@ -763,7 +877,49 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 		delCmd := exec.Command("git", "push", "origin", "--delete", branch)
 		delCmd.Dir = d.cfg.RepoDir
 		_ = delCmd.Run()
+
+		d.closeMergedTicket(ctx, t)
 	}
+}
+
+// closeMergedTicket advances a ticket through the post-merge lifecycle:
+// validated → deploying → observing → closed. Uses a system actor.
+// Nil-safe: if ticketTransitioner is nil, logs and returns.
+func (d *Dispatcher) closeMergedTicket(ctx context.Context, t *ticket.Ticket) {
+	if d.ticketTransitioner == nil {
+		log.Printf("dispatch: ticket transitioner not set, cannot close merged ticket %s", t.ID)
+		return
+	}
+
+	actor := ticket.Actor{ID: "dispatcher", Type: ticket.ActorSystem}
+
+	for _, trigger := range []string{ticket.TriggerDeploy, ticket.TriggerObserve, ticket.TriggerClose} {
+		if err := d.ticketTransitioner.TransitionTicket(ctx, t.ID, trigger, actor, nil); err != nil {
+			log.Printf("dispatch: post-merge transition %s for %s failed: %v", trigger, t.ID, err)
+			return
+		}
+	}
+
+	log.Printf("dispatch: ticket %s closed after merge", t.ID)
+
+	d.mu.Lock()
+	delete(d.mergeAttempts, t.ID)
+	d.mu.Unlock()
+}
+
+// escalateMergeFailure publishes an escalation event when merge attempts exceed the threshold.
+// The ticket stays in validated state for manual intervention.
+func (d *Dispatcher) escalateMergeFailure(ctx context.Context, t *ticket.Ticket, reason string) {
+	log.Printf("dispatch: escalating merge failure for %s: %s", t.ID, reason)
+	_ = d.bus.Publish(ctx, events.Event{
+		Type: events.EventTicketEscalated,
+		Payload: map[string]any{
+			"ticket_id":  t.ID,
+			"project_id": t.ProjectID,
+			"reason":     reason,
+			"source":     "auto_merge",
+		},
+	})
 }
 
 // validatePRChecks verifies CI checks pass on the PR before merging.
@@ -884,6 +1040,11 @@ func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, 
 	out, mergeErr := cmd.CombinedOutput()
 	if mergeErr != nil {
 		log.Printf("dispatch: retry merge %s still failed: %v\n%s", t.ID, mergeErr, string(out))
+
+		d.mu.Lock()
+		d.mergeAttempts[t.ID]++
+		d.mu.Unlock()
+
 		return fmt.Errorf("retry merge: %w", mergeErr)
 	}
 
@@ -892,5 +1053,7 @@ func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, 
 	delCmd := exec.Command("git", "push", "origin", "--delete", branch)
 	delCmd.Dir = d.cfg.RepoDir
 	_ = delCmd.Run()
+
+	d.closeMergedTicket(ctx, t)
 	return nil
 }

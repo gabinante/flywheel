@@ -10,6 +10,9 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
 import { formatApiError } from '@/lib/api/client'
@@ -109,43 +112,45 @@ export function WorkStreamCreatePage() {
             {formErr ? (
               <p className="text-destructive text-sm">{formErr}</p>
             ) : null}
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-muted-foreground">Name</span>
-              <input
-                className="border-input bg-background h-8 rounded-md border px-2 text-sm disabled:opacity-50"
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="wsc-name">Name</Label>
+              <Input
+                id="wsc-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 disabled={busy}
                 placeholder="e.g. Web UI rollout"
                 required
               />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-muted-foreground">Slug (optional)</span>
-              <input
-                className="border-input bg-background h-8 rounded-md border px-2 font-mono text-sm disabled:opacity-50"
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="wsc-slug">Slug (optional)</Label>
+              <Input
+                id="wsc-slug"
+                className="font-mono"
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
                 disabled={busy}
                 placeholder="url-safe-id"
               />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-muted-foreground">Plan — Markdown (optional)</span>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="wsc-plan">Plan — Markdown (optional)</Label>
               <span className="text-muted-foreground text-xs">
                 Optional implementation plan: GFM, code fences with language,
                 Mermaid diagrams in <code className="font-mono">{'```mermaid'}</code>{' '}
                 blocks.
               </span>
-              <textarea
-                className="border-input bg-background font-mono min-h-[120px] rounded-md border px-2 py-2 text-sm disabled:opacity-50"
+              <Textarea
+                id="wsc-plan"
+                className="min-h-[120px] font-mono"
                 value={plan}
                 onChange={(e) => setPlan(e.target.value)}
                 disabled={busy}
                 rows={8}
                 spellCheck={false}
               />
-            </label>
+            </div>
             <Button type="submit" disabled={busy}>
               {busy ? 'Creating…' : 'Create work stream'}
             </Button>

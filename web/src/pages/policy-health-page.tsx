@@ -17,6 +17,7 @@ import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { PolicyHealthSkeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
 
@@ -269,7 +270,7 @@ export function PolicyHealthPage() {
     return <p className="text-destructive text-sm">{err}</p>
   }
   if (!health) {
-    return <p className="text-muted-foreground text-sm">Loading...</p>
+    return <PolicyHealthSkeleton />
   }
 
   const activePolicies = health.filter((h) => h.policy.enabled)
@@ -571,7 +572,6 @@ function PolicyCard({
           className={`h-0.5 w-full transition-colors duration-300 ${config.dot}`}
         />
       )}
-
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">

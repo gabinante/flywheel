@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import type { components } from '@/lib/api/v1'
 
 type Ticket = components['schemas']['Ticket']
@@ -64,7 +65,10 @@ export function TicketRelationshipsCard({
           <CardTitle className="text-sm">Dependencies</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-muted-foreground text-sm">Loading…</p>
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-3/4" />
+          </div>
         </CardContent>
       </Card>
     )
