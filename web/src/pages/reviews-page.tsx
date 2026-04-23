@@ -167,26 +167,6 @@ export function ReviewsPage() {
   const itemRefs = useRef<(HTMLLIElement | null)[]>([])
   const notesRefs = useRef<(HTMLTextAreaElement | null)[]>([])
 
-  // Load pending reviews
-  useEffect(() => {
-    if (!projectId) return
-    let cancelled = false
-    void (async () => {
-      const r = await loadPendingReviews(client, projectId)
-      if (cancelled) return
-      if (!r.ok) {
-        setErr(r.message)
-        setTickets([])
-        return
-      }
-      setErr(null)
-      setTickets(r.tickets)
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [client, projectId])
-
   // Load trace when a ticket is expanded
   const loadTraceForTicket = useCallback(
     async (ticketId: string) => {
@@ -196,6 +176,19 @@ export function ReviewsPage() {
       setTraceCache((prev) => ({ ...prev, [ticketId]: steps }))
     },
     [client, traceCache],
+  )
+
+  const ensureExpanded = useCallback(
+    (ticketId: string) => {
+      setExpandedIds((prev) => {
+        if (prev.has(ticketId)) return prev
+        const next = new Set(prev)
+        next.add(ticketId)
+        return next
+      })
+      void loadTraceForTicket(ticketId)
+    },
+    [loadTraceForTicket],
   )
 
   // Expand the active ticket and load trace
@@ -215,74 +208,93 @@ export function ReviewsPage() {
     [loadTraceForTicket],
   )
 
-  // Auto-expand the active ticket when navigating
+  // Load pending reviews
   useEffect(() => {
-    if (!tickets || tickets.length === 0) return
-    const ticket = tickets[activeIndex]
-    if (ticket?.id && !expandedIds.has(ticket.id)) {
-      setExpandedIds((prev) => {
-        const next = new Set(prev)
-        next.add(ticket.id!)
-        return next
-      })
-      void loadTraceForTicket(ticket.id)
+    if (!projectId) return
+    let cancelled = false
+    void (async () => {
+      const r = await loadPendingReviews(client, projectId)
+      if (cancelled) return
+      if (!r.ok) {
+        setErr(r.message)
+        setTickets([])
+        return
+      }
+      setErr(null)
+      setTickets(r.tickets)
+      const firstTicketID = r.tickets[0]?.id
+      if (firstTicketID) {
+        ensureExpanded(firstTicketID)
+      }
+    })()
+    return () => {
+      cancelled = true
     }
-  }, [activeIndex, tickets, expandedIds, loadTraceForTicket])
+  }, [client, projectId, ensureExpanded])
 
   // Submit review
-  async function submitReview(ticketId: string, decision: 'approved' | 'rejected' | 'reopened') {
-    if (!projectId || tickets === null) return
-    const countBefore = tickets.length
-    setBusyId(ticketId)
-    setMessage(null)
-    setJustEmptiedQueue(false)
-    const { error, response } = await client.POST('/tickets/{ticketID}/reviews', {
-      params: { path: { ticketID: ticketId } },
-      body: {
-        decision,
-        notes: notesById[ticketId]?.trim() || undefined,
-      },
-    })
-    setBusyId(null)
-    if (!response.ok) {
-      setMessage(formatApiError(error))
-      return
-    }
-    if (decision === 'rejected') {
-      setMessage(`Rejected ${ticketId}.`)
-    } else if (decision === 'reopened') {
-      setMessage(`Reopened ${ticketId}.`)
-    } else {
-      setMessage(`Approved ${ticketId}.`)
-    }
-    setNotesById((prev) => {
-      const next = { ...prev }
-      delete next[ticketId]
-      return next
-    })
-    // Remove from trace cache
-    setTraceCache((prev) => {
-      const next = { ...prev }
-      delete next[ticketId]
-      return next
-    })
-    const r = await loadPendingReviews(client, projectId)
-    if (!r.ok) {
-      setMessage(r.message)
-      return
-    }
-    setTickets(r.tickets)
-
-    if (r.tickets.length === 0 && countBefore > 0) {
+  const submitReview = useCallback(
+    async (ticketId: string, decision: 'approved' | 'rejected' | 'reopened') => {
+      if (!projectId || tickets === null) return
+      const countBefore = tickets.length
+      setBusyId(ticketId)
       setMessage(null)
-      setJustEmptiedQueue(true)
-      return
-    }
-    // Keep active index in bounds
-    if (activeIndex >= r.tickets.length) {
-      setActiveIndex(Math.max(0, r.tickets.length - 1))
-    }
-  }
+      setJustEmptiedQueue(false)
+      const { error, response } = await client.POST('/tickets/{ticketID}/reviews', {
+        params: { path: { ticketID: ticketId } },
+        body: {
+          decision,
+          notes: notesById[ticketId]?.trim() || undefined,
+        },
+      })
+      setBusyId(null)
+      if (!response.ok) {
+        setMessage(formatApiError(error))
+        return
+      }
+      if (decision === 'rejected') {
+        setMessage(`Rejected ${ticketId}.`)
+      } else if (decision === 'reopened') {
+        setMessage(`Reopened ${ticketId}.`)
+      } else {
+        setMessage(`Approved ${ticketId}.`)
+      }
+      setNotesById((prev) => {
+        const next = { ...prev }
+        delete next[ticketId]
+        return next
+      })
+      // Remove from trace cache
+      setTraceCache((prev) => {
+        const next = { ...prev }
+        delete next[ticketId]
+        return next
+      })
+      const r = await loadPendingReviews(client, projectId)
+      if (!r.ok) {
+        setMessage(r.message)
+        return
+      }
+      setTickets(r.tickets)
+
+      if (r.tickets.length === 0 && countBefore > 0) {
+        setMessage(null)
+        setJustEmptiedQueue(true)
+        return
+      }
+      // Keep active index in bounds
+      const nextIndex =
+        activeIndex >= r.tickets.length ? Math.max(0, r.tickets.length - 1) : activeIndex
+      if (nextIndex !== activeIndex) {
+        setActiveIndex(nextIndex)
+      }
+      const nextTicketID = r.tickets[nextIndex]?.id
+      if (nextTicketID) {
+        ensureExpanded(nextTicketID)
+      }
+    },
+    [activeIndex, client, ensureExpanded, notesById, projectId, tickets],
+  )
 
   // Keyboard handler
   useEffect(() => {
@@ -311,13 +323,27 @@ export function ReviewsPage() {
         case 'j':
         case 'ArrowDown': {
           e.preventDefault()
-          setActiveIndex((prev) => Math.min(prev + 1, tickets.length - 1))
+          setActiveIndex((prev) => {
+            const next = Math.min(prev + 1, tickets.length - 1)
+            const nextTicketID = tickets[next]?.id
+            if (nextTicketID) {
+              ensureExpanded(nextTicketID)
+            }
+            return next
+          })
           break
         }
         case 'k':
         case 'ArrowUp': {
           e.preventDefault()
-          setActiveIndex((prev) => Math.max(prev - 1, 0))
+          setActiveIndex((prev) => {
+            const next = Math.max(prev - 1, 0)
+            const nextTicketID = tickets[next]?.id
+            if (nextTicketID) {
+              ensureExpanded(nextTicketID)
+            }
+            return next
+          })
           break
         }
         case 'a': {
@@ -376,7 +402,7 @@ export function ReviewsPage() {
 
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [tickets, activeIndex, busyId, showHelp, toggleExpanded])
+  }, [tickets, activeIndex, busyId, showHelp, toggleExpanded, ensureExpanded, submitReview])
 
   // Scroll active item into view
   useEffect(() => {
@@ -459,7 +485,7 @@ export function ReviewsPage() {
           return (
             <StaggerItem
               key={t.id}
-              ref={(el) => { itemRefs.current[idx] = el }}
+              ref={(el: HTMLLIElement | null) => { itemRefs.current[idx] = el }}
               role="option"
               aria-selected={isActive}
               className={`scroll-mt-4 rounded-lg transition-all duration-150 ${
