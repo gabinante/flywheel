@@ -46,7 +46,7 @@ On first launch (or when no database exists), Warrant runs an interactive setup 
 ╚══════════════════════════════════════════════════════╝
 
 Repository path [/path/to/repo]:
-Anthropic API key (for dispatching agents) [skip]:
+Dispatch agent API key (optional) [skip]:
 
 Autonomy posture — how much freedom do agents get?
   1) sandbox    — agents run in containers, default-deny network (recommended)
@@ -83,6 +83,9 @@ After the wizard completes:
 ```bash
 # Claude Code
 claude --mcp-server warrant=http://localhost:8080/mcp
+
+# Codex CLI
+codex mcp add flywheel --url http://localhost:8080/mcp
 
 # Set the API key (printed during setup)
 export WARRANT_API_KEY=wf_...
@@ -161,7 +164,21 @@ This sets up Postgres, Redis, and the Warrant server with migrations.
 export DISPATCH_ENABLED=true
 export DISPATCH_API_KEY="wf_..."  # from setup wizard
 export DISPATCH_PROJECT_ID="..."   # from setup wizard
-export ANTHROPIC_API_KEY="sk-..."  # your Anthropic key
+
+# Command-center orchestrator: keep this strong.
+export ORCHESTRATOR_ENABLED=true
+export ORCHESTRATOR_AGENT_RUNNER=openai-responses
+export ORCHESTRATOR_AGENT_MODEL="gpt-5.2-codex"
+export ORCHESTRATOR_AGENT_REASONING_EFFORT=xhigh
+
+# Codex CLI on the host:
+export DISPATCH_AGENT_RUNNER=cli
+export DISPATCH_AGENT_DRIVER=codex
+
+# Or dispatch workers via the OpenAI Responses API with local workspace tools:
+export DISPATCH_AGENT_RUNNER=openai-responses
+export OPENAI_API_KEY="sk-..."
+export DISPATCH_AGENT_MODEL="gpt-5.2-codex"
 ```
 
 ## Environment Variables Reference
@@ -174,7 +191,13 @@ export ANTHROPIC_API_KEY="sk-..."  # your Anthropic key
 | `DATABASE_URL` | `postgres://...` | Postgres connection (non-embedded) |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis connection (non-embedded) |
 | `JWT_SECRET` | (auto-generated) | Secret for JWT token signing |
-| `ANTHROPIC_API_KEY` | (empty) | For agent dispatch |
+| `ORCHESTRATOR_AGENT_RUNNER` | `DISPATCH_AGENT_RUNNER` | Command-center orchestrator backend (`cli`, `docker`, `openai-responses`) |
+| `ORCHESTRATOR_AGENT_MODEL` | `DISPATCH_AGENT_MODEL` | Strong planner model for command-center chat |
+| `ORCHESTRATOR_AGENT_REASONING_EFFORT` | `xhigh` for `openai-responses` | Reasoning effort for the orchestrator |
+| `DISPATCH_AGENT_RUNNER` | `cli` | Dispatch execution backend (`cli`, `docker`, `openai-responses`) |
+| `DISPATCH_AGENT_DRIVER` | `claude` | Dispatch driver to run (`claude`, `codex`, `generic`, or custom) |
+| `DISPATCH_AGENT_API_KEY` | (empty) | Explicit provider credential for dispatch workers |
+| `OPENAI_API_KEY` | (empty) | Fallback credential for Codex and `openai-responses` workers |
 | `DISPATCH_ENABLED` | `false` | Enable agent dispatch worker |
 | `GITHUB_CLIENT_ID` | (empty) | GitHub OAuth client ID |
 | `GITHUB_CLIENT_SECRET` | (empty) | GitHub OAuth client secret |

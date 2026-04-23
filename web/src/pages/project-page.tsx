@@ -5,19 +5,24 @@ import {
   ClipboardCopy,
   Eye,
   GitBranch,
+  Layers,
   LayoutList,
   Plus,
   ShieldCheck,
   Ticket,
-  Layers,
 } from 'lucide-react'
 
+import { DispatchDashboard } from '@/components/dispatch-dashboard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
 } from '@/components/ui/card'
+import { ProjectPageSkeleton, Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/contexts/use-auth'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
@@ -26,9 +31,6 @@ type Project = components['schemas']['Project']
 type WorkStream = components['schemas']['WorkStream']
 type TicketT = components['schemas']['Ticket']
 
-/* ---------- helpers ---------- */
-
-/** Stat categories derived from ticket states. */
 function computeStats(tickets: TicketT[]) {
   let total = 0
   let open = 0
@@ -60,24 +62,22 @@ function computeStats(tickets: TicketT[]) {
         break
     }
   }
+
   return { total, open, inReview, done, executing, blocked }
 }
 
-/** Count tickets per work-stream. Returns { total, done } per stream id. */
 function streamTicketCounts(tickets: TicketT[]) {
-  const m = new Map<string, { total: number; done: number }>()
+  const counts = new Map<string, { total: number; done: number }>()
   for (const t of tickets) {
-    const wsId = t.work_stream_id
-    if (!wsId) continue
-    const entry = m.get(wsId) ?? { total: 0, done: 0 }
+    const workStreamID = t.work_stream_id
+    if (!workStreamID) continue
+    const entry = counts.get(workStreamID) ?? { total: 0, done: 0 }
     entry.total++
     if (t.state === 'done') entry.done++
-    m.set(wsId, entry)
+    counts.set(workStreamID, entry)
   }
-  return m
+  return counts
 }
-
-/* ---------- sub-components ---------- */
 
 function StatCard({
   label,
@@ -89,14 +89,14 @@ function StatCard({
   accent?: string
 }) {
   return (
-    <Card className="bg-white/5 backdrop-blur-md border-white/10">
-      <CardContent className="flex flex-col items-center justify-center py-5 px-4">
+    <Card className="border-white/10 bg-white/5 backdrop-blur-md">
+      <CardContent className="flex flex-col items-center justify-center px-4 py-5">
         <span
-          className={`text-3xl font-bold tabular-nums tracking-tight ${accent ?? 'text-foreground'}`}
+          className={`text-3xl font-bold tracking-tight tabular-nums ${accent ?? 'text-foreground'}`}
         >
           {value}
         </span>
-        <span className="text-muted-foreground text-xs font-medium mt-1">
+        <span className="mt-1 text-xs font-medium text-muted-foreground">
           {label}
         </span>
       </CardContent>
@@ -117,16 +117,16 @@ function NavCard({
 }) {
   return (
     <Link to={to} className="group">
-      <Card className="h-full bg-white/5 backdrop-blur-md border-white/10 transition-all duration-200 hover:bg-white/10 hover:border-white/20 hover:scale-[1.02]">
-        <CardContent className="flex items-start gap-4 py-5 px-5">
+      <Card className="h-full border-white/10 bg-white/5 backdrop-blur-md transition-all duration-200 hover:scale-[1.02] hover:border-white/20 hover:bg-white/10">
+        <CardContent className="flex items-start gap-4 px-5 py-5">
           <div className="shrink-0 rounded-lg bg-white/10 p-2.5 transition-colors group-hover:bg-white/15">
             <Icon className="size-5 text-foreground" />
           </div>
-          <div className="flex flex-col gap-1 min-w-0">
+          <div className="flex min-w-0 flex-col gap-1">
             <span className="text-sm font-semibold tracking-tight text-foreground">
               {title}
             </span>
-            <span className="text-xs text-muted-foreground leading-relaxed">
+            <span className="text-xs leading-relaxed text-muted-foreground">
               {description}
             </span>
           </div>
@@ -137,17 +137,17 @@ function NavCard({
 }
 
 function ProgressBar({ value, max }: { value: number; max: number }) {
-  const pct = max > 0 ? Math.round((value / max) * 100) : 0
+  const percent = max > 0 ? Math.round((value / max) * 100) : 0
   return (
-    <div className="flex items-center gap-2.5 w-full">
-      <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
+    <div className="flex w-full items-center gap-2.5">
+      <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
         <div
           className="h-full rounded-full bg-emerald-500/70 transition-all duration-500"
-          style={{ width: `${pct}%` }}
+          style={{ width: `${percent}%` }}
         />
       </div>
-      <span className="text-xs text-muted-foreground tabular-nums shrink-0 w-10 text-right">
-        {pct}%
+      <span className="w-10 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+        {percent}%
       </span>
     </div>
   )
@@ -162,7 +162,7 @@ function CopyButton({ text }: { text: string }) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      // Clipboard API may be unavailable
+      // Clipboard API may be unavailable.
     }
   }, [text])
 
@@ -183,8 +183,6 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-/* ---------- main page ---------- */
-
 export function ProjectPage() {
   const { orgId, projectId } = useParams<{
     orgId: string
@@ -196,18 +194,15 @@ export function ProjectPage() {
   const [tickets, setTickets] = useState<TicketT[] | null>(null)
   const [streamsErr, setStreamsErr] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [dispatchToggling, setDispatchToggling] = useState(false)
 
-  /* --- load project --- */
   useEffect(() => {
     if (!projectId) return
     let cancelled = false
     ;(async () => {
-      const { data, error, response } = await client.GET(
-        '/projects/{projectID}',
-        {
-          params: { path: { projectID: projectId } },
-        },
-      )
+      const { data, error, response } = await client.GET('/projects/{projectID}', {
+        params: { path: { projectID: projectId } },
+      })
       if (cancelled) return
       if (!response.ok) {
         setErr(formatApiError(error))
@@ -222,7 +217,6 @@ export function ProjectPage() {
     }
   }, [client, projectId])
 
-  /* --- load work streams --- */
   const loadWorkStreams = useCallback(async () => {
     if (!projectId) return
     const { data, error, response } = await client.GET(
@@ -248,17 +242,13 @@ export function ProjectPage() {
     })
   }, [loadWorkStreams])
 
-  /* --- load tickets for stats --- */
   useEffect(() => {
     if (!projectId) return
     let cancelled = false
     ;(async () => {
-      const { data, response } = await client.GET(
-        '/projects/{projectID}/tickets',
-        {
-          params: { path: { projectID: projectId } },
-        },
-      )
+      const { data, response } = await client.GET('/projects/{projectID}/tickets', {
+        params: { path: { projectID: projectId } },
+      })
       if (cancelled) return
       setTickets(response.ok ? (data ?? []) : [])
     })()
@@ -271,13 +261,27 @@ export function ProjectPage() {
     () => (tickets ? computeStats(tickets) : null),
     [tickets],
   )
-
   const streamCounts = useMemo(
     () => (tickets ? streamTicketCounts(tickets) : null),
     [tickets],
   )
 
-  /* --- guards --- */
+  const toggleDispatch = useCallback(async () => {
+    if (!projectId || !project) return
+    setDispatchToggling(true)
+    const nextValue = !(project.dispatch_enabled !== false)
+    const { response } = await client.PATCH('/projects/{projectID}', {
+      params: { path: { projectID: projectId } },
+      body: { dispatch_enabled: nextValue },
+    })
+    if (response.ok) {
+      setProject((prev) =>
+        prev ? { ...prev, dispatch_enabled: nextValue } : prev,
+      )
+    }
+    setDispatchToggling(false)
+  }, [client, project, projectId])
+
   if (!orgId || !projectId) {
     return <p className="text-destructive text-sm">Missing route params.</p>
   }
@@ -285,17 +289,18 @@ export function ProjectPage() {
     return <p className="text-destructive text-sm">{err}</p>
   }
   if (project === undefined) {
-    return <p className="text-muted-foreground text-sm">Loading…</p>
+    return <ProjectPageSkeleton />
   }
   if (!project) {
     return <p className="text-muted-foreground text-sm">Project not found.</p>
   }
 
+  const dispatchOn = project.dispatch_enabled !== false
+
   return (
     <div className="flex flex-col gap-8">
-      {/* --- header / breadcrumbs --- */}
       <div className="flex flex-col gap-1.5">
-        <p className="text-muted-foreground text-xs">
+        <p className="text-xs text-muted-foreground">
           <Link to="/orgs" className="hover:underline">
             Organizations
           </Link>
@@ -308,25 +313,15 @@ export function ProjectPage() {
           <h1 className="text-2xl font-semibold tracking-tight">
             {project.name ?? project.slug ?? project.id}
           </h1>
-          {project.status ? (
-            <Badge variant="outline">{project.status}</Badge>
-          ) : null}
+          {project.status ? <Badge variant="outline">{project.status}</Badge> : null}
         </div>
       </div>
 
-      {/* --- stat cards --- */}
       <section>
         <h2 className="sr-only">Project health</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          <StatCard
-            label="Total tickets"
-            value={stats?.total ?? 0}
-          />
-          <StatCard
-            label="Open"
-            value={stats?.open ?? 0}
-            accent="text-sky-400"
-          />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <StatCard label="Total tickets" value={stats?.total ?? 0} />
+          <StatCard label="Open" value={stats?.open ?? 0} accent="text-sky-400" />
           <StatCard
             label="In progress"
             value={stats?.executing ?? 0}
@@ -337,20 +332,45 @@ export function ProjectPage() {
             value={stats?.inReview ?? 0}
             accent="text-violet-400"
           />
-          <StatCard
-            label="Done"
-            value={stats?.done ?? 0}
-            accent="text-emerald-400"
-          />
+          <StatCard label="Done" value={stats?.done ?? 0} accent="text-emerald-400" />
         </div>
       </section>
 
-      {/* --- navigation cards --- */}
+      <Card className="border-white/10 bg-white/5 backdrop-blur-md">
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1.5">
+            <CardTitle className="text-sm">Agent dispatch</CardTitle>
+            <CardDescription>
+              {dispatchOn
+                ? 'Agents will automatically pick up pending tickets for this project.'
+                : 'Dispatch is paused — agents will not pick up new tickets.'}
+            </CardDescription>
+          </div>
+          <Button
+            variant={dispatchOn ? 'default' : 'outline'}
+            size="sm"
+            className={
+              dispatchOn
+                ? 'shrink-0 bg-emerald-600 hover:bg-emerald-700'
+                : 'shrink-0'
+            }
+            disabled={dispatchToggling}
+            onClick={toggleDispatch}
+          >
+            {dispatchToggling
+              ? 'Saving…'
+              : dispatchOn
+                ? 'Dispatch enabled'
+                : 'Dispatch disabled'}
+          </Button>
+        </CardHeader>
+      </Card>
+
       <section>
-        <h2 className="text-sm font-medium text-muted-foreground mb-3">
+        <h2 className="mb-3 text-sm font-medium text-muted-foreground">
           Navigate
         </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <NavCard
             to={`/orgs/${orgId}/projects/${projectId}/tickets`}
             icon={Ticket}
@@ -372,25 +392,20 @@ export function ProjectPage() {
         </div>
       </section>
 
-      {/* --- work streams with progress --- */}
       <section>
-        <div className="flex items-center justify-between mb-3">
+        <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-medium text-muted-foreground">
             Work Streams
           </h2>
           <div className="flex gap-2">
             <Button asChild variant="ghost" size="xs">
-              <Link
-                to={`/orgs/${orgId}/projects/${projectId}/work-streams`}
-              >
+              <Link to={`/orgs/${orgId}/projects/${projectId}/work-streams`}>
                 <LayoutList className="size-3.5" />
                 All streams
               </Link>
             </Button>
             <Button asChild variant="ghost" size="xs">
-              <Link
-                to={`/orgs/${orgId}/projects/${projectId}/work-streams/new`}
-              >
+              <Link to={`/orgs/${orgId}/projects/${projectId}/work-streams/new`}>
                 <Plus className="size-3.5" />
                 New
               </Link>
@@ -401,22 +416,19 @@ export function ProjectPage() {
         {streamsErr ? (
           <p className="text-destructive text-sm">{streamsErr}</p>
         ) : workStreams === null ? (
-          <div className="grid grid-cols-1 gap-3">
-            {[1, 2].map((i) => (
-              <div
-                key={i}
-                className="h-20 rounded-xl bg-white/5 animate-pulse"
-              />
+          <div className="flex flex-col gap-2">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <Skeleton key={index} className="h-20 w-full rounded-xl" />
             ))}
           </div>
         ) : workStreams.length === 0 ? (
-          <Card className="bg-white/5 backdrop-blur-md border-white/10">
+          <Card className="border-white/10 bg-white/5 backdrop-blur-md">
             <CardContent className="py-8 text-center">
-              <p className="text-muted-foreground text-sm">
+              <p className="text-sm text-muted-foreground">
                 No work streams yet.{' '}
                 <Link
                   to={`/orgs/${orgId}/projects/${projectId}/work-streams/new`}
-                  className="text-foreground font-medium underline-offset-4 hover:underline"
+                  className="font-medium text-foreground underline-offset-4 hover:underline"
                 >
                   Create one
                 </Link>{' '}
@@ -435,22 +447,22 @@ export function ProjectPage() {
                   to={`/orgs/${orgId}/projects/${projectId}/tickets?work_stream_id=${encodeURIComponent(ws.id)}`}
                   className="group"
                 >
-                  <Card className="bg-white/5 backdrop-blur-md border-white/10 transition-all duration-200 hover:bg-white/10 hover:border-white/20">
-                    <CardContent className="py-4 px-5">
+                  <Card className="border-white/10 bg-white/5 backdrop-blur-md transition-all duration-200 hover:border-white/20 hover:bg-white/10">
+                    <CardContent className="px-5 py-4">
                       <div className="flex flex-col gap-3">
                         <div className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <Layers className="size-4 text-muted-foreground shrink-0" />
-                            <span className="text-sm font-medium truncate">
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <Layers className="size-4 shrink-0 text-muted-foreground" />
+                            <span className="truncate text-sm font-medium">
                               {ws.name ?? ws.slug ?? ws.id}
                             </span>
                             {ws.status ? (
                               <Badge variant="outline">{ws.status}</Badge>
                             ) : null}
                           </div>
-                          <div className="flex items-center gap-3 shrink-0">
+                          <div className="flex shrink-0 items-center gap-3">
                             {counts ? (
-                              <span className="text-xs text-muted-foreground tabular-nums">
+                              <span className="text-xs tabular-nums text-muted-foreground">
                                 {counts.done}/{counts.total} done
                               </span>
                             ) : null}
@@ -458,10 +470,8 @@ export function ProjectPage() {
                               asChild
                               variant="outline"
                               size="xs"
-                              className="opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={(e: React.MouseEvent) =>
-                                e.stopPropagation()
-                              }
+                              className="opacity-0 transition-opacity group-hover:opacity-100"
+                              onClick={(event: React.MouseEvent) => event.stopPropagation()}
                             >
                               <Link
                                 to={`/orgs/${orgId}/projects/${projectId}/work-streams/${ws.id}`}
@@ -472,15 +482,12 @@ export function ProjectPage() {
                           </div>
                         </div>
                         {counts && counts.total > 0 ? (
-                          <ProgressBar
-                            value={counts.done}
-                            max={counts.total}
-                          />
+                          <ProgressBar value={counts.done} max={counts.total} />
                         ) : null}
                         {ws.branch ? (
                           <div className="flex items-center gap-1.5">
                             <GitBranch className="size-3 text-muted-foreground" />
-                            <span className="text-muted-foreground font-mono text-xs truncate">
+                            <span className="truncate font-mono text-xs text-muted-foreground">
                               {ws.branch}
                             </span>
                           </div>
@@ -495,19 +502,20 @@ export function ProjectPage() {
         )}
       </section>
 
-      {/* --- repository info --- */}
+      <DispatchDashboard orgId={orgId} projectId={projectId} />
+
       {project.repo_url ? (
         <section>
-          <h2 className="text-sm font-medium text-muted-foreground mb-3">
+          <h2 className="mb-3 text-sm font-medium text-muted-foreground">
             Repository
           </h2>
-          <Card className="bg-white/5 backdrop-blur-md border-white/10">
-            <CardContent className="py-4 px-5">
+          <Card className="border-white/10 bg-white/5 backdrop-blur-md">
+            <CardContent className="px-5 py-4">
               <div className="flex items-center gap-3">
-                <GitBranch className="size-4 text-muted-foreground shrink-0" />
-                <div className="flex flex-col gap-1 min-w-0 flex-1">
+                <GitBranch className="size-4 shrink-0 text-muted-foreground" />
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm break-all">
+                    <span className="break-all font-mono text-sm">
                       {project.repo_url}
                     </span>
                     <CopyButton text={project.repo_url} />
@@ -515,9 +523,7 @@ export function ProjectPage() {
                   {project.default_branch ? (
                     <span className="text-xs text-muted-foreground">
                       Default branch:{' '}
-                      <span className="font-mono">
-                        {project.default_branch}
-                      </span>
+                      <span className="font-mono">{project.default_branch}</span>
                     </span>
                   ) : null}
                 </div>
@@ -527,19 +533,18 @@ export function ProjectPage() {
         </section>
       ) : null}
 
-      {/* --- blocked tickets callout --- */}
       {stats && stats.blocked > 0 ? (
         <section>
-          <Card className="bg-destructive/5 backdrop-blur-md border-destructive/20">
-            <CardContent className="py-4 px-5">
+          <Card className="border-destructive/20 bg-destructive/5 backdrop-blur-md">
+            <CardContent className="px-5 py-4">
               <div className="flex items-center gap-3">
                 <div className="shrink-0 rounded-lg bg-destructive/10 p-2">
                   <ShieldCheck className="size-4 text-destructive" />
                 </div>
                 <div className="flex flex-col gap-0.5">
                   <span className="text-sm font-medium">
-                    {stats.blocked} ticket{stats.blocked === 1 ? '' : 's'}{' '}
-                    need attention
+                    {stats.blocked} ticket{stats.blocked === 1 ? '' : 's'} need
+                    attention
                   </span>
                   <span className="text-xs text-muted-foreground">
                     Blocked, failed, or waiting for human input
@@ -547,9 +552,7 @@ export function ProjectPage() {
                 </div>
                 <div className="ml-auto">
                   <Button asChild variant="outline" size="xs">
-                    <Link
-                      to={`/orgs/${orgId}/projects/${projectId}/tickets`}
-                    >
+                    <Link to={`/orgs/${orgId}/projects/${projectId}/tickets`}>
                       View tickets
                     </Link>
                   </Button>

@@ -30,6 +30,9 @@ const (
 	TriggerApprove = "approve" // awaiting_validation → validated (also resolves awaiting_input)
 	TriggerReject  = "reject"  // awaiting_validation → executing
 
+	// --- Rollback trigger ---
+	TriggerRollback = "rollback" // executing|awaiting_validation|validated|deploying|observing → draft
+
 	// --- Operational triggers ---
 	TriggerClaim        = "claim"         // draft → planning (agent claims work)
 	TriggerCancel       = "cancel"        // any early state → closed
@@ -110,6 +113,13 @@ func NewStateMachine() *StateMachine {
 
 		// === Approval (also works as validate alias) ===
 		{StateAwaitingValidation, StateValidated, TriggerApprove, []GuardFn{guardIsHuman}},
+
+		// === Rollback (stage-specific rollback to draft; side effects handled by rollback service) ===
+		{StateExecuting, StateDraft, TriggerRollback, []GuardFn{}},
+		{StateAwaitingValidation, StateDraft, TriggerRollback, []GuardFn{}},
+		{StateValidated, StateDraft, TriggerRollback, []GuardFn{}},
+		{StateDeploying, StateDraft, TriggerRollback, []GuardFn{}},
+		{StateObserving, StateDraft, TriggerRollback, []GuardFn{}},
 
 		// === Cancel (can cancel from early states) ===
 		{StateDraft, StateClosed, TriggerCancel, []GuardFn{}},

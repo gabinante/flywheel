@@ -84,16 +84,17 @@ func migrate(db *sql.DB) error {
 		)`,
 		// Projects
 		`CREATE TABLE IF NOT EXISTS projects (
-			id             TEXT PRIMARY KEY,
-			org_id         TEXT NOT NULL REFERENCES orgs(id),
-			name           TEXT NOT NULL,
-			slug           TEXT NOT NULL,
-			repo_url       TEXT,
-			default_branch TEXT NOT NULL DEFAULT 'main',
-			tech_stack     TEXT NOT NULL DEFAULT '[]',
-			context_pack   TEXT NOT NULL DEFAULT '{}',
-			status         TEXT NOT NULL DEFAULT 'active',
-			created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+			id               TEXT PRIMARY KEY,
+			org_id           TEXT NOT NULL REFERENCES orgs(id),
+			name             TEXT NOT NULL,
+			slug             TEXT NOT NULL,
+			repo_url         TEXT,
+			default_branch   TEXT NOT NULL DEFAULT 'main',
+			tech_stack       TEXT NOT NULL DEFAULT '[]',
+			context_pack     TEXT NOT NULL DEFAULT '{}',
+			status           TEXT NOT NULL DEFAULT 'active',
+			dispatch_enabled INTEGER NOT NULL DEFAULT 1,
+			created_at       TEXT NOT NULL DEFAULT (datetime('now')),
 			UNIQUE (org_id, slug)
 		)`,
 		`CREATE TABLE IF NOT EXISTS ticket_sequences (
@@ -180,6 +181,13 @@ func migrate(db *sql.DB) error {
 			resolved_at TEXT,
 			created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 		)`,
+		`CREATE TABLE IF NOT EXISTS orchestrator_messages (
+			id         TEXT PRIMARY KEY,
+			project_id TEXT NOT NULL REFERENCES projects(id),
+			role       TEXT NOT NULL,
+			content    TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
 		// Indexes for common queries
 		`CREATE INDEX IF NOT EXISTS idx_tickets_project_state ON tickets(project_id, state)`,
 		`CREATE INDEX IF NOT EXISTS idx_tickets_project_priority ON tickets(project_id, priority, created_at)`,
@@ -187,6 +195,7 @@ func migrate(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_reviews_ticket ON reviews(ticket_id, created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_org_members_user ON org_members(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_work_streams_project ON work_streams(project_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_orchestrator_messages_project ON orchestrator_messages(project_id, created_at)`,
 		// Catalog (Layer 14: Project Map)
 		`CREATE TABLE IF NOT EXISTS catalog_entities (
 			id          TEXT PRIMARY KEY,

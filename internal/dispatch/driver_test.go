@@ -5,6 +5,10 @@ import (
 	"testing"
 )
 
+func testMCPConnection() mcpConnection {
+	return buildMCPConnection("http://localhost:8080", "test-api-key")
+}
+
 // --- ClaudeDriver Tests ---
 
 func TestClaudeDriverName(t *testing.T) {
@@ -14,16 +18,17 @@ func TestClaudeDriverName(t *testing.T) {
 	}
 }
 
-func TestClaudeDriverBuildCLIArgs(t *testing.T) {
+func TestClaudeDriverExecutable(t *testing.T) {
 	d := NewClaudeDriver(DriverConfig{CLIPath: "/usr/local/bin/claude"})
-
-	exe, args := d.BuildCLIArgs("system prompt here", "do the task", "/tmp/mcp.json")
-
-	if exe != "/usr/local/bin/claude" {
-		t.Errorf("expected exe '/usr/local/bin/claude', got %q", exe)
+	if d.Executable() != "/usr/local/bin/claude" {
+		t.Errorf("expected executable '/usr/local/bin/claude', got %q", d.Executable())
 	}
+}
 
-	// Verify expected flags are present.
+func TestClaudeDriverBuildCLIArgs(t *testing.T) {
+	d := NewClaudeDriver(DriverConfig{})
+	args := d.BuildCLIArgs("system prompt here", "do the task", testMCPConnection(), "/tmp/mcp.json")
+
 	argStr := strings.Join(args, " ")
 	if !strings.Contains(argStr, "--print") {
 		t.Error("expected --print flag")
@@ -48,19 +53,9 @@ func TestClaudeDriverBuildCLIArgs(t *testing.T) {
 	}
 }
 
-func TestClaudeDriverBuildCLIArgsDefaultPath(t *testing.T) {
-	d := NewClaudeDriver(DriverConfig{}) // empty CLIPath
-
-	exe, _ := d.BuildCLIArgs("", "", "")
-	if exe != "claude" {
-		t.Errorf("expected default exe 'claude', got %q", exe)
-	}
-}
-
 func TestClaudeDriverBuildDockerCmd(t *testing.T) {
 	d := NewClaudeDriver(DriverConfig{})
-
-	cmd := d.BuildDockerCmd("ticket/t-1")
+	cmd := d.BuildDockerCmd("ticket/t-1", testMCPConnection())
 
 	if !strings.Contains(cmd, "git clone /repo /workspace") {
 		t.Error("expected git clone in docker cmd")
@@ -100,9 +95,8 @@ func TestClaudeDriverFormatPrompt(t *testing.T) {
 
 func TestClaudeDriverEnv(t *testing.T) {
 	d := NewClaudeDriver(DriverConfig{})
-	env := d.Env()
+	env := d.Env("system", "task", testMCPConnection(), "/tmp/mcp.json")
 
-	// Should filter CLAUDECODE and ANTHROPIC_API_KEY.
 	if len(env.FilterPrefixes) != 2 {
 		t.Fatalf("expected 2 filter prefixes, got %d", len(env.FilterPrefixes))
 	}
@@ -116,8 +110,6 @@ func TestClaudeDriverEnv(t *testing.T) {
 	if !found["ANTHROPIC_API_KEY="] {
 		t.Error("expected ANTHROPIC_API_KEY= in filter prefixes")
 	}
-
-	// Should set CLAUDE_CODE_ENTRYPOINT.
 	if env.Set["CLAUDE_CODE_ENTRYPOINT"] != "warrant-dispatch" {
 		t.Errorf("expected CLAUDE_CODE_ENTRYPOINT=warrant-dispatch, got %q", env.Set["CLAUDE_CODE_ENTRYPOINT"])
 	}
@@ -125,19 +117,29 @@ func TestClaudeDriverEnv(t *testing.T) {
 
 func TestClaudeDriverResolveCredentialFallback(t *testing.T) {
 	d := NewClaudeDriver(DriverConfig{})
-	// On non-macOS or without keychain, should fall back to static key.
-	result := d.ResolveCredential("sk-test-key")
-	// We can't guarantee OAuth will work in test, but it should at least return the static key.
-	if result == "" {
-		t.Error("expected non-empty credential (at least the static key)")
+	if got := d.ResolveCredential("sk-test-key"); got == "" {
+		t.Error("expected non-empty credential")
+	}
+}
+
+func TestClaudeDriverCredentialEnvName(t *testing.T) {
+	d := NewClaudeDriver(DriverConfig{})
+	if d.CredentialEnvName() != "ANTHROPIC_API_KEY" {
+		t.Errorf("expected ANTHROPIC_API_KEY, got %q", d.CredentialEnvName())
+	}
+}
+
+func TestClaudeDriverDefaultAllowedHosts(t *testing.T) {
+	d := NewClaudeDriver(DriverConfig{})
+	hosts := strings.Join(d.DefaultAllowedHosts(), ",")
+	if !strings.Contains(hosts, "api.anthropic.com") {
+		t.Errorf("expected Anthropic host allowlist, got %q", hosts)
 	}
 }
 
 func TestClaudeDriverExtraDockerArgs(t *testing.T) {
 	d := NewClaudeDriver(DriverConfig{})
 	args := d.ExtraDockerArgs()
-
-	// Should contain the .claude volume mount.
 	if len(args) != 2 {
 		t.Fatalf("expected 2 extra docker args (-v and path), got %d", len(args))
 	}
@@ -146,6 +148,77 @@ func TestClaudeDriverExtraDockerArgs(t *testing.T) {
 	}
 	if !strings.Contains(args[1], ".claude:delegated") {
 		t.Errorf("expected .claude volume mount, got %q", args[1])
+	}
+}
+
+// --- CodexDriver Tests ---
+
+func TestCodexDriverName(t *testing.T) {
+	d := NewCodexDriver(DriverConfig{})
+	if d.Name() != "codex" {
+		t.Errorf("expected name 'codex', got %q", d.Name())
+	}
+}
+
+func TestCodexDriverExecutable(t *testing.T) {
+	d := NewCodexDriver(DriverConfig{})
+	if d.Executable() != "codex" {
+		t.Errorf("expected default executable 'codex', got %q", d.Executable())
+	}
+}
+
+func TestCodexDriverBuildCLIArgs(t *testing.T) {
+	d := NewCodexDriver(DriverConfig{})
+	args := d.BuildCLIArgs("be careful", "fix the bug", testMCPConnection(), "/tmp/mcp.json")
+	argStr := strings.Join(args, " ")
+
+	if !strings.Contains(argStr, "exec") {
+		t.Error("expected codex exec command")
+	}
+	if !strings.Contains(argStr, "--ask-for-approval never") {
+		t.Error("expected non-interactive approval policy")
+	}
+	if !strings.Contains(argStr, "--sandbox workspace-write") {
+		t.Error("expected workspace-write sandbox")
+	}
+	if !strings.Contains(argStr, `mcp_servers.flywheel.url="http://localhost:8080/mcp"`) {
+		t.Error("expected Codex to target the /mcp endpoint")
+	}
+	if !strings.Contains(argStr, `env_http_headers={"X-API-Key"="FLYWHEEL_MCP_API_KEY"}`) {
+		t.Error("expected API key header to flow through env_http_headers")
+	}
+	if !strings.Contains(argStr, "## System Instructions") || !strings.Contains(argStr, "## Task") {
+		t.Error("expected combined system/task prompt")
+	}
+}
+
+func TestCodexDriverBuildDockerCmd(t *testing.T) {
+	d := NewCodexDriver(DriverConfig{})
+	cmd := d.BuildDockerCmd("ticket/t-9", testMCPConnection())
+
+	if !strings.Contains(cmd, "codex exec") {
+		t.Error("expected codex exec invocation in docker cmd")
+	}
+	if !strings.Contains(cmd, "--dangerously-bypass-approvals-and-sandbox") {
+		t.Error("expected sandbox bypass inside externally sandboxed Docker worker")
+	}
+	if !strings.Contains(cmd, "FLYWHEEL_MCP_API_KEY") {
+		t.Error("expected exported MCP API key env var")
+	}
+}
+
+func TestCodexDriverCredentialEnvName(t *testing.T) {
+	d := NewCodexDriver(DriverConfig{})
+	if d.CredentialEnvName() != "OPENAI_API_KEY" {
+		t.Errorf("expected OPENAI_API_KEY, got %q", d.CredentialEnvName())
+	}
+}
+
+func TestCodexDriverDefaultAllowedHosts(t *testing.T) {
+	d := NewCodexDriver(DriverConfig{})
+	hosts := strings.Join(d.DefaultAllowedHosts(), ",")
+	if !strings.Contains(hosts, "api.openai.com") {
+		t.Errorf("expected OpenAI host allowlist, got %q", hosts)
 	}
 }
 
@@ -158,18 +231,20 @@ func TestGenericDriverName(t *testing.T) {
 	}
 }
 
+func TestGenericDriverExecutable(t *testing.T) {
+	d := NewGenericDriver(DriverConfig{CLIPath: "/usr/bin/opencode"})
+	if d.Executable() != "/usr/bin/opencode" {
+		t.Errorf("expected executable '/usr/bin/opencode', got %q", d.Executable())
+	}
+}
+
 func TestGenericDriverBuildCLIArgs(t *testing.T) {
 	d := NewGenericDriver(DriverConfig{
 		CLIPath:   "/usr/bin/opencode",
 		ExtraArgs: []string{"--mode", "headless"},
 	})
+	args := d.BuildCLIArgs("system prompt", "task message", testMCPConnection(), "/tmp/mcp.json")
 
-	exe, args := d.BuildCLIArgs("system prompt", "task message", "/tmp/mcp.json")
-
-	if exe != "/usr/bin/opencode" {
-		t.Errorf("expected exe '/usr/bin/opencode', got %q", exe)
-	}
-	// Generic driver only passes extra args, no agent-specific flags.
 	if len(args) != 2 {
 		t.Fatalf("expected 2 args (extra args only), got %d: %v", len(args), args)
 	}
@@ -178,22 +253,9 @@ func TestGenericDriverBuildCLIArgs(t *testing.T) {
 	}
 }
 
-func TestGenericDriverBuildCLIArgsDefault(t *testing.T) {
-	d := NewGenericDriver(DriverConfig{})
-
-	exe, args := d.BuildCLIArgs("", "", "")
-	if exe != "agent" {
-		t.Errorf("expected default exe 'agent', got %q", exe)
-	}
-	if len(args) != 0 {
-		t.Errorf("expected 0 args with no extra args, got %d", len(args))
-	}
-}
-
 func TestGenericDriverBuildDockerCmd(t *testing.T) {
 	d := NewGenericDriver(DriverConfig{CLIPath: "opencode"})
-
-	cmd := d.BuildDockerCmd("ticket/t-2")
+	cmd := d.BuildDockerCmd("ticket/t-2", testMCPConnection())
 
 	if !strings.Contains(cmd, "git clone /repo /workspace") {
 		t.Error("expected git clone in docker cmd")
@@ -201,14 +263,14 @@ func TestGenericDriverBuildDockerCmd(t *testing.T) {
 	if !strings.Contains(cmd, "git checkout -b ticket/t-2") {
 		t.Error("expected branch checkout in docker cmd")
 	}
+	if !strings.Contains(cmd, "FLYWHEEL_SYSTEM_PROMPT") {
+		t.Error("expected FLYWHEEL_SYSTEM_PROMPT export in docker cmd")
+	}
 	if !strings.Contains(cmd, "WARRANT_SYSTEM_PROMPT") {
 		t.Error("expected WARRANT_SYSTEM_PROMPT export in docker cmd")
 	}
-	if !strings.Contains(cmd, "WARRANT_TASK_MESSAGE") {
-		t.Error("expected WARRANT_TASK_MESSAGE export in docker cmd")
-	}
-	if !strings.Contains(cmd, "WARRANT_MCP_CONFIG_PATH") {
-		t.Error("expected WARRANT_MCP_CONFIG_PATH export in docker cmd")
+	if !strings.Contains(cmd, "FLYWHEEL_MCP_URL") {
+		t.Error("expected FLYWHEEL_MCP_URL export in docker cmd")
 	}
 	if !strings.Contains(cmd, "opencode") {
 		t.Error("expected agent command in docker cmd")
@@ -221,7 +283,7 @@ func TestGenericDriverBuildDockerCmdWithArgs(t *testing.T) {
 		ExtraArgs: []string{"--yes", "--no-git"},
 	})
 
-	cmd := d.BuildDockerCmd("ticket/t-3")
+	cmd := d.BuildDockerCmd("ticket/t-3", testMCPConnection())
 	if !strings.Contains(cmd, "aider --yes --no-git") {
 		t.Errorf("expected 'aider --yes --no-git' in docker cmd, got:\n%s", cmd)
 	}
@@ -244,27 +306,43 @@ func TestGenericDriverFormatPrompt(t *testing.T) {
 
 func TestGenericDriverEnv(t *testing.T) {
 	d := NewGenericDriver(DriverConfig{})
-	env := d.Env()
+	env := d.Env("system prompt", "task message", testMCPConnection(), "/tmp/mcp.json")
 
-	// Generic driver should not filter any parent env vars.
 	if len(env.FilterPrefixes) != 0 {
 		t.Errorf("expected 0 filter prefixes, got %d", len(env.FilterPrefixes))
 	}
-
-	// Should set WARRANT_DISPATCH marker.
 	if env.Set["WARRANT_DISPATCH"] != "true" {
 		t.Errorf("expected WARRANT_DISPATCH=true, got %q", env.Set["WARRANT_DISPATCH"])
+	}
+	if env.Set["FLYWHEEL_SYSTEM_PROMPT"] != "system prompt" {
+		t.Errorf("expected system prompt to be exported, got %q", env.Set["FLYWHEEL_SYSTEM_PROMPT"])
+	}
+	if env.Set["FLYWHEEL_MCP_URL"] != "http://localhost:8080/mcp" {
+		t.Errorf("expected /mcp URL export, got %q", env.Set["FLYWHEEL_MCP_URL"])
 	}
 }
 
 func TestGenericDriverResolveCredential(t *testing.T) {
 	d := NewGenericDriver(DriverConfig{})
-	// Should pass through the static key unchanged.
 	if d.ResolveCredential("my-key") != "my-key" {
 		t.Error("GenericDriver should return static key unchanged")
 	}
 	if d.ResolveCredential("") != "" {
 		t.Error("GenericDriver should return empty when no key provided")
+	}
+}
+
+func TestGenericDriverCredentialEnvName(t *testing.T) {
+	d := NewGenericDriver(DriverConfig{})
+	if d.CredentialEnvName() != "" {
+		t.Errorf("expected empty credential env name, got %q", d.CredentialEnvName())
+	}
+}
+
+func TestGenericDriverDefaultAllowedHosts(t *testing.T) {
+	d := NewGenericDriver(DriverConfig{})
+	if len(d.DefaultAllowedHosts()) != 0 {
+		t.Errorf("expected no default allowed hosts, got %v", d.DefaultAllowedHosts())
 	}
 }
 
@@ -287,6 +365,16 @@ func TestLookupDriverClaude(t *testing.T) {
 	}
 }
 
+func TestLookupDriverCodex(t *testing.T) {
+	driver, err := LookupDriver("codex", DriverConfig{CLIPath: "/opt/homebrew/bin/codex"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if driver.Name() != "codex" {
+		t.Errorf("expected driver name 'codex', got %q", driver.Name())
+	}
+}
+
 func TestLookupDriverGeneric(t *testing.T) {
 	driver, err := LookupDriver("generic", DriverConfig{CLIPath: "aider"})
 	if err != nil {
@@ -305,14 +393,16 @@ func TestLookupDriverUnknown(t *testing.T) {
 	if !strings.Contains(err.Error(), "nonexistent") {
 		t.Errorf("error should mention the driver name, got: %v", err)
 	}
+	if !strings.Contains(err.Error(), "claude, codex, generic") {
+		t.Errorf("error should list available drivers, got: %v", err)
+	}
 }
 
 func TestRegisterDriver(t *testing.T) {
-	// Register a custom driver.
 	RegisterDriver("custom-test", func(cfg DriverConfig) AgentDriver {
-		return NewGenericDriver(cfg) // reuse generic as a stand-in
+		return NewGenericDriver(cfg)
 	})
-	defer delete(driverRegistry, "custom-test") // cleanup
+	defer delete(driverRegistry, "custom-test")
 
 	driver, err := LookupDriver("custom-test", DriverConfig{CLIPath: "custom-bin"})
 	if err != nil {

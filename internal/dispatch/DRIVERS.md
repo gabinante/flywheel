@@ -1,15 +1,41 @@
-# Agent Drivers
+# Dispatch Backends
 
-The dispatch system uses a pluggable **AgentDriver** interface to support any coding agent — not just Claude Code. This document explains how agent drivers work and how to add new ones.
+The dispatch system separates **execution backend** from **agent harness** so Flywheel can support CLI agents, Dockerized agents, and API-native agents.
 
 ## Overview
 
-The dispatch architecture separates **infrastructure** from **agent behavior**:
+The dispatch architecture now has two extension points:
 
-- **Infrastructure (agent-agnostic):** Dispatcher event handling, capacity management, worktree management, MCP config generation, prompt assembly, Docker resource limits, lease management, failure recovery.
-- **Agent behavior (driver-specific):** CLI arguments, environment variables, Docker image, prompt formatting, credential resolution, volume mounts.
+- **Runner:** how the worker is executed.
+  - `cli` runs a local agent binary in the ticket worktree.
+  - `docker` runs the agent inside a container.
+  - `openai-responses` uses the OpenAI Responses API with Flywheel MCP plus local workspace tools.
+- **Driver:** how a CLI or Docker harness wants its prompt, MCP config, env vars, and credentials.
+
+Infrastructure such as dispatcher event handling, worktree management, prompt assembly, lease recovery, and MCP connection generation stays shared.
+
+## Built-in Runners
+
+### `cli`
+
+Runs a local agent binary directly in the ticket worktree.
+
+### `docker`
+
+Runs a harness inside the configured worker image with the existing sandbox and firewall controls.
+
+### `openai-responses`
+
+Uses the OpenAI Responses API as the worker runtime.
+
+- Connects to Flywheel over streamable HTTP MCP at `/mcp`.
+- Exposes local workspace tools for file reads, file writes, directory listing, and shell commands inside the ticket worktree.
+- Uses `OPENAI_API_KEY` as the provider fallback when `DISPATCH_AGENT_API_KEY` is unset.
+- Is currently a host-side backend: it operates in the local worktree rather than inside the Docker worker image.
 
 ## Built-in Drivers
+
+Drivers apply to the `cli` and `docker` runners.
 
 ### `claude` (default)
 
@@ -20,39 +46,67 @@ The Claude Code driver. Invokes `claude --print --dangerously-skip-permissions -
 - Filters `CLAUDECODE=` and `ANTHROPIC_API_KEY=` from the parent environment.
 - Sets `CLAUDE_CODE_ENTRYPOINT=warrant-dispatch`.
 
+### `codex`
+
+The Codex driver. Invokes `codex exec` and connects to Flywheel via the
+streamable HTTP MCP endpoint at `/mcp`.
+
+- Uses `workspace-write` sandboxing in host mode and enables network access so the worker can reach Flywheel MCP.
+- Uses `--dangerously-bypass-approvals-and-sandbox` inside Docker mode because the container is already the outer sandbox.
+- Passes the Flywheel API key through `env_http_headers` as `X-API-Key`.
+- Uses `OPENAI_API_KEY` as the provider fallback when `DISPATCH_AGENT_API_KEY` is unset.
+
 ### `generic`
 
 A generic driver that delivers prompts via environment variables. Works with any agent that reads from env vars.
 
 Environment variables set for the agent:
+- `FLYWHEEL_SYSTEM_PROMPT` — full system prompt text
+- `FLYWHEEL_TASK_MESSAGE` — task instruction
+- `FLYWHEEL_MCP_URL` — Flywheel streamable HTTP MCP endpoint (`/mcp`)
+- `FLYWHEEL_MCP_SSE_URL` — Flywheel SSE MCP endpoint (`/sse`)
+- `FLYWHEEL_MCP_HEADERS_JSON` — JSON map of auth headers
+- `FLYWHEEL_MCP_CONFIG_PATH` — Claude-compatible MCP config JSON file path
+- `FLYWHEEL_DISPATCH=true` — marker that the agent was spawned by warrant
 - `WARRANT_SYSTEM_PROMPT` — full system prompt text
 - `WARRANT_TASK_MESSAGE` — task instruction
-- `WARRANT_MCP_CONFIG_PATH` — path to the MCP configuration JSON file
+- `WARRANT_MCP_URL` — Flywheel streamable HTTP MCP endpoint (`/mcp`)
+- `WARRANT_MCP_SSE_URL` — Flywheel SSE MCP endpoint (`/sse`)
+- `WARRANT_MCP_HEADERS_JSON` — JSON map of auth headers
+- `WARRANT_MCP_CONFIG_PATH` — Claude-compatible MCP config JSON file path
 - `WARRANT_DISPATCH=true` — marker that the agent was spawned by warrant
 
 The agent is expected to:
 1. Read its instructions from the environment variables above.
-2. Connect to the MCP server using the config file.
+2. Connect to the MCP server using `*_MCP_URL` (or `*_MCP_SSE_URL` if needed).
 3. Execute the work and produce output on stdout.
 
 ## Configuration
 
-Set the driver via environment variable:
+Set the runner first, then the driver when the runner is `cli` or `docker`:
 
 ```bash
-# Select the agent driver (default: "claude")
-DISPATCH_AGENT_DRIVER=generic
+# CLI or Docker harnesses
+DISPATCH_AGENT_RUNNER=cli
+DISPATCH_AGENT_DRIVER=codex
+DISPATCH_AGENT_CMD=/opt/homebrew/bin/codex
 
-# Override the agent binary path (default depends on driver)
-DISPATCH_AGENT_CMD=/usr/local/bin/opencode
+# Optional explicit provider credential
+DISPATCH_AGENT_API_KEY=sk-...
+
+# API-native OpenAI backend
+DISPATCH_AGENT_RUNNER=openai-responses
+OPENAI_API_KEY=sk-...
+DISPATCH_AGENT_MODEL=gpt-5.2-codex
 
 # Standard dispatch settings still apply
 DISPATCH_ENABLED=true
 DISPATCH_MAX_WORKERS=4
-DISPATCH_DOCKER_ENABLED=false
 ```
 
 ## Adding a New Driver
+
+Only do this for a CLI or Docker harness. API-native backends should add a new runner instead.
 
 ### 1. Implement the `AgentDriver` interface
 
@@ -76,15 +130,17 @@ func NewMyAgentDriver(cfg DriverConfig) *MyAgentDriver {
 
 func (d *MyAgentDriver) Name() string { return "myagent" }
 
-func (d *MyAgentDriver) BuildCLIArgs(systemPrompt, taskMessage, mcpConfigPath string) (string, []string) {
-    return d.CLIPath, []string{
+func (d *MyAgentDriver) Executable() string { return d.CLIPath }
+
+func (d *MyAgentDriver) BuildCLIArgs(systemPrompt, taskMessage string, mcp mcpConnection, mcpConfigPath string) []string {
+    return []string{
         "--prompt", systemPrompt,
         "--task", taskMessage,
         "--mcp", mcpConfigPath,
     }
 }
 
-func (d *MyAgentDriver) BuildDockerCmd(branch string) string {
+func (d *MyAgentDriver) BuildDockerCmd(branch string, mcp mcpConnection) string {
     return fmt.Sprintf(`set -e
 git clone /repo /workspace 2>/dev/null
 cd /workspace
@@ -97,7 +153,7 @@ func (d *MyAgentDriver) DockerImage() string { return "myagent-worker" }
 
 func (d *MyAgentDriver) FormatPrompt(systemPrompt string) string { return systemPrompt }
 
-func (d *MyAgentDriver) Env() DriverEnv {
+func (d *MyAgentDriver) Env(systemPrompt, taskMessage string, mcp mcpConnection, mcpConfigPath string) DriverEnv {
     return DriverEnv{
         FilterPrefixes: nil,
         Set:            map[string]string{"MYAGENT_MODE": "dispatch"},
@@ -105,6 +161,8 @@ func (d *MyAgentDriver) Env() DriverEnv {
 }
 
 func (d *MyAgentDriver) ResolveCredential(staticKey string) string { return staticKey }
+
+func (d *MyAgentDriver) CredentialEnvName() string { return "" }
 
 func (d *MyAgentDriver) ExtraDockerArgs() []string { return nil }
 ```
@@ -129,19 +187,22 @@ DISPATCH_AGENT_CMD=/usr/local/bin/myagent
 DISPATCH_DOCKER_IMAGE=myagent-worker  # if using Docker mode
 ```
 
-## Interface Reference
+## Driver Interface Reference
 
 ```go
 type AgentDriver interface {
     // Name returns the driver identifier for logging and config.
     Name() string
 
-    // BuildCLIArgs returns the executable and CLI arguments for host-mode execution.
-    BuildCLIArgs(systemPrompt, taskMessage, mcpConfigPath string) (exe string, args []string)
+    // Executable returns the agent binary path.
+    Executable() string
+
+    // BuildCLIArgs returns CLI arguments for host-mode execution.
+    BuildCLIArgs(systemPrompt, taskMessage string, mcp mcpConnection, mcpConfigPath string) []string
 
     // BuildDockerCmd returns the shell command to run inside a Docker container.
     // Files are mounted at: /tmp/system-prompt.txt, /tmp/task-prompt.txt, /tmp/mcp-config.json
-    BuildDockerCmd(branch string) string
+    BuildDockerCmd(branch string, mcp mcpConnection) string
 
     // DockerImage returns the preferred Docker image. Empty = use config default.
     DockerImage() string
@@ -150,10 +211,16 @@ type AgentDriver interface {
     FormatPrompt(systemPrompt string) string
 
     // Env returns environment configuration (filters and additions).
-    Env() DriverEnv
+    Env(systemPrompt, taskMessage string, mcp mcpConnection, mcpConfigPath string) DriverEnv
 
     // ResolveCredential resolves the agent's API credential dynamically.
     ResolveCredential(staticKey string) string
+
+    // CredentialEnvName returns the env var used for docker credentials.
+    CredentialEnvName() string
+
+    // DefaultAllowedHosts returns the default docker firewall allowlist.
+    DefaultAllowedHosts() []string
 
     // ExtraDockerArgs returns additional docker run arguments.
     ExtraDockerArgs() []string
@@ -163,7 +230,7 @@ type AgentDriver interface {
 ## Design Decisions
 
 - **Prompt delivery is driver-specific.** Claude uses CLI flags; generic uses env vars. Each agent has its own way of receiving instructions.
-- **MCP config format is shared.** All agents connect to the same warrant MCP server using the same JSON config format. The driver doesn't need to know about MCP internals.
+- **MCP transport is shared, not the client config format.** Flywheel exposes both `/sse` and `/mcp`; drivers choose the transport and config shape their harness actually understands.
 - **Docker resource limits are infrastructure.** Memory, CPU, PID limits, and firewall rules are configured globally, not per-driver.
 - **Credentials are driver-resolved.** Claude can use OAuth tokens from the keychain; other agents may use API keys or different auth mechanisms.
 - **The dispatcher remains agent-agnostic.** Event handling, capacity management, worktree creation, lease management, and failure recovery work the same regardless of which agent driver is selected.

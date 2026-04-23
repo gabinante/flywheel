@@ -72,6 +72,15 @@ func TestStateMachine_Transition(t *testing.T) {
 		// === Reopen ===
 		{"closed->draft (reopen)", StateClosed, TriggerReopen, Actor{ID: "human1", Type: ActorHuman}, "agent1", nil, nil, StateDraft, false},
 
+		// === Rollback ===
+		{"executing->draft (rollback)", StateExecuting, TriggerRollback, Actor{ID: "human1", Type: ActorHuman}, "agent1", nil, nil, StateDraft, false},
+		{"awaiting_validation->draft (rollback)", StateAwaitingValidation, TriggerRollback, Actor{ID: "human1", Type: ActorHuman}, "agent1", nil, nil, StateDraft, false},
+		{"validated->draft (rollback)", StateValidated, TriggerRollback, Actor{ID: "human1", Type: ActorHuman}, "agent1", nil, nil, StateDraft, false},
+		{"deploying->draft (rollback)", StateDeploying, TriggerRollback, Actor{ID: "system", Type: ActorSystem}, "agent1", nil, nil, StateDraft, false},
+		{"observing->draft (rollback)", StateObserving, TriggerRollback, Actor{ID: "human1", Type: ActorHuman}, "agent1", nil, nil, StateDraft, false},
+		{"draft rollback invalid", StateDraft, TriggerRollback, Actor{ID: "human1", Type: ActorHuman}, "", nil, nil, "", true},
+		{"planning rollback invalid", StatePlanning, TriggerRollback, Actor{ID: "agent1", Type: ActorAgent}, "agent1", nil, nil, "", true},
+
 		// === Invalid transitions ===
 		{"invalid trigger from draft", StateDraft, "invalid", Actor{}, "", nil, nil, "", true},
 		{"already claimed", StateDraft, TriggerClaim, Actor{ID: "agent2", Type: ActorAgent}, "agent1", nil, nil, "", true},
@@ -155,6 +164,49 @@ func TestMapLegacyState(t *testing.T) {
 		got := MapLegacyState(tt.input)
 		if got != tt.want {
 			t.Errorf("MapLegacyState(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestRollbackAvailableAtEachStage(t *testing.T) {
+	sm := NewStateMachine()
+
+	// Rollback should be available from these states.
+	rollbackStates := []State{
+		StateExecuting,
+		StateAwaitingValidation,
+		StateValidated,
+		StateDeploying,
+		StateObserving,
+	}
+	for _, state := range rollbackStates {
+		triggers := sm.ValidTransitions(state)
+		found := false
+		for _, tr := range triggers {
+			if tr == TriggerRollback {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("rollback trigger should be available from %q, got triggers: %v", state, triggers)
+		}
+	}
+
+	// Rollback should NOT be available from these states.
+	noRollbackStates := []State{
+		StateDraft,
+		StateSpecced,
+		StatePlanning,
+		StateAwaitingInput,
+		StateClosed,
+	}
+	for _, state := range noRollbackStates {
+		triggers := sm.ValidTransitions(state)
+		for _, tr := range triggers {
+			if tr == TriggerRollback {
+				t.Errorf("rollback trigger should NOT be available from %q", state)
+			}
 		}
 	}
 }

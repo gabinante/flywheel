@@ -1,7 +1,7 @@
 -- Policy calibration feedback loop tables.
 -- Policies gate ticket advancement; decisions and outcomes are tracked for calibration.
 
-CREATE TABLE policies (
+CREATE TABLE IF NOT EXISTS policies (
     id          TEXT PRIMARY KEY,
     project_id  TEXT NOT NULL REFERENCES projects(id),
     name        TEXT NOT NULL,
@@ -14,10 +14,10 @@ CREATE TABLE policies (
     UNIQUE (project_id, name)
 );
 
-CREATE INDEX policies_project_enabled ON policies(project_id, enabled);
+CREATE INDEX IF NOT EXISTS policies_project_enabled ON policies(project_id, enabled);
 
 -- Rolling record of every gated decision with eventual outcome.
-CREATE TABLE policy_decisions (
+CREATE TABLE IF NOT EXISTS policy_decisions (
     id          TEXT PRIMARY KEY,
     policy_id   TEXT NOT NULL REFERENCES policies(id),
     ticket_id   TEXT NOT NULL REFERENCES tickets(id),
@@ -28,12 +28,12 @@ CREATE TABLE policy_decisions (
     outcome_at  TIMESTAMPTZ
 );
 
-CREATE INDEX policy_decisions_policy ON policy_decisions(policy_id, decided_at DESC);
-CREATE INDEX policy_decisions_ticket ON policy_decisions(ticket_id);
-CREATE INDEX policy_decisions_outcome_pending ON policy_decisions(policy_id) WHERE outcome IS NULL;
+CREATE INDEX IF NOT EXISTS policy_decisions_policy ON policy_decisions(policy_id, decided_at DESC);
+CREATE INDEX IF NOT EXISTS policy_decisions_ticket ON policy_decisions(ticket_id);
+CREATE INDEX IF NOT EXISTS policy_decisions_outcome_pending ON policy_decisions(policy_id) WHERE outcome IS NULL;
 
 -- Auditable record of every policy edit (change events in the stream).
-CREATE TABLE policy_change_events (
+CREATE TABLE IF NOT EXISTS policy_change_events (
     id          TEXT PRIMARY KEY,
     policy_id   TEXT NOT NULL REFERENCES policies(id),
     actor_id    TEXT NOT NULL,
@@ -44,10 +44,10 @@ CREATE TABLE policy_change_events (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX policy_change_events_policy ON policy_change_events(policy_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS policy_change_events_policy ON policy_change_events(policy_id, created_at DESC);
 
 -- System-generated proposals for broadening or review flagging.
-CREATE TABLE policy_proposals (
+CREATE TABLE IF NOT EXISTS policy_proposals (
     id             TEXT PRIMARY KEY,
     policy_id      TEXT NOT NULL REFERENCES policies(id),
     proposal_type  TEXT NOT NULL,  -- broaden, review
@@ -59,4 +59,4 @@ CREATE TABLE policy_proposals (
     resolved_by    TEXT NOT NULL DEFAULT ''
 );
 
-CREATE INDEX policy_proposals_policy_status ON policy_proposals(policy_id, status);
+CREATE INDEX IF NOT EXISTS policy_proposals_policy_status ON policy_proposals(policy_id, status);

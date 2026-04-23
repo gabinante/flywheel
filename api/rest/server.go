@@ -11,21 +11,25 @@ import (
 
 // RouterConfig configures the main HTTP router (std net/http only).
 type RouterConfig struct {
-	StrictServer       *StrictServer
-	AuthMiddleware     func(http.Handler) http.Handler
-	AuthHandler        *AuthHandler
-	OAuthHandler       *OAuthHandler
-	MCPHandler         http.Handler
-	MCPSSEHandler      http.Handler // SSE transport for older MCP clients
-	AgentsHandler      *AgentsHandler
-	DispatchHandler    *DispatchHandler
-	PlansHandler       *PlansHandler
-	ObservationHandler *ObservationHandler
-	CatalogHandler     *CatalogHandler // Layer 14 project map
-	PoliciesHandler    *PoliciesHandler // Policy calibration feedback loop (not in OpenAPI spec yet)
-	ClaimsHandler      *ClaimsHandler   // Claims registry for concurrency control (spec v0.2 §4.3)
-	HooksHandler       *HooksHandler    // Change event webhook receiver (spec v0.2 §2.4)
-	PillarsHandler     *PillarsHandler  // Pillar and strategy layer (Layer 15)
+	StrictServer        *StrictServer
+	AuthMiddleware      func(http.Handler) http.Handler
+	AuthHandler         *AuthHandler
+	OAuthHandler        *OAuthHandler
+	MCPHandler          http.Handler
+	MCPSSEHandler       http.Handler // SSE transport for older MCP clients
+	AgentsHandler       *AgentsHandler
+	EntitiesHandler     *EntitiesHandler
+	DispatchHandler     *DispatchHandler
+	OrchestratorHandler *OrchestratorHandler
+	PlansHandler        *PlansHandler
+	ObservationHandler  *ObservationHandler
+	StreamsHandler      *StreamsHandler    // Foundational streams (entity, state, change) per spec v0.2 section 2.2
+	CatalogHandler      *CatalogHandler    // Layer 14 project map
+	PoliciesHandler     *PoliciesHandler   // Policy calibration feedback loop (not in OpenAPI spec yet)
+	StateIndexHandler   *StateIndexHandler // Observed state index (spec v0.2 Layer 10)
+	ClaimsHandler       *ClaimsHandler     // Claims registry for concurrency control (spec v0.2 §4.3)
+	HooksHandler        *HooksHandler      // Change event webhook receiver (spec v0.2 §2.4)
+	PillarsHandler      *PillarsHandler    // Pillar and strategy layer (Layer 15)
 	// WebDist is the Vite outDir (contains index.html and assets/). Empty skips SPA routes.
 	WebDist string
 }
@@ -94,8 +98,15 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		mux.HandleFunc("POST /agents", agents.register)
 		mux.HandleFunc("GET /agents/{agentID}", agents.getAgent)
 	}
+	if cfg.EntitiesHandler != nil {
+		cfg.EntitiesHandler.Register(mux)
+	}
 	if cfg.DispatchHandler != nil {
 		mux.HandleFunc("GET /api/dispatch/status", cfg.DispatchHandler.getStatus)
+	}
+	if cfg.OrchestratorHandler != nil {
+		mux.HandleFunc("GET /api/command-center/projects/{projectID}/orchestrator", cfg.OrchestratorHandler.getThread)
+		mux.HandleFunc("POST /api/command-center/projects/{projectID}/orchestrator/messages", cfg.OrchestratorHandler.createMessage)
 	}
 	if cfg.PlansHandler != nil {
 		plans := cfg.PlansHandler
@@ -112,11 +123,17 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	if cfg.ObservationHandler != nil {
 		cfg.ObservationHandler.RegisterRoutes(mux)
 	}
+	if cfg.StreamsHandler != nil {
+		cfg.StreamsHandler.RegisterRoutes(mux)
+	}
 	if cfg.CatalogHandler != nil {
 		cfg.CatalogHandler.RegisterRoutes(mux)
 	}
 	if cfg.PoliciesHandler != nil {
 		cfg.PoliciesHandler.RegisterRoutes(mux)
+	}
+	if cfg.StateIndexHandler != nil {
+		cfg.StateIndexHandler.RegisterRoutes(mux)
 	}
 	if cfg.ClaimsHandler != nil {
 		cfg.ClaimsHandler.RegisterRoutes(mux)

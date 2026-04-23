@@ -20,6 +20,7 @@ type ProjectStore interface {
 	UpdateSlug(ctx context.Context, projectID, slug string) error
 	UpdateDefaultBranch(ctx context.Context, projectID, branch string) error
 	UpdateContextPack(ctx context.Context, projectID string, pack ContextPack) error
+	UpdateDispatchEnabled(ctx context.Context, projectID string, enabled bool) error
 }
 
 // Service provides project operations.
@@ -39,15 +40,16 @@ func (s *Service) CreateProject(ctx context.Context, orgID, name, slug, repoURL 
 	}
 	id := uuid.Must(uuid.NewV7()).String()
 	p := &Project{
-		ID:          id,
-		OrgID:       orgID,
-		Name:        name,
-		Slug:        slug,
-		RepoURL:     repoURL,
-		TechStack:   techStack,
-		ContextPack: ContextPack{},
-		Status:      "active",
-		CreatedAt:   time.Now().UTC(),
+		ID:              id,
+		OrgID:           orgID,
+		Name:            name,
+		Slug:            slug,
+		RepoURL:         repoURL,
+		TechStack:       techStack,
+		ContextPack:     ContextPack{},
+		Status:          "active",
+		DispatchEnabled: true,
+		CreatedAt:       time.Now().UTC(),
 	}
 	if err := s.store.Create(ctx, p); err != nil {
 		return nil, err
@@ -103,6 +105,11 @@ func (s *Service) UpdateSlug(ctx context.Context, projectID, slug string) error 
 // UpdateDefaultBranch sets the branch to checkout when closing a work stream. Default "main".
 func (s *Service) UpdateDefaultBranch(ctx context.Context, projectID, branch string) error {
 	return s.store.UpdateDefaultBranch(ctx, projectID, branch)
+}
+
+// UpdateDispatchEnabled sets whether the dispatcher picks up tickets for this project.
+func (s *Service) UpdateDispatchEnabled(ctx context.Context, projectID string, enabled bool) error {
+	return s.store.UpdateDispatchEnabled(ctx, projectID, enabled)
 }
 
 func slugify(s string) string {
