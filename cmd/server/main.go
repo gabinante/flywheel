@@ -162,7 +162,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 
 	// Cost management service (budget tracking, rate-limit handling, model routing).
 	costNotifier := cost.NewBusNotifier(bus)
-	costStore := cost.NewMemStore() // Uses in-memory store; Postgres store wired when migration runs.
+	costStore := cost.NewPostgresStore(pool)
 	costCfg := cost.DefaultConfig()
 	costSvc := cost.NewService(costStore, costCfg, costNotifier, costNotifier)
 	log.Printf("cost: service initialized (fallback router: %s/%s → %s/%s → %s/%s)",
@@ -299,10 +299,15 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			APIKey:               cfg.Dispatch.APIKey,
 			AgentAPIKey:          cfg.Dispatch.AgentAPIKey,
 			RepoDir:              repoDir,
+			CostSvc:              costSvc,
 		})
 		investigationSvc = investigation.NewService(invWorker, investigation.Config{
-			ServerURL: cfg.Auth.BaseURL,
-			WorkDir:   repoDir,
+			ServerURL:   cfg.Auth.BaseURL,
+			WorkDir:     repoDir,
+			CostSvc:     costSvc,
+			AgentRunner: cfg.Dispatch.AgentRunner,
+			AgentDriver: cfg.Dispatch.AgentDriver,
+			AgentModel:  cfg.Dispatch.AgentModel,
 		})
 	}
 
@@ -319,6 +324,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			APIKey:               cfg.Dispatch.APIKey,
 			AgentAPIKey:          cfg.Orchestrator.AgentAPIKey,
 			RepoDir:              repoDir,
+			CostSvc:              costSvc,
 		})
 	}
 	orchestratorSvc := orchestrator.NewService(orchestratorStore, projectSvc, orchestratorWorker, orchestrator.Config{
@@ -326,6 +332,10 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		ServerURL:    cfg.Auth.BaseURL,
 		AgentID:      "command-center-orchestrator",
 		HistoryLimit: cfg.Orchestrator.HistoryLimit,
+		CostSvc:      costSvc,
+		AgentRunner:  cfg.Orchestrator.AgentRunner,
+		AgentDriver:  cfg.Orchestrator.AgentDriver,
+		AgentModel:   cfg.Orchestrator.AgentModel,
 	})
 
 	var authMiddleware func(http.Handler) http.Handler
@@ -419,6 +429,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			DockerFirewall:       cfg.Dispatch.DockerFirewall,
 			AgentAPIKey:          cfg.Dispatch.AgentAPIKey,
 			ReconcileInterval:    cfg.Dispatch.ReconcileInterval,
+			CostSvc:              costSvc,
 		}, bus, ticketSvc, projectSvc)
 		dispatcher.SetLeaseReleaser(queueSvc)
 		dispatcher.SetTicketTransitioner(ticketSvc)
@@ -447,6 +458,12 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		DispatchHandler: &rest.DispatchHandler{Dispatcher: dispatcher},
 		OrchestratorHandler: &rest.OrchestratorHandler{
 			Service:    orchestratorSvc,
+			ProjectSvc: projectSvc,
+			OrgSvc:     orgSvc,
+			AgentStore: agentStore,
+		},
+		UsageHandler: &rest.UsageHandler{
+			CostSvc:    costSvc,
 			ProjectSvc: projectSvc,
 			OrgSvc:     orgSvc,
 			AgentStore: agentStore,
@@ -536,6 +553,9 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 	envSvc := environment.NewService(envSt, bus)
 	pillarSt := embedded.NewPillarStore(sqliteDB)
 	pillarSvc := pillar.NewService(pillarSt)
+	costStore := cost.NewMemStore()
+	costCfg := cost.DefaultConfig()
+	costSvc := cost.NewService(costStore, costCfg, nil, nil)
 
 	// Hooks: change event publication library + gap detection (spec v0.2 §2.4).
 	hooksClient := hooks.NewClient(bus)
@@ -587,6 +607,7 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		ReviewSvc:     reviewSvc,
 		EnvSvc:        envSvc,
 		AgentStore:    agentSt,
+		CostSvc:       costSvc,
 	}
 
 	// Code intelligence: bundled default for embedded mode.
@@ -669,6 +690,7 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 			APIKey:               cfg.Dispatch.APIKey,
 			AgentAPIKey:          cfg.Orchestrator.AgentAPIKey,
 			RepoDir:              repoDir,
+			CostSvc:              costSvc,
 		})
 	}
 	orchestratorSvc := orchestrator.NewService(orchestratorSt, projectSvc, orchestratorWorker, orchestrator.Config{
@@ -676,6 +698,10 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		ServerURL:    cfg.Auth.BaseURL,
 		AgentID:      "command-center-orchestrator",
 		HistoryLimit: cfg.Orchestrator.HistoryLimit,
+		CostSvc:      costSvc,
+		AgentRunner:  cfg.Orchestrator.AgentRunner,
+		AgentDriver:  cfg.Orchestrator.AgentDriver,
+		AgentModel:   cfg.Orchestrator.AgentModel,
 	})
 
 	router := rest.NewRouter(rest.RouterConfig{
@@ -692,6 +718,12 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		},
 		OrchestratorHandler: &rest.OrchestratorHandler{
 			Service:    orchestratorSvc,
+			ProjectSvc: projectSvc,
+			OrgSvc:     orgSvc,
+			AgentStore: agentSt,
+		},
+		UsageHandler: &rest.UsageHandler{
+			CostSvc:    costSvc,
 			ProjectSvc: projectSvc,
 			OrgSvc:     orgSvc,
 			AgentStore: agentSt,

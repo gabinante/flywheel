@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -21,6 +21,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { ListPageSkeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/contexts/use-auth'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
@@ -152,6 +153,7 @@ export function ProjectsPage() {
   const { orgId } = useParams<{ orgId: string }>()
   const { client } = useAuth()
   const [projects, setProjects] = useState<Project[] | null>(null)
+  const [togglingById, setTogglingById] = useState<Record<string, boolean>>({})
   const [orgName, setOrgName] = useState<string | null>(null)
   const [stats, setStats] = useState<Record<string, ProjectStats>>({})
   const [statsLoading, setStatsLoading] = useState(true)
@@ -241,6 +243,49 @@ export function ProjectsPage() {
     }
   }, [client, projects])
 
+  const toggleDispatch = useCallback(
+    async (project: Project) => {
+      if (!project.id) return
+      const projectID = project.id
+      const previousValue = project.dispatch_enabled !== false
+      const nextValue = !previousValue
+
+      setTogglingById((prev) => ({ ...prev, [projectID]: true }))
+      setProjects((prev) =>
+        prev?.map((entry) =>
+          entry.id === projectID
+            ? { ...entry, dispatch_enabled: nextValue }
+            : entry,
+        ) ?? prev,
+      )
+
+      const { error, response } = await client.PATCH('/projects/{projectID}', {
+        params: { path: { projectID } },
+        body: { dispatch_enabled: nextValue },
+      })
+
+      if (!response.ok) {
+        setProjects((prev) =>
+          prev?.map((entry) =>
+            entry.id === projectID
+              ? { ...entry, dispatch_enabled: previousValue }
+              : entry,
+          ) ?? prev,
+        )
+        setErr(formatApiError(error))
+      } else {
+        setErr(null)
+      }
+
+      setTogglingById((prev) => {
+        const next = { ...prev }
+        delete next[projectID]
+        return next
+      })
+    },
+    [client],
+  )
+
   if (!orgId) {
     return <p className="text-destructive text-sm">Missing org id.</p>
   }
@@ -277,16 +322,22 @@ export function ProjectsPage() {
             const id = p.id ?? ''
             const projectStats = stats[id]
             const isStatsLoading = statsLoading && !projectStats
+            const dispatchOn = p.dispatch_enabled !== false
+            const dispatchToggleID = `dispatch-${id}`
+            const isDispatchToggling = togglingById[id] === true
             return (
               <StaggerItem key={id}>
-                <Link to={`/orgs/${orgId}/projects/${id}`} className="block h-full">
-                  <Card className="group h-full hover:bg-white/[0.06]">
+                <Card className="group flex h-full flex-col hover:bg-white/[0.06]">
+                  <Link
+                    to={`/orgs/${orgId}/projects/${id}`}
+                    className="block flex-1"
+                  >
                     <CardHeader>
                       <div className="flex items-start gap-3">
                         <ProjectAvatar name={name} id={id} />
                         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <CardTitle className="text-base font-semibold truncate">
+                          <div className="flex flex-wrap items-start gap-2">
+                            <CardTitle className="max-w-full text-base font-semibold leading-tight whitespace-normal break-words">
                               {name}
                             </CardTitle>
                           </div>
@@ -352,8 +403,30 @@ export function ProjectsPage() {
                         ) : null}
                       </div>
                     </CardContent>
-                  </Card>
-                </Link>
+                  </Link>
+
+                  <div className="flex items-center justify-between gap-3 border-t border-white/10 px-6 py-4">
+                    <label
+                      htmlFor={dispatchToggleID}
+                      className="flex min-w-0 flex-col gap-0.5"
+                    >
+                      <span className="text-xs font-medium text-foreground">
+                        {dispatchOn ? 'Dispatch running' : 'Dispatch paused'}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">
+                        {dispatchOn
+                          ? 'Agents can claim new work for this project.'
+                          : 'Agents will not pick up new tickets.'}
+                      </span>
+                    </label>
+                    <Switch
+                      id={dispatchToggleID}
+                      checked={dispatchOn}
+                      onCheckedChange={() => void toggleDispatch(p)}
+                      disabled={isDispatchToggling}
+                    />
+                  </div>
+                </Card>
               </StaggerItem>
             )
           })}

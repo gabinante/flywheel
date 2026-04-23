@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/gabinante/flywheel/internal/cost"
 )
 
 // Worker is the interface for spawning subagent processes.
@@ -39,6 +41,13 @@ type Config struct {
 
 	// WorkDir is the fallback working directory for investigations.
 	WorkDir string
+
+	// CostSvc records estimated usage for investigation sessions.
+	CostSvc *cost.Service
+	// Agent identity used for provider/model attribution.
+	AgentRunner string
+	AgentDriver string
+	AgentModel  string
 }
 
 // Service dispatches investigations to subagent workers.
@@ -108,6 +117,7 @@ func (s *Service) Dispatch(ctx context.Context, req *Request) (*Response, error)
 	// It does NOT have access to dispatch_investigation (one-level-deep constraint).
 	result, err := s.worker.Spawn(ctx, investigationID, req.ProjectID, systemPrompt, taskMessage, workDir, s.cfg.ServerURL)
 	duration := time.Since(start)
+	s.recordUsage(ctx, req.ProjectID, investigationID, systemPrompt, taskMessage, result)
 
 	if err != nil {
 		// Context timeout or spawn failure.
@@ -151,7 +161,7 @@ func (s *Service) Dispatch(ctx context.Context, req *Request) (*Response, error)
 				},
 			},
 			NegativeSpace: []string{"Structured output parsing failed: " + parseErr.Error()},
-			OpenQuestions:  []string{"Re-run investigation with clearer scope"},
+			OpenQuestions: []string{"Re-run investigation with clearer scope"},
 			TokensUsed:    estimateTokens(result.Output),
 			Duration:      duration,
 		}, nil
@@ -159,6 +169,27 @@ func (s *Service) Dispatch(ctx context.Context, req *Request) (*Response, error)
 
 	response.Duration = duration
 	return response, nil
+}
+
+func (s *Service) recordUsage(ctx context.Context, projectID, ticketID, systemPrompt, taskMessage string, result *WorkerResult) {
+	if s.cfg.CostSvc == nil || result == nil {
+		return
+	}
+	provider, model := cost.InferProviderModel(s.cfg.AgentRunner, s.cfg.AgentDriver, s.cfg.AgentModel)
+	output := strings.TrimSpace(result.Output)
+	if output == "" {
+		output = strings.TrimSpace(result.Error)
+	}
+	_, _ = s.cfg.CostSvc.RecordAndCheck(ctx, &cost.LLMCallRecord{
+		ProjectID:     projectID,
+		TicketID:      ticketID,
+		WorkerRole:    "investigation",
+		Provider:      provider,
+		Model:         model,
+		OperationType: cost.OpStructuralQuery,
+		InputTokens:   cost.EstimateTokens(systemPrompt, taskMessage),
+		OutputTokens:  cost.EstimateTokens(output),
+	})
 }
 
 // parseInvestigationOutput extracts structured findings from the subagent's output.
@@ -174,7 +205,7 @@ func parseInvestigationOutput(output, question string, tokenBudget int) (*Respon
 		Status        string   `json:"status"`
 		Claims        []Claim  `json:"claims"`
 		NegativeSpace []string `json:"negative_space"`
-		OpenQuestions  []string `json:"open_questions"`
+		OpenQuestions []string `json:"open_questions"`
 	}
 
 	if err := json.Unmarshal([]byte(jsonStr), &raw); err != nil {
@@ -196,7 +227,7 @@ func parseInvestigationOutput(output, question string, tokenBudget int) (*Respon
 		Question:      question,
 		Claims:        raw.Claims,
 		NegativeSpace: raw.NegativeSpace,
-		OpenQuestions:  raw.OpenQuestions,
+		OpenQuestions: raw.OpenQuestions,
 		TokensUsed:    tokensUsed,
 	}, nil
 }

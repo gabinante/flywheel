@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gabinante/flywheel/events"
+	"github.com/gabinante/flywheel/internal/cost"
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/ticket"
 )
@@ -77,6 +78,7 @@ type Config struct {
 	DockerCPUs     string
 	DockerFirewall bool
 	AgentAPIKey    string
+	CostSvc        *cost.Service
 }
 
 // Dispatcher listens for ticket events and spawns workers.
@@ -692,6 +694,7 @@ func (d *Dispatcher) runTypedWorker(ctx context.Context, t *ticket.Ticket, wt Wo
 	if err != nil {
 		return err
 	}
+	d.recordUsage(ctx, t.ProjectID, t.ID, workerRoleForType(wt), operationTypeForType(wt), prompt, taskMsg, result)
 
 	if !result.Success {
 		log.Printf("dispatch: %s worker %s completed with error: %s\nOutput: %s", wt, t.ID, result.Error, result.Output)
@@ -819,6 +822,7 @@ func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
 	if err != nil {
 		return err
 	}
+	d.recordUsage(ctx, t.ProjectID, t.ID, "review", cost.OpReview, prompt, taskMsg, result)
 
 	if !result.Success {
 		log.Printf("dispatch: validator %s completed with error: %s\nOutput: %s", t.ID, result.Error, result.Output)
@@ -1026,6 +1030,7 @@ func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, 
 	if err != nil {
 		return err
 	}
+	d.recordUsage(ctx, t.ProjectID, t.ID, "conflict_resolution", cost.OpCodeGeneration, prompt, taskMsg, result)
 
 	if !result.Success {
 		log.Printf("dispatch: conflict resolver %s failed: %s\nOutput: %s", t.ID, result.Error, result.Output)
@@ -1056,4 +1061,56 @@ func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, 
 
 	d.closeMergedTicket(ctx, t)
 	return nil
+}
+
+func workerRoleForType(wt WorkerType) string {
+	switch wt {
+	case WorkerTypePlanner:
+		return "planning"
+	case WorkerTypeValidator:
+		return "review"
+	case WorkerTypeDeployer:
+		return "deployment"
+	case WorkerTypeInvestigator:
+		return "investigation"
+	default:
+		return "implementation"
+	}
+}
+
+func operationTypeForType(wt WorkerType) cost.OperationType {
+	switch wt {
+	case WorkerTypePlanner:
+		return cost.OpPlanning
+	case WorkerTypeValidator:
+		return cost.OpReview
+	case WorkerTypeInvestigator:
+		return cost.OpStructuralQuery
+	case WorkerTypeDeployer:
+		return cost.OpGeneral
+	default:
+		return cost.OpCodeGeneration
+	}
+}
+
+func (d *Dispatcher) recordUsage(ctx context.Context, projectID, ticketID, workerRole string, op cost.OperationType, systemPrompt, taskMessage string, result *WorkerResult) {
+	if d.cfg.CostSvc == nil || result == nil {
+		return
+	}
+	provider, model := cost.InferProviderModel(d.cfg.AgentRunner, d.cfg.AgentDriver, d.cfg.AgentModel)
+	output := strings.TrimSpace(result.Output)
+	if output == "" {
+		output = strings.TrimSpace(result.Error)
+	}
+	record := &cost.LLMCallRecord{
+		ProjectID:     projectID,
+		TicketID:      ticketID,
+		WorkerRole:    workerRole,
+		Provider:      provider,
+		Model:         model,
+		OperationType: op,
+		InputTokens:   cost.EstimateTokens(systemPrompt, taskMessage),
+		OutputTokens:  cost.EstimateTokens(output),
+	}
+	_, _ = d.cfg.CostSvc.RecordAndCheck(ctx, record)
 }

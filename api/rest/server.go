@@ -21,6 +21,7 @@ type RouterConfig struct {
 	EntitiesHandler     *EntitiesHandler
 	DispatchHandler     *DispatchHandler
 	OrchestratorHandler *OrchestratorHandler
+	UsageHandler        *UsageHandler
 	PlansHandler        *PlansHandler
 	ObservationHandler  *ObservationHandler
 	StreamsHandler      *StreamsHandler      // Foundational streams (entity, state, change) per spec v0.2 section 2.2
@@ -108,6 +109,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	if cfg.OrchestratorHandler != nil {
 		mux.HandleFunc("GET /api/command-center/projects/{projectID}/orchestrator", cfg.OrchestratorHandler.getThread)
 		mux.HandleFunc("POST /api/command-center/projects/{projectID}/orchestrator/messages", cfg.OrchestratorHandler.createMessage)
+	}
+	if cfg.UsageHandler != nil {
+		mux.HandleFunc("GET /api/projects/{projectID}/usage", cfg.UsageHandler.getProjectUsage)
 	}
 	if cfg.PlansHandler != nil {
 		plans := cfg.PlansHandler

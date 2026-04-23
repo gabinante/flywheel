@@ -7,6 +7,7 @@ import {
   GitBranch,
   Layers,
   LayoutList,
+  PieChart,
   Plus,
   ShieldCheck,
   Ticket,
@@ -388,6 +389,12 @@ export function ProjectPage() {
             icon={ShieldCheck}
             title="Policy Health"
             description="Monitor policy compliance and gates"
+          />
+          <NavCard
+            to={`/orgs/${orgId}/projects/${projectId}/usage`}
+            icon={PieChart}
+            title="Usage"
+            description="Inspect token, cost, and API usage trends"
           />
         </div>
       </section>

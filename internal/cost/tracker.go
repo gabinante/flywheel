@@ -65,6 +65,16 @@ func (t *Tracker) GetTicketCost(ctx context.Context, ticketID string) (Unit, err
 	return t.store.SumByTicket(ctx, ticketID)
 }
 
+// GetTicketCalls returns the recorded LLM calls for a ticket.
+func (t *Tracker) GetTicketCalls(ctx context.Context, ticketID string) ([]*LLMCallRecord, error) {
+	return t.store.GetCallsByTicket(ctx, ticketID)
+}
+
+// GetProjectCalls returns the recorded LLM calls for a project.
+func (t *Tracker) GetProjectCalls(ctx context.Context, projectID, month string) ([]*LLMCallRecord, error) {
+	return t.store.GetCallsByProject(ctx, projectID, month)
+}
+
 // GetProjectCost returns the total cost for a project in a given month.
 func (t *Tracker) GetProjectCost(ctx context.Context, projectID, month string) (Unit, error) {
 	return t.store.SumByProject(ctx, projectID, month)

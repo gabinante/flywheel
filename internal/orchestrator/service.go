@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/gabinante/flywheel/internal/cost"
 	"github.com/gabinante/flywheel/internal/dispatch"
 	"github.com/gabinante/flywheel/internal/project"
 )
@@ -37,6 +38,10 @@ type Config struct {
 	ServerURL    string
 	AgentID      string
 	HistoryLimit int
+	CostSvc      *cost.Service
+	AgentRunner  string
+	AgentDriver  string
+	AgentModel   string
 }
 
 type Service struct {
@@ -116,6 +121,23 @@ func (s *Service) SendUserMessage(ctx context.Context, projectID, content string
 	result, err := s.worker.Spawn(ctx, runID, projectID, systemPrompt, taskMessage, workDir, s.cfg.ServerURL)
 	if err != nil {
 		return nil, err
+	}
+	if s.cfg.CostSvc != nil {
+		provider, model := cost.InferProviderModel(s.cfg.AgentRunner, s.cfg.AgentDriver, s.cfg.AgentModel)
+		output := strings.TrimSpace(result.Output)
+		if output == "" {
+			output = strings.TrimSpace(result.Error)
+		}
+		_, _ = s.cfg.CostSvc.RecordAndCheck(ctx, &cost.LLMCallRecord{
+			ProjectID:     projectID,
+			TicketID:      runID,
+			WorkerRole:    "orchestrator",
+			Provider:      provider,
+			Model:         model,
+			OperationType: cost.OpPlanning,
+			InputTokens:   cost.EstimateTokens(systemPrompt, taskMessage),
+			OutputTokens:  cost.EstimateTokens(output),
+		})
 	}
 	if !result.Success {
 		if strings.TrimSpace(result.Error) != "" {

@@ -12,6 +12,7 @@ import { ProjectsPage } from '@/pages/projects-page'
 import { ReviewsPage } from '@/pages/reviews-page'
 import { TicketDetailPage } from '@/pages/ticket-detail-page'
 import { TicketsPage } from '@/pages/tickets-page'
+import { UsagePage } from '@/pages/usage-page'
 import { WorkStreamCreatePage } from '@/pages/work-stream-create-page'
 import { WorkStreamEditPage } from '@/pages/work-stream-edit-page'
 import { WorkStreamsPage } from '@/pages/work-streams-page'
@@ -74,6 +75,10 @@ export default function App() {
               <Route
                 path="/orgs/:orgId/projects/:projectId/policies"
                 element={<PolicyHealthPage />}
+              />
+              <Route
+                path="/orgs/:orgId/projects/:projectId/usage"
+                element={<UsagePage />}
               />
               <Route
                 path="/orgs/:orgId/projects/:projectId/work-streams/new"

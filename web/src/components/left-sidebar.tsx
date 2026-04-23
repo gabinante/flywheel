@@ -5,6 +5,7 @@ import {
   ClipboardCheck,
   LayoutDashboard,
   LogOut,
+  PieChart,
   Building2,
   ShieldCheck,
   Ticket,
@@ -111,6 +112,12 @@ export function LeftSidebar() {
 
   const observeItems: NavItem[] = projectBase
     ? [
+        {
+          label: 'Usage',
+          icon: PieChart,
+          href: `${projectBase}/usage`,
+          match: `${projectBase}/usage`,
+        },
         {
           label: 'Policy Health',
           icon: ShieldCheck,
