@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gabinante/flywheel/internal/dispatch"
 )
 
 // Load reads configuration from environment with sensible defaults.
@@ -42,7 +44,37 @@ func Load() *Config {
 	baseURL := getEnv("BASE_URL", "http://localhost:"+port)
 	storageMode := getEnv("STORAGE_MODE", "")
 	embeddedEnabled := storageMode == "embedded"
+	agentRunner := getEnv("DISPATCH_AGENT_RUNNER", "")
+	dockerEnabled := getEnvBool("DISPATCH_DOCKER_ENABLED", false)
+	if agentRunner == "" {
+		if dockerEnabled {
+			agentRunner = dispatch.RunnerDocker
+		} else {
+			agentRunner = dispatch.RunnerCLI
+		}
+	}
+	agentDriver := getEnv("DISPATCH_AGENT_DRIVER", "claude")
+	agentAPIKey := resolveDispatchAgentAPIKey(agentRunner, agentDriver)
+	agentModel := getEnv("DISPATCH_AGENT_MODEL", "")
+	if agentModel == "" && agentRunner == dispatch.RunnerOpenAIResponses {
+		agentModel = "gpt-5.2-codex"
+	}
+	orchestratorRunner := getEnv("ORCHESTRATOR_AGENT_RUNNER", agentRunner)
+	orchestratorDriver := getEnv("ORCHESTRATOR_AGENT_DRIVER", agentDriver)
+	orchestratorAPIKey := resolveAgentAPIKey("ORCHESTRATOR_AGENT_API_KEY", orchestratorRunner, orchestratorDriver)
+	orchestratorModel := getEnv("ORCHESTRATOR_AGENT_MODEL", agentModel)
+	if orchestratorModel == "" && orchestratorRunner == dispatch.RunnerOpenAIResponses {
+		orchestratorModel = "gpt-5.2-codex"
+	}
+	orchestratorReasoning := getEnv("ORCHESTRATOR_AGENT_REASONING_EFFORT", "")
+	if orchestratorReasoning == "" && orchestratorRunner == dispatch.RunnerOpenAIResponses {
+		orchestratorReasoning = "xhigh"
+	}
 	cfg := &Config{
+		Policy: PolicyConfig{
+			DefaultPosture:   getEnv("POLICY_DEFAULT_POSTURE", "plan-only"),
+			AutoApplyDefault: getEnvBool("POLICY_AUTO_APPLY_DEFAULT", true),
+		},
 		Mirror: MirrorConfig{
 			Enabled:      getEnvBool("MIRROR_ENABLED", false),
 			LinearAPIKey: getEnv("MIRROR_LINEAR_API_KEY", ""),
@@ -59,34 +91,49 @@ func Load() *Config {
 			DataDir: getEnv("WARRANT_DATA_DIR", ""),
 		},
 		Dispatch: DispatchConfig{
-			Enabled:      getEnvBool("DISPATCH_ENABLED", false),
-			MaxWorkers:   getEnvInt("DISPATCH_MAX_WORKERS", 4),
-			ClaudePath:   getEnv("DISPATCH_CLAUDE_PATH", "claude"),
-			WorktreeDir:  getEnv("DISPATCH_WORKTREE_DIR", "/tmp/flywheel-worktrees"),
-			APIKey:       getEnv("DISPATCH_API_KEY", ""),
-			ProjectID:    getEnv("DISPATCH_PROJECT_ID", ""),
+			Enabled:                     getEnvBool("DISPATCH_ENABLED", false),
+			MaxWorkers:                  getEnvInt("DISPATCH_MAX_WORKERS", 4),
+			ClaudePath:                  getEnv("DISPATCH_CLAUDE_PATH", "claude"),
+			WorktreeDir:                 getEnv("DISPATCH_WORKTREE_DIR", "/tmp/flywheel-worktrees"),
+			APIKey:                      getEnv("DISPATCH_API_KEY", ""),
+			ProjectID:                   getEnv("DISPATCH_PROJECT_ID", ""),
 			AutoApproveOnAcceptancePass: getEnvBool("AUTO_APPROVE_ON_ACCEPTANCE_PASS", false),
-			AgentDriver:   getEnv("DISPATCH_AGENT_DRIVER", "claude"),
-			AgentCLIPath:  getEnv("DISPATCH_AGENT_CMD", ""),
-			DockerEnabled:  getEnvBool("DISPATCH_DOCKER_ENABLED", false),
-			DockerImage:    getEnv("DISPATCH_DOCKER_IMAGE", "flywheel-worker"),
-			DockerMemory:   getEnv("DISPATCH_DOCKER_MEMORY", "4g"),
-			DockerCPUs:     getEnv("DISPATCH_DOCKER_CPUS", "2"),
-			DockerFirewall: getEnvBool("DISPATCH_DOCKER_FIREWALL", true),
-			AnthropicKey:      getEnv("ANTHROPIC_API_KEY", ""),
-			ReconcileInterval: getEnvDuration("DISPATCH_RECONCILE_INTERVAL", 60*time.Second),
+			AgentRunner:                 agentRunner,
+			AgentDriver:                 agentDriver,
+			AgentCLIPath:                getEnv("DISPATCH_AGENT_CMD", ""),
+			AgentModel:                  agentModel,
+			AgentReasoningEffort:        getEnv("DISPATCH_AGENT_REASONING_EFFORT", ""),
+			AgentAPIBaseURL:             getEnv("DISPATCH_AGENT_API_BASE_URL", "https://api.openai.com/v1"),
+			DockerEnabled:               dockerEnabled,
+			DockerImage:                 getEnv("DISPATCH_DOCKER_IMAGE", "flywheel-worker"),
+			DockerMemory:                getEnv("DISPATCH_DOCKER_MEMORY", "4g"),
+			DockerCPUs:                  getEnv("DISPATCH_DOCKER_CPUS", "2"),
+			DockerFirewall:              getEnvBool("DISPATCH_DOCKER_FIREWALL", true),
+			AgentAPIKey:                 agentAPIKey,
+			ReconcileInterval:           getEnvDuration("DISPATCH_RECONCILE_INTERVAL", 60*time.Second),
+		},
+		Orchestrator: OrchestratorConfig{
+			Enabled:              getEnvBool("ORCHESTRATOR_ENABLED", true),
+			AgentRunner:          orchestratorRunner,
+			AgentDriver:          orchestratorDriver,
+			AgentCLIPath:         getEnv("ORCHESTRATOR_AGENT_CMD", getEnv("DISPATCH_AGENT_CMD", "")),
+			AgentModel:           orchestratorModel,
+			AgentReasoningEffort: orchestratorReasoning,
+			AgentAPIBaseURL:      getEnv("ORCHESTRATOR_AGENT_API_BASE_URL", getEnv("DISPATCH_AGENT_API_BASE_URL", "https://api.openai.com/v1")),
+			AgentAPIKey:          orchestratorAPIKey,
+			HistoryLimit:         getEnvInt("ORCHESTRATOR_HISTORY_LIMIT", 200),
 		},
 		Cost: CostConfig{
-			Enabled:                    getEnvBool("COST_TRACKING_ENABLED", true),
+			Enabled:                     getEnvBool("COST_TRACKING_ENABLED", true),
 			DefaultMonthlyBudgetDollars: getEnvFloat("COST_DEFAULT_MONTHLY_BUDGET", 0),
 			DefaultTicketBudgetDollars:  getEnvFloat("COST_DEFAULT_TICKET_BUDGET", 0),
-			WarnAtFraction:             getEnvFloat("COST_WARN_AT_FRACTION", 0.8),
-			FlagshipProvider:           getEnv("COST_FLAGSHIP_PROVIDER", "anthropic"),
-			FlagshipModel:              getEnv("COST_FLAGSHIP_MODEL", "claude-opus-4-20250514"),
-			MidProvider:                getEnv("COST_MID_PROVIDER", "anthropic"),
-			MidModel:                   getEnv("COST_MID_MODEL", "claude-sonnet-4-20250514"),
-			FastProvider:               getEnv("COST_FAST_PROVIDER", "anthropic"),
-			FastModel:                  getEnv("COST_FAST_MODEL", "claude-haiku-3-20250307"),
+			WarnAtFraction:              getEnvFloat("COST_WARN_AT_FRACTION", 0.8),
+			FlagshipProvider:            getEnv("COST_FLAGSHIP_PROVIDER", "anthropic"),
+			FlagshipModel:               getEnv("COST_FLAGSHIP_MODEL", "claude-opus-4-20250514"),
+			MidProvider:                 getEnv("COST_MID_PROVIDER", "anthropic"),
+			MidModel:                    getEnv("COST_MID_MODEL", "claude-sonnet-4-20250514"),
+			FastProvider:                getEnv("COST_FAST_PROVIDER", "anthropic"),
+			FastModel:                   getEnv("COST_FAST_MODEL", "claude-haiku-3-20250307"),
 		},
 		Server: ServerConfig{
 			Port:    port,
@@ -127,16 +174,88 @@ func Load() *Config {
 // and returns a list of warning messages. Called automatically by Load().
 func (c *Config) Validate() []string {
 	var warnings []string
-
-	// When dispatch is enabled in host mode, the claude CLI must be reachable.
-	// Skip the check when Docker isolation is active because the binary lives
-	// inside the container image, not on the host PATH.
-	if c.Dispatch.Enabled && !c.Dispatch.DockerEnabled {
-		if _, err := exec.LookPath(c.Dispatch.ClaudePath); err != nil {
-			warnings = append(warnings, fmt.Sprintf(
-				"DISPATCH_ENABLED=true but DISPATCH_CLAUDE_PATH=%q not found on PATH: %v",
-				c.Dispatch.ClaudePath, err))
+	runnerName := c.Dispatch.AgentRunner
+	if runnerName == "" {
+		if c.Dispatch.DockerEnabled {
+			runnerName = dispatch.RunnerDocker
+		} else {
+			runnerName = dispatch.RunnerCLI
 		}
+	}
+
+	if c.Dispatch.Enabled {
+		if err := dispatchValidateRunner(runnerName); err != nil {
+			warnings = append(warnings, "DISPATCH_ENABLED=true but "+err.Error())
+		}
+	}
+
+	if c.Dispatch.Enabled && runnerName == dispatch.RunnerOpenAIResponses && c.Dispatch.AgentAPIKey == "" {
+		warnings = append(warnings,
+			"DISPATCH_ENABLED=true and DISPATCH_AGENT_RUNNER=openai-responses but no API key was found; "+
+				"set DISPATCH_AGENT_API_KEY or OPENAI_API_KEY")
+	}
+	if c.Orchestrator.Enabled {
+		if err := dispatchValidateRunner(c.Orchestrator.AgentRunner); err != nil {
+			warnings = append(warnings, "ORCHESTRATOR_ENABLED=true but "+err.Error())
+		}
+		if c.Orchestrator.AgentRunner == dispatch.RunnerOpenAIResponses && c.Orchestrator.AgentAPIKey == "" {
+			warnings = append(warnings,
+				"ORCHESTRATOR_ENABLED=true and ORCHESTRATOR_AGENT_RUNNER=openai-responses but no API key was found; "+
+					"set ORCHESTRATOR_AGENT_API_KEY or OPENAI_API_KEY")
+		}
+		if c.Orchestrator.AgentRunner == dispatch.RunnerCLI {
+			driverName := c.Orchestrator.AgentDriver
+			if driverName == "" {
+				driverName = "claude"
+			}
+			cliPath := c.Orchestrator.AgentCLIPath
+			sourceVar := "ORCHESTRATOR_AGENT_CMD"
+			if cliPath == "" && driverName == "claude" {
+				cliPath = c.Dispatch.ClaudePath
+				sourceVar = "DISPATCH_CLAUDE_PATH"
+			}
+			driver, err := dispatch.LookupDriver(driverName, dispatch.DriverConfig{CLIPath: cliPath})
+			if err != nil {
+				warnings = append(warnings, fmt.Sprintf("ORCHESTRATOR_ENABLED=true but ORCHESTRATOR_AGENT_DRIVER=%q is invalid: %v", driverName, err))
+			} else if _, err := exec.LookPath(driver.Executable()); err != nil {
+				warnings = append(warnings, fmt.Sprintf(
+					"ORCHESTRATOR_ENABLED=true but %s=%q not found on PATH for driver %q: %v",
+					sourceVar, driver.Executable(), driver.Name(), err))
+			}
+		}
+	}
+
+	// When dispatch is enabled in host mode, the selected agent CLI must be
+	// reachable. Skip the check when Docker isolation is active because the
+	// binary lives inside the container image, not on the host PATH.
+	if c.Dispatch.Enabled && runnerName == dispatch.RunnerCLI {
+		driverName := c.Dispatch.AgentDriver
+		if driverName == "" {
+			driverName = "claude"
+		}
+		cliPath := c.Dispatch.AgentCLIPath
+		sourceVar := "DISPATCH_AGENT_CMD"
+		if cliPath == "" && driverName == "claude" {
+			cliPath = c.Dispatch.ClaudePath
+			sourceVar = "DISPATCH_CLAUDE_PATH"
+		}
+		driver, err := dispatch.LookupDriver(driverName, dispatch.DriverConfig{CLIPath: cliPath})
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("DISPATCH_ENABLED=true but DISPATCH_AGENT_DRIVER=%q is invalid: %v", driverName, err))
+		} else if _, err := exec.LookPath(driver.Executable()); err != nil {
+			warnings = append(warnings, fmt.Sprintf(
+				"DISPATCH_ENABLED=true but %s=%q not found on PATH for driver %q: %v",
+				sourceVar, driver.Executable(), driver.Name(), err))
+		}
+	}
+
+	if c.Dispatch.Enabled && runnerName == dispatch.RunnerDocker && !c.Dispatch.DockerEnabled {
+		warnings = append(warnings,
+			"DISPATCH_AGENT_RUNNER=docker but DISPATCH_DOCKER_ENABLED=false; runner selection now controls docker usage")
+	}
+	if c.Dispatch.Enabled && c.Dispatch.DockerEnabled && runnerName != dispatch.RunnerDocker {
+		warnings = append(warnings,
+			"DISPATCH_DOCKER_ENABLED=true but DISPATCH_AGENT_RUNNER is not docker; DISPATCH_AGENT_RUNNER now takes precedence")
 	}
 
 	// Auto-approving on acceptance pass requires acceptance tests to actually run.
@@ -156,12 +275,25 @@ type Config struct {
 	Queue                     QueueConfig
 	Auth                      AuthConfig
 	Dispatch                  DispatchConfig
+	Orchestrator              OrchestratorConfig
+	Policy                    PolicyConfig
 	Cost                      CostConfig
 	Mirror                    MirrorConfig
 	Notification              NotificationConfig
 	Embedded                  EmbeddedConfig
 	Findings                  FindingsConfig
 	RunAcceptanceTestOnSubmit bool
+}
+
+// PolicyConfig controls the policy layer behavior.
+type PolicyConfig struct {
+	// DefaultPosture is the posture applied to new projects on first run.
+	// Valid values: plan-only, sandbox, prod-gate, graduated-risk, paranoid-service.
+	// Default: plan-only (most conservative).
+	DefaultPosture string
+	// AutoApplyDefault automatically applies the default posture to projects without an active policy.
+	// Default: true.
+	AutoApplyDefault bool
 }
 
 // FindingsConfig holds configuration for the findings layer (Layer 4).
@@ -213,24 +345,40 @@ type EmbeddedConfig struct {
 }
 
 type DispatchConfig struct {
-	Enabled      bool
-	MaxWorkers   int
-	ClaudePath   string   // path to claude CLI binary (host mode, backward compat)
-	WorktreeDir  string   // base directory for git worktrees (host mode)
-	APIKey       string   // Flywheel API key for worker MCP authentication
-	ProjectID    string   // only dispatch tickets for this project (empty = all)
+	Enabled                     bool
+	MaxWorkers                  int
+	ClaudePath                  string // path to claude CLI binary (host mode, backward compat)
+	WorktreeDir                 string // base directory for git worktrees (host mode)
+	APIKey                      string // Flywheel API key for worker MCP authentication
+	ProjectID                   string // only dispatch tickets for this project (empty = all)
 	AutoApproveOnAcceptancePass bool
+	AgentRunner                 string // execution backend: cli, docker, or openai-responses
 	// Agent driver settings.
-	AgentDriver  string   // driver name: "claude" (default), "generic", or custom registered driver
-	AgentCLIPath string   // override CLI path for the agent binary (DISPATCH_AGENT_CMD)
+	AgentDriver          string // driver name: "claude" (default), "generic", or custom registered driver
+	AgentCLIPath         string // override CLI path for the agent binary (DISPATCH_AGENT_CMD)
+	AgentModel           string // API-native model name (used by API runners)
+	AgentReasoningEffort string // API-native reasoning effort
+	AgentAPIBaseURL      string // base URL for API-native runners
 	// Docker isolation settings.
-	DockerEnabled  bool
-	DockerImage    string // worker image name (default: "flywheel-worker")
-	DockerMemory   string // memory limit per worker (default: "4g")
-	DockerCPUs     string // CPU limit per worker (default: "2")
+	DockerEnabled     bool
+	DockerImage       string        // worker image name (default: "flywheel-worker")
+	DockerMemory      string        // memory limit per worker (default: "4g")
+	DockerCPUs        string        // CPU limit per worker (default: "2")
 	DockerFirewall    bool          // enable default-deny firewall with allowlist
-	AnthropicKey      string        // ANTHROPIC_API_KEY passed to docker workers
+	AgentAPIKey       string        // provider credential from DISPATCH_AGENT_API_KEY or provider-specific fallbacks
 	ReconcileInterval time.Duration // periodic reconciliation interval (default: 60s)
+}
+
+type OrchestratorConfig struct {
+	Enabled              bool
+	AgentRunner          string
+	AgentDriver          string
+	AgentCLIPath         string
+	AgentModel           string
+	AgentReasoningEffort string
+	AgentAPIBaseURL      string
+	AgentAPIKey          string
+	HistoryLimit         int
 }
 
 type ServerConfig struct {
@@ -334,4 +482,40 @@ func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
 		}
 	}
 	return defaultVal
+}
+
+func resolveDispatchAgentAPIKey(agentRunner, agentDriver string) string {
+	return resolveAgentAPIKey("DISPATCH_AGENT_API_KEY", agentRunner, agentDriver)
+}
+
+func resolveAgentAPIKey(explicitEnv, agentRunner, agentDriver string) string {
+	if explicitEnv != "" {
+		if v := getEnv(explicitEnv, ""); v != "" {
+			return v
+		}
+	}
+	if agentRunner == dispatch.RunnerOpenAIResponses || agentDriver == "codex" {
+		if v := getEnv("OPENAI_API_KEY", ""); v != "" {
+			return v
+		}
+		return ""
+	}
+	if agentDriver == "" || agentDriver == "claude" {
+		if v := getEnv("ANTHROPIC_API_KEY", ""); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func dispatchValidateRunner(name string) error {
+	if name == "" {
+		name = dispatch.RunnerCLI
+	}
+	for _, runner := range dispatch.AvailableRunners() {
+		if runner == name {
+			return nil
+		}
+	}
+	return fmt.Errorf("unknown agent runner %q (available: %s)", name, strings.Join(dispatch.AvailableRunners(), ", "))
 }

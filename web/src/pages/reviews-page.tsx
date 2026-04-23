@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button'
 import type { FlywheelClient } from '@/contexts/auth-context'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
+import { ReviewsPageSkeleton, Skeleton } from '@/components/ui/skeleton'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 
@@ -323,8 +324,19 @@ export function ReviewsPage() {
         setTickets([])
         return
       }
+      const sorted = sortByPriority(r.tickets)
       setErr(null)
-      setTickets(sortByPriority(r.tickets))
+      setTickets(sorted)
+      if (sorted.length > 0) {
+        setActiveIndex(0)
+        setExpandedIds(new Set(sorted[0]?.id ? [sorted[0].id] : []))
+        if (sorted[0]?.id) {
+          void loadTrace(client, sorted[0].id).then((steps) => {
+            if (cancelled || !sorted[0]?.id) return
+            setTraceCache((prev) => ({ ...prev, [sorted[0].id!]: steps }))
+          })
+        }
+      }
     })()
     return () => {
       cancelled = true
@@ -359,25 +371,33 @@ export function ReviewsPage() {
     [loadTraceForTicket],
   )
 
-  // Auto-expand the active ticket when navigating
-  useEffect(() => {
-    if (!tickets || tickets.length === 0) return
-    const ticket = tickets[activeIndex]
-    if (ticket?.id && !expandedIds.has(ticket.id)) {
-      setExpandedIds((prev) => {
-        const next = new Set(prev)
-        next.add(ticket.id!)
-        return next
-      })
-      void loadTraceForTicket(ticket.id)
-    }
-  }, [activeIndex, tickets, expandedIds, loadTraceForTicket])
+  const activateIndex = useCallback(
+    (nextIndex: number, sourceTickets: Ticket[] | null = tickets) => {
+      if (!sourceTickets || sourceTickets.length === 0) {
+        setActiveIndex(0)
+        return
+      }
+      const clamped = Math.max(0, Math.min(nextIndex, sourceTickets.length - 1))
+      setActiveIndex(clamped)
+      const ticket = sourceTickets[clamped]
+      if (ticket?.id) {
+        setExpandedIds((prev) => {
+          if (prev.has(ticket.id!)) return prev
+          const next = new Set(prev)
+          next.add(ticket.id!)
+          return next
+        })
+        void loadTraceForTicket(ticket.id)
+      }
+    },
+    [tickets, loadTraceForTicket],
+  )
 
   // Submit review
-  async function submitReview(
+  const submitReview = useCallback(async (
     ticketId: string,
     decision: 'approved' | 'rejected' | 'reopened',
-  ) {
+  ) => {
     if (!projectId || tickets === null) return
     const countBefore = tickets.length
     setBusyId(ticketId)
@@ -428,10 +448,12 @@ export function ReviewsPage() {
       setJustEmptiedQueue(true)
       return
     }
-    if (activeIndex >= sorted.length) {
-      setActiveIndex(Math.max(0, sorted.length - 1))
+    if (sorted.length > 0) {
+      activateIndex(activeIndex, sorted)
+    } else {
+      setActiveIndex(0)
     }
-  }
+  }, [projectId, tickets, client, notesById, activeIndex, activateIndex])
 
   // Keyboard handler
   useEffect(() => {
@@ -457,13 +479,13 @@ export function ReviewsPage() {
         case 'j':
         case 'ArrowDown': {
           e.preventDefault()
-          setActiveIndex((prev) => Math.min(prev + 1, tickets.length - 1))
+          activateIndex(activeIndex + 1)
           break
         }
         case 'k':
         case 'ArrowUp': {
           e.preventDefault()
-          setActiveIndex((prev) => Math.max(prev - 1, 0))
+          activateIndex(activeIndex - 1)
           break
         }
         case 'a': {
@@ -522,7 +544,7 @@ export function ReviewsPage() {
 
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [tickets, activeIndex, busyId, showHelp, toggleExpanded])
+  }, [tickets, activeIndex, busyId, showHelp, submitReview, toggleExpanded, activateIndex])
 
   // Scroll active item into view
   useEffect(() => {
@@ -539,17 +561,7 @@ export function ReviewsPage() {
     return <p className="text-sm text-destructive">{err}</p>
   }
   if (!tickets) {
-    return (
-      <div className="flex flex-col gap-4">
-        {/* Skeleton loading state */}
-        {Array.from({ length: 3 }, (_, i) => (
-          <div
-            key={i}
-            className="h-24 animate-pulse rounded-xl border border-white/5 bg-white/[0.02]"
-          />
-        ))}
-      </div>
-    )
+    return <ReviewsPageSkeleton />
   }
 
   return (
@@ -674,7 +686,6 @@ export function ReviewsPage() {
                       : 'border-white/10 bg-white/[0.03] hover:border-white/15 hover:bg-white/[0.05]'
                   }`}
                 >
-                  {/* Priority accent bar */}
                   <div
                     className={`absolute left-0 top-0 h-full w-1 rounded-l-xl transition-opacity ${
                       isActive ? 'opacity-100' : 'opacity-50'
@@ -689,7 +700,6 @@ export function ReviewsPage() {
                     }`}
                   />
 
-                  {/* Card header */}
                   <div
                     className="cursor-pointer select-none px-5 py-4 pl-6"
                     onClick={() => {
@@ -698,7 +708,6 @@ export function ReviewsPage() {
                     }}
                   >
                     <div className="flex items-center gap-3">
-                      {/* Position indicator */}
                       <span
                         className={`inline-flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium transition-colors ${
                           isActive
@@ -709,7 +718,6 @@ export function ReviewsPage() {
                         {idx + 1}
                       </span>
 
-                      {/* Title & meta */}
                       <div className="flex min-w-0 flex-1 flex-col gap-1">
                         <div className="flex items-center gap-2">
                           <span className="truncate text-sm font-medium text-foreground">
@@ -727,7 +735,6 @@ export function ReviewsPage() {
                         </div>
                       </div>
 
-                      {/* Expand chevron */}
                       <motion.div
                         animate={{ rotate: isExpanded ? 180 : 0 }}
                         transition={{ duration: 0.2 }}
@@ -737,7 +744,6 @@ export function ReviewsPage() {
                     </div>
                   </div>
 
-                  {/* Expanded content */}
                   <AnimatePresence>
                     {isExpanded && (
                       <motion.div
@@ -748,7 +754,6 @@ export function ReviewsPage() {
                         className="overflow-hidden"
                       >
                         <div className="flex flex-col gap-5 border-t border-white/5 px-5 py-5 pl-6">
-                          {/* Objective */}
                           {t.objective?.description && (
                             <div>
                               <h3 className="mb-1.5 text-[10px] font-medium uppercase tracking-widest text-emerald-400/60">
@@ -760,23 +765,20 @@ export function ReviewsPage() {
                               {t.objective.success_criteria &&
                                 t.objective.success_criteria.length > 0 && (
                                   <ul className="mt-2 flex flex-col gap-1">
-                                    {t.objective.success_criteria.map(
-                                      (c, i) => (
-                                        <li
-                                          key={i}
-                                          className="flex items-start gap-2 text-sm text-muted-foreground"
-                                        >
-                                          <span className="mt-1.5 block size-1 shrink-0 rounded-full bg-emerald-500/50" />
-                                          {c}
-                                        </li>
-                                      ),
-                                    )}
+                                    {t.objective.success_criteria.map((c, i) => (
+                                      <li
+                                        key={i}
+                                        className="flex items-start gap-2 text-sm text-muted-foreground"
+                                      >
+                                        <span className="mt-1.5 block size-1 shrink-0 rounded-full bg-emerald-500/50" />
+                                        {c}
+                                      </li>
+                                    ))}
                                   </ul>
                                 )}
                             </div>
                           )}
 
-                          {/* Outputs / PR link */}
                           {t.outputs &&
                             typeof t.outputs === 'object' &&
                             Object.keys(t.outputs).length > 0 && (
@@ -788,19 +790,20 @@ export function ReviewsPage() {
                               </div>
                             )}
 
-                          {/* Execution trace */}
                           <div>
                             <h3 className="mb-1.5 text-[10px] font-medium uppercase tracking-widest text-emerald-400/60">
                               Execution trace
                             </h3>
                             {trace === undefined ? (
-                              <div className="h-8 animate-pulse rounded-md bg-white/5" />
+                              <div className="flex flex-col gap-1.5">
+                                <Skeleton className="h-3 w-full" />
+                                <Skeleton className="h-3 w-3/4" />
+                              </div>
                             ) : (
                               <TraceSummary steps={trace} />
                             )}
                           </div>
 
-                          {/* Review notes */}
                           <label className="flex flex-col gap-1.5">
                             <span className="flex items-center gap-2 text-xs text-muted-foreground">
                               Review notes
@@ -823,14 +826,11 @@ export function ReviewsPage() {
                             />
                           </label>
 
-                          {/* Action buttons */}
                           <div className="flex flex-wrap items-center gap-2">
                             <Button
                               size="sm"
                               disabled={busyId === t.id}
-                              onClick={() =>
-                                t.id && submitReview(t.id, 'approved')
-                              }
+                              onClick={() => t.id && submitReview(t.id, 'approved')}
                               className="border-emerald-500/30 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 focus-visible:ring-emerald-500/30"
                             >
                               <CheckCircle2 className="mr-1 size-3.5" />
@@ -841,9 +841,7 @@ export function ReviewsPage() {
                               size="sm"
                               variant="destructive"
                               disabled={busyId === t.id}
-                              onClick={() =>
-                                t.id && submitReview(t.id, 'rejected')
-                              }
+                              onClick={() => t.id && submitReview(t.id, 'rejected')}
                             >
                               <XCircle className="mr-1 size-3.5" />
                               Reject
@@ -853,9 +851,7 @@ export function ReviewsPage() {
                               size="sm"
                               variant="secondary"
                               disabled={busyId === t.id}
-                              onClick={() =>
-                                t.id && submitReview(t.id, 'reopened')
-                              }
+                              onClick={() => t.id && submitReview(t.id, 'reopened')}
                               className="border border-white/10 bg-white/5 text-foreground/80 hover:bg-white/10"
                             >
                               <RotateCcw className="mr-1 size-3.5" />
