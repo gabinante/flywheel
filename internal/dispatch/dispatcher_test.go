@@ -209,7 +209,7 @@ func TestNewDispatcherDockerWorker(t *testing.T) {
 		DockerCPUs:    "4",
 		APIKey:        "key-456",
 		RepoDir:       "/repo",
-		AnthropicKey:  "sk-test",
+		AgentAPIKey:   "sk-test",
 	}
 
 	d := New(cfg, bus, tg, pg)
@@ -238,10 +238,10 @@ func TestNewDispatcherGenericDriver(t *testing.T) {
 	pg := newMockProjectGetter()
 
 	cfg := Config{
-		MaxWorkers:  1,
-		AgentDriver: "generic",
+		MaxWorkers:   1,
+		AgentDriver:  "generic",
 		AgentCLIPath: "/usr/bin/opencode",
-		RepoDir:     "/repo",
+		RepoDir:      "/repo",
 	}
 
 	d := New(cfg, bus, tg, pg)
@@ -251,6 +251,33 @@ func TestNewDispatcherGenericDriver(t *testing.T) {
 	}
 	if cliWorker.Driver.Name() != "generic" {
 		t.Errorf("expected generic driver, got %q", cliWorker.Driver.Name())
+	}
+}
+
+func TestNewDispatcherOpenAIResponsesWorker(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter()
+	pg := newMockProjectGetter()
+
+	cfg := Config{
+		MaxWorkers:  1,
+		AgentRunner: RunnerOpenAIResponses,
+		AgentAPIKey: "sk-openai",
+		APIKey:      "wf-key",
+		RepoDir:     "/repo",
+		AgentModel:  "gpt-5.2-codex",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	apiWorker, ok := d.worker.(*OpenAIResponsesWorker)
+	if !ok {
+		t.Fatal("expected OpenAIResponsesWorker when AgentRunner=openai-responses")
+	}
+	if apiWorker.Config.Model != "gpt-5.2-codex" {
+		t.Errorf("expected model gpt-5.2-codex, got %q", apiWorker.Config.Model)
+	}
+	if apiWorker.Config.APIKey != "sk-openai" {
+		t.Errorf("expected API key sk-openai, got %q", apiWorker.Config.APIKey)
 	}
 }
 
@@ -792,9 +819,9 @@ func TestRunWorkerProjectNotFound(t *testing.T) {
 
 // mockLeaseReleaser implements LeaseReleaser for tests.
 type mockLeaseReleaser struct {
-	mu       sync.Mutex
-	calls    []string // ticket IDs passed to ForceReleaseLease
-	err      error    // error to return
+	mu    sync.Mutex
+	calls []string // ticket IDs passed to ForceReleaseLease
+	err   error    // error to return
 }
 
 func (m *mockLeaseReleaser) ForceReleaseLease(_ context.Context, ticketID string) error {
@@ -1390,8 +1417,8 @@ func TestDispatchEnabledAllowsTickets(t *testing.T) {
 type mockTicketTransitioner struct {
 	mu          sync.Mutex
 	transitions []mockTransition
-	err         error    // error to return (nil = success)
-	failOn      string   // trigger name to fail on (empty = never fail)
+	err         error  // error to return (nil = success)
+	failOn      string // trigger name to fail on (empty = never fail)
 }
 
 type mockTransition struct {

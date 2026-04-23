@@ -189,16 +189,16 @@ func TestWriteConfigFile(t *testing.T) {
 	configPath := filepath.Join(dataDir, "config.env")
 
 	result := &WizardResult{
-		RepoPath:     "/home/user/project",
-		AnthropicKey: "sk-ant-test123",
-		AutonomyMode: "sandbox",
-		ProjectMap:   &ProjectMap{Summary: "Go project with Docker"},
-		OrgID:        "org-123",
-		ProjectID:    "proj-456",
-		AgentID:      "agent-789",
-		AgentAPIKey:  "wf_testapikey",
-		JWTSecret:    "secret123",
-		DataDir:      dataDir,
+		RepoPath:           "/home/user/project",
+		DispatchCredential: "sk-ant-test123",
+		AutonomyMode:       "sandbox",
+		ProjectMap:         &ProjectMap{Summary: "Go project with Docker"},
+		OrgID:              "org-123",
+		ProjectID:          "proj-456",
+		AgentID:            "agent-789",
+		AgentAPIKey:        "wf_testapikey",
+		JWTSecret:          "secret123",
+		DataDir:            dataDir,
 	}
 
 	err := writeConfigFile(configPath, result)
@@ -217,7 +217,7 @@ func TestWriteConfigFile(t *testing.T) {
 		"JWT_SECRET=secret123",
 		"DISPATCH_PROJECT_ID=proj-456",
 		"DISPATCH_API_KEY=wf_testapikey",
-		"ANTHROPIC_API_KEY=sk-ant-test123",
+		"DISPATCH_AGENT_API_KEY=sk-ant-test123",
 		"AUTONOMY_MODE=sandbox",
 	}
 	for _, exp := range expectations {

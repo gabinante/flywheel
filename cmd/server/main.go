@@ -36,15 +36,16 @@ import (
 	notifyslack "github.com/gabinante/flywheel/internal/notification/slack"
 	notifysms "github.com/gabinante/flywheel/internal/notification/sms"
 	"github.com/gabinante/flywheel/internal/observation"
+	"github.com/gabinante/flywheel/internal/orchestrator"
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/pillar"
-	"github.com/gabinante/flywheel/internal/stateindex"
 	"github.com/gabinante/flywheel/internal/plan"
 	"github.com/gabinante/flywheel/internal/policy"
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
 	"github.com/gabinante/flywheel/internal/review"
 	"github.com/gabinante/flywheel/internal/rollback"
+	"github.com/gabinante/flywheel/internal/stateindex"
 	"github.com/gabinante/flywheel/internal/stream"
 	"github.com/gabinante/flywheel/internal/ticket"
 	"github.com/gabinante/flywheel/internal/user"
@@ -102,6 +103,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	orgSvc := org.NewService(orgStore)
 	projectStore := project.NewStore(pool)
 	projectSvc := project.NewService(projectStore)
+	orchestratorStore := orchestrator.NewStore(pool)
 	workStreamStore := workstream.NewStore(pool)
 	workStreamSvc := workstream.NewService(workStreamStore)
 	ticketStore := ticket.NewStore(pool)
@@ -278,20 +280,47 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	// Investigation service: uses the same worker infrastructure as dispatch.
 	// Configured when dispatch is enabled; nil-safe in the MCP tool handler.
 	var investigationSvc *investigation.Service
+	repoDir, _ := os.Getwd()
 	if cfg.Dispatch.Enabled {
-		repoDir, _ := os.Getwd()
 		invWorker := dispatch.NewInvestigationWorker(dispatch.Config{
-			ClaudePath:   cfg.Dispatch.ClaudePath,
-			AgentDriver:  cfg.Dispatch.AgentDriver,
-			AgentCLIPath: cfg.Dispatch.AgentCLIPath,
-			APIKey:       cfg.Dispatch.APIKey,
-			RepoDir:      repoDir,
+			ClaudePath:           cfg.Dispatch.ClaudePath,
+			AgentRunner:          cfg.Dispatch.AgentRunner,
+			AgentDriver:          cfg.Dispatch.AgentDriver,
+			AgentCLIPath:         cfg.Dispatch.AgentCLIPath,
+			AgentModel:           cfg.Dispatch.AgentModel,
+			AgentReasoningEffort: cfg.Dispatch.AgentReasoningEffort,
+			AgentAPIBaseURL:      cfg.Dispatch.AgentAPIBaseURL,
+			APIKey:               cfg.Dispatch.APIKey,
+			AgentAPIKey:          cfg.Dispatch.AgentAPIKey,
+			RepoDir:              repoDir,
 		})
 		investigationSvc = investigation.NewService(invWorker, investigation.Config{
 			ServerURL: cfg.Auth.BaseURL,
 			WorkDir:   repoDir,
 		})
 	}
+
+	var orchestratorWorker dispatch.Worker
+	if cfg.Orchestrator.Enabled {
+		orchestratorWorker = dispatch.NewWorker(dispatch.Config{
+			ClaudePath:           cfg.Dispatch.ClaudePath,
+			AgentRunner:          cfg.Orchestrator.AgentRunner,
+			AgentDriver:          cfg.Orchestrator.AgentDriver,
+			AgentCLIPath:         cfg.Orchestrator.AgentCLIPath,
+			AgentModel:           cfg.Orchestrator.AgentModel,
+			AgentReasoningEffort: cfg.Orchestrator.AgentReasoningEffort,
+			AgentAPIBaseURL:      cfg.Orchestrator.AgentAPIBaseURL,
+			APIKey:               cfg.Dispatch.APIKey,
+			AgentAPIKey:          cfg.Orchestrator.AgentAPIKey,
+			RepoDir:              repoDir,
+		})
+	}
+	orchestratorSvc := orchestrator.NewService(orchestratorStore, projectSvc, orchestratorWorker, orchestrator.Config{
+		RepoDir:      repoDir,
+		ServerURL:    cfg.Auth.BaseURL,
+		AgentID:      "command-center-orchestrator",
+		HistoryLimit: cfg.Orchestrator.HistoryLimit,
+	})
 
 	var authMiddleware func(http.Handler) http.Handler
 	var authHandler *rest.AuthHandler
@@ -361,26 +390,29 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	// Start dispatcher if enabled.
 	var dispatcher *dispatch.Dispatcher
 	if cfg.Dispatch.Enabled {
-		repoDir, _ := os.Getwd()
 		dispatcher = dispatch.New(dispatch.Config{
-			MaxWorkers:     cfg.Dispatch.MaxWorkers,
-			ClaudePath:     cfg.Dispatch.ClaudePath,
-			WorktreeDir:    cfg.Dispatch.WorktreeDir,
-			RepoDir:        repoDir,
-			ServerURL:      cfg.Auth.BaseURL,
-			AgentID:        "dispatch-worker",
-			APIKey:         cfg.Dispatch.APIKey,
-			ProjectID:      cfg.Dispatch.ProjectID,
-			AutoApprove:    cfg.Dispatch.AutoApproveOnAcceptancePass,
-			AgentDriver:    cfg.Dispatch.AgentDriver,
-			AgentCLIPath:   cfg.Dispatch.AgentCLIPath,
-			DockerEnabled:  cfg.Dispatch.DockerEnabled,
-			DockerImage:    cfg.Dispatch.DockerImage,
-			DockerMemory:   cfg.Dispatch.DockerMemory,
-			DockerCPUs:     cfg.Dispatch.DockerCPUs,
-			DockerFirewall:    cfg.Dispatch.DockerFirewall,
-			AnthropicKey:      cfg.Dispatch.AnthropicKey,
-			ReconcileInterval: cfg.Dispatch.ReconcileInterval,
+			MaxWorkers:           cfg.Dispatch.MaxWorkers,
+			ClaudePath:           cfg.Dispatch.ClaudePath,
+			WorktreeDir:          cfg.Dispatch.WorktreeDir,
+			RepoDir:              repoDir,
+			ServerURL:            cfg.Auth.BaseURL,
+			AgentID:              "dispatch-worker",
+			APIKey:               cfg.Dispatch.APIKey,
+			ProjectID:            cfg.Dispatch.ProjectID,
+			AutoApprove:          cfg.Dispatch.AutoApproveOnAcceptancePass,
+			AgentRunner:          cfg.Dispatch.AgentRunner,
+			AgentDriver:          cfg.Dispatch.AgentDriver,
+			AgentCLIPath:         cfg.Dispatch.AgentCLIPath,
+			AgentModel:           cfg.Dispatch.AgentModel,
+			AgentReasoningEffort: cfg.Dispatch.AgentReasoningEffort,
+			AgentAPIBaseURL:      cfg.Dispatch.AgentAPIBaseURL,
+			DockerEnabled:        cfg.Dispatch.DockerEnabled,
+			DockerImage:          cfg.Dispatch.DockerImage,
+			DockerMemory:         cfg.Dispatch.DockerMemory,
+			DockerCPUs:           cfg.Dispatch.DockerCPUs,
+			DockerFirewall:       cfg.Dispatch.DockerFirewall,
+			AgentAPIKey:          cfg.Dispatch.AgentAPIKey,
+			ReconcileInterval:    cfg.Dispatch.ReconcileInterval,
 		}, bus, ticketSvc, projectSvc)
 		dispatcher.SetLeaseReleaser(queueSvc)
 		dispatcher.SetTicketTransitioner(ticketSvc)
@@ -398,15 +430,21 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	}
 
 	router := rest.NewRouter(rest.RouterConfig{
-		StrictServer:       strictServer,
-		AuthMiddleware:     authMiddleware,
-		AuthHandler:        authHandler,
-		OAuthHandler:       oauthHandler,
-		MCPHandler:         mcpHandler,
-		MCPSSEHandler:      mcpSSEHandler,
-		AgentsHandler:      &rest.AgentsHandler{AgentSvc: agentSvc},
-		EntitiesHandler:    &rest.EntitiesHandler{EntitySvc: entitySvc},
-		DispatchHandler:    &rest.DispatchHandler{Dispatcher: dispatcher},
+		StrictServer:    strictServer,
+		AuthMiddleware:  authMiddleware,
+		AuthHandler:     authHandler,
+		OAuthHandler:    oauthHandler,
+		MCPHandler:      mcpHandler,
+		MCPSSEHandler:   mcpSSEHandler,
+		AgentsHandler:   &rest.AgentsHandler{AgentSvc: agentSvc},
+		EntitiesHandler: &rest.EntitiesHandler{EntitySvc: entitySvc},
+		DispatchHandler: &rest.DispatchHandler{Dispatcher: dispatcher},
+		OrchestratorHandler: &rest.OrchestratorHandler{
+			Service:    orchestratorSvc,
+			ProjectSvc: projectSvc,
+			OrgSvc:     orgSvc,
+			AgentStore: agentStore,
+		},
 		PlansHandler:       &rest.PlansHandler{PlanSvc: planSvc},
 		ObservationHandler: &rest.ObservationHandler{Svc: obsSvc},
 		StateIndexHandler:  &rest.StateIndexHandler{Svc: stateIndexSvc},
@@ -462,6 +500,7 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 	orgSvc := org.NewService(orgSt)
 	projectSt := embedded.NewProjectStore(sqliteDB)
 	projectSvc := project.NewService(projectSt)
+	orchestratorSt := embedded.NewOrchestratorStore(sqliteDB)
 	workStreamSt := embedded.NewWorkStreamStore(sqliteDB)
 	workStreamSvc := workstream.NewService(workStreamSt)
 	ticketSt := embedded.NewTicketStore(sqliteDB)
@@ -601,12 +640,41 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		return t.ProjectID
 	})
 
+	repoDir, _ := os.Getwd()
+	var orchestratorWorker dispatch.Worker
+	if cfg.Orchestrator.Enabled {
+		orchestratorWorker = dispatch.NewWorker(dispatch.Config{
+			ClaudePath:           cfg.Dispatch.ClaudePath,
+			AgentRunner:          cfg.Orchestrator.AgentRunner,
+			AgentDriver:          cfg.Orchestrator.AgentDriver,
+			AgentCLIPath:         cfg.Orchestrator.AgentCLIPath,
+			AgentModel:           cfg.Orchestrator.AgentModel,
+			AgentReasoningEffort: cfg.Orchestrator.AgentReasoningEffort,
+			AgentAPIBaseURL:      cfg.Orchestrator.AgentAPIBaseURL,
+			APIKey:               cfg.Dispatch.APIKey,
+			AgentAPIKey:          cfg.Orchestrator.AgentAPIKey,
+			RepoDir:              repoDir,
+		})
+	}
+	orchestratorSvc := orchestrator.NewService(orchestratorSt, projectSvc, orchestratorWorker, orchestrator.Config{
+		RepoDir:      repoDir,
+		ServerURL:    cfg.Auth.BaseURL,
+		AgentID:      "command-center-orchestrator",
+		HistoryLimit: cfg.Orchestrator.HistoryLimit,
+	})
+
 	router := rest.NewRouter(rest.RouterConfig{
 		StrictServer:   strictServer,
 		AuthMiddleware: authMiddleware,
 		MCPHandler:     mcpHandler,
 		MCPSSEHandler:  mcpSSEHandler,
 		AgentsHandler:  &rest.AgentsHandler{AgentSvc: agentSvc},
+		OrchestratorHandler: &rest.OrchestratorHandler{
+			Service:    orchestratorSvc,
+			ProjectSvc: projectSvc,
+			OrgSvc:     orgSvc,
+			AgentStore: agentSt,
+		},
 		StreamsHandler: &rest.StreamsHandler{Svc: streamSvc},
 		HooksHandler:   &rest.HooksHandler{Client: hooksClient},
 		CatalogHandler: &rest.CatalogHandler{Svc: catalogSvc, Scanner: catalogScanner},

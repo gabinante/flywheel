@@ -52,48 +52,52 @@ const maxMergeAttempts = 5
 
 // Config holds dispatcher settings.
 type Config struct {
-	MaxWorkers   int
-	ClaudePath   string
-	WorktreeDir  string
-	RepoDir      string // path to the main git repository
-	ServerURL    string // Flywheel server URL for MCP connections
-	AgentID      string // agent identity for workers
-	APIKey       string // Flywheel API key for worker MCP authentication
-	ProjectID    string // only dispatch tickets for this project (empty = all)
-	AutoApprove        bool          // auto-approve tickets when acceptance tests pass
-	ReconcileInterval  time.Duration  // periodic reconciliation interval (default: 60s)
+	MaxWorkers        int
+	ClaudePath        string
+	WorktreeDir       string
+	RepoDir           string        // path to the main git repository
+	ServerURL         string        // Flywheel server URL for MCP connections
+	AgentID           string        // agent identity for workers
+	APIKey            string        // Flywheel API key for worker MCP authentication
+	ProjectID         string        // only dispatch tickets for this project (empty = all)
+	AutoApprove       bool          // auto-approve tickets when acceptance tests pass
+	ReconcileInterval time.Duration // periodic reconciliation interval (default: 60s)
+	AgentRunner       string        // execution backend: cli, docker, openai-responses
 	// Agent driver selection.
-	AgentDriver  string // driver name: "claude" (default), "generic", or custom
-	AgentCLIPath string // override CLI path for the agent binary
-	AgentArgs    []string // extra static arguments for the agent command
+	AgentDriver          string   // driver name: "claude" (default), "generic", or custom
+	AgentCLIPath         string   // override CLI path for the agent binary
+	AgentArgs            []string // extra static arguments for the agent command
+	AgentModel           string   // API-native model name (used by openai-responses)
+	AgentReasoningEffort string   // API-native reasoning effort
+	AgentAPIBaseURL      string   // API-native base URL
 	// Docker isolation settings.
 	DockerEnabled  bool
 	DockerImage    string
 	DockerMemory   string
 	DockerCPUs     string
 	DockerFirewall bool
-	AnthropicKey   string
+	AgentAPIKey    string
 }
 
 // Dispatcher listens for ticket events and spawns workers.
 // Supports both the legacy Bus interface (exact Subscribe) and the new DurableEventBus
 // (pattern-based SubscribePattern) for at-least-once delivery.
 type Dispatcher struct {
-	cfg           Config
-	bus           events.Bus
-	durableBus    events.DurableEventBus // nil if bus doesn't support durability
-	tickets       TicketGetter
-	projects      ProjectGetter
-	worker        Worker
-	worktrees     *WorktreeManager
-	clones        *MultiRepoCloneManager // nil-safe: only used for multi-repo projects
-	repoResolver  RepoResolver            // nil-safe: only used for multi-repo projects
-	leaseReleaser      LeaseReleaser      // nil-safe: if nil, worker exit does not release lease (Layer 2 TTL handles it)
-	ticketTransitioner TicketTransitioner // nil-safe: if nil, merged tickets are not auto-closed
+	cfg                Config
+	bus                events.Bus
+	durableBus         events.DurableEventBus // nil if bus doesn't support durability
+	tickets            TicketGetter
+	projects           ProjectGetter
+	worker             Worker
+	worktrees          *WorktreeManager
+	clones             *MultiRepoCloneManager // nil-safe: only used for multi-repo projects
+	repoResolver       RepoResolver           // nil-safe: only used for multi-repo projects
+	leaseReleaser      LeaseReleaser          // nil-safe: if nil, worker exit does not release lease (Layer 2 TTL handles it)
+	ticketTransitioner TicketTransitioner     // nil-safe: if nil, merged tickets are not auto-closed
 
 	mu            sync.Mutex
 	active        map[string]context.CancelFunc // ticketID → cancel
-	mergeAttempts map[string]int               // ticketID → failed merge count
+	mergeAttempts map[string]int                // ticketID → failed merge count
 	wg            sync.WaitGroup
 	scanning      int32              // atomic CAS guard for reconcile
 	stopCancel    context.CancelFunc // cancels the internal context on Stop()
@@ -101,53 +105,17 @@ type Dispatcher struct {
 
 // New creates a dispatcher that subscribes to the event bus.
 func New(cfg Config, bus events.Bus, tickets TicketGetter, projects ProjectGetter) *Dispatcher {
-	// Resolve the agent driver.
-	driverName := cfg.AgentDriver
-	if driverName == "" {
-		driverName = "claude"
-	}
-	cliPath := cfg.AgentCLIPath
-	if cliPath == "" {
-		cliPath = cfg.ClaudePath // backward compat
-	}
-	driver, err := LookupDriver(driverName, DriverConfig{
-		CLIPath:   cliPath,
-		ExtraArgs: cfg.AgentArgs,
-	})
-	if err != nil {
-		log.Printf("dispatch: %v, falling back to claude driver", err)
-		driver = NewClaudeDriver(DriverConfig{CLIPath: cliPath})
-	}
-
-	var worker Worker
-	if cfg.DockerEnabled {
-		worker = &DockerWorker{
-			Driver:       driver,
-			Image:        cfg.DockerImage,
-			APIKey:       cfg.APIKey,
-			RepoDir:      cfg.RepoDir,
-			AnthropicKey: cfg.AnthropicKey,
-			Memory:       cfg.DockerMemory,
-			CPUs:         cfg.DockerCPUs,
-			Firewall:     cfg.DockerFirewall,
-		}
-	} else {
-		worker = &CLIWorker{
-			Driver: driver,
-			APIKey: cfg.APIKey,
-		}
-	}
 	d := &Dispatcher{
 		cfg:      cfg,
 		bus:      bus,
 		tickets:  tickets,
 		projects: projects,
-		worker:   worker,
+		worker:   NewWorker(cfg),
 		worktrees: &WorktreeManager{
 			BaseDir: cfg.WorktreeDir,
 			RepoDir: cfg.RepoDir,
 		},
-		clones: NewMultiRepoCloneManager(filepath.Join(cfg.WorktreeDir, ".clones")),
+		clones:        NewMultiRepoCloneManager(filepath.Join(cfg.WorktreeDir, ".clones")),
 		active:        make(map[string]context.CancelFunc),
 		mergeAttempts: make(map[string]int),
 	}
