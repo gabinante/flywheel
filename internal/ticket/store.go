@@ -81,6 +81,9 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Ticket, error) {
 	_ = json.Unmarshal(inJSON, &t.Inputs)
 	t.Outputs = make(map[string]any)
 	_ = json.Unmarshal(outJSON, &t.Outputs)
+	if dependsOn == nil {
+		dependsOn = []string{}
+	}
 	t.DependsOn = dependsOn
 	return &t, nil
 }
@@ -333,6 +336,9 @@ func (s *Store) scanRows(rows pgx.Rows) ([]*Ticket, error) {
 		_ = json.Unmarshal(inJSON, &t.Inputs)
 		t.Outputs = make(map[string]any)
 		_ = json.Unmarshal(outJSON, &t.Outputs)
+		if dependsOn == nil {
+			dependsOn = []string{}
+		}
 		t.DependsOn = dependsOn
 		list = append(list, &t)
 	}

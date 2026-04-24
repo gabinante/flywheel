@@ -98,6 +98,11 @@ var ErrAcceptanceCriteriaRequired = fmt.Errorf("tasks and bugs require at least 
 // If idempotencyKey is non-empty and (projectID, idempotencyKey) was used before, returns the existing ticket.
 // workStreamID is optional; caller must validate it exists and belongs to project.
 func (s *Service) CreateTicket(ctx context.Context, projectID, title string, typ TicketType, priority Priority, createdBy string, dependsOn []string, workStreamID string, objective Objective, ticketContext TicketContext, idempotencyKey string, targetRepo ...string) (*Ticket, error) {
+	// Normalize nil to empty slice so depends_on is always persisted as a
+	// valid array (not NULL) and serializes as [] rather than null.
+	if dependsOn == nil {
+		dependsOn = []string{}
+	}
 	if typ == TypeTask || typ == TypeBug {
 		hasCriteria := len(objective.SuccessCriteria) > 0 || objective.AcceptanceTest != ""
 		if !hasCriteria {
