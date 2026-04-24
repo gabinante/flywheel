@@ -1,5 +1,6 @@
 import { Server } from 'lucide-react'
 
+import { StateHealth } from '@/components/infrastructure/state-health'
 import {
   Card,
   CardContent,
@@ -54,19 +55,15 @@ export function InfrastructurePage() {
       </Card>
 
       {/* State Health */}
-      <Card className="border-white/10 bg-white/5 backdrop-blur-md">
-        <CardHeader className="border-b border-white/10 pb-4">
-          <CardTitle className="text-sm">State Health</CardTitle>
-          <CardDescription>
+      <section>
+        <div className="mb-3 space-y-1">
+          <h2 className="text-sm font-medium">State Health</h2>
+          <p className="text-xs text-muted-foreground">
             Drift detection and resource state overview.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="py-8 text-center">
-          <p className="text-sm text-muted-foreground">
-            State health data will appear here.
           </p>
-        </CardContent>
-      </Card>
+        </div>
+        <StateHealth />
+      </section>
     </div>
   )
 }
