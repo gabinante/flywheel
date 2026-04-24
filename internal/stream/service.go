@@ -2,6 +2,7 @@ package stream
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/gabinante/flywheel/events"
@@ -132,11 +133,11 @@ func (s *Service) AppendChangeEvent(ctx context.Context, event *ChangeEvent) err
 	s.bus.Publish(ctx, events.Event{
 		Type: events.EventChangeStreamAppended,
 		Payload: map[string]any{
-			"event_id":           event.ID,
-			"project_id":         event.ProjectID,
-			"change_type":        event.ChangeType,
-			"affected_entities":  event.AffectedEntities,
-			"source":             event.Source,
+			"event_id":          event.ID,
+			"project_id":        event.ProjectID,
+			"change_type":       event.ChangeType,
+			"affected_entities": event.AffectedEntities,
+			"source":            event.Source,
 		},
 	})
 	return nil
@@ -154,12 +155,20 @@ func (s *Service) ListChangeEvents(ctx context.Context, q StreamQuery) (*StreamP
 
 // --- Ticket event bridge ---
 
-// SubscribeToTicketEvents subscribes to ticket lifecycle events on the bus
-// and publishes them to the change stream. This bridges existing ticket events
-// into the change stream per the success criteria.
+// SubscribeToTicketEvents subscribes to user-visible workflow events on the bus
+// and records them in the project change stream.
 func (s *Service) SubscribeToTicketEvents(projectIDLookup func(ticketID string) string) {
-	ticketEvents := []string{
+	activityEvents := []string{
 		events.EventTicketCreated,
+		events.EventTicketUpdated,
+		events.EventTicketSpecced,
+		events.EventTicketPlanning,
+		events.EventTicketAwaitingInput,
+		events.EventTicketInputProvided,
+		events.EventTicketEscalated,
+		events.EventTicketReplanned,
+		events.EventTicketInvalidated,
+		events.EventTicketRolledBack,
 		events.EventTicketStarted,
 		events.EventTicketSubmitted,
 		events.EventTicketValidated,
@@ -171,50 +180,134 @@ func (s *Service) SubscribeToTicketEvents(projectIDLookup func(ticketID string) 
 		events.EventTicketCancelled,
 		events.EventTicketReopened,
 		events.EventTicketDeploying,
+		events.EventTicketObserving,
+		events.EventLeaseExpired,
+		events.EventTestsPassed,
+		events.EventTestsFailed,
+		events.EventPlanCreated,
+		events.EventPlanSubmitted,
+		events.EventPlanClassified,
+		events.EventPlanApproved,
+		events.EventPlanApplied,
+		events.EventPlanRejected,
+		events.EventPlanSuperseded,
+		events.EventPlanRePlanIdentical,
+		events.EventPlanRePlanDiverged,
+		events.EventWorkStreamCompleted,
 	}
-	for _, eventType := range ticketEvents {
+	for _, eventType := range activityEvents {
 		et := eventType // capture loop variable
 		s.bus.Subscribe(et, func(ctx context.Context, event events.Event) {
-			ticketID, _ := event.Payload["ticket_id"].(string)
-			projectID, _ := event.Payload["project_id"].(string)
-			state, _ := event.Payload["state"].(string)
-
-			// Try to resolve project_id from payload or lookup
-			if projectID == "" && ticketID != "" && projectIDLookup != nil {
-				projectID = projectIDLookup(ticketID)
+			if changeEvent := activityChangeEvent(et, event.Payload, projectIDLookup); changeEvent != nil {
+				_ = s.AppendChangeEvent(ctx, changeEvent)
 			}
-			if projectID == "" {
-				return // can't record without project context
-			}
-
-			changeEvent := &ChangeEvent{
-				ProjectID:        projectID,
-				ChangeType:       "ticket_" + stripPrefix(et, "ticket."),
-				AffectedEntities: []string{ticketID},
-				AfterState: map[string]any{
-					"state":     state,
-					"ticket_id": ticketID,
-				},
-				InitiatorType: InitiatorSystem,
-				Source:         "ticket_lifecycle",
-				Metadata:       event.Payload,
-			}
-
-			// Extract initiator from payload if available
-			if agentID, ok := event.Payload["agent_id"].(string); ok && agentID != "" {
-				changeEvent.InitiatorID = agentID
-				changeEvent.InitiatorType = InitiatorAgent
-			}
-
-			_ = s.AppendChangeEvent(ctx, changeEvent)
 		})
 	}
 }
 
-// stripPrefix removes the prefix from s if present.
-func stripPrefix(s, prefix string) string {
-	if len(s) > len(prefix) && s[:len(prefix)] == prefix {
-		return s[len(prefix):]
+func activityChangeEvent(eventType string, payload map[string]any, projectIDLookup func(ticketID string) string) *ChangeEvent {
+	ticketID := payloadString(payload, "ticket_id")
+	projectID := payloadString(payload, "project_id")
+	if projectID == "" && ticketID != "" && projectIDLookup != nil {
+		projectID = projectIDLookup(ticketID)
 	}
-	return s
+	if projectID == "" {
+		return nil
+	}
+
+	changeEvent := &ChangeEvent{
+		ProjectID:        projectID,
+		ChangeType:       strings.ReplaceAll(eventType, ".", "_"),
+		AffectedEntities: activityEntities(payload),
+		InitiatorID:      activityInitiatorID(payload),
+		InitiatorType:    activityInitiatorType(payload),
+		Environment:      payloadString(payload, "environment"),
+		Source:           activitySource(eventType),
+		Metadata:         payload,
+	}
+	if state := payloadString(payload, "state"); state != "" {
+		changeEvent.AfterState = map[string]any{"state": state}
+		if ticketID != "" {
+			changeEvent.AfterState["ticket_id"] = ticketID
+		}
+	}
+	return changeEvent
+}
+
+func activityEntities(payload map[string]any) []string {
+	keys := []string{
+		"ticket_id",
+		"plan_id",
+		"work_stream_id",
+		"window_id",
+		"signal_id",
+		"attribution_id",
+		"environment_id",
+		"entity_id",
+	}
+	seen := make(map[string]struct{}, len(keys))
+	entities := make([]string, 0, len(keys))
+	for _, key := range keys {
+		value := payloadString(payload, key)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		entities = append(entities, value)
+	}
+	return entities
+}
+
+func activityInitiatorID(payload map[string]any) string {
+	for _, key := range []string{"agent_id", "actor_id", "reviewer_id", "resolved_by", "created_by"} {
+		if value := payloadString(payload, key); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func activityInitiatorType(payload map[string]any) InitiatorType {
+	switch payloadString(payload, "actor_type") {
+	case "human":
+		return InitiatorHuman
+	case "agent":
+		return InitiatorAgent
+	case "system":
+		return InitiatorSystem
+	}
+	if payloadString(payload, "agent_id") != "" {
+		return InitiatorAgent
+	}
+	if payloadString(payload, "reviewer_id") != "" || payloadString(payload, "resolved_by") != "" {
+		return InitiatorHuman
+	}
+	return InitiatorSystem
+}
+
+func activitySource(eventType string) string {
+	switch {
+	case strings.HasPrefix(eventType, "ticket."):
+		return "ticket_lifecycle"
+	case strings.HasPrefix(eventType, "plan."):
+		return "plan_lifecycle"
+	case strings.HasPrefix(eventType, "work_stream."):
+		return "work_stream"
+	default:
+		if prefix, _, ok := strings.Cut(eventType, "."); ok {
+			return prefix
+		}
+		return "system"
+	}
+}
+
+func payloadString(payload map[string]any, key string) string {
+	if payload == nil {
+		return ""
+	}
+	value, _ := payload[key].(string)
+	return value
 }

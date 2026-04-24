@@ -16,6 +16,17 @@ type stubBus struct{}
 func (stubBus) Publish(_ context.Context, _ events.Event) error { return nil }
 func (stubBus) Subscribe(_ string, _ events.HandlerFn)          {}
 
+type recordingBus struct {
+	published []events.Event
+}
+
+func (b *recordingBus) Publish(_ context.Context, event events.Event) error {
+	b.published = append(b.published, event)
+	return nil
+}
+
+func (b *recordingBus) Subscribe(_ string, _ events.HandlerFn) {}
+
 type stubProjectGetter struct {
 	proj *project.Project
 }
@@ -112,7 +123,11 @@ func (s *inMemoryTicketStore) UpdateTargetRepo(_ context.Context, _ string, _ st
 	return nil
 }
 
-func (s *inMemoryTicketStore) UpdateTitleAndObjective(_ context.Context, _ string, _ string, _ Objective) error {
+func (s *inMemoryTicketStore) UpdateTitleAndObjective(_ context.Context, id string, title string, objective Objective) error {
+	if t, ok := s.tickets[id]; ok {
+		t.Title = title
+		t.Objective = objective
+	}
 	return nil
 }
 
@@ -145,6 +160,11 @@ func (s *inMemoryTicketStore) ListStaleTickets(_ context.Context, _ []State, _ t
 func newTestService(store TicketStore) *Service {
 	proj := &project.Project{ID: "proj-1", Slug: "test"}
 	return NewService(store, stubBus{}, &stubProjectGetter{proj: proj})
+}
+
+func newTestServiceWithBus(store TicketStore, bus events.Bus) *Service {
+	proj := &project.Project{ID: "proj-1", Slug: "test"}
+	return NewService(store, bus, &stubProjectGetter{proj: proj})
 }
 
 func TestCreateTicket_DependsOnPersisted(t *testing.T) {
@@ -232,5 +252,85 @@ func TestCreateTicket_DependsOnEmpty(t *testing.T) {
 	}
 	if len(ticket.DependsOn) != 0 {
 		t.Errorf("returned ticket DependsOn len = %d, want 0", len(ticket.DependsOn))
+	}
+}
+
+func TestCreateTicket_PublishesRichCreatedEvent(t *testing.T) {
+	store := newInMemoryStore()
+	bus := &recordingBus{}
+	svc := newTestServiceWithBus(store, bus)
+	ctx := context.Background()
+
+	ticket, err := svc.CreateTicket(ctx, "proj-1", "Wire activity feed", TypeSpike, P2, "agent-7", nil, "", Objective{Description: "test"}, TicketContext{}, "")
+	if err != nil {
+		t.Fatalf("CreateTicket() error = %v", err)
+	}
+
+	if len(bus.published) != 1 {
+		t.Fatalf("expected 1 published event, got %d", len(bus.published))
+	}
+	event := bus.published[0]
+	if event.Type != events.EventTicketCreated {
+		t.Fatalf("event.Type = %q, want %q", event.Type, events.EventTicketCreated)
+	}
+	if got := event.Payload["ticket_id"]; got != ticket.ID {
+		t.Errorf("ticket_id = %v, want %q", got, ticket.ID)
+	}
+	if got := event.Payload["project_id"]; got != "proj-1" {
+		t.Errorf("project_id = %v, want proj-1", got)
+	}
+	if got := event.Payload["title"]; got != "Wire activity feed" {
+		t.Errorf("title = %v, want Wire activity feed", got)
+	}
+	if got := event.Payload["state"]; got != string(StateDraft) {
+		t.Errorf("state = %v, want %q", got, StateDraft)
+	}
+	if got := event.Payload["created_by"]; got != "agent-7" {
+		t.Errorf("created_by = %v, want agent-7", got)
+	}
+}
+
+func TestPatchTicketMetadata_PublishesUpdatedEvent(t *testing.T) {
+	store := newInMemoryStore()
+	bus := &recordingBus{}
+	svc := newTestServiceWithBus(store, bus)
+	ctx := context.Background()
+
+	ticket, err := svc.CreateTicket(ctx, "proj-1", "Old title", TypeSpike, P2, "agent-7", nil, "", Objective{
+		Description:     "before",
+		SuccessCriteria: []string{"old"},
+		AcceptanceTest:  "go test ./...",
+	}, TicketContext{}, "")
+	if err != nil {
+		t.Fatalf("CreateTicket() error = %v", err)
+	}
+	bus.published = nil
+
+	newTitle := "New title"
+	newDesc := "after"
+	newCriteria := []string{"new"}
+	if err := svc.PatchTicketMetadata(ctx, ticket.ID, &newTitle, &newDesc, &newCriteria, nil); err != nil {
+		t.Fatalf("PatchTicketMetadata() error = %v", err)
+	}
+
+	if len(bus.published) != 1 {
+		t.Fatalf("expected 1 published event, got %d", len(bus.published))
+	}
+	event := bus.published[0]
+	if event.Type != events.EventTicketUpdated {
+		t.Fatalf("event.Type = %q, want %q", event.Type, events.EventTicketUpdated)
+	}
+	if got := event.Payload["ticket_id"]; got != ticket.ID {
+		t.Errorf("ticket_id = %v, want %q", got, ticket.ID)
+	}
+	if got := event.Payload["title"]; got != newTitle {
+		t.Errorf("title = %v, want %q", got, newTitle)
+	}
+	fields, ok := event.Payload["changed_fields"].([]string)
+	if !ok {
+		t.Fatalf("changed_fields type = %T, want []string", event.Payload["changed_fields"])
+	}
+	if len(fields) != 3 {
+		t.Fatalf("changed_fields len = %d, want 3; got %v", len(fields), fields)
 	}
 }

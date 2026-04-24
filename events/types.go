@@ -7,6 +7,7 @@ import "time"
 const (
 	// --- Lifecycle events (happy path) ---
 	EventTicketCreated   = "ticket.created"
+	EventTicketUpdated   = "ticket.updated"
 	EventTicketSpecced   = "ticket.specced"   // draft → specced
 	EventTicketPlanning  = "ticket.planning"  // specced/claim → planning
 	EventTicketStarted   = "ticket.started"   // planning → executing
@@ -27,7 +28,7 @@ const (
 
 	// --- Rollback events ---
 	EventTicketRolledBack = "ticket.rolled_back"       // stage-specific rollback → draft
-	EventRollbackIncident = "ticket.rollback_incident"  // incident ticket auto-created on prod rollback
+	EventRollbackIncident = "ticket.rollback_incident" // incident ticket auto-created on prod rollback
 
 	// --- Review events ---
 	EventTicketApproved = "ticket.approved" // awaiting_validation → validated
@@ -53,11 +54,11 @@ const (
 	EventTicketUnblocked = "ticket.unblocked"
 
 	// --- Cost & budget events ---
-	EventBudgetAlert       = "cost.budget_alert"       // budget threshold crossed
-	EventBudgetExceeded    = "cost.budget_exceeded"    // spend exceeds limit
-	EventRateLimitHit      = "cost.rate_limit_hit"     // provider rate-limited
-	EventRateLimitResumed  = "cost.rate_limit_resumed" // rate limit cleared, resuming
-	EventCostCallRecorded  = "cost.call_recorded"      // LLM call cost attributed
+	EventBudgetAlert      = "cost.budget_alert"       // budget threshold crossed
+	EventBudgetExceeded   = "cost.budget_exceeded"    // spend exceeds limit
+	EventRateLimitHit     = "cost.rate_limit_hit"     // provider rate-limited
+	EventRateLimitResumed = "cost.rate_limit_resumed" // rate limit cleared, resuming
+	EventCostCallRecorded = "cost.call_recorded"      // LLM call cost attributed
 
 	// --- Work stream events ---
 	EventWorkStreamCompleted = "work_stream.completed" // all tickets in stream are closed
@@ -102,9 +103,9 @@ const (
 
 	// --- Plan freshness events (warrant-45) ---
 	EventPlanFreshnessStale  = "plan.freshness_stale"  // freshness check detected stale stamp
-	EventPlanRePlanTriggered = "plan.replan_triggered"  // re-plan was triggered before apply
-	EventPlanRePlanIdentical = "plan.replan_identical"  // re-plan produced identical content (auto-proceed)
-	EventPlanRePlanDiverged  = "plan.replan_diverged"   // re-plan produced different content (route to review)
+	EventPlanRePlanTriggered = "plan.replan_triggered" // re-plan was triggered before apply
+	EventPlanRePlanIdentical = "plan.replan_identical" // re-plan produced identical content (auto-proceed)
+	EventPlanRePlanDiverged  = "plan.replan_diverged"  // re-plan produced different content (route to review)
 
 	// --- Notification events ---
 	EventNotificationCreated    = "notification.created"     // notification queued or pushed

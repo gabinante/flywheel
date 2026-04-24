@@ -1,8 +1,16 @@
-import { cn } from '@/lib/utils'
-import type { components } from '@/lib/api/v1'
+import {
+  ClipboardCheck,
+  GitCommitHorizontal,
+  GitPullRequest,
+  Rocket,
+  Ticket,
+  Workflow,
+} from 'lucide-react'
 
-type TraceStep = components['schemas']['TraceStep']
-export type ActivityItem = TraceStep & { ticketId: string }
+import type { ActivityItem } from '@/lib/command-center-activity'
+import { cn } from '@/lib/utils'
+
+export type { ActivityItem } from '@/lib/command-center-activity'
 
 function elapsed(isoDate: string | undefined): string {
   if (!isoDate) return ''
@@ -17,37 +25,28 @@ function elapsed(isoDate: string | undefined): string {
   return `${Math.floor(hours / 24)}d`
 }
 
-function summarizeStep(step: TraceStep): string {
-  const p = step.payload as unknown as Record<string, unknown> | undefined
-  if (!p) return step.type ?? 'step'
-  if ('message' in p && typeof p.message === 'string') {
-    return p.message.slice(0, 80)
-  }
-  if ('name' in p && typeof p.name === 'string') {
-    return p.name
-  }
-  const keys = Object.keys(p)
-  if (keys.length === 0) return step.type ?? 'step'
-  return keys.slice(0, 2).join(', ')
-}
-
-function stepIcon(type: string | undefined): string {
-  switch (type) {
-    case 'tool_call':
-      return '\u2699'
-    case 'observation':
-      return '\u{1F441}'
-    case 'thought':
-      return '\u{1F4AD}'
-    case 'error':
-      return '\u26A0'
-    default:
-      return '\u2022'
-  }
-}
-
 function Shimmer({ className }: { className?: string }) {
   return <div className={cn('animate-pulse rounded bg-muted/60', className)} />
+}
+
+function ActivityIcon({ kind }: { kind: ActivityItem['kind'] }) {
+  const className = 'mt-0.5 size-3.5 shrink-0 text-muted-foreground'
+
+  switch (kind) {
+    case 'pr':
+      return <GitPullRequest className={className} />
+    case 'git':
+      return <GitCommitHorizontal className={className} />
+    case 'deploy':
+      return <Rocket className={className} />
+    case 'review':
+      return <ClipboardCheck className={className} />
+    case 'plan':
+    case 'work_stream':
+      return <Workflow className={className} />
+    default:
+      return <Ticket className={className} />
+  }
 }
 
 export function ActivityFeed({
@@ -63,7 +62,7 @@ export function ActivityFeed({
     return (
       <div className="flex flex-col gap-2">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Activity Feed
+          Recent Activity
         </h3>
         <Shimmer className="h-4 w-full" />
         <Shimmer className="h-4 w-3/4" />
@@ -75,40 +74,58 @@ export function ActivityFeed({
   return (
     <div className="flex flex-col gap-1.5">
       <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Activity Feed
+        Recent Activity
       </h3>
       {items.length === 0 ? (
-        <p className="text-xs text-muted-foreground italic py-2">
+        <p className="py-2 text-xs italic text-muted-foreground">
           No recent activity.
         </p>
       ) : (
-        <ul className="flex flex-col gap-0.5">
-          {items.slice(0, 20).map((item, i) => (
-            <li key={item.id ?? i}>
-              <button
-                type="button"
-                onClick={() => onSelectTicket(item.ticketId)}
-                className="group flex w-full items-start gap-1.5 rounded px-1.5 py-1 text-[11px] text-left transition-colors hover:bg-white/[0.04]"
-              >
-                <span className="mt-px shrink-0 text-muted-foreground" aria-hidden>
-                  {stepIcon(item.type)}
-                </span>
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate text-foreground/80">
-                    {summarizeStep(item)}
+        <ul className="flex flex-col gap-1">
+          {items.slice(0, 20).map((item) => {
+            const content = (
+              <>
+                <ActivityIcon kind={item.kind} />
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="truncate text-[11px] font-medium text-foreground/90">
+                    {item.title}
                   </span>
+                  {item.detail && (
+                    <span className="line-clamp-2 text-[10px] leading-relaxed text-muted-foreground">
+                      {item.detail}
+                    </span>
+                  )}
                   <span className="text-[10px] text-muted-foreground">
-                    <span className="font-mono">{item.ticketId.slice(0, 8)}</span>
-                    {item.created_at && (
-                      <span className="ml-1.5 tabular-nums">
-                        {elapsed(item.created_at)}
-                      </span>
+                    {item.ticketId && (
+                      <span className="font-mono">{item.ticketId.slice(0, 8)}</span>
+                    )}
+                    {item.ticketId && item.timestamp && <span className="mx-1">·</span>}
+                    {item.timestamp && (
+                      <span className="tabular-nums">{elapsed(item.timestamp)}</span>
                     )}
                   </span>
                 </div>
-              </button>
-            </li>
-          ))}
+              </>
+            )
+
+            return (
+              <li key={item.id}>
+                {item.ticketId ? (
+                  <button
+                    type="button"
+                    onClick={() => onSelectTicket(item.ticketId!)}
+                    className="group flex w-full items-start gap-2 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-white/[0.04]"
+                  >
+                    {content}
+                  </button>
+                ) : (
+                  <div className="flex items-start gap-2 rounded-lg px-1.5 py-1.5">
+                    {content}
+                  </div>
+                )}
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>

@@ -275,6 +275,67 @@ func TestSubscribeToTicketEvents(t *testing.T) {
 	}
 }
 
+func TestSubscribeToTicketEvents_BridgesPlanAndWorkStreamEvents(t *testing.T) {
+	store := NewMemoryStore()
+	bus := events.NewInProcessBus()
+	svc := NewService(store, bus)
+	ctx := context.Background()
+
+	svc.SubscribeToTicketEvents(func(ticketID string) string {
+		if ticketID == "ticket-9" {
+			return "proj-9"
+		}
+		return ""
+	})
+
+	bus.Publish(ctx, events.Event{
+		Type: events.EventPlanApproved,
+		Payload: map[string]any{
+			"plan_id":   "plan-1",
+			"ticket_id": "ticket-9",
+			"backend":   "code",
+		},
+	})
+	bus.Publish(ctx, events.Event{
+		Type: events.EventWorkStreamCompleted,
+		Payload: map[string]any{
+			"project_id":     "proj-9",
+			"work_stream_id": "ws-1",
+			"ticket_count":   4,
+		},
+	})
+
+	page, err := svc.ListChangeEvents(ctx, StreamQuery{ProjectID: "proj-9"})
+	if err != nil {
+		t.Fatalf("ListChangeEvents: %v", err)
+	}
+	if page.Total != 2 {
+		t.Fatalf("expected 2 change events, got %d", page.Total)
+	}
+
+	var sawPlan, sawWorkStream bool
+	for _, event := range page.Events {
+		switch event.ChangeType {
+		case "plan_approved":
+			sawPlan = true
+			if event.Source != "plan_lifecycle" {
+				t.Errorf("plan source = %q, want plan_lifecycle", event.Source)
+			}
+		case "work_stream_completed":
+			sawWorkStream = true
+			if event.Source != "work_stream" {
+				t.Errorf("work stream source = %q, want work_stream", event.Source)
+			}
+		}
+	}
+	if !sawPlan {
+		t.Error("missing bridged plan_approved event")
+	}
+	if !sawWorkStream {
+		t.Error("missing bridged work_stream_completed event")
+	}
+}
+
 func TestListWithPagination(t *testing.T) {
 	store := NewMemoryStore()
 	bus := events.NewInProcessBus()

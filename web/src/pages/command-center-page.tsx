@@ -7,11 +7,20 @@ import { OrchestratorConsole } from '@/components/command-center/orchestrator-co
 import { TicketInspector } from '@/components/command-center/ticket-inspector'
 import { useAuth } from '@/contexts/use-auth'
 import { useRightRail } from '@/contexts/use-right-rail'
+import {
+  buildActivityItems,
+  ticketIdFromChangeEvent,
+  type ChangeStreamEvent,
+  type TraceActivityStep,
+} from '@/lib/command-center-activity'
 import type { components } from '@/lib/api/v1'
 
 type Ticket = components['schemas']['Ticket']
 type DispatchStatus = {
   active_ticket_ids?: string[]
+}
+type ChangeStreamResponse = {
+  events?: ChangeStreamEvent[]
 }
 
 const POLL_INTERVAL = 10_000
@@ -34,13 +43,19 @@ export function CommandCenterPage() {
     if (!projectId || !token) return
 
     try {
-      const [statusRes, reviewsRes] = await Promise.all([
+      const [statusRes, reviewsRes, changeStreamRes] = await Promise.all([
         fetch('/api/dispatch/status', {
           headers: { Authorization: `Bearer ${token}` },
         }),
         client.GET('/projects/{projectID}/reviews', {
           params: { path: { projectID: projectId } },
         }),
+        fetch(
+          `/api/v1/streams/change?project_id=${encodeURIComponent(projectId)}&limit=40`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        ),
       ])
 
       const status = statusRes.ok
@@ -71,36 +86,60 @@ export function CommandCenterPage() {
         reviews.filter((ticket) => !ticket.id || !activeTicketIdSet.has(ticket.id)),
       )
 
-      // Fetch traces for active tickets
-      const traceTargets = active.slice(0, 5)
-      if (traceTargets.length > 0) {
-        const traceResults = await Promise.all(
-          traceTargets.map(async (t) => {
-            if (!t.id) return []
-            const { data, response } = await client.GET('/tickets/{ticketID}/trace', {
-              params: { path: { ticketID: t.id } },
+      const changeEvents: ChangeStreamEvent[] = changeStreamRes.ok
+        ? (((await changeStreamRes.json()) as ChangeStreamResponse).events ?? [])
+        : []
+
+      const ticketsById = new Map<string, Ticket>()
+      for (const ticket of [...active, ...reviews]) {
+        if (ticket.id) ticketsById.set(ticket.id, ticket)
+      }
+
+      const candidateTicketIds = [
+        ...changeEvents
+          .map((event) => ticketIdFromChangeEvent(event))
+          .filter((ticketId): ticketId is string => Boolean(ticketId)),
+        ...active.map((ticket) => ticket.id).filter((ticketId): ticketId is string => Boolean(ticketId)),
+        ...reviews.map((ticket) => ticket.id).filter((ticketId): ticketId is string => Boolean(ticketId)),
+      ].filter((ticketId, index, list) => list.indexOf(ticketId) === index)
+
+      const traceTicketIds = candidateTicketIds.slice(0, 10)
+      const missingTicketIds = traceTicketIds.filter((ticketId) => !ticketsById.has(ticketId))
+      if (missingTicketIds.length > 0) {
+        const ticketResults = await Promise.all(
+          missingTicketIds.map(async (ticketId) => {
+            const { data, response } = await client.GET('/tickets/{ticketID}', {
+              params: { path: { ticketID: ticketId } },
             })
-            if (!response.ok) return []
-            return (data?.steps ?? []).map((step) => ({
-              ...step,
-              ticketId: t.id!,
-            }))
+            return response.ok ? (data as Ticket) : null
           }),
         )
-
-        const allSteps: ActivityItem[] = traceResults
-          .flat()
-          .sort((a, b) => {
-            const ta = a.created_at ? new Date(a.created_at).getTime() : 0
-            const tb = b.created_at ? new Date(b.created_at).getTime() : 0
-            return tb - ta
-          })
-          .slice(0, 25)
-
-        setActivityItems(allSteps)
-      } else {
-        setActivityItems([])
+        for (const ticket of ticketResults) {
+          if (ticket?.id) ticketsById.set(ticket.id, ticket)
+        }
       }
+
+      const traceResults = await Promise.all(
+        traceTicketIds.map(async (ticketId) => {
+          const { data, response } = await client.GET('/tickets/{ticketID}/trace', {
+            params: { path: { ticketID: ticketId } },
+          })
+          if (!response.ok) return []
+          return (data?.steps ?? []).map((step) => ({
+            ...step,
+            ticketId,
+          }))
+        }),
+      )
+
+      const traceSteps: TraceActivityStep[] = traceResults.flat()
+      setActivityItems(
+        buildActivityItems({
+          changeEvents,
+          traceSteps,
+          ticketsById,
+        }),
+      )
     } catch {
       // silent
     } finally {

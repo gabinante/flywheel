@@ -3,6 +3,7 @@ package ticket
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -158,7 +159,13 @@ func (s *Service) CreateTicket(ctx context.Context, projectID, title string, typ
 	if idempotencyKey != "" {
 		_ = s.store.SetCreateIdempotency(ctx, projectID, idempotencyKey, id)
 	}
-	_ = s.bus.Publish(ctx, events.NewEvent(events.EventTicketCreated, map[string]any{"ticket_id": id}).WithEntityKey("ticket:"+id))
+	_ = s.bus.Publish(ctx, events.NewEvent(events.EventTicketCreated, map[string]any{
+		"ticket_id":  id,
+		"project_id": projectID,
+		"title":      title,
+		"state":      string(StateDraft),
+		"created_by": createdBy,
+	}).WithEntityKey("ticket:"+id))
 	return t, nil
 }
 
@@ -232,6 +239,7 @@ func (s *Service) PatchTicketMetadata(ctx context.Context, ticketID string, titl
 	if err != nil {
 		return err
 	}
+	beforeObjective := t.Objective
 	obj := t.Objective
 	if desc != nil {
 		obj.Description = *desc
@@ -252,7 +260,34 @@ func (s *Service) PatchTicketMetadata(ctx context.Context, ticketID string, titl
 	if title != nil && *title != "" {
 		newTitle = *title
 	}
-	return s.store.UpdateTitleAndObjective(ctx, ticketID, newTitle, obj)
+
+	changedFields := make([]string, 0, 4)
+	if newTitle != t.Title {
+		changedFields = append(changedFields, "title")
+	}
+	if beforeObjective.Description != obj.Description {
+		changedFields = append(changedFields, "description")
+	}
+	if !reflect.DeepEqual(beforeObjective.SuccessCriteria, obj.SuccessCriteria) {
+		changedFields = append(changedFields, "success_criteria")
+	}
+	if beforeObjective.AcceptanceTest != obj.AcceptanceTest {
+		changedFields = append(changedFields, "acceptance_test")
+	}
+	if len(changedFields) == 0 {
+		return nil
+	}
+	if err := s.store.UpdateTitleAndObjective(ctx, ticketID, newTitle, obj); err != nil {
+		return err
+	}
+	_ = s.bus.Publish(ctx, events.NewEvent(events.EventTicketUpdated, map[string]any{
+		"ticket_id":      ticketID,
+		"project_id":     t.ProjectID,
+		"title":          newTitle,
+		"state":          string(t.State),
+		"changed_fields": changedFields,
+	}).WithEntityKey("ticket:"+ticketID))
+	return nil
 }
 
 // TransitionTicket applies a state transition (single entry point for all state changes).
@@ -313,7 +348,7 @@ func (s *Service) TransitionTicket(ctx context.Context, id string, trigger strin
 			eventExtra["policy_rules"] = ruleNames
 		}
 	}
-	s.emitTransitionEvent(trigger, id, newState, t.ProjectID, eventExtra)
+	s.emitTransitionEvent(trigger, id, t.Title, newState, t.ProjectID, actor, eventExtra)
 	return nil
 }
 
@@ -363,7 +398,15 @@ func (s *Service) SubmitTicket(ctx context.Context, id string, leaseToken string
 	}
 	_ = leaseToken
 	s.recordTransition(ctx, id, fromState, newState, TriggerSubmit, Actor{ID: t.AssignedTo, Type: ActorAgent})
-	s.emitTransitionEvent(TriggerSubmit, id, newState, t.ProjectID, nil)
+	s.emitTransitionEvent(
+		TriggerSubmit,
+		id,
+		t.Title,
+		newState,
+		t.ProjectID,
+		Actor{ID: t.AssignedTo, Type: ActorAgent},
+		nil,
+	)
 
 	// Auto-approve if enabled and acceptance test was present and passed.
 	if s.autoApproveOnPass && t.Objective.AcceptanceTest != "" && s.acceptanceRunner != nil {
@@ -374,7 +417,15 @@ func (s *Service) SubmitTicket(ctx context.Context, id string, leaseToken string
 			if err == nil {
 				if err := s.store.UpdateState(ctx, id, t2.Version, approveState, t2.AssignedTo); err == nil {
 					s.recordTransition(ctx, id, t2.State, approveState, TriggerApprove, Actor{ID: "system", Type: ActorSystem})
-					s.emitTransitionEvent(TriggerApprove, id, approveState, t.ProjectID, nil)
+					s.emitTransitionEvent(
+						TriggerApprove,
+						id,
+						t2.Title,
+						approveState,
+						t.ProjectID,
+						Actor{ID: "system", Type: ActorSystem},
+						nil,
+					)
 				}
 			}
 		}
@@ -421,10 +472,17 @@ func (s *Service) InjectEscalationAnswer(ctx context.Context, ticketID, answer s
 
 // emitTransitionEvent publishes a typed event for the given trigger/transition.
 // Events are keyed by ticket ID for ordered delivery within an entity.
-func (s *Service) emitTransitionEvent(trigger, ticketID string, newState State, projectID string, extra map[string]any) {
+func (s *Service) emitTransitionEvent(trigger, ticketID, title string, newState State, projectID string, actor Actor, extra map[string]any) {
 	payload := map[string]any{"ticket_id": ticketID, "state": string(newState)}
 	if projectID != "" {
 		payload["project_id"] = projectID
+	}
+	if title != "" {
+		payload["title"] = title
+	}
+	if actor.ID != "" {
+		payload["actor_id"] = actor.ID
+		payload["actor_type"] = string(actor.Type)
 	}
 	for k, v := range extra {
 		payload[k] = v
