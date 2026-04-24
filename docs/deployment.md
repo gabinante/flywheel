@@ -38,11 +38,12 @@ Optional:
 - **LEASE_TTL_MINUTES** – Queue lease TTL in minutes (default 10).
 - **RUN_ACCEPTANCE_TEST_ON_SUBMIT** – If `true`, when a ticket has `objective.acceptance_test` (e.g. a shell command), the server runs it on **submit_ticket**; on failure the submit is rejected with the command output so the agent can fix and retry. Default `false`.
 - **WEB_DIST** – Directory with the Vite/React production build (`index.html` and `assets/`). Default `web/dist`. If `index.html` is missing, the server skips mounting the web UI (REST and MCP still work). The **Dockerfile** builds `web/` and copies the output to `/app/web/dist` in the image.
+- **WEB_DEV_PROXY_URL** – Optional Vite dev server URL (for example `http://127.0.0.1:5173`). When set, the Go server reverse-proxies frontend requests to Vite so `http://localhost:8080` gets HMR while API and auth routes still stay on the Flywheel server.
 
 ### Web UI (browser)
 
 - **Same-origin production:** The server serves the SPA from `/` and static chunks from `/assets/*`. The app uses **hash-based client routes** (`/#/orgs`, `/#/orgs/{id}/projects`, …) so first-party REST paths such as `/orgs` and `/projects/{id}/tickets` are not shadowed by the frontend router.
-- **Local dev:** `cd web && npm run dev` (Vite, default port 5173). **vite.config.ts** proxies API prefixes (`/orgs`, `/projects`, `/tickets`, `/agents`, `/auth`, `/oauth`, `/mcp`, `/.well-known`, `/healthz`, `/me`) to **`http://127.0.0.1:8080`**. Point elsewhere with env **`VITE_API_PROXY`** (e.g. another port or host).
+- **Local dev:** `cd web && npm run dev` (Vite, default port 5173). **vite.config.ts** proxies API prefixes (`/orgs`, `/projects`, `/tickets`, `/agents`, `/auth`, `/oauth`, `/mcp`, `/.well-known`, `/healthz`, `/me`) to **`http://127.0.0.1:8080`**. Point elsewhere with env **`VITE_API_PROXY`** (e.g. another port or host). If you prefer to keep using **`http://localhost:8080`** in the browser, set **`WEB_DEV_PROXY_URL=http://127.0.0.1:5173`** when starting the Go server; the server will proxy frontend requests to Vite and preserve HMR.
 - **OpenAPI → TypeScript:** From `web/`, run **`npm run gen:api`** after editing **api/openapi.yaml** to regenerate **`web/src/lib/api/v1.d.ts`** (openapi-typescript). The UI calls the API through **openapi-fetch** typed with that file.
 
 ## Security
