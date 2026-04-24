@@ -13,6 +13,7 @@ import (
 
 	"github.com/gabinante/flywheel/events"
 	"github.com/gabinante/flywheel/internal/cost"
+	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/ticket"
 )
@@ -48,6 +49,11 @@ type TicketTransitioner interface {
 	TransitionTicket(ctx context.Context, id string, trigger string, actor ticket.Actor, payload map[string]any) error
 }
 
+// TraceAppender persists server-side execution trace steps.
+type TraceAppender interface {
+	AppendSystemStep(ctx context.Context, ticketID string, step execution.Step) error
+}
+
 // maxMergeAttempts is the number of merge failures before escalating to a human.
 const maxMergeAttempts = 5
 
@@ -79,6 +85,7 @@ type Config struct {
 	DockerFirewall bool
 	AgentAPIKey    string
 	CostSvc        *cost.Service
+	TraceSvc       TraceAppender
 }
 
 // Dispatcher listens for ticket events and spawns workers.
@@ -690,7 +697,7 @@ func (d *Dispatcher) runTypedWorker(ctx context.Context, t *ticket.Ticket, wt Wo
 	log.Printf("dispatch: running %s worker for %s", wt, t.ID)
 
 	// Spawn worker.
-	result, err := d.worker.Spawn(ctx, t.ID, t.ProjectID, prompt, taskMsg, workDir, d.cfg.ServerURL)
+	result, err := d.spawnWorker(ctx, t.ID, t.ProjectID, wt, prompt, taskMsg, workDir)
 	if err != nil {
 		return err
 	}
@@ -818,7 +825,7 @@ func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
 	log.Printf("dispatch: running validator worker for %s", t.ID)
 
 	taskMsg := buildTypedTaskPrompt(WorkerTypeValidator, t.ID, t.ProjectID)
-	result, err := d.worker.Spawn(ctx, t.ID, t.ProjectID, prompt, taskMsg, workDir, d.cfg.ServerURL)
+	result, err := d.spawnWorker(ctx, t.ID, t.ProjectID, WorkerTypeValidator, prompt, taskMsg, workDir)
 	if err != nil {
 		return err
 	}
@@ -1026,7 +1033,7 @@ func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, 
 		branch, prURL,
 	)
 
-	result, err := d.worker.Spawn(ctx, t.ID, t.ProjectID, prompt, taskMsg, workDir, d.cfg.ServerURL)
+	result, err := d.spawnWorker(ctx, t.ID, t.ProjectID, WorkerType("conflict_resolver"), prompt, taskMsg, workDir)
 	if err != nil {
 		return err
 	}
@@ -1061,6 +1068,62 @@ func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, 
 
 	d.closeMergedTicket(ctx, t)
 	return nil
+}
+
+func (d *Dispatcher) spawnWorker(ctx context.Context, ticketID, projectID string, wt WorkerType, systemPrompt, taskMessage, workDir string) (*WorkerResult, error) {
+	if streamable, ok := d.worker.(StreamableWorker); ok && d.cfg.TraceSvc != nil {
+		onOutput, waitForTrace := d.traceWorkerOutput(ticketID, wt)
+		result, err := streamable.SpawnStream(
+			ctx,
+			ticketID,
+			projectID,
+			systemPrompt,
+			taskMessage,
+			workDir,
+			d.cfg.ServerURL,
+			onOutput,
+		)
+		waitForTrace()
+		return result, err
+	}
+	return d.worker.Spawn(ctx, ticketID, projectID, systemPrompt, taskMessage, workDir, d.cfg.ServerURL)
+}
+
+func (d *Dispatcher) traceWorkerOutput(ticketID string, wt WorkerType) (WorkerOutputHandler, func()) {
+	type outputChunk struct {
+		stream string
+		text   string
+	}
+
+	chunks := make(chan outputChunk, 256)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for chunk := range chunks {
+			if err := d.cfg.TraceSvc.AppendSystemStep(context.Background(), ticketID, execution.Step{
+				Type:       execution.StepTypeObservation,
+				WorkerType: string(wt),
+				Payload: map[string]any{
+					"kind":   "worker_output",
+					"stream": chunk.stream,
+					"text":   chunk.text,
+				},
+			}); err != nil {
+				log.Printf("dispatch: append worker output for %s: %v", ticketID, err)
+			}
+		}
+	}()
+
+	return func(stream, text string) {
+			if strings.TrimSpace(text) == "" {
+				return
+			}
+			chunks <- outputChunk{stream: stream, text: text}
+		}, func() {
+			close(chunks)
+			wg.Wait()
+		}
 }
 
 func workerRoleForType(wt WorkerType) string {

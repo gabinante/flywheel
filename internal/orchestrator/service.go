@@ -70,6 +70,9 @@ func (s *Service) GetThread(ctx context.Context, projectID string) (*Thread, err
 	if err != nil {
 		return nil, err
 	}
+	if msgs == nil {
+		msgs = []Message{}
+	}
 	return &Thread{
 		ProjectID: projectID,
 		Messages:  msgs,

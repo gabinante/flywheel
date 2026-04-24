@@ -25,9 +25,12 @@ function stateBadgeVariant(
   switch (state) {
     case 'executing':
       return 'default'
+    case 'planning':
     case 'claimed':
       return 'secondary'
+    case 'awaiting_validation':
     case 'awaiting_review':
+    case 'validated':
       return 'outline'
     default:
       return 'muted'

@@ -49,11 +49,8 @@ function MessageBubble({ message }: { message: OrchestratorMessage }) {
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Badge variant={isAssistant ? 'outline' : 'secondary'}>
-            {isAssistant ? 'Orchestrator' : 'You'}
+            {isAssistant ? 'Planner' : 'Input'}
           </Badge>
-          <span className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
-            {isAssistant ? 'Scope' : 'Intent'}
-          </span>
         </div>
         <span className="text-[11px] tabular-nums text-muted-foreground">
           {elapsed(message.created_at)}
@@ -89,6 +86,27 @@ export function OrchestratorConsole({
   const [error, setError] = useState<string | null>(null)
   const transcriptRef = useRef<HTMLDivElement | null>(null)
   const hasLoaded = useRef(false)
+  const messages = thread?.messages ?? []
+  const playbook = thread?.playbook
+  const starterPrompts = playbook?.starter_prompts ?? []
+
+  const applyThread = useCallback((next: OrchestratorThread | null) => {
+    if (!next) {
+      setThread(null)
+      return
+    }
+    setThread({
+      ...next,
+      messages: next.messages ?? [],
+      playbook: {
+        ...next.playbook,
+        principles: next.playbook?.principles ?? [],
+        ticket_sop: next.playbook?.ticket_sop ?? [],
+        worker_lanes: next.playbook?.worker_lanes ?? [],
+        starter_prompts: next.playbook?.starter_prompts ?? [],
+      },
+    })
+  }, [])
 
   const fetchThread = useCallback(async () => {
     if (!token) return
@@ -96,12 +114,12 @@ export function OrchestratorConsole({
     if (requestError) {
       setError(requestError)
     } else {
-      setThread(data)
+      applyThread(data)
       setError(null)
     }
     hasLoaded.current = true
     setLoading(false)
-  }, [projectId, token])
+  }, [applyThread, projectId, token])
 
   useEffect(() => {
     if (!token) return
@@ -117,7 +135,7 @@ export function OrchestratorConsole({
     const node = transcriptRef.current
     if (!node) return
     node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' })
-  }, [thread?.messages.length, sending])
+  }, [messages.length, sending])
 
   const submit = useCallback(async () => {
     const content = draft.trim()
@@ -134,13 +152,10 @@ export function OrchestratorConsole({
       return
     }
 
-    setThread(data)
+    applyThread(data)
     setDraft('')
     onMessageComplete?.()
-  }, [draft, fetchThread, onMessageComplete, projectId, sending, token])
-
-  const starterPrompts = thread?.playbook.starter_prompts ?? []
-  const playbook = thread?.playbook
+  }, [applyThread, draft, fetchThread, onMessageComplete, projectId, sending, token])
 
   return (
     <Card className="min-h-[720px] border-white/12 bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.12),transparent_32%),radial-gradient(circle_at_top_right,rgba(251,146,60,0.08),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))]">
@@ -148,15 +163,15 @@ export function OrchestratorConsole({
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline">Primary Interface</Badge>
-              <Badge variant="secondary">Chat - Scope - Dispatch</Badge>
+              <Badge variant="outline">Planner</Badge>
+              <Badge variant="secondary">Scope and Tickets</Badge>
             </div>
             <CardTitle className="text-base tracking-tight">
-              Command Center Orchestrator
+              Orchestrator
             </CardTitle>
             <CardDescription className="max-w-2xl text-sm leading-relaxed">
               {playbook?.summary ??
-                'Chat with the strongest planner, let it create well-scoped work streams and tickets, and leave code execution to background workers.'}
+                'Use this pane to clarify scope, inspect project context, and create or update work streams and tickets.'}
             </CardDescription>
           </div>
           <div className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
@@ -176,18 +191,18 @@ export function OrchestratorConsole({
               <div className="h-20 animate-pulse rounded-2xl bg-white/[0.04]" />
               <div className="h-28 animate-pulse rounded-2xl bg-white/[0.05]" />
             </div>
-          ) : thread?.messages.length ? (
-            thread.messages.map((message) => (
+          ) : messages.length ? (
+            messages.map((message) => (
               <MessageBubble key={message.id} message={message} />
             ))
           ) : (
             <div className="grid gap-4 rounded-3xl border border-dashed border-white/12 bg-black/10 p-5">
               <div className="space-y-2">
                 <p className="text-sm font-medium text-foreground">
-                  Start with the orchestrator, not the queue.
+                  No messages yet.
                 </p>
                 <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-                  It should clarify the goal, inspect the codebase, create the work stream, and cut the ticket DAG that smaller executors can finish.
+                  Use the planner to refine scope, inspect the project, and create or update work streams and tickets.
                 </p>
               </div>
 
@@ -247,13 +262,13 @@ export function OrchestratorConsole({
                   void submit()
                 }
               }}
-              placeholder="Describe the initiative, constraints, non-goals, or ask what should be ticketed next."
+              placeholder="Describe the task, scope, constraints, or ask what should be ticketed next."
               className="min-h-[120px] resize-y rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary/40 focus:ring-2 focus:ring-primary/15"
               disabled={sending}
             />
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
-                The orchestrator should stay at the planning layer: clarify, inspect, create work streams, and cut tickets with acceptance boundaries. Background workers handle implementation.
+                Keep requests at the planning layer: scope review, ticket creation, queue triage, and re-planning. Workers handle implementation.
               </p>
               <Button
                 type="button"
@@ -261,7 +276,7 @@ export function OrchestratorConsole({
                 disabled={sending || !draft.trim()}
                 className="min-w-[140px]"
               >
-                {sending ? 'Planning...' : 'Send to Orchestrator'}
+                {sending ? 'Running...' : 'Send'}
               </Button>
             </div>
           </div>

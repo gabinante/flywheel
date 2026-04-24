@@ -887,7 +887,7 @@ func (s *ExecutionStepStore) GetStepsByTicketID(_ context.Context, ticketID stri
 func (s *ExecutionStepStore) GetAgentIDByTicketID(_ context.Context, ticketID string) (string, error) {
 	var agentID string
 	err := s.db.QueryRow(
-		`SELECT agent_id FROM execution_steps WHERE ticket_id = ? ORDER BY created_at DESC LIMIT 1`, ticketID).
+		`SELECT agent_id FROM execution_steps WHERE ticket_id = ? AND agent_id <> '' ORDER BY created_at DESC LIMIT 1`, ticketID).
 		Scan(&agentID)
 	return agentID, err
 }

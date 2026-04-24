@@ -1,15 +1,18 @@
 package dispatch
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 // readClaudeOAuthToken reads the Claude Code OAuth access token from the macOS
@@ -46,6 +49,15 @@ type WorkerResult struct {
 // Worker spawns an agent session for a ticket.
 type Worker interface {
 	Spawn(ctx context.Context, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL string) (*WorkerResult, error)
+}
+
+// WorkerOutputHandler receives incremental stdout/stderr lines from a worker process.
+type WorkerOutputHandler func(stream, text string)
+
+// StreamableWorker is a Worker that can emit incremental output while it runs.
+type StreamableWorker interface {
+	Worker
+	SpawnStream(ctx context.Context, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL string, onOutput WorkerOutputHandler) (*WorkerResult, error)
 }
 
 func buildTaskPrompt(ticketID, projectID string) string {
@@ -122,6 +134,11 @@ type CLIWorker struct {
 
 // Spawn starts an agent process with the given system prompt and MCP config.
 func (w *CLIWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL string) (*WorkerResult, error) {
+	return w.SpawnStream(ctx, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL, nil)
+}
+
+// SpawnStream starts an agent process and emits incremental stdout/stderr lines.
+func (w *CLIWorker) SpawnStream(ctx context.Context, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL string, onOutput WorkerOutputHandler) (*WorkerResult, error) {
 	// Apply driver's prompt formatting.
 	systemPrompt = w.Driver.FormatPrompt(systemPrompt)
 
@@ -166,8 +183,7 @@ func (w *CLIWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt
 
 	cmd.Env = env
 
-	out, err := cmd.CombinedOutput()
-	output := strings.TrimSpace(string(out))
+	output, err := runCommandStreaming(cmd, onOutput)
 
 	if err != nil {
 		return &WorkerResult{
@@ -201,6 +217,11 @@ type DockerWorker struct {
 
 // Spawn runs an agent process inside a Docker container.
 func (w *DockerWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL string) (*WorkerResult, error) {
+	return w.SpawnStream(ctx, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL, nil)
+}
+
+// SpawnStream runs an agent process inside a Docker container and streams stdout/stderr lines.
+func (w *DockerWorker) SpawnStream(ctx context.Context, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL string, onOutput WorkerOutputHandler) (*WorkerResult, error) {
 	// Apply driver's prompt formatting.
 	systemPrompt = w.Driver.FormatPrompt(systemPrompt)
 
@@ -330,8 +351,7 @@ func (w *DockerWorker) Spawn(ctx context.Context, ticketID, projectID, systemPro
 	args = append(args, agentCmd)
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
-	out, err := cmd.CombinedOutput()
-	output := strings.TrimSpace(string(out))
+	output, err := runCommandStreaming(cmd, onOutput)
 
 	if err != nil {
 		return &WorkerResult{
@@ -345,6 +365,72 @@ func (w *DockerWorker) Spawn(ctx context.Context, ticketID, projectID, systemPro
 		Success: true,
 		Output:  output,
 	}, nil
+}
+
+type workerOutputEvent struct {
+	stream string
+	text   string
+}
+
+func runCommandStreaming(cmd *exec.Cmd, onOutput WorkerOutputHandler) (string, error) {
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return "", err
+	}
+	if err := cmd.Start(); err != nil {
+		return "", err
+	}
+
+	events := make(chan workerOutputEvent, 128)
+	errCh := make(chan error, 2)
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go streamPipeOutput("stdout", stdout, events, errCh, &wg)
+	go streamPipeOutput("stderr", stderr, events, errCh, &wg)
+	go func() {
+		wg.Wait()
+		close(events)
+		close(errCh)
+	}()
+
+	var output strings.Builder
+	for event := range events {
+		if output.Len() > 0 {
+			output.WriteByte('\n')
+		}
+		output.WriteString(event.text)
+		if onOutput != nil {
+			onOutput(event.stream, event.text)
+		}
+	}
+
+	waitErr := cmd.Wait()
+	for streamErr := range errCh {
+		if streamErr != nil && waitErr == nil {
+			waitErr = streamErr
+		}
+	}
+
+	return strings.TrimSpace(output.String()), waitErr
+}
+
+func streamPipeOutput(stream string, reader io.Reader, events chan<- workerOutputEvent, errCh chan<- error, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		events <- workerOutputEvent{
+			stream: stream,
+			text:   strings.TrimRight(scanner.Text(), "\r"),
+		}
+	}
+	errCh <- scanner.Err()
 }
 
 func sanitizeContainerName(s string) string {

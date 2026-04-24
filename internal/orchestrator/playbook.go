@@ -22,8 +22,8 @@ type WorkerLane struct {
 
 func DefaultPlaybook() Playbook {
 	return Playbook{
-		Name:    "Command Center Orchestrator",
-		Summary: "Chat with the strongest planner/orchestrator available, then push clearly-scoped work into Flywheel tickets and let dispatch fan that work out to cheaper execution agents.",
+		Name:    "Orchestrator",
+		Summary: "Clarify scope, inspect project context, and create or update work streams and tickets. Leave implementation to workers.",
 		Principles: []string{
 			"Chat first, ticket second. Clarify the goal before creating work.",
 			"Author small tickets with explicit success criteria, relevant files, and acceptance tests.",
@@ -59,9 +59,9 @@ func DefaultPlaybook() Playbook {
 			},
 		},
 		StarterPrompts: []string{
-			"Break this initiative into a work stream and the minimum viable ticket DAG.",
-			"What should we clarify before we let workers touch code on this project?",
-			"Review the current queue and tell me what should be replanned, merged, or delegated next.",
+			"Create or update a work stream and draft the smallest useful ticket DAG.",
+			"What missing scope or constraints should we resolve before creating tickets?",
+			"Review the current queue and identify what should be replanned, merged, or delegated next.",
 		},
 	}
 }

@@ -11,6 +11,9 @@ import { useAuth } from '@/contexts/use-auth'
 import type { components } from '@/lib/api/v1'
 
 type Ticket = components['schemas']['Ticket']
+type DispatchStatus = {
+  active_ticket_ids?: string[]
+}
 
 const POLL_INTERVAL = 10_000
 
@@ -31,32 +34,42 @@ export function CommandCenterPage() {
     if (!projectId || !token) return
 
     try {
-      const [claimedRes, executingRes, reviewsRes] = await Promise.all([
-        client.GET('/projects/{projectID}/tickets', {
-          params: { path: { projectID: projectId }, query: { state: 'claimed' } },
-        }),
-        client.GET('/projects/{projectID}/tickets', {
-          params: { path: { projectID: projectId }, query: { state: 'executing' } },
+      const [statusRes, reviewsRes] = await Promise.all([
+        fetch('/api/dispatch/status', {
+          headers: { Authorization: `Bearer ${token}` },
         }),
         client.GET('/projects/{projectID}/reviews', {
           params: { path: { projectID: projectId } },
         }),
       ])
 
-      const claimed: Ticket[] = claimedRes.response.ok
-        ? ((claimedRes.data ?? []) as Ticket[])
-        : []
-      const executing: Ticket[] = executingRes.response.ok
-        ? ((executingRes.data ?? []) as Ticket[])
-        : []
-      const active = [...executing, ...claimed]
+      const status = statusRes.ok
+        ? ((await statusRes.json()) as DispatchStatus)
+        : null
+      const activeTicketIds = [...new Set(status?.active_ticket_ids ?? [])]
+
+      const activeTicketResults = await Promise.all(
+        activeTicketIds.map(async (ticketId) => {
+          const { data, response } = await client.GET('/tickets/{ticketID}', {
+            params: { path: { ticketID: ticketId } },
+          })
+          return response.ok ? (data as Ticket) : null
+        }),
+      )
+
+      const active = activeTicketResults.filter(
+        (ticket): ticket is Ticket => ticket !== null,
+      )
       setActiveTickets(active)
       ticketListRef.current = active
 
       const reviews: Ticket[] = reviewsRes.response.ok
         ? (reviewsRes.data?.tickets ?? [])
         : []
-      setPendingReviews(reviews)
+      const activeTicketIdSet = new Set(active.map((ticket) => ticket.id).filter(Boolean))
+      setPendingReviews(
+        reviews.filter((ticket) => !ticket.id || !activeTicketIdSet.has(ticket.id)),
+      )
 
       // Fetch traces for active tickets
       const traceTargets = active.slice(0, 5)
@@ -150,7 +163,7 @@ export function CommandCenterPage() {
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Command Center</h1>
           <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">
-            Chat with the orchestrator here. It should decompose the initiative into work streams and tickets while the event-driven dispatch system fans execution out to smaller workers in the background.
+            Use the orchestrator to inspect scope, create or update work streams, and author tickets. Execution and review run in the queue.
           </p>
         </div>
         <span className="text-xs text-muted-foreground">
@@ -223,10 +236,10 @@ export function CommandCenterPage() {
           <div className="flex h-full items-center justify-center p-8">
             <div className="flex max-w-xl flex-col items-center gap-2 text-center">
               <p className="text-sm text-muted-foreground">
-                Select a ticket to inspect execution details.
+                Select a ticket to inspect state, trace, and outputs.
               </p>
               <p className="text-xs leading-relaxed text-muted-foreground/70">
-                The chat stays primary. Ticket detail stays one click away from the queue snapshot or the live activity feed.
+                Use the queue snapshot or activity list to switch between active tickets.
               </p>
             </div>
           </div>

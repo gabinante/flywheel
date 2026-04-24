@@ -54,6 +54,8 @@ const STEP_TYPE_CONFIG: Record<
 
 /** States where the ticket is still being worked on and trace may grow. */
 const IN_PROGRESS_STATES = new Set(['claimed', 'executing'])
+const LIVE_POLL_INTERVAL_MS = 1500
+const WORKER_OUTPUT_KIND = 'worker_output'
 
 function formatTimestamp(iso: string): string {
   try {
@@ -83,6 +85,53 @@ function formatRelativeTime(current: string, previous: string): string | null {
   }
 }
 
+function getPayloadRecord(step: TraceStep): Record<string, unknown> | null {
+  if (!step.payload || typeof step.payload !== 'object') return null
+  return step.payload as Record<string, unknown>
+}
+
+function getWorkerOutput(step: TraceStep):
+  | { stream: string; text: string }
+  | null {
+  const payload = getPayloadRecord(step)
+  if (!payload || payload.kind !== WORKER_OUTPUT_KIND) {
+    return null
+  }
+  if (typeof payload.text !== 'string') {
+    return null
+  }
+  return {
+    stream: typeof payload.stream === 'string' ? payload.stream : 'stdout',
+    text: payload.text,
+  }
+}
+
+function summarizePayload(step: TraceStep): string | null {
+  const payload = getPayloadRecord(step)
+  if (!payload) return null
+  if (payload.kind === WORKER_OUTPUT_KIND) {
+    return null
+  }
+  if ('message' in payload && typeof payload.message === 'string') {
+    return payload.message
+  }
+  if ('summary' in payload && typeof payload.summary === 'string') {
+    return payload.summary
+  }
+  if ('name' in payload && typeof payload.name === 'string') {
+    return payload.name
+  }
+  if ('text' in payload && typeof payload.text === 'string') {
+    return payload.text
+  }
+  if ('command' in payload && typeof payload.command === 'string') {
+    return payload.command
+  }
+  const keys = Object.keys(payload)
+  if (keys.length === 0) return null
+  return keys.slice(0, 3).join(', ')
+}
+
 function TimelineStep({
   step,
   isLast,
@@ -108,6 +157,7 @@ function TimelineStep({
     step.created_at && previousStep?.created_at
       ? formatRelativeTime(step.created_at, previousStep.created_at)
       : null
+  const summary = summarizePayload(step)
 
   return (
     <div className="group relative flex gap-3">
@@ -138,7 +188,7 @@ function TimelineStep({
       >
         <button
           type="button"
-          className="flex w-full items-center gap-2.5 px-3 py-2 text-left"
+          className="flex w-full items-start gap-2.5 px-3 py-2 text-left"
           onClick={() => hasPayload && setExpanded(!expanded)}
           disabled={!hasPayload}
         >
@@ -152,19 +202,28 @@ function TimelineStep({
             <span className="size-3 shrink-0" />
           )}
 
-          <Badge
-            variant="outline"
-            className={cn('gap-1 px-1.5 py-0.5 text-[10px]', config.className)}
-          >
-            <Icon className="size-2.5" />
-            {config.label}
-          </Badge>
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <Badge
+                variant="outline"
+                className={cn('gap-1 px-1.5 py-0.5 text-[10px]', config.className)}
+              >
+                <Icon className="size-2.5" />
+                {config.label}
+              </Badge>
 
-          {relTime ? (
-            <span className="text-muted-foreground/50 text-[10px]">
-              +{relTime}
-            </span>
-          ) : null}
+              {relTime ? (
+                <span className="text-muted-foreground/50 text-[10px]">
+                  +{relTime}
+                </span>
+              ) : null}
+            </div>
+            {summary ? (
+              <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground/80">
+                {summary}
+              </p>
+            ) : null}
+          </div>
 
           {step.created_at ? (
             <span className="text-muted-foreground/60 ml-auto shrink-0 font-mono text-[10px]">
@@ -181,6 +240,97 @@ function TimelineStep({
           </div>
         ) : null}
       </div>
+    </div>
+  )
+}
+
+function WorkerLogConsole({
+  steps,
+  isLive,
+}: {
+  steps: TraceStep[]
+  isLive: boolean
+}) {
+  const scrollerRef = useRef<HTMLDivElement | null>(null)
+  const entries = steps
+    .map((step, index) => {
+      const output = getWorkerOutput(step)
+      if (!output) return null
+      return {
+        id: step.id ?? `worker-log-${index}`,
+        createdAt: step.created_at,
+        stream: output.stream,
+        text: output.text,
+      }
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+
+  useEffect(() => {
+    if (!isLive || !scrollerRef.current) return
+    scrollerRef.current.scrollTop = scrollerRef.current.scrollHeight
+  }, [entries.length, isLive])
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-white/[0.08] bg-black/20">
+      <div className="flex items-center justify-between border-b border-white/[0.06] px-3 py-2">
+        <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.24em] text-foreground/55">
+          <Terminal className="size-3.5" />
+          Worker Logs
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="muted" className="text-[10px] tabular-nums">
+            {entries.length} line{entries.length !== 1 ? 's' : ''}
+          </Badge>
+          {isLive ? (
+            <span className="flex items-center gap-1 text-[10px] text-emerald-400/70">
+              <span className="size-1.5 animate-pulse rounded-full bg-emerald-400" />
+              Tailing
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      {entries.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 px-4 py-6 text-center">
+          <Terminal className="size-8 text-muted-foreground/25" />
+          <p className="text-sm text-muted-foreground">No worker output yet.</p>
+          {isLive ? (
+            <p className="text-xs text-muted-foreground/60">
+              Logs will appear here while the worker runs.
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <div
+          ref={scrollerRef}
+          className="max-h-80 overflow-auto px-3 py-3 font-mono text-xs leading-6"
+        >
+          <div className="flex flex-col gap-1.5">
+            {entries.map((entry) => (
+              <div key={entry.id} className="flex items-start gap-3">
+                <span
+                  className={cn(
+                    'mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-[0.24em]',
+                    entry.stream === 'stderr'
+                      ? 'bg-red-500/15 text-red-300'
+                      : 'bg-emerald-500/15 text-emerald-300',
+                  )}
+                >
+                  {entry.stream === 'stderr' ? 'ERR' : 'OUT'}
+                </span>
+                <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-foreground/80">
+                  {entry.text || ' '}
+                </span>
+                {entry.createdAt ? (
+                  <span className="shrink-0 text-[10px] text-muted-foreground/45">
+                    {formatTimestamp(entry.createdAt)}
+                  </span>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -241,12 +391,12 @@ export function ExecutionTraceCard({
     }
   }, [fetchTrace])
 
-  // Auto-refresh every 10s when in-progress
+  // Poll more aggressively while the worker is active so the log view feels live.
   useEffect(() => {
     if (isInProgress) {
       intervalRef.current = setInterval(() => {
         void fetchTrace({ silent: true })
-      }, 10_000)
+      }, LIVE_POLL_INTERVAL_MS)
     }
     return () => {
       if (intervalRef.current) {
@@ -293,6 +443,8 @@ export function ExecutionTraceCard({
   }
 
   const stepCount = steps?.length ?? 0
+  const workerLogSteps = (steps ?? []).filter((step) => getWorkerOutput(step))
+  const timelineSteps = (steps ?? []).filter((step) => !getWorkerOutput(step))
 
   return (
     <Card>
@@ -351,15 +503,23 @@ export function ExecutionTraceCard({
               ) : null}
             </div>
           ) : (
-            <div className="flex flex-col">
-              {steps.map((step, i) => (
-                <TimelineStep
-                  key={step.id ?? i}
-                  step={step}
-                  isLast={i === steps.length - 1}
-                  previousStep={i > 0 ? steps[i - 1] : undefined}
-                />
-              ))}
+            <div className="flex flex-col gap-4">
+              {workerLogSteps.length > 0 || isInProgress ? (
+                <WorkerLogConsole steps={workerLogSteps} isLive={isInProgress} />
+              ) : null}
+
+              {timelineSteps.length > 0 ? (
+                <div className="flex flex-col">
+                  {timelineSteps.map((step, i) => (
+                    <TimelineStep
+                      key={step.id ?? i}
+                      step={step}
+                      isLast={i === timelineSteps.length - 1}
+                      previousStep={i > 0 ? timelineSteps[i - 1] : undefined}
+                    />
+                  ))}
+                </div>
+              ) : null}
             </div>
           )}
         </CardContent>

@@ -430,6 +430,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			AgentAPIKey:          cfg.Dispatch.AgentAPIKey,
 			ReconcileInterval:    cfg.Dispatch.ReconcileInterval,
 			CostSvc:              costSvc,
+			TraceSvc:             execSvc,
 		}, bus, ticketSvc, projectSvc)
 		dispatcher.SetLeaseReleaser(queueSvc)
 		dispatcher.SetTicketTransitioner(ticketSvc)

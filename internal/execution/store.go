@@ -26,6 +26,10 @@ func (s *Store) AppendStep(ctx context.Context, ticketID, agentID string, step S
 	if step.ID == "" {
 		step.ID = mustUUID()
 	}
+	var agentIDValue any
+	if agentID != "" {
+		agentIDValue = agentID
+	}
 	// Use worker_type if set on the step; column is nullable for backward compat.
 	var workerType *string
 	if step.WorkerType != "" {
@@ -33,7 +37,7 @@ func (s *Store) AppendStep(ctx context.Context, ticketID, agentID string, step S
 	}
 	_, err := s.pool.Exec(ctx,
 		`INSERT INTO execution_steps (id, ticket_id, agent_id, type, payload, worker_type, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		step.ID, ticketID, agentID, string(step.Type), payloadJSON, workerType, step.CreatedAt)
+		step.ID, ticketID, agentIDValue, string(step.Type), payloadJSON, workerType, step.CreatedAt)
 	return err
 }
 
@@ -68,7 +72,7 @@ func (s *Store) GetStepsByTicketID(ctx context.Context, ticketID string) ([]Step
 func (s *Store) GetAgentIDByTicketID(ctx context.Context, ticketID string) (string, error) {
 	var agentID string
 	err := s.pool.QueryRow(ctx,
-		`SELECT agent_id FROM execution_steps WHERE ticket_id = $1 ORDER BY created_at DESC LIMIT 1`, ticketID).
+		`SELECT agent_id FROM execution_steps WHERE ticket_id = $1 AND COALESCE(agent_id, '') <> '' ORDER BY created_at DESC LIMIT 1`, ticketID).
 		Scan(&agentID)
 	return agentID, err
 }

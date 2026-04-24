@@ -10,6 +10,7 @@ import (
 type mockStepStore struct {
 	appendErr     error
 	steps         []Step
+	agentIDs      []string
 	getStepsErr   error
 	agentID       string
 	getAgentIDErr error
@@ -19,6 +20,7 @@ func (m *mockStepStore) AppendStep(ctx context.Context, ticketID, agentID string
 	if m.appendErr != nil {
 		return m.appendErr
 	}
+	m.agentIDs = append(m.agentIDs, agentID)
 	m.steps = append(m.steps, step)
 	return nil
 }
@@ -39,7 +41,7 @@ func (m *mockStepStore) GetAgentIDByTicketID(ctx context.Context, ticketID strin
 
 type mockLeaseValidator struct {
 	agentID string
-	err    error
+	err     error
 }
 
 func (m *mockLeaseValidator) ValidateLease(ctx context.Context, ticketID, token string) (string, error) {
@@ -84,6 +86,26 @@ func TestService_LogStep_InvalidLease_ReturnsError(t *testing.T) {
 	}
 	if len(store.steps) != 0 {
 		t.Errorf("expected no step appended, got %d", len(store.steps))
+	}
+}
+
+func TestService_AppendSystemStep_SetsCreatedAtWithoutLease(t *testing.T) {
+	store := &mockStepStore{}
+	svc := NewService(store, &mockLeaseValidator{})
+	ctx := context.Background()
+
+	step := Step{Type: StepTypeObservation, Payload: map[string]any{"message": "worker output"}}
+	if err := svc.AppendSystemStep(ctx, "ticket1", step); err != nil {
+		t.Fatalf("AppendSystemStep: %v", err)
+	}
+	if len(store.steps) != 1 {
+		t.Fatalf("expected 1 step, got %d", len(store.steps))
+	}
+	if got := store.steps[0]; got.CreatedAt.IsZero() {
+		t.Fatal("CreatedAt should be set by AppendSystemStep")
+	}
+	if len(store.agentIDs) != 1 || store.agentIDs[0] != "" {
+		t.Fatalf("expected AppendSystemStep to append with an empty agent id, got %v", store.agentIDs)
 	}
 }
 

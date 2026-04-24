@@ -19,7 +19,7 @@ type StepStore interface {
 
 // Service provides execution trace operations.
 type Service struct {
-	store   StepStore
+	store    StepStore
 	validate LeaseValidator
 }
 
@@ -38,6 +38,15 @@ func (s *Service) LogStep(ctx context.Context, ticketID, leaseToken string, step
 		step.CreatedAt = time.Now().UTC()
 	}
 	return s.store.AppendStep(ctx, ticketID, agentID, step)
+}
+
+// AppendSystemStep appends a trace step that originates from the server rather
+// than a leased worker session.
+func (s *Service) AppendSystemStep(ctx context.Context, ticketID string, step Step) error {
+	if step.CreatedAt.IsZero() {
+		step.CreatedAt = time.Now().UTC()
+	}
+	return s.store.AppendStep(ctx, ticketID, "", step)
 }
 
 // GetTrace returns the full execution history for a ticket.
