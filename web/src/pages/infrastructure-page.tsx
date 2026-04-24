@@ -7,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { PipelineView } from '@/components/infrastructure/pipeline-view'
 
 export function InfrastructurePage() {
   return (
@@ -47,10 +48,8 @@ export function InfrastructurePage() {
             Deployment pipeline stages and current run status.
           </CardDescription>
         </CardHeader>
-        <CardContent className="py-8 text-center">
-          <p className="text-sm text-muted-foreground">
-            Pipeline data will appear here.
-          </p>
+        <CardContent className="pt-4">
+          <PipelineView />
         </CardContent>
       </Card>
 
