@@ -504,6 +504,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		HooksHandler:   &rest.HooksHandler{Client: hooksClient},
 		PillarsHandler: &rest.PillarsHandler{PillarSvc: pillarSvc},
 		WebDist:        cfg.Server.WebDist,
+		WebDevProxyURL: cfg.Server.WebDevProxyURL,
 	})
 
 	serve(ctx, cfg, router, dispatcher, bus)
@@ -762,6 +763,7 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		CatalogHandler: &rest.CatalogHandler{Svc: catalogSvc, Scanner: catalogScanner},
 		PillarsHandler: &rest.PillarsHandler{PillarSvc: pillarSvc},
 		WebDist:        cfg.Server.WebDist,
+		WebDevProxyURL: cfg.Server.WebDevProxyURL,
 	})
 
 	serve(ctx, cfg, router, nil, bus)

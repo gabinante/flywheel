@@ -46,7 +46,7 @@ If you leave GitHub OAuth empty, sign-in is off and some endpoints return 401.
 cd web && npm install && npm run dev
 ```
 
-Vite defaults to port **5173** and proxies API calls to `127.0.0.1:8080` (change with `VITE_API_PROXY` if your API isn’t there). After editing `api/openapi.yaml`, run `npm run gen:api` in `web/`. To run the Go server with a production UI build: `make web-build` first.
+Vite defaults to port **5173** and proxies API calls to `127.0.0.1:8080` (change with `VITE_API_PROXY` if your API isn’t there). If you want to keep browsing through **`http://localhost:8080`** while still getting HMR, set `WEB_DEV_PROXY_URL=http://127.0.0.1:5173` before starting the Go server; it will reverse-proxy frontend requests to Vite while keeping API routes local. After editing `api/openapi.yaml`, run `npm run gen:api` in `web/`. To run the Go server with a production UI build: `make web-build` first.
 
 ## Binary releases
 

@@ -1,6 +1,7 @@
 import { Server } from 'lucide-react'
 
 import { StateHealth } from '@/components/infrastructure/state-health'
+import { CatalogEntityList } from '@/components/infrastructure/catalog-entity-list'
 import {
   Card,
   CardContent,
@@ -27,19 +28,7 @@ export function InfrastructurePage() {
       </div>
 
       {/* Catalog */}
-      <Card className="border-white/10 bg-white/5 backdrop-blur-md">
-        <CardHeader className="border-b border-white/10 pb-4">
-          <CardTitle className="text-sm">Catalog</CardTitle>
-          <CardDescription>
-            Registered entities and their relationships across the project.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="py-8 text-center">
-          <p className="text-sm text-muted-foreground">
-            Catalog data will appear here.
-          </p>
-        </CardContent>
-      </Card>
+      <CatalogEntityList />
 
       {/* Pipeline */}
       <Card className="border-white/10 bg-white/5 backdrop-blur-md">

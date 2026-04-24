@@ -9,3 +9,4 @@ web/dist
 /bin/
 /logs/
 .DS_Store
+.claude/worktrees/

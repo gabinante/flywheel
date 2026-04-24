@@ -136,8 +136,9 @@ func Load() *Config {
 			FastModel:                   getEnv("COST_FAST_MODEL", "claude-haiku-3-20250307"),
 		},
 		Server: ServerConfig{
-			Port:    port,
-			WebDist: getEnv("WEB_DIST", "web/dist"),
+			Port:           port,
+			WebDist:        getEnv("WEB_DIST", "web/dist"),
+			WebDevProxyURL: getEnv("WEB_DEV_PROXY_URL", ""),
 		},
 		DB: DBConfig{
 			URL: getEnv("DATABASE_URL", "postgres://flywheel:flywheel@localhost:5433/flywheel?sslmode=disable"),
@@ -382,8 +383,9 @@ type OrchestratorConfig struct {
 }
 
 type ServerConfig struct {
-	Port    string
-	WebDist string // directory with Vite build (index.html, assets/). Empty disables SPA routes.
+	Port           string
+	WebDist        string // directory with Vite build (index.html, assets/). Empty disables SPA routes.
+	WebDevProxyURL string // optional Vite dev server URL to reverse proxy for HMR in local development.
 }
 
 type AuthConfig struct {

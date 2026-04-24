@@ -34,6 +34,8 @@ type RouterConfig struct {
 	PillarsHandler      *PillarsHandler      // Pillar and strategy layer (Layer 15)
 	// WebDist is the Vite outDir (contains index.html and assets/). Empty skips SPA routes.
 	WebDist string
+	// WebDevProxyURL reverse-proxies frontend requests to a running Vite dev server.
+	WebDevProxyURL string
 }
 
 // NewRouter returns an http.Handler with global middleware and all routes:
@@ -71,7 +73,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	})
 	_ = generated.HandlerWithOptions(strictHandler, generated.StdHTTPServerOptions{BaseRouter: mux})
 
-	MountWebUI(mux, cfg.WebDist)
+	MountWebUI(mux, cfg.WebDist, cfg.WebDevProxyURL)
 
 	// Auth routes (when configured)
 	if cfg.AuthHandler != nil {
