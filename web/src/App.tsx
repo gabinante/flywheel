@@ -5,6 +5,7 @@ import { AuthProvider } from '@/contexts/auth-provider'
 import { useAuth } from '@/contexts/use-auth'
 import { CommandCenterPage } from '@/pages/command-center-page'
 import { HomePage } from '@/pages/home-page'
+import { InfrastructurePage } from '@/pages/infrastructure-page'
 import { OrgsPage } from '@/pages/orgs-page'
 import { PolicyHealthPage } from '@/pages/policy-health-page'
 import { ProjectPage } from '@/pages/project-page'
@@ -71,6 +72,10 @@ export default function App() {
               <Route
                 path="/orgs/:orgId/projects/:projectId/reviews"
                 element={<ReviewsPage />}
+              />
+              <Route
+                path="/orgs/:orgId/projects/:projectId/infrastructure"
+                element={<InfrastructurePage />}
               />
               <Route
                 path="/orgs/:orgId/projects/:projectId/policies"

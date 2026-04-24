@@ -7,6 +7,7 @@ import {
   LogOut,
   PieChart,
   Building2,
+  Server,
   ShieldCheck,
   Ticket,
   Workflow,
@@ -112,6 +113,12 @@ export function LeftSidebar() {
 
   const observeItems: NavItem[] = projectBase
     ? [
+        {
+          label: 'Infrastructure',
+          icon: Server,
+          href: `${projectBase}/infrastructure`,
+          match: `${projectBase}/infrastructure`,
+        },
         {
           label: 'Usage',
           icon: PieChart,
