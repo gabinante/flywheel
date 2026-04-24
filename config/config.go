@@ -189,18 +189,18 @@ func (c *Config) Validate() []string {
 		}
 	}
 
-	if c.Dispatch.Enabled && runnerName == dispatch.RunnerOpenAIResponses && c.Dispatch.AgentAPIKey == "" {
+	if c.Dispatch.Enabled && (runnerName == dispatch.RunnerOpenAIResponses || runnerName == dispatch.RunnerOpenAICompatible) && c.Dispatch.AgentAPIKey == "" {
 		warnings = append(warnings,
-			"DISPATCH_ENABLED=true and DISPATCH_AGENT_RUNNER=openai-responses but no API key was found; "+
+			fmt.Sprintf("DISPATCH_ENABLED=true and DISPATCH_AGENT_RUNNER=%s but no API key was found; ", runnerName)+
 				"set DISPATCH_AGENT_API_KEY or OPENAI_API_KEY")
 	}
 	if c.Orchestrator.Enabled {
 		if err := dispatchValidateRunner(c.Orchestrator.AgentRunner); err != nil {
 			warnings = append(warnings, "ORCHESTRATOR_ENABLED=true but "+err.Error())
 		}
-		if c.Orchestrator.AgentRunner == dispatch.RunnerOpenAIResponses && c.Orchestrator.AgentAPIKey == "" {
+		if (c.Orchestrator.AgentRunner == dispatch.RunnerOpenAIResponses || c.Orchestrator.AgentRunner == dispatch.RunnerOpenAICompatible) && c.Orchestrator.AgentAPIKey == "" {
 			warnings = append(warnings,
-				"ORCHESTRATOR_ENABLED=true and ORCHESTRATOR_AGENT_RUNNER=openai-responses but no API key was found; "+
+				fmt.Sprintf("ORCHESTRATOR_ENABLED=true and ORCHESTRATOR_AGENT_RUNNER=%s but no API key was found; ", c.Orchestrator.AgentRunner)+
 					"set ORCHESTRATOR_AGENT_API_KEY or OPENAI_API_KEY")
 		}
 		if c.Orchestrator.AgentRunner == dispatch.RunnerCLI {
@@ -352,7 +352,7 @@ type DispatchConfig struct {
 	APIKey                      string // Flywheel API key for worker MCP authentication
 	ProjectID                   string // only dispatch tickets for this project (empty = all)
 	AutoApproveOnAcceptancePass bool
-	AgentRunner                 string // execution backend: cli, docker, or openai-responses
+	AgentRunner                 string // execution backend: cli, docker, openai-responses, or openai-compatible
 	// Agent driver settings.
 	AgentDriver          string // driver name: "claude" (default), "generic", or custom registered driver
 	AgentCLIPath         string // override CLI path for the agent binary (DISPATCH_AGENT_CMD)
@@ -494,7 +494,7 @@ func resolveAgentAPIKey(explicitEnv, agentRunner, agentDriver string) string {
 			return v
 		}
 	}
-	if agentRunner == dispatch.RunnerOpenAIResponses || agentDriver == "codex" {
+	if agentRunner == dispatch.RunnerOpenAIResponses || agentRunner == dispatch.RunnerOpenAICompatible || agentDriver == "codex" {
 		if v := getEnv("OPENAI_API_KEY", ""); v != "" {
 			return v
 		}

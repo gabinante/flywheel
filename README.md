@@ -60,12 +60,12 @@ Vite defaults to port **5173** and proxies API calls to `127.0.0.1:8080` (change
 
 Everything lives in `.env.example` with comments. The usual suspects: `PORT`, `DATABASE_URL`, `REDIS_URL`, and for OAuth: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `JWT_SECRET`. Dispatch now splits **runner** from **driver**:
 
-- `DISPATCH_AGENT_RUNNER=cli|docker|openai-responses`
+- `DISPATCH_AGENT_RUNNER=cli|docker|openai-responses|openai-compatible`
 - `DISPATCH_AGENT_DRIVER=claude|codex|generic` for CLI or Docker harnesses
-- `DISPATCH_AGENT_API_KEY` as the generic explicit credential, with `OPENAI_API_KEY` as the fallback for Codex/OpenAI runners and `ANTHROPIC_API_KEY` retained as a Claude fallback
+- `DISPATCH_AGENT_API_KEY` as the generic explicit credential, with `OPENAI_API_KEY` as the fallback for Codex/OpenAI-compatible runners and `ANTHROPIC_API_KEY` retained as a Claude fallback
 - `ORCHESTRATOR_AGENT_*` to give the command-center chat its own stronger planner profile without forcing the background dispatch workers onto the same model or runner
 
-A common setup is a strong command-center orchestrator (`openai-responses` with `xhigh`, or your preferred Claude/Codex harness) paired with cheaper `DISPATCH_*` workers for implementation tickets.
+A common setup is a strong command-center orchestrator (`openai-responses` with `xhigh`, or your preferred Claude/Codex harness) paired with cheaper `DISPATCH_*` workers for implementation tickets. For local gateways like LiteLLM or vLLM, use `openai-compatible` with `DISPATCH_AGENT_API_BASE_URL` pointing at the local `/v1` endpoint and an explicit `DISPATCH_AGENT_MODEL`.
 
 More in [docs/deployment.md](docs/deployment.md) and [internal/dispatch/DRIVERS.md](internal/dispatch/DRIVERS.md).
 

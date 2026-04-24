@@ -145,7 +145,7 @@ func resolveWorkerCredential(cfg Config, envVar string) string {
 		return key
 	}
 	switch {
-	case resolveRunnerType(cfg) == RunnerOpenAIResponses:
+	case resolveRunnerType(cfg) == RunnerOpenAIResponses, resolveRunnerType(cfg) == RunnerOpenAICompatible:
 		return strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
 	case cfg.AgentDriver == "codex":
 		return strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
@@ -200,6 +200,8 @@ func ShouldFailoverToNextWorker(err error, result *WorkerResult) bool {
 		"authentication",
 		"invalid api key",
 		"missing openai api key",
+		"missing api key for openai-compatible runner",
+		"missing model for openai-compatible runner",
 		"missing anthropic api key",
 		"executable file not found",
 	} {

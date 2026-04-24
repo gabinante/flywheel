@@ -69,12 +69,12 @@ type Config struct {
 	ProjectID         string        // only dispatch tickets for this project (empty = all)
 	AutoApprove       bool          // auto-approve tickets when acceptance tests pass
 	ReconcileInterval time.Duration // periodic reconciliation interval (default: 60s)
-	AgentRunner       string        // execution backend: cli, docker, openai-responses
+	AgentRunner       string        // execution backend: cli, docker, openai-responses, or openai-compatible
 	// Agent driver selection.
 	AgentDriver          string   // driver name: "claude" (default), "generic", or custom
 	AgentCLIPath         string   // override CLI path for the agent binary
 	AgentArgs            []string // extra static arguments for the agent command
-	AgentModel           string   // API-native model name (used by openai-responses)
+	AgentModel           string   // API-native model name (used by API-native runners)
 	AgentReasoningEffort string   // API-native reasoning effort
 	AgentAPIBaseURL      string   // API-native base URL
 	// Docker isolation settings.

@@ -10,6 +10,7 @@ The dispatch architecture now has two extension points:
   - `cli` runs a local agent binary in the ticket worktree.
   - `docker` runs the agent inside a container.
   - `openai-responses` uses the OpenAI Responses API with Flywheel MCP plus local workspace tools.
+  - `openai-compatible` uses the standard OpenAI Chat Completions API with Flywheel MCP plus local workspace tools.
 - **Driver:** how a CLI or Docker harness wants its prompt, MCP config, env vars, and credentials.
 
 Infrastructure such as dispatcher event handling, worktree management, prompt assembly, lease recovery, and MCP connection generation stays shared.
@@ -31,6 +32,17 @@ Uses the OpenAI Responses API as the worker runtime.
 - Connects to Flywheel over streamable HTTP MCP at `/mcp`.
 - Exposes local workspace tools for file reads, file writes, directory listing, and shell commands inside the ticket worktree.
 - Uses `OPENAI_API_KEY` as the provider fallback when `DISPATCH_AGENT_API_KEY` is unset.
+- Is currently a host-side backend: it operates in the local worktree rather than inside the Docker worker image.
+
+### `openai-compatible`
+
+Uses the OpenAI-compatible `/chat/completions` API as the worker runtime.
+
+- Designed for providers and gateways that implement the standard OpenAI tool-calling surface, including LiteLLM and vLLM.
+- Connects to Flywheel over streamable HTTP MCP at `/mcp` and mirrors MCP tools into chat-completions function tools.
+- Exposes the same local workspace tools for file reads, file writes, directory listing, and shell commands inside the ticket worktree.
+- Uses `OPENAI_API_KEY` as the provider fallback when `DISPATCH_AGENT_API_KEY` is unset.
+- Requires an explicit `DISPATCH_AGENT_MODEL`; unlike `openai-responses`, Flywheel does not assume an OpenAI-hosted default model.
 - Is currently a host-side backend: it operates in the local worktree rather than inside the Docker worker image.
 
 ## Built-in Drivers
@@ -94,10 +106,16 @@ DISPATCH_AGENT_CMD=/opt/homebrew/bin/codex
 # Optional explicit provider credential
 DISPATCH_AGENT_API_KEY=sk-...
 
-# API-native OpenAI backend
+# API-native OpenAI Responses backend
 DISPATCH_AGENT_RUNNER=openai-responses
 OPENAI_API_KEY=sk-...
 DISPATCH_AGENT_MODEL=gpt-5.2-codex
+
+# OpenAI-compatible backend (LiteLLM, vLLM, local gateways)
+DISPATCH_AGENT_RUNNER=openai-compatible
+DISPATCH_AGENT_API_BASE_URL=http://localhost:4000/v1
+DISPATCH_AGENT_MODEL=qwen2.5-coder
+OPENAI_API_KEY=sk-...
 
 # Standard dispatch settings still apply
 DISPATCH_ENABLED=true

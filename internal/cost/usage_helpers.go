@@ -28,6 +28,8 @@ func InferProviderModel(runner, driver, configuredModel string) (provider, model
 	switch {
 	case runner == "openai-responses":
 		return "openai", "gpt-5.2-codex"
+	case runner == "openai-compatible":
+		return "openai-compatible", "api-compatible"
 	case driver == "claude":
 		return "anthropic", "claude-cli"
 	case driver == "codex":
@@ -54,6 +56,8 @@ func APILabel(provider, model string) string {
 		return "openai"
 	case strings.Contains(model, "gemini"):
 		return "gemini"
+	case provider == "openai-compatible":
+		return "openai-compatible"
 	case provider == "anthropic":
 		return "claude"
 	case provider == "openai":
@@ -74,6 +78,8 @@ func inferProviderFromModel(model, driver, runner string) string {
 		return "anthropic"
 	case strings.Contains(lower, "codex"), strings.Contains(lower, "gpt"), strings.Contains(lower, "o1"), runner == "openai-responses":
 		return "openai"
+	case runner == "openai-compatible":
+		return "openai-compatible"
 	case strings.Contains(lower, "gemini"):
 		return "google"
 	case driver == "claude":

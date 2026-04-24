@@ -281,6 +281,33 @@ func TestNewDispatcherOpenAIResponsesWorker(t *testing.T) {
 	}
 }
 
+func TestNewDispatcherOpenAICompatibleWorker(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter()
+	pg := newMockProjectGetter()
+
+	cfg := Config{
+		MaxWorkers:  1,
+		AgentRunner: RunnerOpenAICompatible,
+		AgentAPIKey: "sk-openai",
+		APIKey:      "wf-key",
+		RepoDir:     "/repo",
+		AgentModel:  "qwen2.5-coder",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	apiWorker, ok := d.worker.(*OpenAICompatibleWorker)
+	if !ok {
+		t.Fatal("expected OpenAICompatibleWorker when AgentRunner=openai-compatible")
+	}
+	if apiWorker.Config.Model != "qwen2.5-coder" {
+		t.Errorf("expected model qwen2.5-coder, got %q", apiWorker.Config.Model)
+	}
+	if apiWorker.Config.APIKey != "sk-openai" {
+		t.Errorf("expected API key sk-openai, got %q", apiWorker.Config.APIKey)
+	}
+}
+
 func TestDispatcherActiveCount(t *testing.T) {
 	bus := events.NewInProcessBus()
 	tg := newMockTicketGetter()

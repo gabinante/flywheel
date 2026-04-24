@@ -179,6 +179,12 @@ export DISPATCH_AGENT_DRIVER=codex
 export DISPATCH_AGENT_RUNNER=openai-responses
 export OPENAI_API_KEY="sk-..."
 export DISPATCH_AGENT_MODEL="gpt-5.2-codex"
+
+# Or use an OpenAI-compatible local gateway such as LiteLLM or vLLM:
+export DISPATCH_AGENT_RUNNER=openai-compatible
+export DISPATCH_AGENT_API_BASE_URL="http://localhost:4000/v1"
+export DISPATCH_AGENT_MODEL="qwen2.5-coder"
+export OPENAI_API_KEY="local-token-or-gateway-key"
 ```
 
 ## Environment Variables Reference
@@ -191,13 +197,13 @@ export DISPATCH_AGENT_MODEL="gpt-5.2-codex"
 | `DATABASE_URL` | `postgres://...` | Postgres connection (non-embedded) |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis connection (non-embedded) |
 | `JWT_SECRET` | (auto-generated) | Secret for JWT token signing |
-| `ORCHESTRATOR_AGENT_RUNNER` | `DISPATCH_AGENT_RUNNER` | Command-center orchestrator backend (`cli`, `docker`, `openai-responses`) |
+| `ORCHESTRATOR_AGENT_RUNNER` | `DISPATCH_AGENT_RUNNER` | Command-center orchestrator backend (`cli`, `docker`, `openai-responses`, `openai-compatible`) |
 | `ORCHESTRATOR_AGENT_MODEL` | `DISPATCH_AGENT_MODEL` | Strong planner model for command-center chat |
 | `ORCHESTRATOR_AGENT_REASONING_EFFORT` | `xhigh` for `openai-responses` | Reasoning effort for the orchestrator |
-| `DISPATCH_AGENT_RUNNER` | `cli` | Dispatch execution backend (`cli`, `docker`, `openai-responses`) |
+| `DISPATCH_AGENT_RUNNER` | `cli` | Dispatch execution backend (`cli`, `docker`, `openai-responses`, `openai-compatible`) |
 | `DISPATCH_AGENT_DRIVER` | `claude` | Dispatch driver to run (`claude`, `codex`, `generic`, or custom) |
 | `DISPATCH_AGENT_API_KEY` | (empty) | Explicit provider credential for dispatch workers |
-| `OPENAI_API_KEY` | (empty) | Fallback credential for Codex and `openai-responses` workers |
+| `OPENAI_API_KEY` | (empty) | Fallback credential for Codex, `openai-responses`, and `openai-compatible` workers |
 | `DISPATCH_ENABLED` | `false` | Enable agent dispatch worker |
 | `GITHUB_CLIENT_ID` | (empty) | GitHub OAuth client ID |
 | `GITHUB_CLIENT_SECRET` | (empty) | GitHub OAuth client secret |

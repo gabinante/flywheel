@@ -134,12 +134,21 @@ func openAIChatFunctionTools(defs []openAIFunctionToolDefinition) []openAIChatTo
 	return tools
 }
 
+func isOpenAIWorkspaceTool(name string) bool {
+	for _, def := range openAIWorkspaceToolDefinitions() {
+		if def.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 func executeOpenAIWorkspaceTool(ctx context.Context, workDir string, call openAIResponsesOutputItem) string {
 	return executeOpenAIFunctionTool(ctx, workDir, call.Name, call.Arguments)
 }
 
 func executeOpenAIFunctionTool(ctx context.Context, workDir, name, rawArguments string) string {
-	switch call.Name {
+	switch name {
 	case "workspace_list_files":
 		var args struct {
 			Path       string `json:"path"`

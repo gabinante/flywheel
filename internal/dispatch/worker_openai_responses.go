@@ -245,7 +245,7 @@ type openAIResponsesTool struct {
 	RequireApproval string            `json:"require_approval,omitempty"`
 	Name            string            `json:"name,omitempty"`
 	Description     string            `json:"description,omitempty"`
-	Parameters      map[string]any    `json:"parameters,omitempty"`
+	Parameters      any               `json:"parameters,omitempty"`
 	Strict          bool              `json:"strict,omitempty"`
 }
 

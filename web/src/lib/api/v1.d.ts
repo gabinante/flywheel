@@ -903,7 +903,7 @@ export interface components {
             name?: string;
             enabled?: boolean;
             /** @enum {string} */
-            runner?: "cli" | "docker" | "openai-responses";
+            runner?: "cli" | "docker" | "openai-responses" | "openai-compatible";
             /** @enum {string} */
             driver?: "claude" | "codex" | "generic";
             /** @description Override binary path when using a CLI or Docker-backed worker. */

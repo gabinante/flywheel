@@ -41,6 +41,7 @@ const RUNNER_OPTIONS = [
   { value: 'cli', label: 'CLI' },
   { value: 'docker', label: 'Docker' },
   { value: 'openai-responses', label: 'OpenAI Responses' },
+  { value: 'openai-compatible', label: 'OpenAI Compatible' },
 ] as const
 
 const DRIVER_OPTIONS = [
@@ -169,6 +170,7 @@ function parseRunnerValue(
     case 'cli':
     case 'docker':
     case 'openai-responses':
+    case 'openai-compatible':
       return value
     default:
       return undefined
@@ -339,8 +341,8 @@ export function ProjectDispatchRoutingCard({
           <div className="space-y-1.5">
             <CardTitle className="text-sm">Worker routing</CardTitle>
             <CardDescription>
-              Configure reusable Claude, Codex, or API-native worker profiles
-              and decide which roles can use them.
+              Configure reusable Claude, Codex, or API-compatible worker
+              profiles and decide which roles can use them.
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
@@ -370,7 +372,8 @@ export function ProjectDispatchRoutingCard({
             <div>
               <h3 className="text-sm font-medium text-foreground">Worker profiles</h3>
               <p className="text-xs text-muted-foreground">
-                Profiles can target Claude, Codex, Docker, or API-native runners.
+                Profiles can target Claude, Codex, Docker, or OpenAI-compatible
+                API runners.
               </p>
             </div>
             <Badge variant="outline">
@@ -473,7 +476,7 @@ export function ProjectDispatchRoutingCard({
                           onChange={(event) =>
                             updateWorker(index, { model: event.target.value })
                           }
-                          placeholder="gpt-5.2-codex"
+                          placeholder="gpt-5.2-codex or qwen2.5-coder"
                         />
                       </Label>
                       <Label>
@@ -495,7 +498,7 @@ export function ProjectDispatchRoutingCard({
                           onChange={(event) =>
                             updateWorker(index, { api_base_url: event.target.value })
                           }
-                          placeholder="https://api.openai.com/v1"
+                          placeholder="https://api.openai.com/v1 or http://localhost:4000/v1"
                         />
                       </Label>
                       <Label className="md:col-span-2 xl:col-span-2">
