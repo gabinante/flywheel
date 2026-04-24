@@ -32,6 +32,7 @@ type RouterConfig struct {
 	ClaimsHandler       *ClaimsHandler       // Claims registry for concurrency control (spec v0.2 §4.3)
 	HooksHandler        *HooksHandler        // Change event webhook receiver (spec v0.2 §2.4)
 	PillarsHandler      *PillarsHandler      // Pillar and strategy layer (Layer 15)
+	DeliveryHandler     *DeliveryHandler     // Delivery integrations (pipeline, PR, config)
 	// WebDist is the Vite outDir (contains index.html and assets/). Empty skips SPA routes.
 	WebDist string
 	// WebDevProxyURL reverse-proxies frontend requests to a running Vite dev server.
@@ -143,6 +144,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	if cfg.PillarsHandler != nil {
 		cfg.PillarsHandler.RegisterRoutes(mux)
+	}
+	if cfg.DeliveryHandler != nil {
+		cfg.DeliveryHandler.RegisterRoutes(mux)
 	}
 
 	h := http.Handler(mux)

@@ -8,6 +8,7 @@ import {
   PieChart,
   Building2,
   Server,
+  Settings,
   ShieldCheck,
   Ticket,
   Workflow,
@@ -134,6 +135,17 @@ export function LeftSidebar() {
       ]
     : []
 
+  const configureItems: NavItem[] = projectBase
+    ? [
+        {
+          label: 'Settings',
+          icon: Settings,
+          href: `${projectBase}/settings`,
+          match: `${projectBase}/settings`,
+        },
+      ]
+    : []
+
   const currentPath = location.pathname
 
   return (
@@ -202,6 +214,14 @@ export function LeftSidebar() {
           <NavSection
             title="Observe"
             items={observeItems}
+            expanded={isExpanded}
+            currentPath={currentPath}
+          />
+        )}
+        {token && configureItems.length > 0 && (
+          <NavSection
+            title="Configure"
+            items={configureItems}
             expanded={isExpanded}
             currentPath={currentPath}
           />

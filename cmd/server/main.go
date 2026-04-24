@@ -23,6 +23,7 @@ import (
 	"github.com/gabinante/flywheel/internal/catalog"
 	"github.com/gabinante/flywheel/internal/claims"
 	"github.com/gabinante/flywheel/internal/cost"
+	"github.com/gabinante/flywheel/internal/delivery"
 	"github.com/gabinante/flywheel/internal/dispatch"
 	"github.com/gabinante/flywheel/internal/embedded"
 	"github.com/gabinante/flywheel/internal/entity"
@@ -261,6 +262,10 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	catalogStore := catalog.NewPostgresStore(pool)
 	catalogSvc := catalog.NewService(catalogStore)
 	catalogScanner := catalog.NewScanner()
+
+	// Delivery service: manages integrations config, pipeline sync, and PR overview.
+	deliverySvc := delivery.NewService(projectSvc, envSvc, catalogSvc, stateIndexSvc)
+	deliverySvc.SetFlyIOFallback(os.Getenv("FLY_API_TOKEN"), os.Getenv("FLY_API_BASE_URL"))
 
 	// Coordinator learning loop: auto-generate feedback findings on ticket
 	// rejection, failure, replan, and invalidation events.
@@ -503,6 +508,12 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		ClaimsHandler:  &rest.ClaimsHandler{ClaimsSvc: claimsSvc},
 		HooksHandler:   &rest.HooksHandler{Client: hooksClient},
 		PillarsHandler: &rest.PillarsHandler{PillarSvc: pillarSvc},
+		DeliveryHandler: &rest.DeliveryHandler{
+			DeliverySvc: deliverySvc,
+			ProjectSvc:  projectSvc,
+			OrgSvc:      orgSvc,
+			AgentStore:  agentStore,
+		},
 		WebDist:        cfg.Server.WebDist,
 		WebDevProxyURL: cfg.Server.WebDevProxyURL,
 	})
@@ -582,6 +593,10 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 	catalogSt := catalog.NewSQLiteStore(sqliteDB)
 	catalogSvc := catalog.NewService(catalogSt)
 	catalogScanner := catalog.NewScanner()
+
+	// Delivery service for embedded mode.
+	deliverySvcEmbed := delivery.NewService(projectSvc, envSvc, catalogSvc, nil)
+	deliverySvcEmbed.SetFlyIOFallback(os.Getenv("FLY_API_TOKEN"), os.Getenv("FLY_API_BASE_URL"))
 
 	// Rollback service for embedded mode.
 	rollbackSvcEmbed := rollback.NewService(ticketSvc, ticketSvc, bus)
@@ -762,6 +777,12 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		HooksHandler:   &rest.HooksHandler{Client: hooksClient},
 		CatalogHandler: &rest.CatalogHandler{Svc: catalogSvc, Scanner: catalogScanner},
 		PillarsHandler: &rest.PillarsHandler{PillarSvc: pillarSvc},
+		DeliveryHandler: &rest.DeliveryHandler{
+			DeliverySvc: deliverySvcEmbed,
+			ProjectSvc:  projectSvc,
+			OrgSvc:      orgSvc,
+			AgentStore:  agentSt,
+		},
 		WebDist:        cfg.Server.WebDist,
 		WebDevProxyURL: cfg.Server.WebDevProxyURL,
 	})

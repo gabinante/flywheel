@@ -1,6 +1,9 @@
 package delivery
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 const ConfigKey = "delivery_config"
 
@@ -16,6 +19,41 @@ const (
 type Config struct {
 	SCM            SCMConfig            `json:"scm,omitempty"`
 	Infrastructure InfrastructureConfig `json:"infrastructure,omitempty"`
+	Credentials    *Credentials         `json:"credentials,omitempty"`
+}
+
+// Credentials holds per-project provider credentials.
+// Stored alongside the delivery config in context_pack.extra.
+type Credentials struct {
+	FlyIOAPIToken string `json:"flyio_api_token,omitempty"`
+}
+
+// CredentialStatus is the masked view of credentials returned by the API.
+// Raw credentials are never exposed — only masked values or boolean flags.
+type CredentialStatus struct {
+	FlyIOConfigured bool   `json:"flyio_configured"`
+	FlyIOMasked     string `json:"flyio_masked,omitempty"`
+}
+
+// MaskToken returns a masked representation of a token for display.
+// Example: "fo1_abc...xyz" for a long token, or "***" for a short one.
+func MaskToken(token string) string {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return ""
+	}
+	if len(token) <= 8 {
+		return "***"
+	}
+	return token[:4] + "***" + token[len(token)-3:]
+}
+
+// ConfigResponse is the API response for GET integrations config.
+// It includes the config without raw credentials plus a credential status block.
+type ConfigResponse struct {
+	SCM            SCMConfig            `json:"scm,omitempty"`
+	Infrastructure InfrastructureConfig `json:"infrastructure,omitempty"`
+	Credentials    CredentialStatus     `json:"credentials"`
 }
 
 type SCMConfig struct {
