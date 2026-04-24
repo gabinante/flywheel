@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import {
   Database,
   Globe,
@@ -119,7 +119,13 @@ function EntityCardSkeleton() {
   )
 }
 
-function EntityCard({ entity }: { entity: CatalogEntity }) {
+function EntityCard({
+  entity,
+  onClick,
+}: {
+  entity: CatalogEntity
+  onClick?: () => void
+}) {
   const Icon = entityTypeIcon(entity.type)
   const labelEntries = entity.labels ? Object.entries(entity.labels) : []
 
@@ -127,6 +133,13 @@ function EntityCard({ entity }: { entity: CatalogEntity }) {
     <div
       role="button"
       tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick?.()
+        }
+      }}
       className="group flex cursor-pointer flex-col gap-3 rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md transition-all duration-200 hover:border-white/20 hover:bg-white/[0.08]"
     >
       <div className="flex items-start gap-3">
@@ -216,8 +229,9 @@ function ErrorState({ message }: { message: string }) {
 // ---------------------------------------------------------------------------
 
 export function CatalogEntityList() {
-  const { projectId } = useParams<{ orgId: string; projectId: string }>()
+  const { orgId, projectId } = useParams<{ orgId: string; projectId: string }>()
   const { token } = useAuth()
+  const navigate = useNavigate()
 
   const [entities, setEntities] = useState<CatalogEntity[]>([])
   const [loading, setLoading] = useState(true)
@@ -354,7 +368,15 @@ export function CatalogEntityList() {
         ) : (
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
             {filteredEntities.map((entity) => (
-              <EntityCard key={entity.id} entity={entity} />
+              <EntityCard
+                key={entity.id}
+                entity={entity}
+                onClick={() =>
+                  navigate(
+                    `/orgs/${orgId}/projects/${projectId}/infrastructure/entities/${entity.id}`,
+                  )
+                }
+              />
             ))}
           </div>
         )}
