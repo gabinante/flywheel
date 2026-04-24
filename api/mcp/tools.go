@@ -203,23 +203,28 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"required":             []string{"project_id", "work_stream_id", "plan"},
 		"additionalProperties": false,
 	}}, wrap(updateWorkStreamPlanHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "create_ticket", Description: "Create a ticket in a project. Response JSON has **ticket** (the new ticket) and **workflow** (next_steps + note) to remind you to claim → start → log_step → submit. The ticket is created as pending; agents claim via claim_ticket. created_by is set to your agent identity. **work_stream_id:** pass when the work belongs to a stream—otherwise the ticket will not appear in the web UI when that stream is filtered (use **update_ticket** later to attach). If set and project has repo_url, the work stream must already have **branch** set via **update_work_stream** after you create/checkout that branch (plan-only updates do not count). **target_repo:** for multi-repo projects, pass the repo alias (from list_project_repositories) to target a specific repo; omit for the primary repo. Optional idempotency_key.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "create_ticket", Description: "Create a ticket in a project. Response JSON has **ticket** (the new ticket) and **workflow** (next_steps + note) to remind you to claim → start → log_step → submit. The ticket is created as pending; agents claim via claim_ticket. created_by is set to your agent identity. **description:** pass the ticket description either as a top-level \"description\" param or nested inside an \"objective\" object as objective.description — both work. The value is stored as objective.description on the ticket. **work_stream_id:** pass when the work belongs to a stream—otherwise the ticket will not appear in the web UI when that stream is filtered (use **update_ticket** later to attach). If set and project has repo_url, the work stream must already have **branch** set via **update_work_stream** after you create/checkout that branch (plan-only updates do not count). **target_repo:** for multi-repo projects, pass the repo alias (from list_project_repositories) to target a specific repo; omit for the primary repo. Optional idempotency_key.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"project_id":       map[string]any{"type": "string", "description": "Project ID"},
-			"title":            map[string]any{"type": "string", "description": "Ticket title"},
-			"description":      map[string]any{"type": "string", "description": "Ticket description / objective"},
+			"project_id":  map[string]any{"type": "string", "description": "Project ID"},
+			"title":       map[string]any{"type": "string", "description": "Ticket title"},
+			"description": map[string]any{"type": "string", "description": "Ticket description — stored as objective.description on the created ticket. You can pass this at the top level OR nest it inside the \"objective\" parameter."},
+			"objective": map[string]any{"type": "object", "description": "Alternative: pass the objective as a nested object. objective.description is equivalent to the top-level description param. If both are provided, top-level description wins.", "properties": map[string]any{
+				"description":      map[string]any{"type": "string", "description": "Ticket description (same as top-level description)"},
+				"success_criteria": map[string]any{"type": "array", "description": "Array of success criteria strings (optional)", "items": map[string]any{"type": "string"}},
+				"acceptance_test":  map[string]any{"type": "string", "description": "Acceptance test description (optional)"},
+			}},
 			"ticket_type":      map[string]any{"type": "string", "description": "Ticket type: task, bug, spike, or review (default: task)", "enum": []string{"task", "bug", "spike", "review"}},
 			"priority":         map[string]any{"type": "integer", "description": "Priority 0-3 (0=P0 highest, default: 2)", "minimum": 0, "maximum": 3},
-			"success_criteria": map[string]any{"type": "string", "description": "JSON array of success criteria strings (optional)"},
-			"acceptance_test":  map[string]any{"type": "string", "description": "Acceptance test description (optional)"},
+			"success_criteria": map[string]any{"type": "string", "description": "JSON array of success criteria strings (optional). Also accepted inside the objective parameter."},
+			"acceptance_test":  map[string]any{"type": "string", "description": "Acceptance test description (optional). Also accepted inside the objective parameter."},
 			"idempotency_key":  map[string]any{"type": "string", "description": "Idempotency key to prevent duplicate creation (optional)"},
 			"work_stream_id":   map[string]any{"type": "string", "description": "Work stream ID to attach this ticket to (optional)"},
 			"depends_on":       map[string]any{"type": "array", "description": "Array of ticket IDs this ticket depends on (optional)", "items": map[string]any{"type": "string"}},
 			"target_repo":      map[string]any{"type": "string", "description": "Target repository alias for multi-repo projects (optional, from list_project_repositories; omit for primary repo)"},
 			"agent_id":         map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
-		"required":             []string{"project_id", "title", "description"},
+		"required":             []string{"project_id", "title"},
 		"additionalProperties": false,
 	}}, wrap(createTicketHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "list_projects", Description: "List projects for the authenticated user's organization(s). Requires OAuth (agent linked to a user). Returns only active projects by default. Pass include_closed: true to include closed projects. Optionally pass org_id to limit to one org (must be an org you belong to).", InputSchema: map[string]any{
@@ -1085,9 +1090,17 @@ func createTicketHandler(b *Backend, ctx context.Context, args map[string]any) (
 		if err != nil {
 			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
 		}
-		description, err := requireString(args,"description")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+		// Accept description from top-level "description" or nested "objective.description".
+		description := getString(args, "description", "")
+		if description == "" {
+			if obj, ok := args["objective"].(map[string]any); ok {
+				if d, ok := obj["description"].(string); ok {
+					description = d
+				}
+			}
+		}
+		if description == "" {
+			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, "description required (pass as top-level \"description\" or inside \"objective.description\")", false))
 		}
 		// Verify user has access to the project (project's org is one of user's orgs)
 		proj, err := b.Project.GetProject(ctx, projectID)
@@ -1133,7 +1146,26 @@ func createTicketHandler(b *Backend, ctx context.Context, args map[string]any) (
 		if s := getString(args,"success_criteria", ""); s != "" {
 			_ = json.Unmarshal([]byte(s), &successCriteria)
 		}
+		// Also accept success_criteria and acceptance_test from nested objective.
+		if len(successCriteria) == 0 {
+			if obj, ok := args["objective"].(map[string]any); ok {
+				if sc, ok := obj["success_criteria"].([]any); ok {
+					for _, v := range sc {
+						if s, ok := v.(string); ok {
+							successCriteria = append(successCriteria, s)
+						}
+					}
+				}
+			}
+		}
 		acceptanceTest := getString(args,"acceptance_test", "")
+		if acceptanceTest == "" {
+			if obj, ok := args["objective"].(map[string]any); ok {
+				if at, ok := obj["acceptance_test"].(string); ok {
+					acceptanceTest = at
+				}
+			}
+		}
 		objective := ticket.Objective{
 			Description:     description,
 			SuccessCriteria: successCriteria,
