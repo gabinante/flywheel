@@ -11,6 +11,10 @@ export type RightRailContextValue = {
   children: ReactNode
   /** Whether any content has been provided to the right-rail */
   hasContent: boolean
+  /** Replace the default right-rail content for the current route. */
+  setRailContent: (content: ReactNode) => void
+  /** Restore the default right-rail content. */
+  clearRailContent: () => void
 }
 
 export const RightRailContext = createContext<RightRailContextValue | null>(null)

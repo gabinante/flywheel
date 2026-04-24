@@ -98,6 +98,7 @@ type Dispatcher struct {
 	tickets            TicketGetter
 	projects           ProjectGetter
 	worker             Worker
+	workerRouter       *ProjectWorkerRouter
 	worktrees          *WorktreeManager
 	clones             *MultiRepoCloneManager // nil-safe: only used for multi-repo projects
 	repoResolver       RepoResolver           // nil-safe: only used for multi-repo projects
@@ -115,11 +116,12 @@ type Dispatcher struct {
 // New creates a dispatcher that subscribes to the event bus.
 func New(cfg Config, bus events.Bus, tickets TicketGetter, projects ProjectGetter) *Dispatcher {
 	d := &Dispatcher{
-		cfg:      cfg,
-		bus:      bus,
-		tickets:  tickets,
-		projects: projects,
-		worker:   NewWorker(cfg),
+		cfg:          cfg,
+		bus:          bus,
+		tickets:      tickets,
+		projects:     projects,
+		worker:       NewWorker(cfg),
+		workerRouter: NewProjectWorkerRouter(cfg),
 		worktrees: &WorktreeManager{
 			BaseDir: cfg.WorktreeDir,
 			RepoDir: cfg.RepoDir,
@@ -697,11 +699,11 @@ func (d *Dispatcher) runTypedWorker(ctx context.Context, t *ticket.Ticket, wt Wo
 	log.Printf("dispatch: running %s worker for %s", wt, t.ID)
 
 	// Spawn worker.
-	result, err := d.spawnWorker(ctx, t.ID, t.ProjectID, wt, prompt, taskMsg, workDir)
+	result, selected, err := d.spawnWorker(ctx, proj, t.ID, t.ProjectID, string(wt), wt, prompt, taskMsg, workDir)
 	if err != nil {
 		return err
 	}
-	d.recordUsage(ctx, t.ProjectID, t.ID, workerRoleForType(wt), operationTypeForType(wt), prompt, taskMsg, result)
+	d.recordUsage(ctx, selected.Config, t.ProjectID, t.ID, workerRoleForType(wt), operationTypeForType(wt), prompt, taskMsg, result)
 
 	if !result.Success {
 		log.Printf("dispatch: %s worker %s completed with error: %s\nOutput: %s", wt, t.ID, result.Error, result.Output)
@@ -825,11 +827,11 @@ func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
 	log.Printf("dispatch: running validator worker for %s", t.ID)
 
 	taskMsg := buildTypedTaskPrompt(WorkerTypeValidator, t.ID, t.ProjectID)
-	result, err := d.spawnWorker(ctx, t.ID, t.ProjectID, WorkerTypeValidator, prompt, taskMsg, workDir)
+	result, selected, err := d.spawnWorker(ctx, proj, t.ID, t.ProjectID, string(WorkerTypeValidator), WorkerTypeValidator, prompt, taskMsg, workDir)
 	if err != nil {
 		return err
 	}
-	d.recordUsage(ctx, t.ProjectID, t.ID, "review", cost.OpReview, prompt, taskMsg, result)
+	d.recordUsage(ctx, selected.Config, t.ProjectID, t.ID, "review", cost.OpReview, prompt, taskMsg, result)
 
 	if !result.Success {
 		log.Printf("dispatch: validator %s completed with error: %s\nOutput: %s", t.ID, result.Error, result.Output)
@@ -1033,11 +1035,15 @@ func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, 
 		branch, prURL,
 	)
 
-	result, err := d.spawnWorker(ctx, t.ID, t.ProjectID, WorkerType("conflict_resolver"), prompt, taskMsg, workDir)
+	proj, err := d.projects.GetProject(ctx, t.ProjectID)
 	if err != nil {
 		return err
 	}
-	d.recordUsage(ctx, t.ProjectID, t.ID, "conflict_resolution", cost.OpCodeGeneration, prompt, taskMsg, result)
+	result, selected, err := d.spawnWorker(ctx, proj, t.ID, t.ProjectID, WorkerRoleConflictResolver, WorkerType(WorkerRoleConflictResolver), prompt, taskMsg, workDir)
+	if err != nil {
+		return err
+	}
+	d.recordUsage(ctx, selected.Config, t.ProjectID, t.ID, "conflict_resolution", cost.OpCodeGeneration, prompt, taskMsg, result)
 
 	if !result.Success {
 		log.Printf("dispatch: conflict resolver %s failed: %s\nOutput: %s", t.ID, result.Error, result.Output)
@@ -1070,23 +1076,83 @@ func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, 
 	return nil
 }
 
-func (d *Dispatcher) spawnWorker(ctx context.Context, ticketID, projectID string, wt WorkerType, systemPrompt, taskMessage, workDir string) (*WorkerResult, error) {
-	if streamable, ok := d.worker.(StreamableWorker); ok && d.cfg.TraceSvc != nil {
-		onOutput, waitForTrace := d.traceWorkerOutput(ticketID, wt)
-		result, err := streamable.SpawnStream(
-			ctx,
-			ticketID,
-			projectID,
-			systemPrompt,
-			taskMessage,
-			workDir,
-			d.cfg.ServerURL,
-			onOutput,
-		)
-		waitForTrace()
-		return result, err
+func (d *Dispatcher) spawnWorker(ctx context.Context, proj *project.Project, ticketID, projectID, role string, wt WorkerType, systemPrompt, taskMessage, workDir string) (*WorkerResult, RoutedWorker, error) {
+	router := d.workerRouter
+	if router == nil {
+		router = NewProjectWorkerRouter(d.cfg)
 	}
-	return d.worker.Spawn(ctx, ticketID, projectID, systemPrompt, taskMessage, workDir, d.cfg.ServerURL)
+	candidates := router.Candidates(proj, role)
+	var lastResult *WorkerResult
+	var lastErr error
+	var lastWorker RoutedWorker
+	for index, candidate := range candidates {
+		worker := d.resolveWorker(candidate)
+		if worker == nil {
+			lastErr = fmt.Errorf("worker %s is not configured", candidate.ID)
+			lastWorker = candidate
+			continue
+		}
+		log.Printf(
+			"dispatch: selected worker %s (%s) for %s on %s using runner=%s driver=%s model=%s",
+			candidate.ID,
+			candidate.Name,
+			role,
+			ticketID,
+			resolveRunnerType(candidate.Config),
+			candidate.Config.AgentDriver,
+			candidate.Config.AgentModel,
+		)
+
+		var (
+			result *WorkerResult
+			err    error
+		)
+		if streamable, ok := worker.(StreamableWorker); ok && d.cfg.TraceSvc != nil {
+			onOutput, waitForTrace := d.traceWorkerOutput(ticketID, wt)
+			result, err = streamable.SpawnStream(
+				ctx,
+				ticketID,
+				projectID,
+				systemPrompt,
+				taskMessage,
+				workDir,
+				d.cfg.ServerURL,
+				onOutput,
+			)
+			waitForTrace()
+		} else {
+			result, err = worker.Spawn(ctx, ticketID, projectID, systemPrompt, taskMessage, workDir, d.cfg.ServerURL)
+		}
+		if err == nil && result != nil && result.Success {
+			return result, candidate, nil
+		}
+
+		lastResult = result
+		lastErr = err
+		lastWorker = candidate
+		if index < len(candidates)-1 && ShouldFailoverToNextWorker(err, result) {
+			log.Printf("dispatch: worker %s failed for %s, trying next candidate", candidate.ID, ticketID)
+			continue
+		}
+		if err != nil {
+			return nil, candidate, err
+		}
+		return result, candidate, nil
+	}
+	if lastErr != nil {
+		return nil, lastWorker, lastErr
+	}
+	return lastResult, lastWorker, nil
+}
+
+func (d *Dispatcher) resolveWorker(candidate RoutedWorker) Worker {
+	if candidate.UseDefault {
+		if d.worker != nil {
+			return d.worker
+		}
+		return NewWorker(candidate.Config)
+	}
+	return NewWorker(candidate.Config)
 }
 
 func (d *Dispatcher) traceWorkerOutput(ticketID string, wt WorkerType) (WorkerOutputHandler, func()) {
@@ -1156,11 +1222,11 @@ func operationTypeForType(wt WorkerType) cost.OperationType {
 	}
 }
 
-func (d *Dispatcher) recordUsage(ctx context.Context, projectID, ticketID, workerRole string, op cost.OperationType, systemPrompt, taskMessage string, result *WorkerResult) {
+func (d *Dispatcher) recordUsage(ctx context.Context, workerCfg Config, projectID, ticketID, workerRole string, op cost.OperationType, systemPrompt, taskMessage string, result *WorkerResult) {
 	if d.cfg.CostSvc == nil || result == nil {
 		return
 	}
-	provider, model := cost.InferProviderModel(d.cfg.AgentRunner, d.cfg.AgentDriver, d.cfg.AgentModel)
+	provider, model := cost.InferProviderModel(workerCfg.AgentRunner, workerCfg.AgentDriver, workerCfg.AgentModel)
 	output := strings.TrimSpace(result.Output)
 	if output == "" {
 		output = strings.TrimSpace(result.Error)

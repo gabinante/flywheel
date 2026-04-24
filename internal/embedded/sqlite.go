@@ -94,6 +94,7 @@ func migrate(db *sql.DB) error {
 			context_pack     TEXT NOT NULL DEFAULT '{}',
 			status           TEXT NOT NULL DEFAULT 'active',
 			dispatch_enabled INTEGER NOT NULL DEFAULT 1,
+			dispatch_config  TEXT NOT NULL DEFAULT '{}',
 			created_at       TEXT NOT NULL DEFAULT (datetime('now')),
 			UNIQUE (org_id, slug)
 		)`,
@@ -303,6 +304,8 @@ func migrate(db *sql.DB) error {
 	alterStmts := []string{
 		// Add worker_type column if not present (added in worker type differentiation).
 		`ALTER TABLE execution_steps ADD COLUMN worker_type TEXT`,
+		// Add dispatch_config for project-level worker routing.
+		`ALTER TABLE projects ADD COLUMN dispatch_config TEXT NOT NULL DEFAULT '{}'`,
 	}
 	for _, s := range alterStmts {
 		// Ignore errors from ALTER — column may already exist.

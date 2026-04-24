@@ -1,13 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
-import { ActiveWorkPanel } from '@/components/command-center/active-work-panel'
-import { ActivityFeed, type ActivityItem } from '@/components/command-center/activity-feed'
-import { DispatchStatus } from '@/components/command-center/dispatch-status'
+import { type ActivityItem } from '@/components/command-center/activity-feed'
+import { CommandCenterRail } from '@/components/command-center/command-center-rail'
 import { OrchestratorConsole } from '@/components/command-center/orchestrator-console'
 import { TicketInspector } from '@/components/command-center/ticket-inspector'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/contexts/use-auth'
+import { useRightRail } from '@/contexts/use-right-rail'
 import type { components } from '@/lib/api/v1'
 
 type Ticket = components['schemas']['Ticket']
@@ -20,6 +19,7 @@ const POLL_INTERVAL = 10_000
 export function CommandCenterPage() {
   const { orgId, projectId } = useParams<{ orgId: string; projectId: string }>()
   const { client, token } = useAuth()
+  const { clearRailContent, setOpen, setRailContent } = useRightRail()
 
   const [activeTickets, setActiveTickets] = useState<Ticket[]>([])
   const [pendingReviews, setPendingReviews] = useState<Ticket[]>([])
@@ -153,6 +153,36 @@ export function CommandCenterPage() {
     return () => window.removeEventListener('keydown', handleKey)
   }, [selectedTicketId, pendingReviews])
 
+  useLayoutEffect(() => {
+    setOpen(true)
+    return () => clearRailContent()
+  }, [clearRailContent, setOpen])
+
+  useLayoutEffect(() => {
+    if (!orgId || !projectId) return
+    setRailContent(
+      <CommandCenterRail
+        tickets={activeTickets}
+        pendingReviews={pendingReviews}
+        activityItems={activityItems}
+        loading={loading}
+        orgId={orgId}
+        projectId={projectId}
+        selectedTicketId={selectedTicketId}
+        onSelectTicket={setSelectedTicketId}
+      />,
+    )
+  }, [
+    activeTickets,
+    activityItems,
+    loading,
+    orgId,
+    pendingReviews,
+    projectId,
+    selectedTicketId,
+    setRailContent,
+  ])
+
   if (!orgId || !projectId) {
     return <p className="text-destructive text-sm">Missing route params.</p>
   }
@@ -177,50 +207,23 @@ export function CommandCenterPage() {
         </span>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.45fr)_390px]">
-        <OrchestratorConsole
-          key={projectId}
+      <OrchestratorConsole
+        key={projectId}
+        projectId={projectId}
+        onMessageComplete={() => void fetchData()}
+      />
+
+      <div className="lg:hidden">
+        <CommandCenterRail
+          tickets={activeTickets}
+          pendingReviews={pendingReviews}
+          activityItems={activityItems}
+          loading={loading}
+          orgId={orgId}
           projectId={projectId}
-          onMessageComplete={() => void fetchData()}
+          selectedTicketId={selectedTicketId}
+          onSelectTicket={setSelectedTicketId}
         />
-
-        <div className="flex flex-col gap-4">
-          <DispatchStatus />
-
-          <Card>
-            <CardHeader className="border-b border-white/10 pb-4">
-              <CardTitle className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
-                Queue Snapshot
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-5">
-              <ActiveWorkPanel
-                tickets={activeTickets}
-                pendingReviews={pendingReviews}
-                loading={loading}
-                orgId={orgId}
-                projectId={projectId}
-                selectedTicketId={selectedTicketId}
-                onSelectTicket={setSelectedTicketId}
-              />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="border-b border-white/10 pb-4">
-              <CardTitle className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
-                Live Activity
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-5">
-              <ActivityFeed
-                items={activityItems}
-                loading={loading}
-                onSelectTicket={setSelectedTicketId}
-              />
-            </CardContent>
-          </Card>
-        </div>
       </div>
 
       <div className="min-h-[280px] rounded-2xl border border-white/10 bg-card/60 backdrop-blur-sm">

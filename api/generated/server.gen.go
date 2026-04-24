@@ -1675,6 +1675,8 @@ type Project struct {
 	// DefaultBranch Branch to checkout when closing a work stream; default "main".
 	DefaultBranch *string `json:"default_branch,omitempty"`
 
+	DispatchConfig *DispatchConfig `json:"dispatch_config,omitempty"`
+
 	// DispatchEnabled Whether the dispatcher picks up tickets for this project (default true).
 	DispatchEnabled *bool   `json:"dispatch_enabled,omitempty"`
 	Id              *string `json:"id,omitempty"`
@@ -1687,6 +1689,59 @@ type Project struct {
 	Status    *ProjectStatus `json:"status,omitempty"`
 	TechStack *[]string      `json:"tech_stack,omitempty"`
 }
+
+// DispatchConfig defines model for DispatchConfig.
+type DispatchConfig struct {
+	Policies *map[string]DispatchRolePolicy `json:"policies,omitempty"`
+	Workers  *[]DispatchWorkerProfile       `json:"workers,omitempty"`
+}
+
+// DispatchRolePolicy defines model for DispatchRolePolicy.
+type DispatchRolePolicy struct {
+	// SelectionMode ordered tries workers in the configured order; any rotates across the configured workers.
+	SelectionMode *DispatchRolePolicySelectionMode `json:"selection_mode,omitempty"`
+
+	// WorkerIds Worker profile IDs to use for this role. Leave empty to use all enabled workers.
+	WorkerIds *[]string `json:"worker_ids,omitempty"`
+}
+
+// DispatchRolePolicySelectionMode defines model for DispatchRolePolicy.SelectionMode.
+type DispatchRolePolicySelectionMode string
+
+// DispatchWorkerProfile defines model for DispatchWorkerProfile.
+type DispatchWorkerProfile struct {
+	Args *[]string `json:"args,omitempty"`
+
+	// ApiBaseUrl Base URL override for API-native workers.
+	ApiBaseUrl *string `json:"api_base_url,omitempty"`
+
+	// CliPath Override binary path when using a CLI or Docker-backed worker.
+	CliPath *string `json:"cli_path,omitempty"`
+
+	// CredentialEnvVar Environment variable that holds the provider credential for this worker profile.
+	CredentialEnvVar *string `json:"credential_env_var,omitempty"`
+
+	// Driver
+	Driver  *DispatchWorkerProfileDriver `json:"driver,omitempty"`
+	Enabled *bool                        `json:"enabled,omitempty"`
+	Id      *string                      `json:"id,omitempty"`
+
+	// Model Model override for API-native workers.
+	Model *string `json:"model,omitempty"`
+	Name  *string `json:"name,omitempty"`
+
+	// ReasoningEffort Reasoning effort override for API-native workers.
+	ReasoningEffort *string `json:"reasoning_effort,omitempty"`
+
+	// Runner
+	Runner *DispatchWorkerProfileRunner `json:"runner,omitempty"`
+}
+
+// DispatchWorkerProfileDriver defines model for DispatchWorkerProfile.Driver.
+type DispatchWorkerProfileDriver string
+
+// DispatchWorkerProfileRunner defines model for DispatchWorkerProfile.Runner.
+type DispatchWorkerProfileRunner string
 
 // ProjectStatus active (default) or closed; list endpoints default to active only.
 type ProjectStatus string
@@ -1996,6 +2051,8 @@ type UpdatePolicyRequest struct {
 type UpdateProjectRequest struct {
 	// DefaultBranch Branch to checkout when closing a work stream; default "main".
 	DefaultBranch *string `json:"default_branch,omitempty"`
+
+	DispatchConfig *DispatchConfig `json:"dispatch_config,omitempty"`
 
 	// DispatchEnabled Whether the dispatcher picks up tickets for this project (default true). Takes effect immediately.
 	DispatchEnabled *bool `json:"dispatch_enabled,omitempty"`

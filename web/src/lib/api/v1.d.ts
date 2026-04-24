@@ -154,6 +154,60 @@ export interface paths {
         patch: operations["UpdateWorkStream"];
         trace?: never;
     };
+    "/projects/{projectID}/environments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all environments for a project */
+        get: operations["ListEnvironments"];
+        put?: never;
+        /** Create a new environment for a project (compound tuple) */
+        post: operations["CreateEnvironment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/environments/{environmentID}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get an environment by ID */
+        get: operations["GetEnvironment"];
+        /** Update an environment's compound tuple dimensions */
+        put: operations["UpdateEnvironment"];
+        post?: never;
+        /** Delete an environment (enforces minimum-two constraint) */
+        delete: operations["DeleteEnvironment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/environments/{environmentID}/set-default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set an environment as the default for its project */
+        post: operations["SetDefaultEnvironment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{projectID}/tickets": {
         parameters: {
             query?: never;
@@ -681,6 +735,58 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description Compound environment tuple per spec v0.2 section 4.1. Each environment has three dimensions: infrastructure (dev/staging/prod), data tenancy (synthetic/anonymized/real), and integration mode (sandbox/test/live). Ticket states become environment-qualified (e.g. executing-dev). */
+        Environment: {
+            id: string;
+            project_id: string;
+            /** @description Display name (e.g. "Development", "Staging") */
+            name: string;
+            /** @description URL-safe identifier (e.g. "dev", "staging") */
+            slug: string;
+            /**
+             * @description Infrastructure tier dimension
+             * @enum {string}
+             */
+            infrastructure: "dev" | "staging" | "prod";
+            /**
+             * @description Data tenancy dimension
+             * @enum {string}
+             */
+            data_tenancy: "synthetic" | "anonymized" | "real";
+            /**
+             * @description Integration mode dimension
+             * @enum {string}
+             */
+            integration_mode: "sandbox" | "test" | "live";
+            /** @description Whether this is the default environment for the project */
+            is_default: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        CreateEnvironmentRequest: {
+            /** @description Display name */
+            name: string;
+            /** @description URL-safe slug (auto-generated from name if omitted) */
+            slug?: string;
+            /** @enum {string} */
+            infrastructure: "dev" | "staging" | "prod";
+            /** @enum {string} */
+            data_tenancy: "synthetic" | "anonymized" | "real";
+            /** @enum {string} */
+            integration_mode: "sandbox" | "test" | "live";
+        };
+        UpdateEnvironmentRequest: {
+            name?: string;
+            slug?: string;
+            /** @enum {string} */
+            infrastructure?: "dev" | "staging" | "prod";
+            /** @enum {string} */
+            data_tenancy?: "synthetic" | "anonymized" | "real";
+            /** @enum {string} */
+            integration_mode?: "sandbox" | "test" | "live";
+        };
         MeStats: {
             /** @description Total tickets created by this agent */
             tickets_created: number;
@@ -767,6 +873,7 @@ export interface components {
             status?: "active" | "closed";
             /** @description Whether the dispatcher picks up tickets for this project (default true). */
             dispatch_enabled?: boolean;
+            dispatch_config?: components["schemas"]["DispatchConfig"];
             /** Format: date-time */
             created_at?: string;
         };
@@ -783,6 +890,42 @@ export interface components {
             default_branch?: string;
             /** @description Whether the dispatcher picks up tickets for this project (default true). Takes effect immediately. */
             dispatch_enabled?: boolean;
+            dispatch_config?: components["schemas"]["DispatchConfig"];
+        };
+        DispatchConfig: {
+            workers?: components["schemas"]["DispatchWorkerProfile"][];
+            policies?: {
+                [key: string]: components["schemas"]["DispatchRolePolicy"];
+            };
+        };
+        DispatchWorkerProfile: {
+            id?: string;
+            name?: string;
+            enabled?: boolean;
+            /** @enum {string} */
+            runner?: "cli" | "docker" | "openai-responses";
+            /** @enum {string} */
+            driver?: "claude" | "codex" | "generic";
+            /** @description Override binary path when using a CLI or Docker-backed worker. */
+            cli_path?: string;
+            /** @description Model override for API-native workers. */
+            model?: string;
+            /** @description Reasoning effort override for API-native workers. */
+            reasoning_effort?: string;
+            /** @description Base URL override for API-native workers. */
+            api_base_url?: string;
+            /** @description Environment variable that holds the provider credential for this worker profile. */
+            credential_env_var?: string;
+            args?: string[];
+        };
+        DispatchRolePolicy: {
+            /**
+             * @description ordered tries workers in the configured order; any rotates across the configured workers.
+             * @enum {string}
+             */
+            selection_mode?: "ordered" | "any";
+            /** @description Worker profile IDs to use for this role. Leave empty to use all enabled workers. */
+            worker_ids?: string[];
         };
         WorkStream: {
             id?: string;
@@ -844,6 +987,8 @@ export interface components {
             outputs?: Record<string, never>;
             depends_on?: string[];
             work_stream_id?: string;
+            /** @description Compound environment ID (spec v0.2 section 4.1) */
+            environment_id?: string;
             /** @description Repository alias for multi-repo projects (from project_repositories). Empty means primary repo. */
             target_repo?: string;
             assigned_to?: string;
@@ -1781,6 +1926,214 @@ export interface operations {
             };
             /** @description Internal error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    ListEnvironments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Environment"][];
+                };
+            };
+            /** @description Project not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    CreateEnvironment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateEnvironmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Environment"];
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    GetEnvironment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                environmentID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Environment"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    UpdateEnvironment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                environmentID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateEnvironmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Environment"];
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    DeleteEnvironment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                environmentID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Cannot delete (default or minimum constraint) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    SetDefaultEnvironment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                environmentID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default set */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

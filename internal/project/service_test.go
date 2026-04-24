@@ -7,13 +7,14 @@ import (
 )
 
 type mockProjectStore struct {
-	createErr   error
-	getByID     *Project
-	getByIDErr  error
-	list        []Project
-	listErr     error
-	updateErr   error
+	createErr     error
+	getByID       *Project
+	getByIDErr    error
+	list          []Project
+	listErr       error
+	updateErr     error
 	updatePackErr error
+	updateCfgErr  error
 }
 
 func (m *mockProjectStore) Create(ctx context.Context, p *Project) error {
@@ -57,6 +58,10 @@ func (m *mockProjectStore) UpdateContextPack(ctx context.Context, projectID stri
 
 func (m *mockProjectStore) UpdateDispatchEnabled(ctx context.Context, projectID string, enabled bool) error {
 	return m.updateErr
+}
+
+func (m *mockProjectStore) UpdateDispatchConfig(ctx context.Context, projectID string, cfg DispatchConfig) error {
+	return m.updateCfgErr
 }
 
 func TestService_CreateProject_Slugify(t *testing.T) {

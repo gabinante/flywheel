@@ -256,6 +256,7 @@ func NewProjectStore(db *sql.DB) *ProjectStore { return &ProjectStore{db: db} }
 func (s *ProjectStore) Create(_ context.Context, p *project.Project) error {
 	techJSON, _ := json.Marshal(p.TechStack)
 	packJSON, _ := json.Marshal(p.ContextPack)
+	dispatchConfigJSON, _ := json.Marshal(p.DispatchConfig.Normalized())
 	status := p.Status
 	if status == "" {
 		status = "active"
@@ -269,9 +270,9 @@ func (s *ProjectStore) Create(_ context.Context, p *project.Project) error {
 		dispatchEnabled = 0
 	}
 	_, err := s.db.Exec(
-		`INSERT INTO projects (id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.ID, p.OrgID, p.Name, p.Slug, nilIfEmpty(p.RepoURL), branch, string(techJSON), string(packJSON), status, dispatchEnabled,
+		`INSERT INTO projects (id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, dispatch_config, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.ID, p.OrgID, p.Name, p.Slug, nilIfEmpty(p.RepoURL), branch, string(techJSON), string(packJSON), status, dispatchEnabled, string(dispatchConfigJSON),
 		p.CreatedAt.UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return err
@@ -282,14 +283,14 @@ func (s *ProjectStore) Create(_ context.Context, p *project.Project) error {
 
 func (s *ProjectStore) GetByID(_ context.Context, id string) (*project.Project, error) {
 	var p project.Project
-	var techJSON, packJSON string
+	var techJSON, packJSON, dispatchConfigJSON string
 	var repoURL, defaultBranch sql.NullString
 	var dispatchEnabled int
 	var ts string
 	err := s.db.QueryRow(
-		`SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, created_at
+		`SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, dispatch_config, created_at
 		 FROM projects WHERE id = ?`, id).
-		Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techJSON, &packJSON, &p.Status, &dispatchEnabled, &ts)
+		Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techJSON, &packJSON, &p.Status, &dispatchEnabled, &dispatchConfigJSON, &ts)
 	if err != nil {
 		return nil, err
 	}
@@ -304,12 +305,14 @@ func (s *ProjectStore) GetByID(_ context.Context, id string) (*project.Project, 
 	p.DispatchEnabled = dispatchEnabled != 0
 	_ = json.Unmarshal([]byte(techJSON), &p.TechStack)
 	_ = json.Unmarshal([]byte(packJSON), &p.ContextPack)
+	_ = json.Unmarshal([]byte(dispatchConfigJSON), &p.DispatchConfig)
+	p.DispatchConfig = p.DispatchConfig.Normalized()
 	p.CreatedAt, _ = time.Parse(time.RFC3339Nano, ts)
 	return &p, nil
 }
 
 func (s *ProjectStore) ListByOrgID(_ context.Context, orgID string, statusFilter string) ([]project.Project, error) {
-	q := `SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, created_at
+	q := `SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, dispatch_config, created_at
 		  FROM projects WHERE org_id = ?`
 	if statusFilter == "" || statusFilter == "active" {
 		q += ` AND status = 'active'`
@@ -325,11 +328,11 @@ func (s *ProjectStore) ListByOrgID(_ context.Context, orgID string, statusFilter
 	var list []project.Project
 	for rows.Next() {
 		var p project.Project
-		var techJSON, packJSON string
+		var techJSON, packJSON, dispatchConfigJSON string
 		var repoURL, defaultBranch sql.NullString
 		var dispatchEnabled int
 		var ts string
-		if err := rows.Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techJSON, &packJSON, &p.Status, &dispatchEnabled, &ts); err != nil {
+		if err := rows.Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techJSON, &packJSON, &p.Status, &dispatchEnabled, &dispatchConfigJSON, &ts); err != nil {
 			return nil, err
 		}
 		if repoURL.Valid {
@@ -343,6 +346,8 @@ func (s *ProjectStore) ListByOrgID(_ context.Context, orgID string, statusFilter
 		p.DispatchEnabled = dispatchEnabled != 0
 		_ = json.Unmarshal([]byte(techJSON), &p.TechStack)
 		_ = json.Unmarshal([]byte(packJSON), &p.ContextPack)
+		_ = json.Unmarshal([]byte(dispatchConfigJSON), &p.DispatchConfig)
+		p.DispatchConfig = p.DispatchConfig.Normalized()
 		p.CreatedAt, _ = time.Parse(time.RFC3339Nano, ts)
 		list = append(list, p)
 	}
@@ -427,6 +432,19 @@ func (s *ProjectStore) UpdateDispatchEnabled(_ context.Context, projectID string
 		val = 1
 	}
 	res, err := s.db.Exec(`UPDATE projects SET dispatch_enabled = ? WHERE id = ?`, val, projectID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return project.ErrProjectNotFound
+	}
+	return nil
+}
+
+func (s *ProjectStore) UpdateDispatchConfig(_ context.Context, projectID string, cfg project.DispatchConfig) error {
+	dispatchConfigJSON, _ := json.Marshal(cfg.Normalized())
+	res, err := s.db.Exec(`UPDATE projects SET dispatch_config = ? WHERE id = ?`, string(dispatchConfigJSON), projectID)
 	if err != nil {
 		return err
 	}

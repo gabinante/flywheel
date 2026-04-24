@@ -34,6 +34,7 @@ type Worker interface {
 }
 
 type Config struct {
+	Enabled      bool
 	RepoDir      string
 	ServerURL    string
 	AgentID      string
@@ -42,12 +43,14 @@ type Config struct {
 	AgentRunner  string
 	AgentDriver  string
 	AgentModel   string
+	WorkerConfig dispatch.Config
 }
 
 type Service struct {
 	store    MessageStore
 	projects ProjectGetter
 	worker   Worker
+	router   *dispatch.ProjectWorkerRouter
 	cfg      Config
 	playbook Playbook
 }
@@ -56,10 +59,15 @@ func NewService(store MessageStore, projects ProjectGetter, worker Worker, cfg C
 	if cfg.HistoryLimit <= 0 {
 		cfg.HistoryLimit = 200
 	}
+	var router *dispatch.ProjectWorkerRouter
+	if cfg.Enabled {
+		router = dispatch.NewProjectWorkerRouter(cfg.WorkerConfig)
+	}
 	return &Service{
 		store:    store,
 		projects: projects,
 		worker:   worker,
+		router:   router,
 		cfg:      cfg,
 		playbook: DefaultPlaybook(),
 	}
@@ -85,7 +93,7 @@ func (s *Service) SendUserMessage(ctx context.Context, projectID, content string
 	if content == "" {
 		return nil, ErrMessageContentRequired
 	}
-	if s.worker == nil {
+	if s.worker == nil && !s.cfg.Enabled {
 		return nil, ErrWorkerNotConfigured
 	}
 
@@ -121,27 +129,11 @@ func (s *Service) SendUserMessage(ctx context.Context, projectID, content string
 		workDir = "."
 	}
 
-	result, err := s.worker.Spawn(ctx, runID, projectID, systemPrompt, taskMessage, workDir, s.cfg.ServerURL)
+	result, selected, err := s.runOrchestratorWorker(ctx, proj, runID, projectID, systemPrompt, taskMessage, workDir)
 	if err != nil {
 		return nil, err
 	}
-	if s.cfg.CostSvc != nil {
-		provider, model := cost.InferProviderModel(s.cfg.AgentRunner, s.cfg.AgentDriver, s.cfg.AgentModel)
-		output := strings.TrimSpace(result.Output)
-		if output == "" {
-			output = strings.TrimSpace(result.Error)
-		}
-		_, _ = s.cfg.CostSvc.RecordAndCheck(ctx, &cost.LLMCallRecord{
-			ProjectID:     projectID,
-			TicketID:      runID,
-			WorkerRole:    "orchestrator",
-			Provider:      provider,
-			Model:         model,
-			OperationType: cost.OpPlanning,
-			InputTokens:   cost.EstimateTokens(systemPrompt, taskMessage),
-			OutputTokens:  cost.EstimateTokens(output),
-		})
-	}
+	s.recordUsage(ctx, selected.Config, projectID, runID, systemPrompt, taskMessage, result)
 	if !result.Success {
 		if strings.TrimSpace(result.Error) != "" {
 			return nil, fmt.Errorf("%w: %s", ErrOrchestratorRunFailed, strings.TrimSpace(result.Error))
@@ -165,6 +157,82 @@ func (s *Service) SendUserMessage(ctx context.Context, projectID, content string
 	}
 
 	return s.GetThread(ctx, projectID)
+}
+
+func (s *Service) runOrchestratorWorker(ctx context.Context, proj *project.Project, runID, projectID, systemPrompt, taskMessage, workDir string) (*dispatch.WorkerResult, dispatch.RoutedWorker, error) {
+	candidates := []dispatch.RoutedWorker{{
+		ID:         dispatch.DefaultProjectWorkerID,
+		Name:       "Default server worker",
+		Config:     s.cfg.WorkerConfig,
+		UseDefault: true,
+	}}
+	if s.router != nil {
+		candidates = s.router.Candidates(proj, dispatch.WorkerRoleOrchestrator)
+	}
+
+	var lastResult *dispatch.WorkerResult
+	var lastErr error
+	var lastWorker dispatch.RoutedWorker
+	for index, candidate := range candidates {
+		worker := s.resolveWorker(candidate)
+		if worker == nil {
+			lastErr = ErrWorkerNotConfigured
+			lastWorker = candidate
+			continue
+		}
+		result, err := worker.Spawn(ctx, runID, projectID, systemPrompt, taskMessage, workDir, s.cfg.ServerURL)
+		if err == nil && result != nil && result.Success {
+			return result, candidate, nil
+		}
+		lastResult = result
+		lastErr = err
+		lastWorker = candidate
+		if index < len(candidates)-1 && dispatch.ShouldFailoverToNextWorker(err, result) {
+			continue
+		}
+		if err != nil {
+			return nil, candidate, err
+		}
+		return result, candidate, nil
+	}
+	if lastErr != nil {
+		return nil, lastWorker, lastErr
+	}
+	return lastResult, lastWorker, nil
+}
+
+func (s *Service) resolveWorker(candidate dispatch.RoutedWorker) Worker {
+	if candidate.UseDefault {
+		if s.worker != nil {
+			return s.worker
+		}
+		if !s.cfg.Enabled {
+			return nil
+		}
+		return dispatch.NewWorker(s.cfg.WorkerConfig)
+	}
+	return dispatch.NewWorker(candidate.Config)
+}
+
+func (s *Service) recordUsage(ctx context.Context, workerCfg dispatch.Config, projectID, ticketID, systemPrompt, taskMessage string, result *dispatch.WorkerResult) {
+	if s.cfg.CostSvc == nil || result == nil {
+		return
+	}
+	provider, model := cost.InferProviderModel(workerCfg.AgentRunner, workerCfg.AgentDriver, workerCfg.AgentModel)
+	output := strings.TrimSpace(result.Output)
+	if output == "" {
+		output = strings.TrimSpace(result.Error)
+	}
+	_, _ = s.cfg.CostSvc.RecordAndCheck(ctx, &cost.LLMCallRecord{
+		ProjectID:     projectID,
+		TicketID:      ticketID,
+		WorkerRole:    "orchestrator",
+		Provider:      provider,
+		Model:         model,
+		OperationType: cost.OpPlanning,
+		InputTokens:   cost.EstimateTokens(systemPrompt, taskMessage),
+		OutputTokens:  cost.EstimateTokens(output),
+	})
 }
 
 func buildConversationTask(proj *project.Project, messages []Message) string {

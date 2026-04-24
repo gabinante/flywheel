@@ -8,14 +8,15 @@ import (
 )
 
 const (
-	RunnerCLI             = "cli"
-	RunnerDocker          = "docker"
-	RunnerOpenAIResponses = "openai-responses"
+	RunnerCLI              = "cli"
+	RunnerDocker           = "docker"
+	RunnerOpenAIResponses  = "openai-responses"
+	RunnerOpenAICompatible = "openai-compatible"
 )
 
 // AvailableRunners returns the supported worker execution backends.
 func AvailableRunners() []string {
-	names := []string{RunnerCLI, RunnerDocker, RunnerOpenAIResponses}
+	names := []string{RunnerCLI, RunnerDocker, RunnerOpenAICompatible, RunnerOpenAIResponses}
 	sort.Strings(names)
 	return names
 }
@@ -43,8 +44,9 @@ func newWorker(cfg Config, driver AgentDriver) (Worker, error) {
 	switch resolveRunnerType(cfg) {
 	case RunnerCLI:
 		return &CLIWorker{
-			Driver: driver,
-			APIKey: cfg.APIKey,
+			Driver:      driver,
+			APIKey:      cfg.APIKey,
+			AgentAPIKey: cfg.AgentAPIKey,
 		}, nil
 	case RunnerDocker:
 		return &DockerWorker{
@@ -65,6 +67,17 @@ func newWorker(cfg Config, driver AgentDriver) (Worker, error) {
 				Model:           cfg.AgentModel,
 				ReasoningEffort: cfg.AgentReasoningEffort,
 				PollInterval:    2 * time.Second,
+			},
+			APIKey: cfg.APIKey,
+		}, nil
+	case RunnerOpenAICompatible:
+		return &OpenAICompatibleWorker{
+			Config: OpenAICompatibleConfig{
+				APIBaseURL:      cfg.AgentAPIBaseURL,
+				APIKey:          cfg.AgentAPIKey,
+				Model:           cfg.AgentModel,
+				ReasoningEffort: cfg.AgentReasoningEffort,
+				MaxToolRounds:   32,
 			},
 			APIKey: cfg.APIKey,
 		}, nil

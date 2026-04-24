@@ -318,8 +318,8 @@ func (s *StrictServer) UpdateProject(ctx context.Context, req generated.UpdatePr
 	if err := CheckProjectAccess(ctx, req.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
 		return nil, err
 	}
-	if req.Body == nil || (req.Body.Status == nil && req.Body.RepoUrl == nil && req.Body.Name == nil && req.Body.Slug == nil && req.Body.DefaultBranch == nil && req.Body.DispatchEnabled == nil) {
-		return nil, apierrors.New(apierrors.CodeInvalidInput, "at least one of status, repo_url, name, slug, default_branch, dispatch_enabled required", false)
+	if req.Body == nil || (req.Body.Status == nil && req.Body.RepoUrl == nil && req.Body.Name == nil && req.Body.Slug == nil && req.Body.DefaultBranch == nil && req.Body.DispatchEnabled == nil && req.Body.DispatchConfig == nil) {
+		return nil, apierrors.New(apierrors.CodeInvalidInput, "at least one of status, repo_url, name, slug, default_branch, dispatch_enabled, dispatch_config required", false)
 	}
 	if req.Body.Status != nil {
 		if err := s.ProjectSvc.UpdateStatus(ctx, req.ProjectID, string(*req.Body.Status)); err != nil {
@@ -349,6 +349,15 @@ func (s *StrictServer) UpdateProject(ctx context.Context, req generated.UpdatePr
 	}
 	if req.Body.DispatchEnabled != nil {
 		if err := s.ProjectSvc.UpdateDispatchEnabled(ctx, req.ProjectID, *req.Body.DispatchEnabled); err != nil {
+			return nil, apierrors.MapError(err)
+		}
+	}
+	if req.Body.DispatchConfig != nil {
+		dispatchConfig, err := convertByJSON[project.DispatchConfig](req.Body.DispatchConfig)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.ProjectSvc.UpdateDispatchConfig(ctx, req.ProjectID, dispatchConfig); err != nil {
 			return nil, apierrors.MapError(err)
 		}
 	}
@@ -939,6 +948,11 @@ func projectToGen(p *project.Project) generated.Project {
 		db = "main"
 	}
 	de := p.DispatchEnabled
+	dispatchCfg, err := convertByJSON[generated.DispatchConfig](p.DispatchConfig.Normalized())
+	if err != nil {
+		log.Printf("projectToGen: project=%s convert dispatch config: %v", p.ID, err)
+		dispatchCfg = generated.DispatchConfig{}
+	}
 	return generated.Project{
 		Id:              &p.ID,
 		OrgId:           &p.OrgID,
@@ -949,6 +963,7 @@ func projectToGen(p *project.Project) generated.Project {
 		TechStack:       &p.TechStack,
 		Status:          &st,
 		DispatchEnabled: &de,
+		DispatchConfig:  &dispatchCfg,
 		CreatedAt:       &ca,
 		ContextPack:     &cp,
 	}

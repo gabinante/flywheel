@@ -25,6 +25,10 @@ func (s *Store) Create(ctx context.Context, p *Project) error {
 	if err != nil {
 		return err
 	}
+	dispatchConfigJSON, err := json.Marshal(p.DispatchConfig.Normalized())
+	if err != nil {
+		return err
+	}
 	status := p.Status
 	if status == "" {
 		status = "active"
@@ -34,9 +38,9 @@ func (s *Store) Create(ctx context.Context, p *Project) error {
 		defaultBranch = "main"
 	}
 	_, err = s.pool.Exec(ctx,
-		`INSERT INTO projects (id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-		p.ID, p.OrgID, p.Name, p.Slug, p.RepoURL, defaultBranch, p.TechStack, packJSON, status, p.DispatchEnabled, p.CreatedAt)
+		`INSERT INTO projects (id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, dispatch_config, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+		p.ID, p.OrgID, p.Name, p.Slug, p.RepoURL, defaultBranch, p.TechStack, packJSON, status, p.DispatchEnabled, dispatchConfigJSON, p.CreatedAt)
 	if err != nil {
 		return err
 	}
@@ -48,14 +52,14 @@ func (s *Store) Create(ctx context.Context, p *Project) error {
 // GetByID returns a project by ID.
 func (s *Store) GetByID(ctx context.Context, id string) (*Project, error) {
 	var p Project
-	var packJSON []byte
+	var packJSON, dispatchConfigJSON []byte
 	var techStack []string
 	var repoURL sql.NullString
 	var defaultBranch sql.NullString
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, created_at
+		`SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, dispatch_config, created_at
 		 FROM projects WHERE id = $1`, id).
-		Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techStack, &packJSON, &p.Status, &p.DispatchEnabled, &p.CreatedAt)
+		Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techStack, &packJSON, &p.Status, &p.DispatchEnabled, &dispatchConfigJSON, &p.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -71,12 +75,16 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Project, error) {
 	if len(packJSON) > 0 {
 		_ = json.Unmarshal(packJSON, &p.ContextPack)
 	}
+	if len(dispatchConfigJSON) > 0 {
+		_ = json.Unmarshal(dispatchConfigJSON, &p.DispatchConfig)
+	}
+	p.DispatchConfig = p.DispatchConfig.Normalized()
 	return &p, nil
 }
 
 // ListByOrgID returns projects for an org. statusFilter: "" or "active" = active only, "closed" = closed only, "all" = no filter.
 func (s *Store) ListByOrgID(ctx context.Context, orgID string, statusFilter string) ([]Project, error) {
-	q := `SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, created_at
+	q := `SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, dispatch_config, created_at
 		  FROM projects WHERE org_id = $1`
 	args := []any{orgID}
 	if statusFilter == "" || statusFilter == "active" {
@@ -93,10 +101,10 @@ func (s *Store) ListByOrgID(ctx context.Context, orgID string, statusFilter stri
 	var list []Project
 	for rows.Next() {
 		var p Project
-		var packJSON []byte
+		var packJSON, dispatchConfigJSON []byte
 		var techStack []string
 		var repoURL, defaultBranch sql.NullString
-		if err := rows.Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techStack, &packJSON, &p.Status, &p.DispatchEnabled, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techStack, &packJSON, &p.Status, &p.DispatchEnabled, &dispatchConfigJSON, &p.CreatedAt); err != nil {
 			return nil, err
 		}
 		if repoURL.Valid {
@@ -111,6 +119,10 @@ func (s *Store) ListByOrgID(ctx context.Context, orgID string, statusFilter stri
 		if len(packJSON) > 0 {
 			_ = json.Unmarshal(packJSON, &p.ContextPack)
 		}
+		if len(dispatchConfigJSON) > 0 {
+			_ = json.Unmarshal(dispatchConfigJSON, &p.DispatchConfig)
+		}
+		p.DispatchConfig = p.DispatchConfig.Normalized()
 		list = append(list, p)
 	}
 	return list, rows.Err()
@@ -205,6 +217,21 @@ func (s *Store) UpdateDispatchEnabled(ctx context.Context, projectID string, ena
 	return nil
 }
 
+func (s *Store) UpdateDispatchConfig(ctx context.Context, projectID string, cfg DispatchConfig) error {
+	dispatchConfigJSON, err := json.Marshal(cfg.Normalized())
+	if err != nil {
+		return err
+	}
+	res, err := s.pool.Exec(ctx, `UPDATE projects SET dispatch_config = $1 WHERE id = $2`, dispatchConfigJSON, projectID)
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return ErrProjectNotFound
+	}
+	return nil
+}
+
 func nullIfEmpty(s string) any {
 	if s == "" {
 		return nil
@@ -214,5 +241,6 @@ func nullIfEmpty(s string) any {
 
 // ErrInvalidStatus is returned when status is not "active" or "closed".
 var ErrInvalidStatus = errors.New("invalid status: must be active or closed")
+
 // ErrProjectNotFound is returned when UpdateStatus affects no rows.
 var ErrProjectNotFound = errors.New("project not found")

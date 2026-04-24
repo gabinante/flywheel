@@ -328,6 +328,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		})
 	}
 	orchestratorSvc := orchestrator.NewService(orchestratorStore, projectSvc, orchestratorWorker, orchestrator.Config{
+		Enabled:      cfg.Orchestrator.Enabled,
 		RepoDir:      repoDir,
 		ServerURL:    cfg.Auth.BaseURL,
 		AgentID:      "command-center-orchestrator",
@@ -336,6 +337,19 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		AgentRunner:  cfg.Orchestrator.AgentRunner,
 		AgentDriver:  cfg.Orchestrator.AgentDriver,
 		AgentModel:   cfg.Orchestrator.AgentModel,
+		WorkerConfig: dispatch.Config{
+			ClaudePath:           cfg.Dispatch.ClaudePath,
+			AgentRunner:          cfg.Orchestrator.AgentRunner,
+			AgentDriver:          cfg.Orchestrator.AgentDriver,
+			AgentCLIPath:         cfg.Orchestrator.AgentCLIPath,
+			AgentModel:           cfg.Orchestrator.AgentModel,
+			AgentReasoningEffort: cfg.Orchestrator.AgentReasoningEffort,
+			AgentAPIBaseURL:      cfg.Orchestrator.AgentAPIBaseURL,
+			APIKey:               cfg.Dispatch.APIKey,
+			AgentAPIKey:          cfg.Orchestrator.AgentAPIKey,
+			RepoDir:              repoDir,
+			CostSvc:              costSvc,
+		},
 	})
 
 	var authMiddleware func(http.Handler) http.Handler
@@ -695,6 +709,7 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		})
 	}
 	orchestratorSvc := orchestrator.NewService(orchestratorSt, projectSvc, orchestratorWorker, orchestrator.Config{
+		Enabled:      cfg.Orchestrator.Enabled,
 		RepoDir:      repoDir,
 		ServerURL:    cfg.Auth.BaseURL,
 		AgentID:      "command-center-orchestrator",
@@ -703,6 +718,19 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		AgentRunner:  cfg.Orchestrator.AgentRunner,
 		AgentDriver:  cfg.Orchestrator.AgentDriver,
 		AgentModel:   cfg.Orchestrator.AgentModel,
+		WorkerConfig: dispatch.Config{
+			ClaudePath:           cfg.Dispatch.ClaudePath,
+			AgentRunner:          cfg.Orchestrator.AgentRunner,
+			AgentDriver:          cfg.Orchestrator.AgentDriver,
+			AgentCLIPath:         cfg.Orchestrator.AgentCLIPath,
+			AgentModel:           cfg.Orchestrator.AgentModel,
+			AgentReasoningEffort: cfg.Orchestrator.AgentReasoningEffort,
+			AgentAPIBaseURL:      cfg.Orchestrator.AgentAPIBaseURL,
+			APIKey:               cfg.Dispatch.APIKey,
+			AgentAPIKey:          cfg.Orchestrator.AgentAPIKey,
+			RepoDir:              repoDir,
+			CostSvc:              costSvc,
+		},
 	})
 
 	router := rest.NewRouter(rest.RouterConfig{

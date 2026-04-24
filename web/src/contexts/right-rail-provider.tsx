@@ -15,6 +15,8 @@ export function RightRailProvider({
 }) {
   const [persisted, setPersisted] = useLocalStorage(STORAGE_KEY, true)
   const [isNarrow, setIsNarrow] = useState(false)
+  const [overrideContent, setOverrideContent] = useState<ReactNode>(undefined)
+  const [hasOverride, setHasOverride] = useState(false)
 
   // Watch for viewport width changes to auto-collapse on narrow viewports
   useEffect(() => {
@@ -41,17 +43,38 @@ export function RightRailProvider({
     [setPersisted],
   )
 
-  const hasContent = railContent != null
+  const setRailContent = useCallback((content: ReactNode) => {
+    setOverrideContent(content)
+    setHasOverride(true)
+  }, [])
+
+  const clearRailContent = useCallback(() => {
+    setOverrideContent(undefined)
+    setHasOverride(false)
+  }, [])
+
+  const effectiveContent = hasOverride ? overrideContent : railContent
+  const hasContent = effectiveContent != null
 
   const value = useMemo(
     () => ({
       isOpen: isOpen && hasContent,
       toggle,
       setOpen,
-      children: railContent,
+      children: effectiveContent,
       hasContent,
+      setRailContent,
+      clearRailContent,
     }),
-    [isOpen, toggle, setOpen, railContent, hasContent],
+    [
+      clearRailContent,
+      effectiveContent,
+      hasContent,
+      isOpen,
+      setOpen,
+      setRailContent,
+      toggle,
+    ],
   )
 
   return <RightRailContext value={value}>{children}</RightRailContext>

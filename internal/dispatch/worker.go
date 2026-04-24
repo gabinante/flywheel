@@ -128,8 +128,9 @@ func buildTypedTaskPrompt(wt WorkerType, ticketID, projectID string) string {
 // CLIWorker spawns an agent subprocess directly on the host.
 // It delegates agent-specific behavior (CLI flags, env vars) to the AgentDriver.
 type CLIWorker struct {
-	Driver AgentDriver // agent-specific behavior
-	APIKey string      // Flywheel API key for MCP authentication
+	Driver      AgentDriver // agent-specific behavior
+	APIKey      string      // Flywheel API key for MCP authentication
+	AgentAPIKey string      // provider credential for the selected worker
 }
 
 // Spawn starts an agent process with the given system prompt and MCP config.
@@ -179,6 +180,11 @@ func (w *CLIWorker) SpawnStream(ctx context.Context, ticketID, projectID, system
 	}
 	for k, v := range driverEnv.Set {
 		env = append(env, k+"="+v)
+	}
+	if envName := w.Driver.CredentialEnvName(); envName != "" {
+		if credential := w.Driver.ResolveCredential(w.AgentAPIKey); credential != "" {
+			env = append(env, envName+"="+credential)
+		}
 	}
 
 	cmd.Env = env

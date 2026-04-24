@@ -21,6 +21,7 @@ type ProjectStore interface {
 	UpdateDefaultBranch(ctx context.Context, projectID, branch string) error
 	UpdateContextPack(ctx context.Context, projectID string, pack ContextPack) error
 	UpdateDispatchEnabled(ctx context.Context, projectID string, enabled bool) error
+	UpdateDispatchConfig(ctx context.Context, projectID string, cfg DispatchConfig) error
 }
 
 // Service provides project operations.
@@ -110,6 +111,11 @@ func (s *Service) UpdateDefaultBranch(ctx context.Context, projectID, branch str
 // UpdateDispatchEnabled sets whether the dispatcher picks up tickets for this project.
 func (s *Service) UpdateDispatchEnabled(ctx context.Context, projectID string, enabled bool) error {
 	return s.store.UpdateDispatchEnabled(ctx, projectID, enabled)
+}
+
+// UpdateDispatchConfig stores project-specific dispatch worker and policy configuration.
+func (s *Service) UpdateDispatchConfig(ctx context.Context, projectID string, cfg DispatchConfig) error {
+	return s.store.UpdateDispatchConfig(ctx, projectID, cfg.Normalized())
 }
 
 func slugify(s string) string {

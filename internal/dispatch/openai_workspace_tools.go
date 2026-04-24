@@ -19,10 +19,15 @@ const (
 	openAIWorkspaceDefaultCmdTimeout = 30 * time.Second
 )
 
-func openAIWorkspaceTools() []openAIResponsesTool {
-	return []openAIResponsesTool{
+type openAIFunctionToolDefinition struct {
+	Name        string
+	Description string
+	Parameters  any
+}
+
+func openAIWorkspaceToolDefinitions() []openAIFunctionToolDefinition {
+	return []openAIFunctionToolDefinition{
 		{
-			Type:        "function",
 			Name:        "workspace_list_files",
 			Description: "List files under the current ticket workspace. Paths must stay within the workspace root.",
 			Parameters: map[string]any{
@@ -39,10 +44,8 @@ func openAIWorkspaceTools() []openAIResponsesTool {
 				},
 				"additionalProperties": false,
 			},
-			Strict: true,
 		},
 		{
-			Type:        "function",
 			Name:        "workspace_read_file",
 			Description: "Read a UTF-8 text file from the current ticket workspace.",
 			Parameters: map[string]any{
@@ -56,10 +59,8 @@ func openAIWorkspaceTools() []openAIResponsesTool {
 				"required":             []string{"path"},
 				"additionalProperties": false,
 			},
-			Strict: true,
 		},
 		{
-			Type:        "function",
 			Name:        "workspace_write_file",
 			Description: "Create or overwrite a UTF-8 text file in the current ticket workspace.",
 			Parameters: map[string]any{
@@ -77,10 +78,8 @@ func openAIWorkspaceTools() []openAIResponsesTool {
 				"required":             []string{"path", "content"},
 				"additionalProperties": false,
 			},
-			Strict: true,
 		},
 		{
-			Type:        "function",
 			Name:        "workspace_run_command",
 			Description: "Run a shell command inside the current ticket workspace and return its combined stdout and stderr.",
 			Parameters: map[string]any{
@@ -98,19 +97,55 @@ func openAIWorkspaceTools() []openAIResponsesTool {
 				"required":             []string{"command"},
 				"additionalProperties": false,
 			},
-			Strict: true,
 		},
 	}
 }
 
+func openAIWorkspaceTools() []openAIResponsesTool {
+	return openAIResponsesFunctionTools(openAIWorkspaceToolDefinitions())
+}
+
+func openAIResponsesFunctionTools(defs []openAIFunctionToolDefinition) []openAIResponsesTool {
+	tools := make([]openAIResponsesTool, 0, len(defs))
+	for _, def := range defs {
+		tools = append(tools, openAIResponsesTool{
+			Type:        "function",
+			Name:        def.Name,
+			Description: def.Description,
+			Parameters:  def.Parameters,
+			Strict:      true,
+		})
+	}
+	return tools
+}
+
+func openAIChatFunctionTools(defs []openAIFunctionToolDefinition) []openAIChatTool {
+	tools := make([]openAIChatTool, 0, len(defs))
+	for _, def := range defs {
+		tools = append(tools, openAIChatTool{
+			Type: "function",
+			Function: openAIChatToolFunction{
+				Name:        def.Name,
+				Description: def.Description,
+				Parameters:  def.Parameters,
+			},
+		})
+	}
+	return tools
+}
+
 func executeOpenAIWorkspaceTool(ctx context.Context, workDir string, call openAIResponsesOutputItem) string {
+	return executeOpenAIFunctionTool(ctx, workDir, call.Name, call.Arguments)
+}
+
+func executeOpenAIFunctionTool(ctx context.Context, workDir, name, rawArguments string) string {
 	switch call.Name {
 	case "workspace_list_files":
 		var args struct {
 			Path       string `json:"path"`
 			MaxEntries int    `json:"max_entries"`
 		}
-		if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
+		if err := json.Unmarshal([]byte(rawArguments), &args); err != nil {
 			return jsonToolError(err)
 		}
 		return workspaceListFiles(workDir, args.Path, args.MaxEntries)
@@ -118,7 +153,7 @@ func executeOpenAIWorkspaceTool(ctx context.Context, workDir string, call openAI
 		var args struct {
 			Path string `json:"path"`
 		}
-		if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
+		if err := json.Unmarshal([]byte(rawArguments), &args); err != nil {
 			return jsonToolError(err)
 		}
 		return workspaceReadFile(workDir, args.Path)
@@ -127,7 +162,7 @@ func executeOpenAIWorkspaceTool(ctx context.Context, workDir string, call openAI
 			Path    string `json:"path"`
 			Content string `json:"content"`
 		}
-		if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
+		if err := json.Unmarshal([]byte(rawArguments), &args); err != nil {
 			return jsonToolError(err)
 		}
 		return workspaceWriteFile(workDir, args.Path, args.Content)
@@ -136,12 +171,12 @@ func executeOpenAIWorkspaceTool(ctx context.Context, workDir string, call openAI
 			Command        string `json:"command"`
 			TimeoutSeconds int    `json:"timeout_seconds"`
 		}
-		if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
+		if err := json.Unmarshal([]byte(rawArguments), &args); err != nil {
 			return jsonToolError(err)
 		}
 		return workspaceRunCommand(ctx, workDir, args.Command, args.TimeoutSeconds)
 	default:
-		return jsonToolError(fmt.Errorf("unknown workspace tool %q", call.Name))
+		return jsonToolError(fmt.Errorf("unknown workspace tool %q", name))
 	}
 }
 

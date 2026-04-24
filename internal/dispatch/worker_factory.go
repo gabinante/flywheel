@@ -10,7 +10,7 @@ func NewWorker(cfg Config) Worker {
 		driverName = "claude"
 	}
 	cliPath := cfg.AgentCLIPath
-	if cliPath == "" {
+	if cliPath == "" && driverName == "claude" {
 		cliPath = cfg.ClaudePath
 	}
 	driver, err := LookupDriver(driverName, DriverConfig{
@@ -26,8 +26,9 @@ func NewWorker(cfg Config) Worker {
 	if workerErr != nil {
 		log.Printf("dispatch: %v, falling back to cli runner", workerErr)
 		worker = &CLIWorker{
-			Driver: driver,
-			APIKey: cfg.APIKey,
+			Driver:      driver,
+			APIKey:      cfg.APIKey,
+			AgentAPIKey: cfg.AgentAPIKey,
 		}
 	}
 	return worker

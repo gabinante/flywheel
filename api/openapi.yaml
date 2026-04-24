@@ -1833,6 +1833,8 @@ components:
         dispatch_enabled:
           type: boolean
           description: Whether the dispatcher picks up tickets for this project (default true).
+        dispatch_config:
+          $ref: '#/components/schemas/DispatchConfig'
         created_at:
           type: string
           format: date-time
@@ -1857,6 +1859,65 @@ components:
         dispatch_enabled:
           type: boolean
           description: Whether the dispatcher picks up tickets for this project (default true). Takes effect immediately.
+        dispatch_config:
+          $ref: '#/components/schemas/DispatchConfig'
+    DispatchConfig:
+      type: object
+      properties:
+        workers:
+          type: array
+          items:
+            $ref: '#/components/schemas/DispatchWorkerProfile'
+        policies:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/DispatchRolePolicy'
+    DispatchWorkerProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        enabled:
+          type: boolean
+        runner:
+          type: string
+          enum: [cli, docker, openai-responses]
+        driver:
+          type: string
+          enum: [claude, codex, generic]
+        cli_path:
+          type: string
+          description: Override binary path when using a CLI or Docker-backed worker.
+        model:
+          type: string
+          description: Model override for API-native workers.
+        reasoning_effort:
+          type: string
+          description: Reasoning effort override for API-native workers.
+        api_base_url:
+          type: string
+          description: Base URL override for API-native workers.
+        credential_env_var:
+          type: string
+          description: Environment variable that holds the provider credential for this worker profile.
+        args:
+          type: array
+          items:
+            type: string
+    DispatchRolePolicy:
+      type: object
+      properties:
+        selection_mode:
+          type: string
+          enum: [ordered, any]
+          description: ordered tries workers in the configured order; any rotates across the configured workers.
+        worker_ids:
+          type: array
+          description: Worker profile IDs to use for this role. Leave empty to use all enabled workers.
+          items:
+            type: string
     WorkStream:
       type: object
       properties:

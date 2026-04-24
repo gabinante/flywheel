@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 
 import { DispatchDashboard } from '@/components/dispatch-dashboard'
+import { ProjectDispatchRoutingCard } from '@/components/project-dispatch-routing-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -366,6 +367,12 @@ export function ProjectPage() {
           </Button>
         </CardHeader>
       </Card>
+
+      <ProjectDispatchRoutingCard
+        projectId={projectId}
+        project={project}
+        onProjectChange={setProject}
+      />
 
       <section>
         <h2 className="mb-3 text-sm font-medium text-muted-foreground">
