@@ -3,7 +3,7 @@ package config
 import (
 	"bufio"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -165,7 +165,7 @@ func Load() *Config {
 	}
 
 	for _, w := range cfg.Validate() {
-		log.Printf("config warning: %s", w)
+		slog.Warn("config warning", "message", w)
 	}
 
 	return cfg

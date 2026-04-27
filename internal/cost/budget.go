@@ -3,7 +3,7 @@ package cost
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -72,7 +72,7 @@ func (bc *BudgetChecker) CheckBudget(ctx context.Context, projectID, ticketID st
 
 	spent, err := bc.store.SumByProject(ctx, projectID, month)
 	if err != nil {
-		log.Printf("cost: budget check failed for project %s: %v", projectID, err)
+		slog.Error("cost: budget check failed", "project", projectID, "error", err)
 		return nil, true // fail open
 	}
 
@@ -185,11 +185,11 @@ func (bc *BudgetChecker) maybeAlert(ctx context.Context, projectID, ticketID str
 	}
 
 	if err := bc.store.CreateAlert(ctx, alert); err != nil {
-		log.Printf("cost: failed to create alert: %v", err)
+		slog.Error("cost: failed to create alert", "error", err)
 		return
 	}
 
 	if err := bc.notify.NotifyBudgetAlert(ctx, alert); err != nil {
-		log.Printf("cost: failed to notify alert: %v", err)
+		slog.Error("cost: failed to notify alert", "error", err)
 	}
 }

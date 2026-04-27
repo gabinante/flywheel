@@ -11,6 +11,7 @@ import type { components } from '@/lib/api/v1'
 import { cn } from '@/lib/utils'
 
 type Ticket = components['schemas']['Ticket']
+type Escalation = components['schemas']['Escalation']
 
 function Shimmer({ className }: { className?: string }) {
   return <div className={cn('animate-pulse rounded bg-muted/60', className)} />
@@ -18,11 +19,13 @@ function Shimmer({ className }: { className?: string }) {
 
 export function TicketInspector({
   ticketId,
+  escalation,
   orgId,
   projectId,
   onReviewComplete,
 }: {
   ticketId: string
+  escalation?: Escalation | null
   orgId: string
   projectId: string
   onReviewComplete?: () => void
@@ -34,6 +37,9 @@ export function TicketInspector({
   const [reviewBusy, setReviewBusy] = useState(false)
   const [reviewNotes, setReviewNotes] = useState('')
   const [reviewError, setReviewError] = useState<string | null>(null)
+  const [escalationAnswer, setEscalationAnswer] = useState('')
+  const [escalationBusy, setEscalationBusy] = useState(false)
+  const [escalationError, setEscalationError] = useState<string | null>(null)
 
   const fetchTicket = useCallback(async () => {
     setLoading(true)
@@ -77,6 +83,32 @@ export function TicketInspector({
     [client, ticketId, reviewNotes, fetchTicket, onReviewComplete],
   )
 
+  const resolveEscalation = useCallback(async () => {
+    const escalationId = escalation?.id
+    const answer = escalationAnswer.trim()
+    if (!escalationId || !answer) return
+
+    setEscalationBusy(true)
+    setEscalationError(null)
+    const { error: err, response } = await client.POST(
+      '/tickets/{ticketID}/escalations/{escalationID}/resolve',
+      {
+        params: { path: { ticketID: ticketId, escalationID: escalationId } },
+        body: { answer },
+      },
+    )
+    setEscalationBusy(false)
+
+    if (!response.ok) {
+      setEscalationError(formatApiError(err))
+      return
+    }
+
+    setEscalationAnswer('')
+    await fetchTicket()
+    onReviewComplete?.()
+  }, [client, escalation?.id, escalationAnswer, fetchTicket, onReviewComplete, ticketId])
+
   if (loading) {
     return (
       <div className="flex flex-col gap-3 p-4">
@@ -105,6 +137,10 @@ export function TicketInspector({
   }
 
   const obj = ticket.objective
+  const isAwaitingReview =
+    ticket.state === 'awaiting_validation' || ticket.state === 'awaiting_review'
+  const isAwaitingInput =
+    ticket.state === 'awaiting_input' || ticket.state === 'needs_human'
 
   return (
     <div className="flex flex-col gap-4 p-4 animate-in fade-in duration-200">
@@ -152,8 +188,70 @@ export function TicketInspector({
         </Card>
       )}
 
+      {/* Human Unblock */}
+      {isAwaitingInput && escalation?.id ? (
+        <Card className="border-red-500/20 bg-red-500/5">
+          <CardHeader>
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="text-xs">Human Unblock</CardTitle>
+              <Badge className="border-red-500/30 bg-red-500/15 text-red-400">
+                awaiting input
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {escalation.reason ? (
+              <div className="space-y-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-red-400/90">
+                  Reason
+                </p>
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  {escalation.reason}
+                </p>
+              </div>
+            ) : null}
+
+            {escalation.question ? (
+              <div className="space-y-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-red-400/90">
+                  Question
+                </p>
+                <p className="text-sm leading-relaxed text-foreground">
+                  {escalation.question}
+                </p>
+              </div>
+            ) : null}
+
+            {escalationError ? (
+              <p className="text-sm text-destructive">{escalationError}</p>
+            ) : null}
+
+            <textarea
+              className="border-input bg-background min-h-[110px] rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+              value={escalationAnswer}
+              onChange={(e) => setEscalationAnswer(e.target.value)}
+              disabled={escalationBusy}
+              placeholder="Provide the missing context, decision, or implementation direction to unblock the worker."
+            />
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
+                Your answer is appended to the ticket context and the worker resumes execution.
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                disabled={escalationBusy || !escalationAnswer.trim()}
+                onClick={() => void resolveEscalation()}
+              >
+                {escalationBusy ? 'Unblocking...' : 'Send unblock answer'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       {/* Inline Review */}
-      {ticket.state === 'awaiting_review' && (
+      {isAwaitingReview && (
         <Card className="border-amber-500/20 bg-amber-500/5">
           <CardHeader>
             <CardTitle className="text-xs">Review</CardTitle>

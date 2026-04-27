@@ -8,14 +8,17 @@ import {
   PieChart,
   Building2,
   Server,
+  Settings,
   ShieldCheck,
   Ticket,
   Workflow,
 } from 'lucide-react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/contexts/use-auth'
+import { useProjectEscalations } from '@/hooks/use-project-escalations'
 import { useSidebar } from '@/contexts/use-sidebar'
 import { cn } from '@/lib/utils'
 
@@ -28,6 +31,11 @@ type NavItem = {
   href: string
   /** Match pattern: if location starts with this, the item is active */
   match?: string
+  badgeCount?: number
+}
+
+function formatBadgeCount(count: number): string {
+  return count > 9 ? '9+' : String(count)
 }
 
 function NavSection({
@@ -57,7 +65,7 @@ function NavSection({
             key={item.href}
             to={item.href}
             className={cn(
-              'group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+              'group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
               active
                 ? 'bg-sidebar-accent text-sidebar-primary'
                 : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
@@ -67,6 +75,17 @@ function NavSection({
           >
             <item.icon className="size-4 shrink-0" />
             {expanded && <span className="truncate">{item.label}</span>}
+            {item.badgeCount && item.badgeCount > 0 ? (
+              expanded ? (
+                <Badge className="ml-auto border-red-500/30 bg-red-500/15 text-red-400">
+                  {formatBadgeCount(item.badgeCount)}
+                </Badge>
+              ) : (
+                <span className="absolute right-1.5 top-1.5 flex min-w-4 items-center justify-center rounded-full border border-red-500/30 bg-red-500/90 px-1 text-[10px] font-semibold leading-4 text-white shadow-sm">
+                  {formatBadgeCount(item.badgeCount)}
+                </span>
+              )
+            ) : null}
           </Link>
         )
       })}
@@ -79,8 +98,10 @@ export function LeftSidebar() {
   const { token, signOut } = useAuth()
   const location = useLocation()
   const { orgId, projectId } = useParams<{ orgId: string; projectId: string }>()
+  const { escalations } = useProjectEscalations(projectId)
 
   const projectBase = orgId && projectId ? `/orgs/${orgId}/projects/${projectId}` : ''
+  const escalationCount = escalations.length
 
   const navigateItems: NavItem[] = projectBase
     ? [
@@ -89,6 +110,7 @@ export function LeftSidebar() {
           icon: LayoutDashboard,
           href: `${projectBase}/command`,
           match: `${projectBase}/command`,
+          badgeCount: escalationCount,
         },
         {
           label: 'Tickets',
@@ -130,6 +152,17 @@ export function LeftSidebar() {
           icon: ShieldCheck,
           href: `${projectBase}/policies`,
           match: `${projectBase}/policies`,
+        },
+      ]
+    : []
+
+  const configureItems: NavItem[] = projectBase
+    ? [
+        {
+          label: 'Settings',
+          icon: Settings,
+          href: `${projectBase}/settings`,
+          match: `${projectBase}/settings`,
         },
       ]
     : []
@@ -202,6 +235,14 @@ export function LeftSidebar() {
           <NavSection
             title="Observe"
             items={observeItems}
+            expanded={isExpanded}
+            currentPath={currentPath}
+          />
+        )}
+        {token && configureItems.length > 0 && (
+          <NavSection
+            title="Configure"
+            items={configureItems}
             expanded={isExpanded}
             currentPath={currentPath}
           />

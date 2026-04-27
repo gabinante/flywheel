@@ -2,12 +2,14 @@ package middleware
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gabinante/flywheel/internal/metrics"
 	"github.com/google/uuid"
 )
 
@@ -90,9 +92,40 @@ func Logger(next http.Handler) http.Handler {
 		start := time.Now()
 		wrap := &responseWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(wrap, r)
-		log.Printf("%s %s %s %d %s %d",
-			r.Method, r.URL.Path, r.RemoteAddr, wrap.status, time.Since(start), wrap.size)
+		slog.Info("request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"remote", r.RemoteAddr,
+			"status", wrap.status,
+			"duration", time.Since(start),
+			"size", wrap.size,
+			"request_id", GetRequestID(r.Context()),
+		)
 	})
+}
+
+// Metrics records HTTP request count and duration using Prometheus metrics.
+func Metrics(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		wrap := &responseWriter{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(wrap, r)
+
+		path := normalizePath(r.URL.Path)
+		metrics.HTTPRequestsTotal.WithLabelValues(r.Method, path, strconv.Itoa(wrap.status)).Inc()
+		metrics.HTTPRequestDuration.WithLabelValues(r.Method, path).Observe(time.Since(start).Seconds())
+	})
+}
+
+// normalizePath reduces cardinality by replacing UUIDs and IDs with placeholders.
+func normalizePath(p string) string {
+	parts := strings.Split(p, "/")
+	for i, part := range parts {
+		if len(part) == 36 && strings.Count(part, "-") == 4 {
+			parts[i] = ":id"
+		}
+	}
+	return strings.Join(parts, "/")
 }
 
 // Recoverer recovers from panics and returns 500.
@@ -100,7 +133,7 @@ func Recoverer(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {
-				log.Printf("panic: %v", err)
+				slog.Error("panic recovered", "error", err, "request_id", GetRequestID(r.Context()))
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusInternalServerError)
 				w.Write([]byte(`{"error":"internal server error","code":"internal","retriable":false}`))

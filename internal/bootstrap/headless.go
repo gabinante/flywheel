@@ -3,7 +3,7 @@ package bootstrap
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 )
@@ -67,13 +67,13 @@ func RunHeadless(ctx context.Context, cfg *HeadlessConfig, orgSvc OrgCreator, pr
 	result.DataDir = dataDir
 
 	// Scan repo.
-	log.Printf("bootstrap: scanning %s", repoPath)
+	slog.Info("bootstrap scanning", "path", repoPath)
 	pm, err := ScanRepo(repoPath)
 	if err != nil {
 		return nil, fmt.Errorf("scan repo: %w", err)
 	}
 	result.ProjectMap = pm
-	log.Printf("bootstrap: detected %s", pm.Summary)
+	slog.Info("bootstrap detected", "summary", pm.Summary)
 
 	// Generate secrets.
 	result.JWTSecret = generateSecret(32)
@@ -104,10 +104,10 @@ func RunHeadless(ctx context.Context, cfg *HeadlessConfig, orgSvc OrgCreator, pr
 	// Write config.
 	configPath := filepath.Join(result.DataDir, "config.env")
 	if err := writeConfigFile(configPath, result); err != nil {
-		log.Printf("bootstrap: warning: could not write config file: %v", err)
+		slog.Warn("bootstrap: could not write config file", "error", err)
 	}
 
-	log.Printf("bootstrap: setup complete — org=%s project=%s agent-key=%s", o.ID, p.ID, apiKey)
+	slog.Info("bootstrap setup complete", "org", o.ID, "project", p.ID, "agent_key", apiKey)
 	return result, nil
 }
 

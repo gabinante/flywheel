@@ -64,12 +64,13 @@ func (h *DeliveryHandler) getConfig(w http.ResponseWriter, r *http.Request) {
 	if !EnsureProjectAccess(r.Context(), w, projectID, h.AgentStore, h.OrgSvc, h.ProjectSvc) {
 		return
 	}
-	cfg, err := h.DeliverySvc.GetConfig(r.Context(), projectID)
+	// Return masked config — never expose raw credentials.
+	resp, err := h.DeliverySvc.GetMaskedConfig(r.Context(), projectID)
 	if err != nil {
 		WriteStructuredError(w, apierrors.MapError(err))
 		return
 	}
-	writeJSON(w, http.StatusOK, cfg)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *DeliveryHandler) updateConfig(w http.ResponseWriter, r *http.Request) {
@@ -86,5 +87,11 @@ func (h *DeliveryHandler) updateConfig(w http.ResponseWriter, r *http.Request) {
 		WriteStructuredError(w, apierrors.MapError(err))
 		return
 	}
-	writeJSON(w, http.StatusOK, cfg)
+	// Return masked response — never echo raw credentials back.
+	resp, err := h.DeliverySvc.GetMaskedConfig(r.Context(), projectID)
+	if err != nil {
+		WriteStructuredError(w, apierrors.MapError(err))
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

@@ -6,6 +6,31 @@ export type OrchestratorMessage = {
   created_at: string
 }
 
+export type OrchestratorRunEvent = {
+  id: string
+  run_id: string
+  kind: 'status' | 'worker_output' | 'error'
+  payload: Record<string, unknown>
+  created_at: string
+}
+
+export type OrchestratorRun = {
+  id: string
+  project_id: string
+  user_message_id: string
+  assistant_message_id?: string
+  status: 'running' | 'completed' | 'failed'
+  worker_id?: string
+  worker_name?: string
+  runner?: string
+  driver?: string
+  model?: string
+  error?: string
+  started_at: string
+  completed_at?: string
+  events: OrchestratorRunEvent[]
+}
+
 export type OrchestratorWorkerLane = {
   name: string
   purpose: string
@@ -24,6 +49,7 @@ export type OrchestratorPlaybook = {
 export type OrchestratorThread = {
   project_id: string
   messages: OrchestratorMessage[]
+  runs: OrchestratorRun[]
   playbook: OrchestratorPlaybook
 }
 

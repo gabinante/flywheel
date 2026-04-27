@@ -2,7 +2,7 @@ package dispatch
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -111,7 +111,7 @@ func (m *MultiRepoCloneManager) EnsureClone(repoURL, alias string) (string, erro
 		fetch := exec.Command("git", "fetch", "--all")
 		fetch.Dir = dir
 		if out, err := fetch.CombinedOutput(); err != nil {
-			log.Printf("multi-repo: fetch %s: %s: %v", alias, strings.TrimSpace(string(out)), err)
+			slog.Warn("multi-repo fetch failed", "alias", alias, "output", strings.TrimSpace(string(out)), "error", err)
 		}
 		return dir, nil
 	}

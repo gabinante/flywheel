@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
+import type { RailEscalation } from '@/hooks/use-project-rail-data'
 import type { components } from '@/lib/api/v1'
 import { cn } from '@/lib/utils'
 
@@ -51,6 +52,7 @@ function Shimmer({ className }: { className?: string }) {
 export function ActiveWorkPanel({
   tickets,
   pendingReviews,
+  escalations,
   loading,
   orgId,
   projectId,
@@ -59,13 +61,14 @@ export function ActiveWorkPanel({
 }: {
   tickets: Ticket[]
   pendingReviews: Ticket[]
+  escalations: RailEscalation[]
   loading: boolean
   orgId: string
   projectId: string
   selectedTicketId: string | null
   onSelectTicket: (ticketId: string) => void
 }) {
-  if (loading && tickets.length === 0 && pendingReviews.length === 0) {
+  if (loading && tickets.length === 0 && pendingReviews.length === 0 && escalations.length === 0) {
     return (
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
@@ -79,6 +82,62 @@ export function ActiveWorkPanel({
 
   return (
     <div className="flex flex-col gap-5">
+      {/* Awaiting Input */}
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-red-400">
+            Awaiting Input
+          </h3>
+          {escalations.length > 0 && (
+            <span className="rounded-full bg-red-500/10 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-red-400">
+              {escalations.length}
+            </span>
+          )}
+        </div>
+        {escalations.length === 0 ? (
+          <p className="py-2 text-xs italic text-muted-foreground">
+            Nothing blocked on human input.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {escalations.map(({ escalation, ticket }) => (
+              <li key={escalation.id ?? ticket.id}>
+                <button
+                  type="button"
+                  onClick={() => ticket.id && onSelectTicket(ticket.id)}
+                  className={cn(
+                    'group flex w-full flex-col gap-1 rounded-lg px-2.5 py-2 text-left transition-colors',
+                    selectedTicketId === ticket.id
+                      ? 'bg-red-500/12 ring-1 ring-red-500/30'
+                      : 'bg-red-500/[0.04] hover:bg-red-500/[0.08]',
+                  )}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Badge className="shrink-0 border-red-500/30 bg-red-500/15 text-[10px] text-red-400">
+                      awaiting input
+                    </Badge>
+                    <span className="truncate text-xs font-medium text-foreground group-hover:underline">
+                      {ticket.title ?? ticket.id}
+                    </span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">
+                    {escalation.question?.trim() || escalation.reason?.trim() || 'Worker requested human guidance.'}
+                  </p>
+                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                    <span className="truncate font-mono">
+                      {shortAgent(ticket.assigned_to ?? escalation.agent_id)}
+                    </span>
+                    <span className="ml-auto shrink-0 tabular-nums">
+                      {elapsed(escalation.created_at)}
+                    </span>
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
       {/* Active Work */}
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between">

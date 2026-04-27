@@ -6,7 +6,7 @@ package sms
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/gabinante/flywheel/internal/notification"
 )
@@ -29,8 +29,7 @@ func (a *Adapter) Send(_ context.Context, n *notification.Notification, prefs *n
 	if prefs.SMSNumber == "" {
 		return fmt.Errorf("SMS number not configured for project %s", n.ProjectID)
 	}
-	log.Printf("notification/sms: [stub] would send to %s — [%s] %s",
-		prefs.SMSNumber, string(n.Urgency), n.Title)
+	slog.Info("sms stub: would send", "to", prefs.SMSNumber, "urgency", string(n.Urgency), "title", n.Title)
 	return nil
 }
 
@@ -39,7 +38,6 @@ func (a *Adapter) SendDigest(_ context.Context, notifications []*notification.No
 	if prefs.SMSNumber == "" {
 		return fmt.Errorf("SMS number not configured")
 	}
-	log.Printf("notification/sms: [stub] would send digest (%d items) to %s",
-		len(notifications), prefs.SMSNumber)
+	slog.Info("sms stub: would send digest", "count", len(notifications), "to", prefs.SMSNumber)
 	return nil
 }

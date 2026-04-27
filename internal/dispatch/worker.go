@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -289,9 +289,9 @@ func (w *DockerWorker) SpawnStream(ctx context.Context, ticketID, projectID, sys
 	credential := w.Driver.ResolveCredential(w.AgentAPIKey)
 	if credential != "" {
 		if credential != w.AgentAPIKey {
-			log.Printf("dispatch: using dynamic credential for worker %s", ticketID)
+			slog.Info("dispatch: using dynamic credential for worker", "ticket", ticketID)
 		} else {
-			log.Printf("dispatch: using static credential for worker %s", ticketID)
+			slog.Info("dispatch: using static credential for worker", "ticket", ticketID)
 		}
 	}
 

@@ -3,7 +3,7 @@ package mirror
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 
 	"github.com/gabinante/flywheel/events"
@@ -117,14 +117,14 @@ func (s *Service) handleTicketCreated(ctx context.Context, event events.Event) {
 
 	t, err := s.tickets.GetTicket(ctx, ticketID)
 	if err != nil {
-		log.Printf("mirror: failed to get ticket %s: %v", ticketID, err)
+		slog.Error("mirror: failed to get ticket", "ticket", ticketID, "error", err)
 		return
 	}
 
 	data := ticketToData(t, cfg)
 	externalID, err := adapter.CreateTicket(ctx, cfg, data)
 	if err != nil {
-		log.Printf("mirror: failed to create external ticket for %s: %v", ticketID, err)
+		slog.Error("mirror: failed to create external ticket", "ticket", ticketID, "error", err)
 		return
 	}
 
@@ -132,7 +132,7 @@ func (s *Service) handleTicketCreated(ctx context.Context, event events.Event) {
 	s.externalIDs[ticketID] = externalID
 	s.mu.Unlock()
 
-	log.Printf("mirror: created %s issue %s for ticket %s", adapter.Name(), externalID, ticketID)
+	slog.Info("mirror: created external issue", "provider", adapter.Name(), "external_id", externalID, "ticket", ticketID)
 }
 
 // handleStateTransition updates the external issue's state.
@@ -165,20 +165,20 @@ func (s *Service) handleStateTransition(ctx context.Context, event events.Event)
 
 	t, err := s.tickets.GetTicket(ctx, ticketID)
 	if err != nil {
-		log.Printf("mirror: failed to get ticket %s for state update: %v", ticketID, err)
+		slog.Error("mirror: failed to get ticket for state update", "ticket", ticketID, "error", err)
 		return
 	}
 
 	data := ticketToData(t, cfg)
 	if err := adapter.UpdateState(ctx, cfg, externalID, mappedState, data); err != nil {
-		log.Printf("mirror: failed to update state for %s (external: %s): %v", ticketID, externalID, err)
+		slog.Error("mirror: failed to update state", "ticket", ticketID, "external_id", externalID, "error", err)
 		return
 	}
 
 	// Also update custom fields on state transitions (data may have changed).
 	fields := ticketToCustomFields(t)
 	if err := adapter.UpdateFields(ctx, cfg, externalID, fields); err != nil {
-		log.Printf("mirror: failed to update fields for %s (external: %s): %v", ticketID, externalID, err)
+		slog.Error("mirror: failed to update fields", "ticket", ticketID, "external_id", externalID, "error", err)
 	}
 }
 
@@ -201,17 +201,17 @@ func (s *Service) handleTicketClosed(ctx context.Context, event events.Event) {
 
 	t, err := s.tickets.GetTicket(ctx, ticketID)
 	if err != nil {
-		log.Printf("mirror: failed to get ticket %s for close: %v", ticketID, err)
+		slog.Error("mirror: failed to get ticket for close", "ticket", ticketID, "error", err)
 		return
 	}
 
 	data := ticketToData(t, cfg)
 	contextURL := cfg.TicketURL(ticketID)
 	if err := adapter.CloseTicket(ctx, cfg, externalID, contextURL, data); err != nil {
-		log.Printf("mirror: failed to close external ticket for %s (external: %s): %v", ticketID, externalID, err)
+		slog.Error("mirror: failed to close external ticket", "ticket", ticketID, "external_id", externalID, "error", err)
 	}
 
-	log.Printf("mirror: closed %s issue %s for ticket %s", adapter.Name(), externalID, ticketID)
+	slog.Info("mirror: closed external issue", "provider", adapter.Name(), "external_id", externalID, "ticket", ticketID)
 }
 
 // resolveAdapter loads the mirror config for a ticket's project and returns
@@ -219,19 +219,19 @@ func (s *Service) handleTicketClosed(ctx context.Context, event events.Event) {
 func (s *Service) resolveAdapter(ctx context.Context, ticketID string) (*Config, Adapter, error) {
 	t, err := s.tickets.GetTicket(ctx, ticketID)
 	if err != nil {
-		log.Printf("mirror: failed to get ticket %s: %v", ticketID, err)
+		slog.Error("mirror: failed to get ticket", "ticket", ticketID, "error", err)
 		return nil, nil, err
 	}
 
 	p, err := s.projects.GetProject(ctx, t.ProjectID)
 	if err != nil {
-		log.Printf("mirror: failed to get project %s: %v", t.ProjectID, err)
+		slog.Error("mirror: failed to get project", "project", t.ProjectID, "error", err)
 		return nil, nil, err
 	}
 
 	cfg, err := ParseConfig(p.ContextPack.Extra)
 	if err != nil {
-		log.Printf("mirror: invalid config for project %s: %v", t.ProjectID, err)
+		slog.Error("mirror: invalid config for project", "project", t.ProjectID, "error", err)
 		return nil, nil, err
 	}
 	if cfg == nil || !cfg.Enabled {
@@ -240,7 +240,7 @@ func (s *Service) resolveAdapter(ctx context.Context, ticketID string) (*Config,
 
 	adapter, ok := s.adapters[cfg.Provider]
 	if !ok {
-		log.Printf("mirror: no adapter registered for provider %q (project %s)", cfg.Provider, t.ProjectID)
+		slog.Warn("mirror: no adapter registered for provider", "provider", cfg.Provider, "project", t.ProjectID)
 		return nil, nil, fmt.Errorf("no adapter for provider %q", cfg.Provider)
 	}
 

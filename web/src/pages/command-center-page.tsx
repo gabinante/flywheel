@@ -1,163 +1,58 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
-import { type ActivityItem } from '@/components/command-center/activity-feed'
 import { CommandCenterRail } from '@/components/command-center/command-center-rail'
 import { OrchestratorConsole } from '@/components/command-center/orchestrator-console'
 import { TicketInspector } from '@/components/command-center/ticket-inspector'
-import { useAuth } from '@/contexts/use-auth'
+import { Badge } from '@/components/ui/badge'
 import { useRightRail } from '@/contexts/use-right-rail'
-import {
-  buildActivityItems,
-  ticketIdFromChangeEvent,
-  type ChangeStreamEvent,
-  type TraceActivityStep,
-} from '@/lib/command-center-activity'
+import { useProjectRailData } from '@/hooks/use-project-rail-data'
 import type { components } from '@/lib/api/v1'
 
 type Ticket = components['schemas']['Ticket']
-type DispatchStatus = {
-  active_ticket_ids?: string[]
-}
-type ChangeStreamResponse = {
-  events?: ChangeStreamEvent[]
-}
-
-const POLL_INTERVAL = 10_000
 
 export function CommandCenterPage() {
   const { orgId, projectId } = useParams<{ orgId: string; projectId: string }>()
-  const { client, token } = useAuth()
   const { clearRailContent, setOpen, setRailContent } = useRightRail()
-
-  const [activeTickets, setActiveTickets] = useState<Ticket[]>([])
-  const [pendingReviews, setPendingReviews] = useState<Ticket[]>([])
-  const [activityItems, setActivityItems] = useState<ActivityItem[]>([])
-  const [loading, setLoading] = useState(true)
+  const {
+    activeTickets,
+    pendingReviews,
+    escalations,
+    activityItems,
+    loading,
+    refresh,
+  } = useProjectRailData(projectId)
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null)
-
-  const hasLoaded = useRef(false)
-  const ticketListRef = useRef<Ticket[]>([])
-
-  const fetchData = useCallback(async () => {
-    if (!projectId || !token) return
-
-    try {
-      const [statusRes, reviewsRes, changeStreamRes] = await Promise.all([
-        fetch('/api/dispatch/status', {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        client.GET('/projects/{projectID}/reviews', {
-          params: { path: { projectID: projectId } },
-        }),
-        fetch(
-          `/api/v1/streams/change?project_id=${encodeURIComponent(projectId)}&limit=40`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          },
-        ),
-      ])
-
-      const status = statusRes.ok
-        ? ((await statusRes.json()) as DispatchStatus)
-        : null
-      const activeTicketIds = [...new Set(status?.active_ticket_ids ?? [])]
-
-      const activeTicketResults = await Promise.all(
-        activeTicketIds.map(async (ticketId) => {
-          const { data, response } = await client.GET('/tickets/{ticketID}', {
-            params: { path: { ticketID: ticketId } },
-          })
-          return response.ok ? (data as Ticket) : null
-        }),
-      )
-
-      const active = activeTicketResults.filter(
-        (ticket): ticket is Ticket => ticket !== null,
-      )
-      setActiveTickets(active)
-      ticketListRef.current = active
-
-      const reviews: Ticket[] = reviewsRes.response.ok
-        ? (reviewsRes.data?.tickets ?? [])
-        : []
-      const activeTicketIdSet = new Set(active.map((ticket) => ticket.id).filter(Boolean))
-      setPendingReviews(
-        reviews.filter((ticket) => !ticket.id || !activeTicketIdSet.has(ticket.id)),
-      )
-
-      const changeEvents: ChangeStreamEvent[] = changeStreamRes.ok
-        ? (((await changeStreamRes.json()) as ChangeStreamResponse).events ?? [])
-        : []
-
-      const ticketsById = new Map<string, Ticket>()
-      for (const ticket of [...active, ...reviews]) {
-        if (ticket.id) ticketsById.set(ticket.id, ticket)
-      }
-
-      const candidateTicketIds = [
-        ...changeEvents
-          .map((event) => ticketIdFromChangeEvent(event))
-          .filter((ticketId): ticketId is string => Boolean(ticketId)),
-        ...active.map((ticket) => ticket.id).filter((ticketId): ticketId is string => Boolean(ticketId)),
-        ...reviews.map((ticket) => ticket.id).filter((ticketId): ticketId is string => Boolean(ticketId)),
-      ].filter((ticketId, index, list) => list.indexOf(ticketId) === index)
-
-      const traceTicketIds = candidateTicketIds.slice(0, 10)
-      const missingTicketIds = traceTicketIds.filter((ticketId) => !ticketsById.has(ticketId))
-      if (missingTicketIds.length > 0) {
-        const ticketResults = await Promise.all(
-          missingTicketIds.map(async (ticketId) => {
-            const { data, response } = await client.GET('/tickets/{ticketID}', {
-              params: { path: { ticketID: ticketId } },
-            })
-            return response.ok ? (data as Ticket) : null
-          }),
-        )
-        for (const ticket of ticketResults) {
-          if (ticket?.id) ticketsById.set(ticket.id, ticket)
-        }
-      }
-
-      const traceResults = await Promise.all(
-        traceTicketIds.map(async (ticketId) => {
-          const { data, response } = await client.GET('/tickets/{ticketID}/trace', {
-            params: { path: { ticketID: ticketId } },
-          })
-          if (!response.ok) return []
-          return (data?.steps ?? []).map((step) => ({
-            ...step,
-            ticketId,
-          }))
-        }),
-      )
-
-      const traceSteps: TraceActivityStep[] = traceResults.flat()
-      setActivityItems(
-        buildActivityItems({
-          changeEvents,
-          traceSteps,
-          ticketsById,
-        }),
-      )
-    } catch {
-      // silent
-    } finally {
-      hasLoaded.current = true
-      setLoading(false)
+  const didAutoSelectEscalation = useRef(false)
+  const navigableTickets = useMemo(() => {
+    const seen = new Set<string>()
+    const ordered: Ticket[] = []
+    for (const ticket of [
+      ...escalations.map((item) => item.ticket),
+      ...activeTickets,
+      ...pendingReviews,
+    ]) {
+      if (!ticket.id || seen.has(ticket.id)) continue
+      seen.add(ticket.id)
+      ordered.push(ticket)
     }
-  }, [client, projectId, token])
+    return ordered
+  }, [activeTickets, escalations, pendingReviews])
+  const selectedEscalation =
+    escalations.find((item) => item.ticket.id === selectedTicketId) ?? null
 
   useEffect(() => {
-    if (!projectId || !token) {
-      setLoading(false)
-      return
-    }
-    setLoading(!hasLoaded.current)
-    void fetchData()
-    const interval = setInterval(() => void fetchData(), POLL_INTERVAL)
-    return () => clearInterval(interval)
-  }, [fetchData, projectId, token])
+    didAutoSelectEscalation.current = false
+    setSelectedTicketId(null)
+  }, [projectId])
+
+  useEffect(() => {
+    if (didAutoSelectEscalation.current || selectedTicketId) return
+    const firstEscalatedTicketId = escalations[0]?.ticket.id
+    if (!firstEscalatedTicketId) return
+    didAutoSelectEscalation.current = true
+    setSelectedTicketId(firstEscalatedTicketId)
+  }, [escalations, selectedTicketId])
 
   // Keyboard navigation
   useEffect(() => {
@@ -166,22 +61,21 @@ export function CommandCenterPage() {
       const tag = (e.target as HTMLElement).tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
 
-      const allTickets = [...ticketListRef.current, ...pendingReviews]
-      if (allTickets.length === 0) return
+      if (navigableTickets.length === 0) return
 
       const currentIdx = selectedTicketId
-        ? allTickets.findIndex((t) => t.id === selectedTicketId)
+        ? navigableTickets.findIndex((t) => t.id === selectedTicketId)
         : -1
 
       if (e.key === 'j') {
         e.preventDefault()
-        const next = currentIdx < allTickets.length - 1 ? currentIdx + 1 : 0
-        const nextTicket = allTickets[next]
+        const next = currentIdx < navigableTickets.length - 1 ? currentIdx + 1 : 0
+        const nextTicket = navigableTickets[next]
         if (nextTicket?.id) setSelectedTicketId(nextTicket.id)
       } else if (e.key === 'k') {
         e.preventDefault()
-        const prev = currentIdx > 0 ? currentIdx - 1 : allTickets.length - 1
-        const prevTicket = allTickets[prev]
+        const prev = currentIdx > 0 ? currentIdx - 1 : navigableTickets.length - 1
+        const prevTicket = navigableTickets[prev]
         if (prevTicket?.id) setSelectedTicketId(prevTicket.id)
       } else if (e.key === 'Escape') {
         setSelectedTicketId(null)
@@ -190,7 +84,7 @@ export function CommandCenterPage() {
 
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [selectedTicketId, pendingReviews])
+  }, [navigableTickets, selectedTicketId])
 
   useLayoutEffect(() => {
     setOpen(true)
@@ -203,6 +97,7 @@ export function CommandCenterPage() {
       <CommandCenterRail
         tickets={activeTickets}
         pendingReviews={pendingReviews}
+        escalations={escalations}
         activityItems={activityItems}
         loading={loading}
         orgId={orgId}
@@ -214,6 +109,7 @@ export function CommandCenterPage() {
   }, [
     activeTickets,
     activityItems,
+    escalations,
     loading,
     orgId,
     pendingReviews,
@@ -230,7 +126,14 @@ export function CommandCenterPage() {
     <div className="mx-auto flex max-w-[1440px] flex-col gap-4 animate-in fade-in duration-300">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Command Center</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-semibold tracking-tight">Command Center</h1>
+            {escalations.length > 0 ? (
+              <Badge className="border-red-500/30 bg-red-500/15 text-red-400">
+                {escalations.length} awaiting input
+              </Badge>
+            ) : null}
+          </div>
           <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">
             Use the orchestrator to inspect scope, create or update work streams, and author tickets. Execution and review run in the queue.
           </p>
@@ -249,13 +152,14 @@ export function CommandCenterPage() {
       <OrchestratorConsole
         key={projectId}
         projectId={projectId}
-        onMessageComplete={() => void fetchData()}
+        onMessageComplete={() => void refresh()}
       />
 
       <div className="lg:hidden">
         <CommandCenterRail
           tickets={activeTickets}
           pendingReviews={pendingReviews}
+          escalations={escalations}
           activityItems={activityItems}
           loading={loading}
           orgId={orgId}
@@ -270,9 +174,10 @@ export function CommandCenterPage() {
           <TicketInspector
             key={selectedTicketId}
             ticketId={selectedTicketId}
+            escalation={selectedEscalation?.escalation ?? null}
             orgId={orgId}
             projectId={projectId}
-            onReviewComplete={() => void fetchData()}
+            onReviewComplete={() => void refresh()}
           />
         ) : (
           <div className="flex h-full items-center justify-center p-8">
@@ -281,7 +186,7 @@ export function CommandCenterPage() {
                 Select a ticket to inspect state, trace, and outputs.
               </p>
               <p className="text-xs leading-relaxed text-muted-foreground/70">
-                Use the queue snapshot or activity list to switch between active tickets.
+                Use the queue snapshot or activity list to switch between blocked, active, and pending-review tickets.
               </p>
             </div>
           </div>

@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -23,6 +23,7 @@ import (
 	"github.com/gabinante/flywheel/internal/catalog"
 	"github.com/gabinante/flywheel/internal/claims"
 	"github.com/gabinante/flywheel/internal/cost"
+	"github.com/gabinante/flywheel/internal/delivery"
 	"github.com/gabinante/flywheel/internal/dispatch"
 	"github.com/gabinante/flywheel/internal/embedded"
 	"github.com/gabinante/flywheel/internal/entity"
@@ -70,6 +71,10 @@ func (a *leaseValidatorAdapter) ValidateLease(ctx context.Context, ticketID, tok
 }
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})))
+
 	cfg := config.Load()
 	ctx := context.Background()
 
@@ -84,7 +89,8 @@ func main() {
 func runPostgres(ctx context.Context, cfg *config.Config) {
 	pool, err := db.NewPool(ctx, cfg.DB.URL)
 	if err != nil {
-		log.Fatalf("db: %v", err)
+		slog.Error("db init failed", "error", err)
+		os.Exit(1)
 	}
 	defer pool.Close()
 
@@ -93,11 +99,11 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	var bus events.DurableEventBus
 	if os.Getenv("DURABLE_BUS") == "false" {
 		bus = events.NewInProcessBus()
-		log.Println("events: using in-process bus (no durability)")
+		slog.Info("events: using in-process bus (no durability)")
 	} else {
 		pgBus := events.NewPostgresBus(pool, events.PostgresBusConfig{})
 		bus = pgBus
-		log.Println("events: using Postgres durable bus (at-least-once delivery)")
+		slog.Info("events: using Postgres durable bus (at-least-once delivery)")
 	}
 
 	orgStore := org.NewStore(pool)
@@ -124,16 +130,18 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	policyAdapter := policy.NewTicketPolicyAdapter(postureSvc)
 	_ = policyAdapter // adapter available for ticket service integration
 	_ = postureSvc    // posture service available for API handlers
-	log.Printf("policy: default_posture=%s auto_apply=%v", cfg.Policy.DefaultPosture, cfg.Policy.AutoApplyDefault)
+	slog.Info("policy config loaded", "default_posture", cfg.Policy.DefaultPosture, "auto_apply", cfg.Policy.AutoApplyDefault)
 
 	redisOpts, err := redis.ParseURL(cfg.Redis.URL)
 	if err != nil {
-		log.Fatalf("redis: %v", err)
+		slog.Error("redis URL parse failed", "error", err)
+		os.Exit(1)
 	}
 	redisClient := redis.NewClient(redisOpts)
 	defer redisClient.Close()
 	if err := redisClient.Ping(ctx).Err(); err != nil {
-		log.Fatalf("redis ping: %v", err)
+		slog.Error("redis ping failed", "error", err)
+		os.Exit(1)
 	}
 	leaseTTL := time.Duration(cfg.Queue.LeaseTTLMinutes) * time.Minute
 	queueRedis := queue.NewRedisStore(redisClient, leaseTTL)
@@ -165,10 +173,10 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	costStore := cost.NewPostgresStore(pool)
 	costCfg := cost.DefaultConfig()
 	costSvc := cost.NewService(costStore, costCfg, costNotifier, costNotifier)
-	log.Printf("cost: service initialized (fallback router: %s/%s → %s/%s → %s/%s)",
-		costCfg.FlagshipProvider, costCfg.FlagshipModel,
-		costCfg.MidProvider, costCfg.MidModel,
-		costCfg.FastProvider, costCfg.FastModel)
+	slog.Info("cost: service initialized",
+		"flagship", costCfg.FlagshipProvider+"/"+costCfg.FlagshipModel,
+		"mid", costCfg.MidProvider+"/"+costCfg.MidModel,
+		"fast", costCfg.FastProvider+"/"+costCfg.FastModel)
 
 	// Mirror service: one-way ticket mirroring to Linear/Jira (opt-in per project).
 	// Adapters are registered but only activated when a project's mirror_config is set.
@@ -183,7 +191,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			mirrorSvc.RegisterAdapter("jira", jira.NewAdapter(jiraClient))
 		}
 		_ = mirrorSvc // service runs via event subscriptions
-		log.Println("mirror: service started")
+		slog.Info("mirror: service started")
 	}
 
 	// Notification service: policy-driven async push to operators (Layer 12).
@@ -195,7 +203,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		notifySvc.RegisterAdapter(notification.ChannelSlack, notifyslack.NewAdapter())
 		notifySvc.RegisterAdapter(notification.ChannelEmail, notifyemail.NewAdapter())
 		notifySvc.RegisterAdapter(notification.ChannelSMS, notifysms.NewAdapter())
-		log.Println("notification: service started")
+		slog.Info("notification: service started")
 	}
 
 	// Claims registry for concurrency control (spec v0.2 §4.3).
@@ -234,13 +242,13 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 
 	// Code intelligence: bundled Tree-sitter/Go-AST default (Layer 3).
 	codeIntel := mcp.NewTreeSitterCodeIntel()
-	log.Println("code-intel: bundled default initialized (Tree-sitter + Go AST)")
+	slog.Info("code-intel: bundled default initialized (Tree-sitter + Go AST)")
 
 	// Hooks: change event publication library + gap detection (spec v0.2 §2.4).
 	hooksClient := hooks.NewClient(bus)
 	gapDetector := hooks.NewGapDetector(bus, hooksClient)
 	go gapDetector.Start(ctx)
-	log.Println("hooks: change event library initialized with gap detection")
+	slog.Info("hooks: change event library initialized with gap detection")
 
 	// Findings layer (Layer 4): semantic findings store.
 	// Uses Weaviate if configured, otherwise falls back to in-memory store.
@@ -251,10 +259,10 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			APIKey:     cfg.Findings.WeaviateAPIKey,
 			Vectorizer: cfg.Findings.WeaviateVectorizer,
 		})
-		log.Printf("findings: Weaviate backend at %s", cfg.Findings.WeaviateURL)
+		slog.Info("findings: Weaviate backend", "url", cfg.Findings.WeaviateURL)
 	} else {
 		findingsProvider = mcp.NewMemoryFindingsStore()
-		log.Println("findings: in-memory backend (set WEAVIATE_URL for production)")
+		slog.Info("findings: in-memory backend (set WEAVIATE_URL for production)")
 	}
 
 	// Catalog service (Layer 14 project map).
@@ -262,10 +270,14 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	catalogSvc := catalog.NewService(catalogStore)
 	catalogScanner := catalog.NewScanner()
 
+	// Delivery service: manages integrations config, pipeline sync, and PR overview.
+	deliverySvc := delivery.NewService(projectSvc, envSvc, catalogSvc, stateIndexSvc)
+	deliverySvc.SetFlyIOFallback(os.Getenv("FLY_API_TOKEN"), os.Getenv("FLY_API_BASE_URL"))
+
 	// Coordinator learning loop: auto-generate feedback findings on ticket
 	// rejection, failure, replan, and invalidation events.
 	_ = mcp.NewCoordinatorFeedbackSubscriber(bus, findingsProvider, ticketSvc)
-	log.Println("coordinator-feedback: learning loop subscriber active")
+	slog.Info("coordinator-feedback: learning loop subscriber active")
 
 	strictServer := &rest.StrictServer{
 		OrgSvc:        orgSvc,
@@ -399,7 +411,8 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			Rollback:       rollbackSvc,
 		})
 		if err != nil {
-			log.Fatalf("mcp server: %v", err)
+			slog.Error("mcp server init failed", "error", err)
+			os.Exit(1)
 		}
 		streamable := mcp.NewStreamableHTTPHandler(mcpSrv)
 		mcpHandler = &rest.MCPHTTPHandler{
@@ -458,7 +471,8 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 
 	// Start durable bus delivery (LISTEN/NOTIFY + polling) after all subscriptions are registered.
 	if err := bus.Start(ctx); err != nil {
-		log.Fatalf("event bus start: %v", err)
+		slog.Error("event bus start failed", "error", err)
+		os.Exit(1)
 	}
 
 	router := rest.NewRouter(rest.RouterConfig{
@@ -503,6 +517,16 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		ClaimsHandler:  &rest.ClaimsHandler{ClaimsSvc: claimsSvc},
 		HooksHandler:   &rest.HooksHandler{Client: hooksClient},
 		PillarsHandler: &rest.PillarsHandler{PillarSvc: pillarSvc},
+		DeliveryHandler: &rest.DeliveryHandler{
+			DeliverySvc: deliverySvc,
+			ProjectSvc:  projectSvc,
+			OrgSvc:      orgSvc,
+			AgentStore:  agentStore,
+		},
+		HealthCheckers: []rest.HealthChecker{
+			&rest.PostgresHealthChecker{Pool: pool},
+			&rest.RedisHealthChecker{Client: redisClient},
+		},
 		WebDist:        cfg.Server.WebDist,
 		WebDevProxyURL: cfg.Server.WebDevProxyURL,
 	})
@@ -514,7 +538,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 // for leases, no external dependencies required. If this is the first run, it
 // launches the interactive bootstrap wizard.
 func runEmbedded(ctx context.Context, cfg *config.Config) {
-	log.Println("starting in embedded mode (SQLite + in-memory Redis)")
+	slog.Info("starting in embedded mode (SQLite + in-memory Redis)")
 
 	// Also load config from data dir if it exists.
 	dataDir := cfg.Embedded.DataDir
@@ -525,14 +549,16 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 	// Open SQLite database.
 	sqliteDB, err := embedded.OpenDB("")
 	if err != nil {
-		log.Fatalf("embedded db: %v", err)
+		slog.Error("embedded db init failed", "error", err)
+		os.Exit(1)
 	}
 	defer sqliteDB.Close()
 
 	// Start miniredis for lease storage (in-memory, no persistence needed).
 	mr, err := miniredis.Run()
 	if err != nil {
-		log.Fatalf("miniredis: %v", err)
+		slog.Error("miniredis start failed", "error", err)
+		os.Exit(1)
 	}
 	defer mr.Close()
 	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
@@ -583,6 +609,10 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 	catalogSvc := catalog.NewService(catalogSt)
 	catalogScanner := catalog.NewScanner()
 
+	// Delivery service for embedded mode.
+	deliverySvcEmbed := delivery.NewService(projectSvc, envSvc, catalogSvc, nil)
+	deliverySvcEmbed.SetFlyIOFallback(os.Getenv("FLY_API_TOKEN"), os.Getenv("FLY_API_BASE_URL"))
+
 	// Rollback service for embedded mode.
 	rollbackSvcEmbed := rollback.NewService(ticketSvc, ticketSvc, bus)
 	rollbackSvcEmbed.SetLeaseRemover(queueSvc)
@@ -591,17 +621,19 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 	firstRun := bootstrap.IsFirstRun(dataDir)
 	if firstRun {
 		if bootstrap.IsTTY() {
-			log.Println("first run detected — launching interactive setup wizard")
+			slog.Info("first run detected, launching interactive setup wizard")
 			_, wizardErr := bootstrap.RunWizard(ctx, orgSvc, projectSvc, agentSvc)
 			if wizardErr != nil {
-				log.Fatalf("wizard: %v", wizardErr)
+				slog.Error("wizard failed", "error", wizardErr)
+				os.Exit(1)
 			}
 		} else {
-			log.Println("first run detected — running headless bootstrap (no TTY)")
+			slog.Info("first run detected, running headless bootstrap (no TTY)")
 			headlessCfg := bootstrap.HeadlessConfigFromEnv()
 			_, wizardErr := bootstrap.RunHeadless(ctx, headlessCfg, orgSvc, projectSvc, agentSvc)
 			if wizardErr != nil {
-				log.Fatalf("headless bootstrap: %v", wizardErr)
+				slog.Error("headless bootstrap failed", "error", wizardErr)
+				os.Exit(1)
 			}
 		}
 	}
@@ -610,7 +642,7 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 	jwtSecret := cfg.Auth.JWTSecret
 	if jwtSecret == "" {
 		jwtSecret = autoGenerateSecret()
-		log.Printf("auto-generated JWT secret for embedded mode")
+		slog.Info("auto-generated JWT secret for embedded mode")
 	}
 
 	strictServer := &rest.StrictServer{
@@ -643,7 +675,7 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 
 	// Coordinator learning loop for embedded mode.
 	_ = mcp.NewCoordinatorFeedbackSubscriber(bus, embeddedFindingsProvider, ticketSvc)
-	log.Println("coordinator-feedback: learning loop subscriber active (embedded)")
+	slog.Info("coordinator-feedback: learning loop subscriber active (embedded)")
 
 	// In embedded mode, set up MCP with API key auth (no OAuth required).
 	authMiddleware := rest.AuthMiddleware(jwtSecret, agentSvc)
@@ -664,7 +696,8 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		Rollback:       rollbackSvcEmbed,
 	})
 	if err != nil {
-		log.Fatalf("mcp server: %v", err)
+		slog.Error("mcp server init failed", "error", err)
+		os.Exit(1)
 	}
 	streamable := mcp.NewStreamableHTTPHandler(mcpSrv)
 	mcpHandler := &rest.MCPHTTPHandler{
@@ -762,6 +795,15 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 		HooksHandler:   &rest.HooksHandler{Client: hooksClient},
 		CatalogHandler: &rest.CatalogHandler{Svc: catalogSvc, Scanner: catalogScanner},
 		PillarsHandler: &rest.PillarsHandler{PillarSvc: pillarSvc},
+		DeliveryHandler: &rest.DeliveryHandler{
+			DeliverySvc: deliverySvcEmbed,
+			ProjectSvc:  projectSvc,
+			OrgSvc:      orgSvc,
+			AgentStore:  agentSt,
+		},
+		HealthCheckers: []rest.HealthChecker{
+			&rest.RedisHealthChecker{Client: redisClient},
+		},
 		WebDist:        cfg.Server.WebDist,
 		WebDevProxyURL: cfg.Server.WebDevProxyURL,
 	})
@@ -780,9 +822,10 @@ func serve(ctx context.Context, cfg *config.Config, router http.Handler, dispatc
 	}
 
 	go func() {
-		log.Printf("server listening on :%s", cfg.Server.Port)
+		slog.Info("server listening", "port", cfg.Server.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("listen: %v", err)
+			slog.Error("listen failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -797,9 +840,9 @@ func serve(ctx context.Context, cfg *config.Config, router http.Handler, dispatc
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("shutdown: %v", err)
+		slog.Error("shutdown error", "error", err)
 	}
-	log.Println("server stopped")
+	slog.Info("server stopped")
 }
 
 func autoGenerateSecret() string {

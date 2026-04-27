@@ -3,7 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/gabinante/flywheel/events"
 	"github.com/gabinante/flywheel/internal/ticket"
@@ -54,7 +54,7 @@ func (s *CoordinatorFeedbackSubscriber) onTicketRejected(ctx context.Context, ev
 
 	t, err := s.tickets.GetTicket(ctx, ticketID)
 	if err != nil {
-		log.Printf("coordinator-feedback: failed to get ticket %s: %v", ticketID, err)
+		slog.Error("coordinator-feedback: failed to get ticket", "ticket", ticketID, "error", err)
 		return
 	}
 
@@ -80,7 +80,7 @@ func (s *CoordinatorFeedbackSubscriber) onTicketRejected(ctx context.Context, ev
 	}
 
 	if _, err := s.findings.SaveFinding(ctx, finding); err != nil {
-		log.Printf("coordinator-feedback: failed to save rejection finding for %s: %v", ticketID, err)
+		slog.Error("coordinator-feedback: failed to save rejection finding", "ticket", ticketID, "error", err)
 	}
 }
 
@@ -94,7 +94,7 @@ func (s *CoordinatorFeedbackSubscriber) onTicketFailed(ctx context.Context, ev e
 
 	t, err := s.tickets.GetTicket(ctx, ticketID)
 	if err != nil {
-		log.Printf("coordinator-feedback: failed to get ticket %s: %v", ticketID, err)
+		slog.Error("coordinator-feedback: failed to get ticket", "ticket", ticketID, "error", err)
 		return
 	}
 
@@ -119,7 +119,7 @@ func (s *CoordinatorFeedbackSubscriber) onTicketFailed(ctx context.Context, ev e
 	}
 
 	if _, err := s.findings.SaveFinding(ctx, finding); err != nil {
-		log.Printf("coordinator-feedback: failed to save failure finding for %s: %v", ticketID, err)
+		slog.Error("coordinator-feedback: failed to save failure finding", "ticket", ticketID, "error", err)
 	}
 }
 
@@ -134,7 +134,7 @@ func (s *CoordinatorFeedbackSubscriber) onTicketReplanned(ctx context.Context, e
 
 	t, err := s.tickets.GetTicket(ctx, ticketID)
 	if err != nil {
-		log.Printf("coordinator-feedback: failed to get ticket %s: %v", ticketID, err)
+		slog.Error("coordinator-feedback: failed to get ticket", "ticket", ticketID, "error", err)
 		return
 	}
 
@@ -151,7 +151,7 @@ func (s *CoordinatorFeedbackSubscriber) onTicketReplanned(ctx context.Context, e
 	}
 
 	if _, err := s.findings.SaveFinding(ctx, finding); err != nil {
-		log.Printf("coordinator-feedback: failed to save replan finding for %s: %v", ticketID, err)
+		slog.Error("coordinator-feedback: failed to save replan finding", "ticket", ticketID, "error", err)
 	}
 }
 
@@ -166,7 +166,7 @@ func (s *CoordinatorFeedbackSubscriber) onTicketInvalidated(ctx context.Context,
 
 	t, err := s.tickets.GetTicket(ctx, ticketID)
 	if err != nil {
-		log.Printf("coordinator-feedback: failed to get ticket %s: %v", ticketID, err)
+		slog.Error("coordinator-feedback: failed to get ticket", "ticket", ticketID, "error", err)
 		return
 	}
 
@@ -183,7 +183,7 @@ func (s *CoordinatorFeedbackSubscriber) onTicketInvalidated(ctx context.Context,
 	}
 
 	if _, err := s.findings.SaveFinding(ctx, finding); err != nil {
-		log.Printf("coordinator-feedback: failed to save invalidation finding for %s: %v", ticketID, err)
+		slog.Error("coordinator-feedback: failed to save invalidation finding", "ticket", ticketID, "error", err)
 	}
 }
 

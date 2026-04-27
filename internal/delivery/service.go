@@ -57,6 +57,8 @@ type Service struct {
 	state                StateStore
 	pullRequestProviders []PullRequestProvider
 	pipelineProviders    map[string]PipelineProvider
+	flyIOFallbackToken   string // server-wide FLY_API_TOKEN env var
+	flyIOBaseURL         string // optional override for Fly.io API base URL
 }
 
 func NewService(projects ProjectStore, environments EnvironmentStore, catalog CatalogStore, state StateStore) *Service {
@@ -68,6 +70,13 @@ func NewService(projects ProjectStore, environments EnvironmentStore, catalog Ca
 		pipelineProviders:    make(map[string]PipelineProvider),
 		pullRequestProviders: []PullRequestProvider{},
 	}
+}
+
+// SetFlyIOFallback configures the server-wide Fly.io API token and base URL.
+// Per-project tokens take precedence; this is the fallback.
+func (s *Service) SetFlyIOFallback(token, baseURL string) {
+	s.flyIOFallbackToken = strings.TrimSpace(token)
+	s.flyIOBaseURL = strings.TrimSpace(baseURL)
 }
 
 func (s *Service) RegisterPullRequestProvider(provider PullRequestProvider) {
@@ -95,6 +104,16 @@ func (s *Service) GetConfig(ctx context.Context, projectID string) (Config, erro
 	return ParseConfig(proj.ContextPack.Extra)
 }
 
+// GetMaskedConfig returns a ConfigResponse with credential status indicators
+// but never raw credential values.
+func (s *Service) GetMaskedConfig(ctx context.Context, projectID string) (ConfigResponse, error) {
+	cfg, err := s.GetConfig(ctx, projectID)
+	if err != nil {
+		return ConfigResponse{}, err
+	}
+	return MaskedConfigResponse(cfg), nil
+}
+
 func (s *Service) UpdateConfig(ctx context.Context, projectID string, cfg Config) error {
 	proj, err := s.projects.GetProject(ctx, projectID)
 	if err != nil {
@@ -103,11 +122,40 @@ func (s *Service) UpdateConfig(ctx context.Context, projectID string, cfg Config
 	if proj == nil {
 		return project.ErrProjectNotFound
 	}
+
+	// If credentials are provided but the token looks masked (contains "***"),
+	// preserve the existing credentials to avoid overwriting real values with masks.
+	if cfg.Credentials != nil && strings.Contains(cfg.Credentials.FlyIOAPIToken, "***") {
+		existing, _ := ParseConfig(proj.ContextPack.Extra)
+		if existing.Credentials != nil {
+			cfg.Credentials.FlyIOAPIToken = existing.Credentials.FlyIOAPIToken
+		}
+	}
+
 	pack, err := StoreConfig(proj.ContextPack, cfg)
 	if err != nil {
 		return err
 	}
 	return s.projects.UpdateContextPack(ctx, projectID, pack)
+}
+
+// resolveProvider returns a PipelineProvider for the given config.
+// For Fly.io, it creates a per-project provider with the resolved token
+// (per-project first, then fallback to server-wide env var).
+func (s *Service) resolveProvider(cfg Config) PipelineProvider {
+	providerName := strings.ToLower(strings.TrimSpace(cfg.Infrastructure.Provider))
+	if providerName == "" {
+		return nil
+	}
+	// For flyio, create a per-request provider with the resolved token.
+	if providerName == "flyio" {
+		token := ResolveFlyIOToken(cfg, s.flyIOFallbackToken)
+		if token == "" {
+			return nil
+		}
+		return NewFlyIOPipelineProvider(token, s.flyIOBaseURL)
+	}
+	return s.pipelineProviders[providerName]
 }
 
 func (s *Service) ListOpenPullRequests(ctx context.Context, projectID string) (*PullRequestOverview, error) {
@@ -183,7 +231,7 @@ func (s *Service) Pipeline(ctx context.Context, projectID string, refresh bool) 
 
 	var syncedResources []*stateindex.ObservedResource
 	if refresh && strings.TrimSpace(cfg.Infrastructure.Provider) != "" {
-		provider := s.pipelineProviders[strings.ToLower(cfg.Infrastructure.Provider)]
+		provider := s.resolveProvider(cfg)
 		if provider == nil {
 			overview.Status = StatusUnsupported
 			overview.Provider = cfg.Infrastructure.Provider

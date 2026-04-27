@@ -2,7 +2,7 @@ package hooks
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -223,8 +223,7 @@ func (g *GapDetector) emitUnattributed(ctx context.Context, obs *stateObservatio
 		},
 	})
 
-	log.Printf("hooks/gap: unattributed change event generated for entity %s (state change at %s)",
-		obs.EntityID, obs.ObservedAt.Format(time.RFC3339))
+	slog.Info("unattributed change event generated", "entity_id", obs.EntityID, "observed_at", obs.ObservedAt.Format(time.RFC3339))
 }
 
 // PendingGaps returns the number of state observations currently awaiting

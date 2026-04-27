@@ -33,6 +33,10 @@ type OpenAICompatibleWorker struct {
 }
 
 func (w *OpenAICompatibleWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL string) (*WorkerResult, error) {
+	return w.SpawnStream(ctx, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL, nil)
+}
+
+func (w *OpenAICompatibleWorker) SpawnStream(ctx context.Context, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL string, onOutput WorkerOutputHandler) (*WorkerResult, error) {
 	cfg := w.Config
 	if cfg.APIBaseURL == "" {
 		cfg.APIBaseURL = "https://api.openai.com/v1"
@@ -126,7 +130,11 @@ func (w *OpenAICompatibleWorker) Spawn(ctx context.Context, ticketID, projectID,
 
 		for _, toolCall := range assistant.ToolCalls {
 			output := executeOpenAIChatToolCall(ctx, workDir, bridge, toolCall)
-			toolLog = append(toolLog, summarizeOpenAIToolCall(toolCall.Function.Name, output))
+			summary := summarizeOpenAIToolCall(toolCall.Function.Name, output)
+			toolLog = append(toolLog, summary)
+			if onOutput != nil && strings.TrimSpace(summary) != "" {
+				onOutput("stdout", summary)
+			}
 			messages = append(messages, openAIChatMessage{
 				Role:       "tool",
 				ToolCallID: toolCall.ID,

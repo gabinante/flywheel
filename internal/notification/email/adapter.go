@@ -6,7 +6,7 @@ package email
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/gabinante/flywheel/internal/notification"
 )
@@ -29,8 +29,7 @@ func (a *Adapter) Send(_ context.Context, n *notification.Notification, prefs *n
 	if prefs.EmailAddress == "" {
 		return fmt.Errorf("email address not configured for project %s", n.ProjectID)
 	}
-	log.Printf("notification/email: [stub] would send to %s — [%s] %s: %s",
-		prefs.EmailAddress, string(n.Urgency), n.Title, n.Body)
+	slog.Info("email stub: would send", "to", prefs.EmailAddress, "urgency", string(n.Urgency), "title", n.Title)
 	return nil
 }
 
@@ -39,7 +38,6 @@ func (a *Adapter) SendDigest(_ context.Context, notifications []*notification.No
 	if prefs.EmailAddress == "" {
 		return fmt.Errorf("email address not configured")
 	}
-	log.Printf("notification/email: [stub] would send digest (%d items) to %s",
-		len(notifications), prefs.EmailAddress)
+	slog.Info("email stub: would send digest", "count", len(notifications), "to", prefs.EmailAddress)
 	return nil
 }

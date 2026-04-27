@@ -2,6 +2,7 @@ import { ActiveWorkPanel } from '@/components/command-center/active-work-panel'
 import { ActivityFeed, type ActivityItem } from '@/components/command-center/activity-feed'
 import { DispatchStatus } from '@/components/command-center/dispatch-status'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import type { RailEscalation } from '@/hooks/use-project-rail-data'
 import type { components } from '@/lib/api/v1'
 
 type Ticket = components['schemas']['Ticket']
@@ -9,6 +10,7 @@ type Ticket = components['schemas']['Ticket']
 export function CommandCenterRail({
   tickets,
   pendingReviews,
+  escalations,
   activityItems,
   loading,
   orgId,
@@ -18,6 +20,7 @@ export function CommandCenterRail({
 }: {
   tickets: Ticket[]
   pendingReviews: Ticket[]
+  escalations: RailEscalation[]
   activityItems: ActivityItem[]
   loading: boolean
   orgId: string
@@ -39,6 +42,7 @@ export function CommandCenterRail({
           <ActiveWorkPanel
             tickets={tickets}
             pendingReviews={pendingReviews}
+            escalations={escalations}
             loading={loading}
             orgId={orgId}
             projectId={projectId}

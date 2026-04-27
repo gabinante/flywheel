@@ -1,7 +1,7 @@
 package cost
 
 import (
-	"log"
+	"log/slog"
 	"sync"
 )
 
@@ -157,7 +157,7 @@ func (r *FallbackRouter) Route(op OperationType, rateLimited func(provider, mode
 			if isCheaper {
 				reason = "fallback: using cheaper model"
 			}
-			log.Printf("cost: routing %s to %s/%s (tier=%s) — %s", op, model.Provider, model.Model, tier, reason)
+			slog.Info("routing to fallback model", "operation", string(op), "provider", model.Provider, "model", model.Model, "tier", string(tier), "reason", reason)
 			return &RouteResult{
 				Provider: model.Provider,
 				Model:    model.Model,

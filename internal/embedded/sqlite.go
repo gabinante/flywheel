@@ -204,6 +204,28 @@ func migrate(db *sql.DB) error {
 			content    TEXT NOT NULL,
 			created_at TEXT NOT NULL DEFAULT (datetime('now'))
 		)`,
+		`CREATE TABLE IF NOT EXISTS orchestrator_runs (
+			id                   TEXT PRIMARY KEY,
+			project_id           TEXT NOT NULL REFERENCES projects(id),
+			user_message_id      TEXT NOT NULL REFERENCES orchestrator_messages(id) ON DELETE CASCADE,
+			assistant_message_id TEXT REFERENCES orchestrator_messages(id) ON DELETE SET NULL,
+			status               TEXT NOT NULL,
+			worker_id            TEXT,
+			worker_name          TEXT,
+			runner               TEXT,
+			driver               TEXT,
+			model                TEXT,
+			error                TEXT,
+			started_at           TEXT NOT NULL DEFAULT (datetime('now')),
+			completed_at         TEXT
+		)`,
+		`CREATE TABLE IF NOT EXISTS orchestrator_run_events (
+			id         TEXT PRIMARY KEY,
+			run_id     TEXT NOT NULL REFERENCES orchestrator_runs(id) ON DELETE CASCADE,
+			kind       TEXT NOT NULL,
+			payload    TEXT NOT NULL DEFAULT '{}',
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
 		// Indexes for common queries
 		`CREATE INDEX IF NOT EXISTS idx_tickets_project_state ON tickets(project_id, state)`,
 		`CREATE INDEX IF NOT EXISTS idx_tickets_project_priority ON tickets(project_id, priority, created_at)`,
@@ -212,6 +234,8 @@ func migrate(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_org_members_user ON org_members(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_work_streams_project ON work_streams(project_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_orchestrator_messages_project ON orchestrator_messages(project_id, created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_orchestrator_runs_project ON orchestrator_runs(project_id, started_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_orchestrator_run_events_run ON orchestrator_run_events(run_id, created_at)`,
 		// Catalog (Layer 14: Project Map)
 		`CREATE TABLE IF NOT EXISTS catalog_entities (
 			id          TEXT PRIMARY KEY,

@@ -15,6 +15,7 @@ import {
 
 import { DispatchDashboard } from '@/components/dispatch-dashboard'
 import { ProjectDispatchRoutingCard } from '@/components/project-dispatch-routing-card'
+import { ProjectIntegrationsSection } from '@/components/project-integrations-section'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -372,6 +373,11 @@ export function ProjectPage() {
         projectId={projectId}
         project={project}
         onProjectChange={setProject}
+      />
+
+      <ProjectIntegrationsSection
+        projectId={projectId}
+        project={project}
       />
 
       <section>

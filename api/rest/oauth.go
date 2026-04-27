@@ -3,7 +3,7 @@ package rest
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"runtime/debug"
@@ -57,21 +57,21 @@ func (h *OAuthHandler) serveAuthorizationServerMetadata(w http.ResponseWriter, r
 func (h *OAuthHandler) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if v := recover(); v != nil {
-			log.Printf("oauth/authorize: panic: %v\n%s", v, debug.Stack())
+			slog.Error("oauth/authorize panic", "error", v, "stack", string(debug.Stack()))
 			if w != nil {
 				WriteStructuredError(w, apierrors.New(apierrors.CodeInternal, "internal error", false))
 			}
 		}
 	}()
 	if r == nil || r.URL == nil {
-		log.Printf("oauth/authorize: request or URL is nil")
+		slog.Error("oauth/authorize: request or URL is nil")
 		if w != nil {
 			WriteStructuredError(w, apierrors.New(apierrors.CodeInternal, "internal error", false))
 		}
 		return
 	}
 	if h == nil {
-		log.Printf("oauth/authorize: receiver (OAuthHandler) is nil")
+		slog.Error("oauth/authorize: receiver (OAuthHandler) is nil")
 		if w != nil {
 			WriteStructuredError(w, apierrors.New(apierrors.CodeInternal, "internal error", false))
 		}
@@ -87,7 +87,7 @@ func (h *OAuthHandler) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.OAuthStore == nil {
-		log.Printf("oauth/authorize: OAuthStore is nil")
+		slog.Error("oauth/authorize: OAuthStore is nil")
 		WriteStructuredError(w, apierrors.New(apierrors.CodeInternal, "internal error", false))
 		return
 	}
@@ -103,14 +103,14 @@ func (h *OAuthHandler) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	state, err := h.OAuthStore.CreateState(ctx, stateData)
 	if err != nil {
-		log.Printf("oauth/authorize: CreateState: %v", err)
+		slog.Error("oauth/authorize CreateState failed", "error", err)
 		WriteStructuredError(w, apierrors.New(apierrors.CodeInternal, "internal error", false))
 		return
 	}
 
 	cfg := h.AuthConfig.OAuth2()
 	if cfg == nil || cfg.Endpoint.AuthURL == "" {
-		log.Printf("oauth/authorize: OAuth2 config or AuthURL missing")
+		slog.Error("oauth/authorize: OAuth2 config or AuthURL missing")
 		WriteStructuredError(w, apierrors.New(apierrors.CodeInternal, "internal error", false))
 		return
 	}

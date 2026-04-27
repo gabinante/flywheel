@@ -46,5 +46,30 @@ func isZeroConfig(cfg Config) bool {
 		strings.TrimSpace(cfg.Infrastructure.Provider) == "" &&
 		(cfg.Infrastructure.FlyIO == nil ||
 			(strings.TrimSpace(cfg.Infrastructure.FlyIO.OrganizationSlug) == "" &&
-				len(cfg.Infrastructure.FlyIO.Apps) == 0))
+				len(cfg.Infrastructure.FlyIO.Apps) == 0)) &&
+		(cfg.Credentials == nil ||
+			strings.TrimSpace(cfg.Credentials.FlyIOAPIToken) == "")
+}
+
+// MaskedConfigResponse returns a ConfigResponse with credential status
+// but never raw credential values.
+func MaskedConfigResponse(cfg Config) ConfigResponse {
+	resp := ConfigResponse{
+		SCM:            cfg.SCM,
+		Infrastructure: cfg.Infrastructure,
+	}
+	if cfg.Credentials != nil && strings.TrimSpace(cfg.Credentials.FlyIOAPIToken) != "" {
+		resp.Credentials.FlyIOConfigured = true
+		resp.Credentials.FlyIOMasked = MaskToken(cfg.Credentials.FlyIOAPIToken)
+	}
+	return resp
+}
+
+// ResolveFlyIOToken returns the per-project Fly.io API token if configured,
+// otherwise returns the fallback (typically from the FLY_API_TOKEN env var).
+func ResolveFlyIOToken(cfg Config, fallback string) string {
+	if cfg.Credentials != nil && strings.TrimSpace(cfg.Credentials.FlyIOAPIToken) != "" {
+		return strings.TrimSpace(cfg.Credentials.FlyIOAPIToken)
+	}
+	return strings.TrimSpace(fallback)
 }

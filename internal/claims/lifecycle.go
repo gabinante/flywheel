@@ -2,7 +2,7 @@ package claims
 
 import (
 	"context"
-	"log"
+	"log/slog"
 
 	"github.com/gabinante/flywheel/events"
 	"github.com/gabinante/flywheel/internal/plan"
@@ -61,7 +61,7 @@ func (h *LifecycleHandler) onTicketStarted(ctx context.Context, event events.Eve
 	// Get the ticket to determine environment scope.
 	t, err := h.tickets.GetTicket(ctx, ticketID)
 	if err != nil {
-		log.Printf("claims/lifecycle: failed to get ticket %s: %v", ticketID, err)
+		slog.Error("claims/lifecycle: failed to get ticket", "ticket", ticketID, "error", err)
 		return
 	}
 
@@ -71,7 +71,7 @@ func (h *LifecycleHandler) onTicketStarted(ctx context.Context, event events.Eve
 	// Look up all plans for this ticket and extract touches.
 	plans, err := h.plans.ListPlansByTicket(ctx, ticketID)
 	if err != nil {
-		log.Printf("claims/lifecycle: failed to list plans for ticket %s: %v", ticketID, err)
+		slog.Error("claims/lifecycle: failed to list plans", "ticket", ticketID, "error", err)
 		return
 	}
 
@@ -94,20 +94,20 @@ func (h *LifecycleHandler) onTicketStarted(ctx context.Context, event events.Eve
 	// Run conflict detection and record conflicts before registering.
 	result, err := h.claimsSvc.DetectAndRecordConflicts(ctx, ticketID, allTouches)
 	if err != nil {
-		log.Printf("claims/lifecycle: conflict detection failed for ticket %s: %v", ticketID, err)
+		slog.Error("claims/lifecycle: conflict detection failed", "ticket", ticketID, "error", err)
 		// Continue with registration even if detection fails — the claim itself is still valid.
 	} else if result.HardCount > 0 {
-		log.Printf("claims/lifecycle: ticket %s has %d hard conflicts (advisory — execution not blocked)", ticketID, result.HardCount)
+		slog.Warn("claims/lifecycle: hard conflicts detected", "ticket", ticketID, "hard_count", result.HardCount)
 	}
 
 	// Register the claims.
 	registered, err := h.claimsSvc.RegisterClaims(ctx, ticketID, allTouches)
 	if err != nil {
-		log.Printf("claims/lifecycle: failed to register claims for ticket %s: %v", ticketID, err)
+		slog.Error("claims/lifecycle: failed to register claims", "ticket", ticketID, "error", err)
 		return
 	}
 
-	log.Printf("claims/lifecycle: registered %d claims for ticket %s", len(registered), ticketID)
+	slog.Info("claims/lifecycle: registered claims", "count", len(registered), "ticket", ticketID)
 }
 
 // onTicketCompleted handles events that indicate a ticket has left execution
@@ -120,11 +120,11 @@ func (h *LifecycleHandler) onTicketCompleted(ctx context.Context, event events.E
 
 	count, err := h.claimsSvc.ReleaseClaims(ctx, ticketID)
 	if err != nil {
-		log.Printf("claims/lifecycle: failed to release claims for ticket %s: %v", ticketID, err)
+		slog.Error("claims/lifecycle: failed to release claims", "ticket", ticketID, "error", err)
 		return
 	}
 
 	if count > 0 {
-		log.Printf("claims/lifecycle: released %d claims for ticket %s", count, ticketID)
+		slog.Info("claims/lifecycle: released claims", "count", count, "ticket", ticketID)
 	}
 }

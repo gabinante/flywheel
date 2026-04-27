@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -110,7 +110,7 @@ func (b *PostgresBus) PublishDurable(ctx context.Context, event Event) (string, 
 	_, err = b.pool.Exec(ctx, "SELECT pg_notify($1, $2)", notifyChannel, eventID)
 	if err != nil {
 		// Non-fatal: polling fallback will pick it up.
-		log.Printf("events/postgres: pg_notify failed (polling will retry): %v", err)
+		slog.Warn("pg_notify failed, polling will retry", "error", err)
 	}
 
 	// Deliver to in-process subscribers immediately (best-effort for latency).
@@ -209,7 +209,7 @@ func (b *PostgresBus) listenLoop() {
 			if b.ctx.Err() != nil {
 				return
 			}
-			log.Printf("events/postgres: acquire conn for LISTEN: %v", err)
+			slog.Error("acquire conn for LISTEN failed", "error", err)
 			time.Sleep(time.Second)
 			continue
 		}
@@ -220,7 +220,7 @@ func (b *PostgresBus) listenLoop() {
 			if b.ctx.Err() != nil {
 				return
 			}
-			log.Printf("events/postgres: LISTEN: %v", err)
+			slog.Error("LISTEN failed", "error", err)
 			time.Sleep(time.Second)
 			continue
 		}
@@ -233,7 +233,7 @@ func (b *PostgresBus) listenLoop() {
 				if b.ctx.Err() != nil {
 					return
 				}
-				log.Printf("events/postgres: wait notification: %v", err)
+				slog.Error("wait notification failed", "error", err)
 				time.Sleep(time.Second)
 				break
 			}
@@ -273,7 +273,7 @@ func (b *PostgresBus) pollUndelivered() {
 	`, b.lastSeq)
 	if err != nil {
 		if b.ctx.Err() == nil {
-			log.Printf("events/postgres: poll: %v", err)
+			slog.Error("poll failed", "error", err)
 		}
 		return
 	}
@@ -289,13 +289,13 @@ func (b *PostgresBus) pollUndelivered() {
 			seq       int64
 		)
 		if err := rows.Scan(&id, &eventType, &entityKey, &payload, &createdAt, &seq); err != nil {
-			log.Printf("events/postgres: poll scan: %v", err)
+			slog.Error("poll scan failed", "error", err)
 			continue
 		}
 
 		var payloadMap map[string]any
 		if err := json.Unmarshal(payload, &payloadMap); err != nil {
-			log.Printf("events/postgres: poll unmarshal: %v", err)
+			slog.Error("poll unmarshal failed", "error", err)
 			continue
 		}
 
@@ -330,14 +330,14 @@ func (b *PostgresBus) deliverByID(ctx context.Context, eventID string) {
 	`, eventID).Scan(&eventType, &entityKey, &payload, &createdAt, &seq)
 	if err != nil {
 		if ctx.Err() == nil {
-			log.Printf("events/postgres: deliver by id %s: %v", eventID, err)
+			slog.Error("deliver by id failed", "event_id", eventID, "error", err)
 		}
 		return
 	}
 
 	var payloadMap map[string]any
 	if err := json.Unmarshal(payload, &payloadMap); err != nil {
-		log.Printf("events/postgres: unmarshal %s: %v", eventID, err)
+		slog.Error("unmarshal failed", "event_id", eventID, "error", err)
 		return
 	}
 
@@ -434,6 +434,6 @@ func (b *PostgresBus) pruneOldEvents() {
 		)
 	`, cutoff)
 	if err != nil && b.ctx.Err() == nil {
-		log.Printf("events/postgres: prune: %v", err)
+		slog.Error("prune failed", "error", err)
 	}
 }

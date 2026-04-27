@@ -3,7 +3,7 @@ package cost
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -86,16 +86,15 @@ func (h *RateLimitHandler) HandleRateLimit(ctx context.Context, projectID, ticke
 
 	// Persist.
 	if err := h.store.RecordRateLimitEvent(ctx, event); err != nil {
-		log.Printf("cost: failed to record rate limit event: %v", err)
+		slog.Error("cost: failed to record rate limit event", "error", err)
 	}
 
 	// Notify operator.
 	if err := h.notify.NotifyRateLimit(ctx, event); err != nil {
-		log.Printf("cost: failed to notify rate limit: %v", err)
+		slog.Error("cost: failed to notify rate limit", "error", err)
 	}
 
-	log.Printf("cost: rate limit hit for %s/%s (ticket=%s), backing off %v until %v",
-		provider, model, ticketID, retryAfter, resetAt)
+	slog.Warn("cost: rate limit hit", "provider", provider, "model", model, "ticket", ticketID, "retry_after", retryAfter, "reset_at", resetAt)
 
 	return retryAfter, nil
 }
@@ -178,14 +177,14 @@ func (h *RateLimitHandler) markResumed(ctx context.Context, key string, event *R
 	event.ResumedAt = time.Now().UTC()
 
 	if err := h.store.MarkRateLimitResumed(ctx, event.ID); err != nil {
-		log.Printf("cost: failed to mark rate limit resumed: %v", err)
+		slog.Error("cost: failed to mark rate limit resumed", "error", err)
 	}
 
 	if err := h.notify.NotifyRateLimitResume(ctx, event); err != nil {
-		log.Printf("cost: failed to notify rate limit resume: %v", err)
+		slog.Error("cost: failed to notify rate limit resume", "error", err)
 	}
 
-	log.Printf("cost: rate limit reset for %s, resuming operations", key)
+	slog.Info("cost: rate limit reset, resuming operations", "key", key)
 }
 
 // FormatRateLimitStatus returns a human-readable status of active rate limits.

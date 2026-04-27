@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  AlertTriangle,
+  BrainCircuit,
+  CheckCircle2,
+  LoaderCircle,
+  Sparkles,
+  TerminalSquare,
+} from 'lucide-react'
 
 import { PlanMarkdown } from '@/components/plan-markdown'
 import { Badge } from '@/components/ui/badge'
@@ -15,11 +23,27 @@ import {
   getOrchestratorThread,
   sendOrchestratorMessage,
   type OrchestratorMessage,
+  type OrchestratorRun,
+  type OrchestratorRunEvent,
   type OrchestratorThread,
 } from '@/lib/api/orchestrator-client'
 import { cn } from '@/lib/utils'
 
 const POLL_INTERVAL = 15_000
+const LIVE_POLL_INTERVAL = 1_200
+const GENERATION_HINT_ROTATION_MS = 2_400
+const GENERATION_HINTS = [
+  'Routing the request to the planner.',
+  'Inspecting project context and recent work.',
+  'Working through ticket and work-stream updates.',
+  'Composing the response.',
+]
+
+type PendingUserMessage = {
+  id: string
+  content: string
+  createdAt: string
+}
 
 function elapsed(isoDate: string | undefined): string {
   if (!isoDate) return ''
@@ -34,26 +58,103 @@ function elapsed(isoDate: string | undefined): string {
   return `${Math.floor(hours / 24)}d ago`
 }
 
-function MessageBubble({ message }: { message: OrchestratorMessage }) {
+function formatDuration(startedAt: string | undefined, completedAt?: string): string {
+  if (!startedAt) return ''
+  const start = new Date(startedAt).getTime()
+  const end = completedAt ? new Date(completedAt).getTime() : Date.now()
+  const diff = Math.max(0, end - start)
+  if (diff < 1000) return '<1s'
+  if (diff < 60_000) return `${Math.round(diff / 1000)}s`
+  if (diff < 3_600_000) return `${Math.round(diff / 60_000)}m`
+  return `${Math.round(diff / 3_600_000)}h`
+}
+
+function getLatestUserMessage(messages: OrchestratorMessage[]): OrchestratorMessage | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === 'user') {
+      return messages[index]
+    }
+  }
+  return null
+}
+
+function isPendingMessageAcknowledged(
+  messages: OrchestratorMessage[],
+  pending: PendingUserMessage | null,
+): boolean {
+  if (!pending) return false
+  const latestUser = getLatestUserMessage(messages)
+  return latestUser?.content === pending.content
+}
+
+function normalizeThread(next: OrchestratorThread | null): OrchestratorThread | null {
+  if (!next) return null
+  return {
+    ...next,
+    messages: next.messages ?? [],
+    runs: (next.runs ?? []).map((run) => ({
+      ...run,
+      events: run.events ?? [],
+    })),
+    playbook: {
+      ...next.playbook,
+      principles: next.playbook?.principles ?? [],
+      ticket_sop: next.playbook?.ticket_sop ?? [],
+      worker_lanes: next.playbook?.worker_lanes ?? [],
+      starter_prompts: next.playbook?.starter_prompts ?? [],
+    },
+  }
+}
+
+function eventLabel(event: OrchestratorRunEvent): string {
+  const payload = event.payload ?? {}
+  if (typeof payload.message === 'string' && payload.message.trim().length > 0) {
+    return payload.message.trim()
+  }
+  if (typeof payload.text === 'string' && payload.text.trim().length > 0) {
+    return payload.text.trim()
+  }
+  return event.kind
+}
+
+function eventBadgeLabel(event: OrchestratorRunEvent): string {
+  if (event.kind === 'worker_output') {
+    const stream = event.payload?.stream
+    return typeof stream === 'string' && stream.trim().length > 0
+      ? stream.trim()
+      : 'output'
+  }
+  if (event.kind === 'error') return 'error'
+  return 'status'
+}
+
+function MessageBubble({
+  message,
+  pending = false,
+}: {
+  message: OrchestratorMessage
+  pending?: boolean
+}) {
   const isAssistant = message.role === 'assistant'
 
   return (
     <div
       className={cn(
-        'flex flex-col gap-2 rounded-2xl border px-4 py-3 shadow-sm backdrop-blur-sm',
+        'flex flex-col gap-2 rounded-2xl border px-4 py-3 shadow-sm backdrop-blur-sm transition-opacity',
         isAssistant
           ? 'border-white/10 bg-white/[0.04] text-foreground'
           : 'border-teal-500/20 bg-teal-500/10 text-foreground',
+        pending && 'opacity-80',
       )}
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Badge variant={isAssistant ? 'outline' : 'secondary'}>
-            {isAssistant ? 'Planner' : 'Input'}
+            {isAssistant ? 'Planner' : pending ? 'Sending' : 'Input'}
           </Badge>
         </div>
         <span className="text-[11px] tabular-nums text-muted-foreground">
-          {elapsed(message.created_at)}
+          {pending ? 'just now' : elapsed(message.created_at)}
         </span>
       </div>
 
@@ -71,6 +172,175 @@ function MessageBubble({ message }: { message: OrchestratorMessage }) {
   )
 }
 
+function LivePlannerPanel({
+  run,
+  sending,
+  fallbackHint,
+}: {
+  run: OrchestratorRun | null
+  sending: boolean
+  fallbackHint: string
+}) {
+  const events = run?.events ?? []
+  const recentEvents = events.slice(-5)
+  const latestEvent = recentEvents[recentEvents.length - 1]
+  const headline = latestEvent ? eventLabel(latestEvent) : fallbackHint
+  const metadata = [run?.worker_name, run?.model, run?.runner]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join(' · ')
+
+  return (
+    <div className="rounded-3xl border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.025))] p-4 shadow-sm backdrop-blur-sm">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="gap-1 border-primary/25 text-primary">
+              <LoaderCircle className="size-3 animate-spin" />
+              Generating
+            </Badge>
+            {metadata ? (
+              <Badge variant="outline" className="border-white/10 text-muted-foreground">
+                {metadata}
+              </Badge>
+            ) : null}
+            {run?.started_at ? (
+              <Badge variant="outline" className="border-white/10 text-muted-foreground">
+                {formatDuration(run.started_at)}
+              </Badge>
+            ) : null}
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-foreground">
+              {headline}
+            </p>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {sending && !run
+                ? 'Your message is on the wire. The planner will appear here as soon as it acknowledges the run.'
+                : 'Live planner activity updates stream in here while the orchestrator is working.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+          <Sparkles className="size-3.5" />
+          Live
+        </div>
+      </div>
+
+      <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/8">
+        <div className="h-full w-2/5 rounded-full bg-primary/70 animate-pulse" />
+      </div>
+
+      <div className="mt-4 space-y-2">
+        {recentEvents.length > 0 ? (
+          recentEvents.map((event) => (
+            <div
+              key={event.id}
+              className="rounded-2xl border border-white/8 bg-black/10 px-3 py-2"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    'text-[10px] uppercase tracking-[0.18em]',
+                    event.kind === 'error'
+                      ? 'border-destructive/30 text-destructive'
+                      : event.kind === 'worker_output'
+                        ? 'border-emerald-500/30 text-emerald-300'
+                        : 'border-white/10 text-muted-foreground',
+                  )}
+                >
+                  {eventBadgeLabel(event)}
+                </Badge>
+                <span className="text-[11px] tabular-nums text-muted-foreground">
+                  {elapsed(event.created_at)}
+                </span>
+              </div>
+
+              <p
+                className={cn(
+                  'mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground',
+                  event.kind === 'worker_output' && 'font-mono text-xs',
+                )}
+              >
+                {eventLabel(event)}
+              </p>
+            </div>
+          ))
+        ) : (
+          <div className="rounded-2xl border border-dashed border-white/10 px-3 py-3 text-sm text-muted-foreground">
+            Waiting for the planner to emit activity.
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function LatestPlannerRun({
+  run,
+}: {
+  run: OrchestratorRun
+}) {
+  const recentEvents = run.events.slice(-3)
+  const isFailed = run.status === 'failed'
+
+  return (
+    <div className="rounded-3xl border border-white/10 bg-black/10 p-4">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant={isFailed ? 'outline' : 'secondary'}
+              className={cn(isFailed && 'border-destructive/30 text-destructive')}
+            >
+              {isFailed ? (
+                <AlertTriangle className="size-3" />
+              ) : (
+                <CheckCircle2 className="size-3" />
+              )}
+              {isFailed ? 'Latest Run Failed' : 'Latest Run'}
+            </Badge>
+            <Badge variant="outline" className="border-white/10 text-muted-foreground">
+              {formatDuration(run.started_at, run.completed_at)}
+            </Badge>
+          </div>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {[run.worker_name, run.model, run.runner]
+              .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+              .join(' · ') || 'Planner activity'}
+          </p>
+        </div>
+      </div>
+
+      {run.error ? (
+        <p className="mt-3 text-sm leading-relaxed text-destructive">{run.error}</p>
+      ) : null}
+
+      {recentEvents.length > 0 ? (
+        <div className="mt-3 space-y-2">
+          {recentEvents.map((event) => (
+            <div key={event.id} className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                  {eventBadgeLabel(event)}
+                </span>
+                <span className="text-[11px] tabular-nums text-muted-foreground">
+                  {elapsed(event.created_at)}
+                </span>
+              </div>
+              <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
+                {eventLabel(event)}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export function OrchestratorConsole({
   projectId,
   onMessageComplete,
@@ -84,28 +354,23 @@ export function OrchestratorConsole({
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [pendingMessage, setPendingMessage] = useState<PendingUserMessage | null>(null)
+  const [hintIndex, setHintIndex] = useState(0)
   const transcriptRef = useRef<HTMLDivElement | null>(null)
-  const hasLoaded = useRef(false)
   const messages = thread?.messages ?? []
+  const runs = thread?.runs ?? []
   const playbook = thread?.playbook
   const starterPrompts = playbook?.starter_prompts ?? []
+  const activeRun = useMemo(
+    () => runs.findLast((run) => run.status === 'running') ?? null,
+    [runs],
+  )
+  const latestRun = runs.length > 0 ? runs[runs.length - 1] : null
+  const showLivePlanner = sending || activeRun !== null
+  const pollInterval = showLivePlanner ? LIVE_POLL_INTERVAL : POLL_INTERVAL
 
   const applyThread = useCallback((next: OrchestratorThread | null) => {
-    if (!next) {
-      setThread(null)
-      return
-    }
-    setThread({
-      ...next,
-      messages: next.messages ?? [],
-      playbook: {
-        ...next.playbook,
-        principles: next.playbook?.principles ?? [],
-        ticket_sop: next.playbook?.ticket_sop ?? [],
-        worker_lanes: next.playbook?.worker_lanes ?? [],
-        starter_prompts: next.playbook?.starter_prompts ?? [],
-      },
-    })
+    setThread(normalizeThread(next))
   }, [])
 
   const fetchThread = useCallback(async () => {
@@ -117,43 +382,80 @@ export function OrchestratorConsole({
       applyThread(data)
       setError(null)
     }
-    hasLoaded.current = true
     setLoading(false)
   }, [applyThread, projectId, token])
 
   useEffect(() => {
     if (!token) return
     const immediate = window.setTimeout(() => void fetchThread(), 0)
-    const interval = window.setInterval(() => void fetchThread(), POLL_INTERVAL)
+    const interval = window.setInterval(() => void fetchThread(), pollInterval)
     return () => {
       window.clearTimeout(immediate)
       window.clearInterval(interval)
     }
-  }, [fetchThread, token])
+  }, [fetchThread, pollInterval, token])
+
+  useEffect(() => {
+    if (!showLivePlanner) {
+      setHintIndex(0)
+      return
+    }
+    if (activeRun?.events?.length) return
+    const interval = window.setInterval(() => {
+      setHintIndex((current) => (current + 1) % GENERATION_HINTS.length)
+    }, GENERATION_HINT_ROTATION_MS)
+    return () => window.clearInterval(interval)
+  }, [activeRun?.events?.length, showLivePlanner])
+
+  const pendingAcknowledged = isPendingMessageAcknowledged(messages, pendingMessage)
+  const displayMessages = useMemo(() => {
+    if (!pendingMessage || pendingAcknowledged) return messages
+    const optimisticMessage: OrchestratorMessage = {
+      id: pendingMessage.id,
+      project_id: projectId,
+      role: 'user',
+      content: pendingMessage.content,
+      created_at: pendingMessage.createdAt,
+    }
+    return [...messages, optimisticMessage]
+  }, [messages, pendingAcknowledged, pendingMessage, projectId])
 
   useEffect(() => {
     const node = transcriptRef.current
     if (!node) return
     node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' })
-  }, [messages.length, sending])
+  }, [displayMessages.length, sending, activeRun?.events.length])
 
   const submit = useCallback(async () => {
     const content = draft.trim()
     if (!content || !token || sending) return
 
+    const optimisticMessage: PendingUserMessage = {
+      id: `pending-${Date.now()}`,
+      content,
+      createdAt: new Date().toISOString(),
+    }
+
+    setPendingMessage(optimisticMessage)
+    setDraft('')
     setSending(true)
     setError(null)
+    void fetchThread()
+    const followupFetch = window.setTimeout(() => void fetchThread(), 250)
     const { data, error: requestError } = await sendOrchestratorMessage(token, projectId, content)
+    window.clearTimeout(followupFetch)
     setSending(false)
 
     if (requestError) {
       setError(requestError)
+      setDraft(content)
+      setPendingMessage(null)
       await fetchThread()
       return
     }
 
     applyThread(data)
-    setDraft('')
+    setPendingMessage(null)
     onMessageComplete?.()
   }, [applyThread, draft, fetchThread, onMessageComplete, projectId, sending, token])
 
@@ -165,6 +467,12 @@ export function OrchestratorConsole({
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline">Planner</Badge>
               <Badge variant="secondary">Scope and Tickets</Badge>
+              {showLivePlanner ? (
+                <Badge variant="outline" className="gap-1 border-primary/25 text-primary">
+                  <LoaderCircle className="size-3 animate-spin" />
+                  Active Generation
+                </Badge>
+              ) : null}
             </div>
             <CardTitle className="text-base tracking-tight">
               Orchestrator
@@ -183,7 +491,7 @@ export function OrchestratorConsole({
       <CardContent className="flex h-full flex-1 flex-col gap-4 py-5">
         <div
           ref={transcriptRef}
-          className="flex min-h-[430px] flex-1 flex-col gap-3 overflow-y-auto pr-1"
+          className="flex min-h-[360px] flex-1 flex-col gap-3 overflow-y-auto pr-1"
         >
           {loading ? (
             <div className="grid gap-3">
@@ -191,9 +499,13 @@ export function OrchestratorConsole({
               <div className="h-20 animate-pulse rounded-2xl bg-white/[0.04]" />
               <div className="h-28 animate-pulse rounded-2xl bg-white/[0.05]" />
             </div>
-          ) : messages.length ? (
-            messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
+          ) : displayMessages.length ? (
+            displayMessages.map((message) => (
+              <MessageBubble
+                key={message.id}
+                message={message}
+                pending={pendingMessage?.id === message.id}
+              />
             ))
           ) : (
             <div className="grid gap-4 rounded-3xl border border-dashed border-white/12 bg-black/10 p-5">
@@ -245,6 +557,16 @@ export function OrchestratorConsole({
           )}
         </div>
 
+        {showLivePlanner ? (
+          <LivePlannerPanel
+            run={activeRun}
+            sending={sending}
+            fallbackHint={GENERATION_HINTS[hintIndex]}
+          />
+        ) : latestRun ? (
+          <LatestPlannerRun run={latestRun} />
+        ) : null}
+
         <div className="space-y-3 border-t border-white/10 pt-4">
           {error ? (
             <div className="rounded-2xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
@@ -253,6 +575,13 @@ export function OrchestratorConsole({
           ) : null}
 
           <div className="grid gap-3">
+            <div className="rounded-2xl border border-white/10 bg-black/10 px-3 py-2">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <BrainCircuit className="size-3.5" />
+                Keep requests at the planning layer: scope review, ticket creation, queue triage, and re-planning.
+              </div>
+            </div>
+
             <textarea
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
@@ -265,18 +594,29 @@ export function OrchestratorConsole({
               placeholder="Describe the task, scope, constraints, or ask what should be ticketed next."
               className="min-h-[120px] resize-y rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary/40 focus:ring-2 focus:ring-primary/15"
               disabled={sending}
+              aria-busy={showLivePlanner}
             />
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
-                Keep requests at the planning layer: scope review, ticket creation, queue triage, and re-planning. Workers handle implementation.
+                The planner will surface live activity as it works, and completion means a real response, not a hung request.
               </p>
               <Button
                 type="button"
                 onClick={() => void submit()}
                 disabled={sending || !draft.trim()}
-                className="min-w-[140px]"
+                className="min-w-[148px] gap-2"
               >
-                {sending ? 'Running...' : 'Send'}
+                {sending ? (
+                  <>
+                    <LoaderCircle className="size-4 animate-spin" />
+                    Generating
+                  </>
+                ) : (
+                  <>
+                    <TerminalSquare className="size-4" />
+                    Send
+                  </>
+                )}
               </Button>
             </div>
           </div>

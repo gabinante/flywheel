@@ -1,12 +1,15 @@
 package rest
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/gabinante/flywheel/api/generated"
 	"github.com/gabinante/flywheel/api/rest/middleware"
 	apierrors "github.com/gabinante/flywheel/internal/errors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // RouterConfig configures the main HTTP router (std net/http only).
@@ -32,10 +35,19 @@ type RouterConfig struct {
 	ClaimsHandler       *ClaimsHandler       // Claims registry for concurrency control (spec v0.2 §4.3)
 	HooksHandler        *HooksHandler        // Change event webhook receiver (spec v0.2 §2.4)
 	PillarsHandler      *PillarsHandler      // Pillar and strategy layer (Layer 15)
+	DeliveryHandler     *DeliveryHandler     // Delivery integrations (pipeline, PR, config)
+	// HealthCheckers are called by /readyz for deep readiness checks.
+	HealthCheckers []HealthChecker
 	// WebDist is the Vite outDir (contains index.html and assets/). Empty skips SPA routes.
 	WebDist string
 	// WebDevProxyURL reverse-proxies frontend requests to a running Vite dev server.
 	WebDevProxyURL string
+}
+
+// HealthChecker reports whether a subsystem is ready to serve traffic.
+type HealthChecker interface {
+	Name() string
+	Check(ctx context.Context) error
 }
 
 // NewRouter returns an http.Handler with global middleware and all routes:
@@ -44,10 +56,29 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	mux := http.NewServeMux()
 
 	// Metrics (not in OpenAPI spec)
-	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("# Flywheel metrics\n# Expose Prometheus or other metrics here when needed.\n"))
+	mux.Handle("GET /metrics", promhttp.Handler())
+
+	// Deep readiness check: pings all configured subsystems (DB, Redis, etc.).
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		results := make(map[string]string, len(cfg.HealthCheckers))
+		allOK := true
+		for _, hc := range cfg.HealthCheckers {
+			if err := hc.Check(ctx); err != nil {
+				results[hc.Name()] = err.Error()
+				allOK = false
+			} else {
+				results[hc.Name()] = "ok"
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if allOK {
+			w.WriteHeader(http.StatusOK)
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": allOK, "checks": results})
 	})
 
 	// Spec-generated API (healthz + all spec routes) — registers onto mux
@@ -144,9 +175,13 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	if cfg.PillarsHandler != nil {
 		cfg.PillarsHandler.RegisterRoutes(mux)
 	}
+	if cfg.DeliveryHandler != nil {
+		cfg.DeliveryHandler.RegisterRoutes(mux)
+	}
 
 	h := http.Handler(mux)
 	h = middleware.Recoverer(h)
+	h = middleware.Metrics(h)
 	h = middleware.Logger(h)
 	h = middleware.RealIP(h)
 	h = middleware.RequestID(h)

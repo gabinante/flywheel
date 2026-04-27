@@ -1,6 +1,6 @@
 package dispatch
 
-import "log"
+import "log/slog"
 
 // NewWorker builds a standalone worker using the same driver and runner
 // selection logic as the main dispatcher.
@@ -18,13 +18,13 @@ func NewWorker(cfg Config) Worker {
 		ExtraArgs: cfg.AgentArgs,
 	})
 	if err != nil {
-		log.Printf("dispatch: %v, falling back to claude driver", err)
+		slog.Warn("driver lookup failed, falling back to claude driver", "error", err)
 		driver = NewClaudeDriver(DriverConfig{CLIPath: cliPath})
 	}
 
 	worker, workerErr := newWorker(cfg, driver)
 	if workerErr != nil {
-		log.Printf("dispatch: %v, falling back to cli runner", workerErr)
+		slog.Warn("worker creation failed, falling back to cli runner", "error", workerErr)
 		worker = &CLIWorker{
 			Driver:      driver,
 			APIKey:      cfg.APIKey,

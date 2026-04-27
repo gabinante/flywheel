@@ -29,6 +29,10 @@ type OpenAIResponsesWorker struct {
 }
 
 func (w *OpenAIResponsesWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL string) (*WorkerResult, error) {
+	return w.SpawnStream(ctx, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL, nil)
+}
+
+func (w *OpenAIResponsesWorker) SpawnStream(ctx context.Context, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL string, onOutput WorkerOutputHandler) (*WorkerResult, error) {
 	cfg := w.Config
 	if cfg.APIBaseURL == "" {
 		cfg.APIBaseURL = "https://api.openai.com/v1"
@@ -88,6 +92,7 @@ func (w *OpenAIResponsesWorker) Spawn(ctx context.Context, ticketID, projectID, 
 	if err != nil {
 		return nil, err
 	}
+	emitOpenAIResponsesToolOutput(resp, onOutput)
 
 	for round := 0; round < 32; round++ {
 		calls := resp.functionCalls()
@@ -96,10 +101,14 @@ func (w *OpenAIResponsesWorker) Spawn(ctx context.Context, ticketID, projectID, 
 		}
 		nextInput := make([]openAIResponsesFunctionCallOutput, 0, len(calls))
 		for _, call := range calls {
+			output := executeOpenAIWorkspaceTool(ctx, workDir, call)
+			if onOutput != nil {
+				onOutput("stdout", summarizeOpenAIToolCall(call.Name, output))
+			}
 			nextInput = append(nextInput, openAIResponsesFunctionCallOutput{
 				Type:   "function_call_output",
 				CallID: call.CallID,
-				Output: executeOpenAIWorkspaceTool(ctx, workDir, call),
+				Output: output,
 			})
 		}
 
@@ -125,6 +134,7 @@ func (w *OpenAIResponsesWorker) Spawn(ctx context.Context, ticketID, projectID, 
 		if err != nil {
 			return nil, err
 		}
+		emitOpenAIResponsesToolOutput(resp, onOutput)
 	}
 	if len(resp.functionCalls()) > 0 {
 		return &WorkerResult{
@@ -341,6 +351,29 @@ func (r *openAIResponsesResponse) failureReason() string {
 		return "status=" + r.Status
 	default:
 		return ""
+	}
+}
+
+func emitOpenAIResponsesToolOutput(resp *openAIResponsesResponse, onOutput WorkerOutputHandler) {
+	if onOutput == nil || resp == nil {
+		return
+	}
+	for _, item := range resp.Output {
+		if item.Type != "mcp_call" {
+			continue
+		}
+		name := item.Name
+		if strings.TrimSpace(name) == "" {
+			name = "tool"
+		}
+		switch {
+		case strings.TrimSpace(item.Error) != "":
+			onOutput("stderr", fmt.Sprintf("%s failed: %s", name, strings.TrimSpace(item.Error)))
+		case strings.TrimSpace(item.Output) != "":
+			onOutput("stdout", fmt.Sprintf("%s: %s", name, strings.TrimSpace(item.Output)))
+		case strings.TrimSpace(item.Status) != "":
+			onOutput("stdout", fmt.Sprintf("%s status=%s", name, strings.TrimSpace(item.Status)))
+		}
 	}
 }
 

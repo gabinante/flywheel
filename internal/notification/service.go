@@ -2,7 +2,7 @@ package notification
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -81,7 +81,7 @@ func (s *Service) Notify(ctx context.Context, n *Notification) error {
 	// Track send count for classifier tuning.
 	if n.Classifier != "" {
 		if err := s.store.IncrementSent(ctx, n.Classifier, n.ProjectID); err != nil {
-			log.Printf("notification: failed to increment sent count for classifier %s: %v", n.Classifier, err)
+			slog.Error("notification: failed to increment sent count", "classifier", n.Classifier, "error", err)
 		}
 	}
 
@@ -136,11 +136,11 @@ func (s *Service) FlushDigest(ctx context.Context, projectID string) error {
 	for ch, batch := range byChannel {
 		adapter, ok := s.getAdapter(ch)
 		if !ok {
-			log.Printf("notification: no adapter for channel %s, skipping digest", ch)
+			slog.Warn("notification: no adapter for channel, skipping digest", "channel", string(ch))
 			continue
 		}
 		if err := adapter.SendDigest(ctx, batch, prefs); err != nil {
-			log.Printf("notification: digest send failed for channel %s: %v", ch, err)
+			slog.Error("notification: digest send failed", "channel", string(ch), "error", err)
 			continue
 		}
 		for _, n := range batch {
@@ -150,7 +150,7 @@ func (s *Service) FlushDigest(ctx context.Context, projectID string) error {
 
 	if len(ids) > 0 {
 		if err := s.store.MarkDigested(ctx, ids); err != nil {
-			log.Printf("notification: failed to mark digested: %v", err)
+			slog.Error("notification: failed to mark digested", "error", err)
 			return err
 		}
 
@@ -201,13 +201,13 @@ func (s *Service) GetDismissalRates(ctx context.Context, projectID string) ([]*D
 func (s *Service) deliver(ctx context.Context, n *Notification, prefs *Preferences) {
 	adapter, ok := s.getAdapter(n.Channel)
 	if !ok {
-		log.Printf("notification: no adapter for channel %s, marking failed", n.Channel)
+		slog.Warn("notification: no adapter for channel, marking failed", "channel", string(n.Channel))
 		_ = s.store.UpdateNotificationStatus(ctx, n.ID, StatusFailed, "no adapter registered for channel")
 		return
 	}
 
 	if err := adapter.Send(ctx, n, prefs); err != nil {
-		log.Printf("notification: send failed for %s via %s: %v", n.ID, n.Channel, err)
+		slog.Error("notification: send failed", "notification_id", n.ID, "channel", string(n.Channel), "error", err)
 		_ = s.store.UpdateNotificationStatus(ctx, n.ID, StatusFailed, err.Error())
 
 		_ = s.bus.Publish(ctx, events.Event{

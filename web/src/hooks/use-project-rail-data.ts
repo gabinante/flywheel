@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 
 import { useAuth } from '@/contexts/use-auth'
 import type { DispatchStatus } from '@/hooks/use-dispatch-status'
@@ -12,31 +12,44 @@ import {
 import type { components } from '@/lib/api/v1'
 
 type Ticket = components['schemas']['Ticket']
+type Escalation = components['schemas']['Escalation']
 type ChangeStreamResponse = {
   events?: ChangeStreamEvent[]
 }
+export type RailEscalation = {
+  escalation: Escalation
+  ticket: Ticket
+}
 
-const POLL_INTERVAL = 10_000
+interface RailData {
+  activeTickets: Ticket[]
+  pendingReviews: Ticket[]
+  escalations: RailEscalation[]
+  activityItems: ActivityItem[]
+}
 
 export function useProjectRailData(projectId: string | undefined) {
   const { client, token } = useAuth()
 
-  const [activeTickets, setActiveTickets] = useState<Ticket[]>([])
-  const [pendingReviews, setPendingReviews] = useState<Ticket[]>([])
-  const [activityItems, setActivityItems] = useState<ActivityItem[]>([])
-  const [loading, setLoading] = useState(true)
+  const {
+    data,
+    isLoading: loading,
+    refetch: refresh,
+  } = useQuery<RailData>({
+    queryKey: ['project-rail-data', projectId],
+    queryFn: async (): Promise<RailData> => {
+      if (!projectId || !token) {
+        return { activeTickets: [], pendingReviews: [], escalations: [], activityItems: [] }
+      }
 
-  const hasLoaded = useRef(false)
-
-  const fetchData = useCallback(async () => {
-    if (!projectId || !token) return
-
-    try {
-      const [statusRes, reviewsRes, changeStreamRes] = await Promise.all([
+      const [statusRes, reviewsRes, escalationsRes, changeStreamRes] = await Promise.all([
         fetch('/api/dispatch/status', {
           headers: { Authorization: `Bearer ${token}` },
         }),
         client.GET('/projects/{projectID}/reviews', {
+          params: { path: { projectID: projectId } },
+        }),
+        client.GET('/projects/{projectID}/escalations', {
           params: { path: { projectID: projectId } },
         }),
         fetch(
@@ -67,17 +80,13 @@ export function useProjectRailData(projectId: string | undefined) {
       const active = activeTicketResults.filter(
         (ticket): ticket is Ticket => ticket !== null,
       )
-      setActiveTickets(active)
 
       const reviews: Ticket[] = reviewsRes.response.ok
         ? (reviewsRes.data?.tickets ?? [])
         : []
-      const activeTicketIdSet = new Set(
-        active.map((ticket) => ticket.id).filter((ticketId): ticketId is string => Boolean(ticketId)),
-      )
-      setPendingReviews(
-        reviews.filter((ticket) => !ticket.id || !activeTicketIdSet.has(ticket.id)),
-      )
+      const rawEscalations: Escalation[] = escalationsRes.response.ok
+        ? ((escalationsRes.data ?? []) as Escalation[])
+        : []
 
       const changeEvents: ChangeStreamEvent[] = changeStreamRes.ok
         ? (((await changeStreamRes.json()) as ChangeStreamResponse).events ?? [])
@@ -94,6 +103,9 @@ export function useProjectRailData(projectId: string | undefined) {
           .filter((ticketId): ticketId is string => Boolean(ticketId)),
         ...active.map((ticket) => ticket.id).filter((ticketId): ticketId is string => Boolean(ticketId)),
         ...reviews.map((ticket) => ticket.id).filter((ticketId): ticketId is string => Boolean(ticketId)),
+        ...rawEscalations
+          .map((escalation) => escalation.ticket_id)
+          .filter((ticketId): ticketId is string => Boolean(ticketId)),
       ].filter((ticketId, index, list) => list.indexOf(ticketId) === index)
 
       const traceTicketIds = candidateTicketIds.slice(0, 10)
@@ -129,47 +141,53 @@ export function useProjectRailData(projectId: string | undefined) {
       )
 
       const traceSteps: TraceActivityStep[] = traceResults.flat()
-      setActivityItems(
-        buildActivityItems({
+      const escalationTicketItems = rawEscalations
+        .map((escalation) => {
+          const ticketId = escalation.ticket_id
+          if (!ticketId) return null
+          const ticket = ticketsById.get(ticketId)
+          if (!ticket) return null
+          return { escalation, ticket }
+        })
+        .filter((item): item is RailEscalation => item !== null)
+      const escalationTicketIdSet = new Set(
+        escalationTicketItems
+          .map((item) => item.ticket.id)
+          .filter((ticketId): ticketId is string => Boolean(ticketId)),
+      )
+      const activeTicketIdSet = new Set(
+        active.map((ticket) => ticket.id).filter((ticketId): ticketId is string => Boolean(ticketId)),
+      )
+
+      return {
+        activeTickets: active.filter(
+          (ticket) => !ticket.id || !escalationTicketIdSet.has(ticket.id),
+        ),
+        pendingReviews: reviews.filter(
+          (ticket) =>
+            !ticket.id ||
+            (!activeTicketIdSet.has(ticket.id) &&
+              !escalationTicketIdSet.has(ticket.id)),
+        ),
+        escalations: escalationTicketItems,
+        activityItems: buildActivityItems({
           changeEvents,
           traceSteps,
           ticketsById,
         }),
-      )
-    } catch {
-      // Silent background refresh failures should not disrupt navigation.
-    } finally {
-      hasLoaded.current = true
-      setLoading(false)
-    }
-  }, [client, projectId, token])
-
-  useEffect(() => {
-    hasLoaded.current = false
-    setActiveTickets([])
-    setPendingReviews([])
-    setActivityItems([])
-    setLoading(Boolean(projectId && token))
-  }, [projectId, token])
-
-  useEffect(() => {
-    if (!projectId || !token) {
-      setLoading(false)
-      return
-    }
-
-    setLoading(!hasLoaded.current)
-    void fetchData()
-
-    const interval = setInterval(() => void fetchData(), POLL_INTERVAL)
-    return () => clearInterval(interval)
-  }, [fetchData, projectId, token])
+      }
+    },
+    enabled: Boolean(projectId && token),
+    refetchInterval: 10_000,
+    staleTime: 5_000,
+  })
 
   return {
-    activeTickets,
-    pendingReviews,
-    activityItems,
+    activeTickets: data?.activeTickets ?? [],
+    pendingReviews: data?.pendingReviews ?? [],
+    escalations: data?.escalations ?? [],
+    activityItems: data?.activityItems ?? [],
     loading,
-    refresh: fetchData,
+    refresh,
   }
 }

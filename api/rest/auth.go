@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"runtime/debug"
@@ -48,7 +48,7 @@ func NewAuthHandler(authConfig auth.Config, provisioner *auth.Provisioner, oauth
 func (h *AuthHandler) githubRedirect(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if v := recover(); v != nil {
-			log.Printf("auth: panic in githubRedirect: %v\n%s", v, debug.Stack())
+			slog.Error("auth panic in githubRedirect", "error", v, "stack", string(debug.Stack()))
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = w.Write([]byte("auth panic: " + fmt.Sprint(v)))
@@ -56,18 +56,18 @@ func (h *AuthHandler) githubRedirect(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 	if h.AuthConfig.BaseURL == "" {
-		log.Printf("auth: BASE_URL not set; cannot build OAuth redirect")
+		slog.Error("auth: BASE_URL not set; cannot build OAuth redirect")
 		WriteStructuredError(w, apierrors.New(apierrors.CodeInternal, "auth misconfigured: BASE_URL required", false))
 		return
 	}
 	if h.AuthConfig.ClientID == "" {
-		log.Printf("auth: GITHUB_CLIENT_ID not set")
+		slog.Error("auth: GITHUB_CLIENT_ID not set")
 		WriteStructuredError(w, apierrors.New(apierrors.CodeInternal, "auth misconfigured: GITHUB_CLIENT_ID required", false))
 		return
 	}
 	state, err := randomState()
 	if err != nil {
-		log.Printf("auth: random state: %v", err)
+		slog.Error("auth random state failed", "error", err)
 		WriteStructuredError(w, apierrors.New(apierrors.CodeInternal, "random state failed", false))
 		return
 	}
@@ -139,7 +139,7 @@ func (h *AuthHandler) githubCallback(w http.ResponseWriter, r *http.Request) {
 			displayName = u.Login
 		}
 		if err := h.OrgSvc.EnsureDefaultOrgForUser(ctx, u.ID, displayName); err != nil {
-			log.Printf("auth: ensure default org for user %s: %v", u.ID, err)
+			slog.Error("auth ensure default org failed", "user", u.ID, "error", err)
 		}
 	}
 	// If this callback was started from /oauth/authorize (MCP client), redirect back with one-time code.

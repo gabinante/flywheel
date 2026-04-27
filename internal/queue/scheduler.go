@@ -2,7 +2,7 @@ package queue
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/gabinante/flywheel/events"
@@ -87,17 +87,17 @@ func (s *Scheduler) Run(ctx context.Context) {
 func (s *Scheduler) expireLeases(ctx context.Context) {
 	ids, err := s.leases.GetExpiredLeaseTicketIDs(ctx, s.batchSize)
 	if err != nil {
-		log.Printf("queue/scheduler: get expired leases: %v", err)
+		slog.Error("queue/scheduler: get expired leases failed", "error", err)
 		return
 	}
 	actor := ticket.Actor{ID: "system", Type: ticket.ActorSystem}
 	for _, id := range ids {
 		if err := s.ticketSvc.TransitionTicket(ctx, id, ticket.TriggerLeaseExpired, actor, nil); err != nil {
-			log.Printf("queue/scheduler: transition lease_expired %s: %v", id, err)
+			slog.Error("queue/scheduler: transition lease_expired failed", "ticket", id, "error", err)
 			continue
 		}
 		if err := s.leases.RemoveExpired(ctx, id); err != nil {
-			log.Printf("queue/scheduler: remove expired lease %s: %v", id, err)
+			slog.Error("queue/scheduler: remove expired lease failed", "ticket", id, "error", err)
 		}
 	}
 }
@@ -117,7 +117,7 @@ func (s *Scheduler) sweepStaleTickets(ctx context.Context) {
 	staleStates := []ticket.State{ticket.StatePlanning, ticket.StateExecuting}
 	stale, err := s.staleLister.ListStaleTickets(ctx, staleStates, s.stalenessThreshold)
 	if err != nil {
-		log.Printf("queue/scheduler: staleness sweep query: %v", err)
+		slog.Error("queue/scheduler: staleness sweep query failed", "error", err)
 		return
 	}
 	if len(stale) == 0 {
@@ -125,15 +125,14 @@ func (s *Scheduler) sweepStaleTickets(ctx context.Context) {
 	}
 	actor := ticket.Actor{ID: "staleness-sweep", Type: ticket.ActorSystem}
 	for _, t := range stale {
-		log.Printf("queue/scheduler: staleness sweep recovering zombie ticket %s (state=%s, updated_at=%s, threshold=%s)",
-			t.ID, t.State, t.UpdatedAt.Format(time.RFC3339), s.stalenessThreshold)
+		slog.Warn("queue/scheduler: staleness sweep recovering zombie ticket", "ticket", t.ID, "state", string(t.State), "updated_at", t.UpdatedAt.Format(time.RFC3339), "threshold", s.stalenessThreshold.String())
 		if err := s.ticketSvc.TransitionTicket(ctx, t.ID, ticket.TriggerLeaseExpired, actor, nil); err != nil {
-			log.Printf("queue/scheduler: staleness sweep transition %s: %v", t.ID, err)
+			slog.Error("queue/scheduler: staleness sweep transition failed", "ticket", t.ID, "error", err)
 			continue
 		}
 		// Also clean up any stale Redis lease data for this ticket.
 		if err := s.leases.RemoveExpired(ctx, t.ID); err != nil {
-			log.Printf("queue/scheduler: staleness sweep remove lease %s: %v", t.ID, err)
+			slog.Error("queue/scheduler: staleness sweep remove lease failed", "ticket", t.ID, "error", err)
 		}
 	}
 }

@@ -6,7 +6,7 @@ package rest
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"time"
@@ -162,7 +162,7 @@ func (s *StrictServer) GetOrg(ctx context.Context, req generated.GetOrgRequestOb
 
 func (s *StrictServer) ListProjectsByOrg(ctx context.Context, req generated.ListProjectsByOrgRequestObject) (generated.ListProjectsByOrgResponseObject, error) {
 	if err := CheckOrgAccess(ctx, req.OrgID, s.AgentStore, s.OrgSvc); err != nil {
-		log.Printf("ListProjectsByOrg: org=%s CheckOrgAccess denied: %s", req.OrgID, err.Message)
+		slog.Warn("ListProjectsByOrg denied", "org", req.OrgID, "error", err.Message)
 		return nil, err
 	}
 	status := "active"
@@ -171,10 +171,10 @@ func (s *StrictServer) ListProjectsByOrg(ctx context.Context, req generated.List
 	}
 	list, err := s.ProjectSvc.ListByOrgID(ctx, req.OrgID, status)
 	if err != nil {
-		log.Printf("ListProjectsByOrg: org=%s status=%s ListByOrgID error: %v", req.OrgID, status, err)
+		slog.Error("ListProjectsByOrg ListByOrgID failed", "org", req.OrgID, "status", status, "error", err)
 		return nil, apierrors.MapError(err)
 	}
-	log.Printf("ListProjectsByOrg: org=%s status=%s count=%d", req.OrgID, status, len(list))
+	slog.Info("ListProjectsByOrg", "org", req.OrgID, "status", status, "count", len(list))
 	out := make([]generated.Project, len(list))
 	for i := range list {
 		out[i] = projectToGen(&list[i])
@@ -363,7 +363,7 @@ func (s *StrictServer) UpdateProject(ctx context.Context, req generated.UpdatePr
 	}
 	p, err := s.ProjectSvc.GetProject(ctx, req.ProjectID)
 	if err != nil {
-		log.Printf("UpdateProject: project=%s GetProject after update: %v", req.ProjectID, err)
+		slog.Error("UpdateProject GetProject after update failed", "project", req.ProjectID, "error", err)
 		return nil, apierrors.MapError(err)
 	}
 	return generated.UpdateProject200JSONResponse(projectToGen(p)), nil
@@ -950,7 +950,7 @@ func projectToGen(p *project.Project) generated.Project {
 	de := p.DispatchEnabled
 	dispatchCfg, err := convertByJSON[generated.DispatchConfig](p.DispatchConfig.Normalized())
 	if err != nil {
-		log.Printf("projectToGen: project=%s convert dispatch config: %v", p.ID, err)
+		slog.Error("projectToGen convert dispatch config failed", "project", p.ID, "error", err)
 		dispatchCfg = generated.DispatchConfig{}
 	}
 	return generated.Project{

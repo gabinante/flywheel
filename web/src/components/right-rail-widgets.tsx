@@ -12,7 +12,8 @@ export function RightRailWidgets() {
   }>()
   const navigate = useNavigate()
   const { token } = useAuth()
-  const { activeTickets, pendingReviews, activityItems, loading } = useProjectRailData(projectId)
+  const { activeTickets, pendingReviews, escalations, activityItems, loading } =
+    useProjectRailData(projectId)
 
   if (!orgId || !projectId || !token) {
     return (
@@ -26,6 +27,7 @@ export function RightRailWidgets() {
     <CommandCenterRail
       tickets={activeTickets}
       pendingReviews={pendingReviews}
+      escalations={escalations}
       activityItems={activityItems}
       loading={loading}
       orgId={orgId}

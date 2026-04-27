@@ -2,7 +2,7 @@ package cost
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"time"
 )
 
@@ -93,7 +93,7 @@ func NewService(store Store, cfg Config, budgetNotify AlertNotifier, rlNotify Ra
 // hard-stop unless HardStop is explicitly set on the budget.
 func (s *Service) RecordAndCheck(ctx context.Context, call *LLMCallRecord) (bool, *BudgetStatus) {
 	if err := s.Tracker.RecordCall(ctx, call); err != nil {
-		log.Printf("cost: failed to record call: %v", err)
+		slog.Error("cost: failed to record call", "error", err)
 		return true, nil // fail open
 	}
 

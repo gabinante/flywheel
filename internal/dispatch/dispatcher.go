@@ -3,7 +3,7 @@ package dispatch
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -199,7 +199,7 @@ func (d *Dispatcher) Start(ctx context.Context) {
 		})
 	}
 
-	log.Printf("dispatch: started (max_workers=%d, worktree_dir=%s, project=%s, durable=%v)", d.cfg.MaxWorkers, d.cfg.WorktreeDir, d.cfg.ProjectID, d.durableBus != nil)
+	slog.Info("dispatch started", "max_workers", d.cfg.MaxWorkers, "worktree_dir", d.cfg.WorktreeDir, "project", d.cfg.ProjectID, "durable", d.durableBus != nil)
 
 	// Scan for existing pending tickets on startup.
 	go d.reconcile(ctx)
@@ -237,7 +237,7 @@ func (d *Dispatcher) Stop() {
 	}
 	d.mu.Unlock()
 	d.wg.Wait()
-	log.Println("dispatch: stopped")
+	slog.Info("dispatch stopped")
 }
 
 // SetLeaseReleaser configures the lease releaser for immediate cleanup on worker exit.
@@ -281,7 +281,7 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 	// deferred due to capacity (worker still occupied the slot at submit time).
 	reviewing, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, ticket.StateAwaitingReview)
 	if err != nil {
-		log.Printf("dispatch: scan awaiting_review: %v", err)
+		slog.Error("dispatch: scan awaiting_review failed", "error", err)
 	} else {
 		for _, t := range reviewing {
 			if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
@@ -294,7 +294,7 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 	// Scan for validated tickets with unmerged PRs — try merge or spawn resolver.
 	validated, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, ticket.StateValidated)
 	if err != nil {
-		log.Printf("dispatch: scan validated: %v", err)
+		slog.Error("dispatch: scan validated failed", "error", err)
 	} else {
 		for _, t := range validated {
 			if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
@@ -316,10 +316,10 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 
 	pending, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, ticket.StatePending)
 	if err != nil {
-		log.Printf("dispatch: scan pending: %v", err)
+		slog.Error("dispatch: scan pending failed", "error", err)
 		return
 	}
-	log.Printf("dispatch: scan found %d pending tickets", len(pending))
+	slog.Info("dispatch: scan found pending tickets", "count", len(pending))
 	for _, t := range pending {
 		if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
 			continue
@@ -348,7 +348,7 @@ func (d *Dispatcher) handleTicketReady(ctx context.Context, e events.Event) {
 	// Verify ticket is eligible (pending + dependencies met).
 	t, err := d.tickets.GetTicket(ctx, ticketID)
 	if err != nil {
-		log.Printf("dispatch: get ticket %s: %v", ticketID, err)
+		slog.Error("dispatch: get ticket failed", "ticket", ticketID, "error", err)
 		return
 	}
 
@@ -375,7 +375,7 @@ func (d *Dispatcher) handleTicketRejected(ctx context.Context, e events.Event) {
 	}
 	t, err := d.tickets.GetTicket(ctx, ticketID)
 	if err != nil {
-		log.Printf("dispatch: rejected get ticket %s: %v", ticketID, err)
+		slog.Error("dispatch: rejected get ticket failed", "ticket", ticketID, "error", err)
 		return
 	}
 	if d.cfg.ProjectID != "" && t.ProjectID != d.cfg.ProjectID {
@@ -387,7 +387,7 @@ func (d *Dispatcher) handleTicketRejected(ctx context.Context, e events.Event) {
 	if t.State != ticket.StateExecuting {
 		return
 	}
-	log.Printf("dispatch: ticket %s rejected, re-spawning worker for iteration", ticketID)
+	slog.Info("dispatch: ticket rejected, re-spawning worker", "ticket", ticketID)
 	d.spawn(ctx, t)
 }
 
@@ -398,7 +398,7 @@ func (d *Dispatcher) handleTestsFailed(ctx context.Context, e events.Event) {
 	ticketID, _ := e.Payload["ticket_id"].(string)
 	prURL, _ := e.Payload["pr_url"].(string)
 	output, _ := e.Payload["output"].(string)
-	log.Printf("dispatch: TESTS FAILED for ticket %s (PR: %s)\n%s", ticketID, prURL, output)
+	slog.Error("dispatch: tests failed", "ticket", ticketID, "pr_url", prURL, "output", output)
 
 	// Spawn a conflict resolver to fix the build — the branch likely needs
 	// a rebase or build fix after main diverged.
@@ -443,10 +443,10 @@ func (d *Dispatcher) handleTicketRolledBack(_ context.Context, e events.Event) {
 	// any remaining worktree as a safety net.
 	if err := d.worktrees.Remove(ticketID); err != nil {
 		// Not critical — the rollback service may have already removed it.
-		log.Printf("dispatch: rollback worktree cleanup %s: %v (may already be removed)", ticketID, err)
+		slog.Warn("dispatch: rollback worktree cleanup", "ticket", ticketID, "error", err)
 	}
 
-	log.Printf("dispatch: ticket %s rolled back — worker cancelled, worktree cleaned", ticketID)
+	slog.Info("dispatch: ticket rolled back", "ticket", ticketID)
 }
 
 func (d *Dispatcher) tryDispatch(ctx context.Context, t *ticket.Ticket) {
@@ -458,7 +458,7 @@ func (d *Dispatcher) tryDispatch(ctx context.Context, t *ticket.Ticket) {
 	d.mu.Lock()
 	if len(d.active) >= d.cfg.MaxWorkers {
 		d.mu.Unlock()
-		log.Printf("dispatch: at capacity (%d/%d), skipping %s", len(d.active), d.cfg.MaxWorkers, t.ID)
+		slog.Warn("dispatch: at capacity, skipping", "active", len(d.active), "max", d.cfg.MaxWorkers, "ticket", t.ID)
 		return
 	}
 	if _, running := d.active[t.ID]; running {
@@ -470,7 +470,7 @@ func (d *Dispatcher) tryDispatch(ctx context.Context, t *ticket.Ticket) {
 	if len(t.DependsOn) > 0 {
 		deps, err := d.tickets.GetTicketsByIDs(ctx, t.DependsOn)
 		if err != nil {
-			log.Printf("dispatch: get deps for %s: %v", t.ID, err)
+			slog.Error("dispatch: get deps failed", "ticket", t.ID, "error", err)
 			return
 		}
 		for _, dep := range deps {
@@ -492,7 +492,7 @@ func (d *Dispatcher) handleTicketSubmitted(ctx context.Context, e events.Event) 
 	}
 	t, err := d.tickets.GetTicket(ctx, ticketID)
 	if err != nil || t == nil {
-		log.Printf("dispatch: reviewer get ticket %s: %v", ticketID, err)
+		slog.Error("dispatch: reviewer get ticket failed", "ticket", ticketID, "error", err)
 		return
 	}
 	if d.cfg.ProjectID != "" && t.ProjectID != d.cfg.ProjectID {
@@ -530,7 +530,7 @@ func (d *Dispatcher) handleTicketDone(ctx context.Context, e events.Event) {
 	}
 
 	if err := d.worktrees.Remove(ticketID); err != nil {
-		log.Printf("dispatch: worktree cleanup %s: %v", ticketID, err)
+		slog.Warn("dispatch: worktree cleanup failed", "ticket", ticketID, "error", err)
 	}
 
 	// Check work stream completion.
@@ -545,7 +545,7 @@ func (d *Dispatcher) handleTicketDone(ctx context.Context, e events.Event) {
 func (d *Dispatcher) checkWorkStreamCompletion(ctx context.Context, completed *ticket.Ticket) {
 	tickets, err := d.tickets.ListByWorkStream(ctx, completed.ProjectID, completed.WorkStreamID)
 	if err != nil {
-		log.Printf("dispatch: work stream completion check for %s: %v", completed.WorkStreamID, err)
+		slog.Error("dispatch: work stream completion check failed", "work_stream", completed.WorkStreamID, "error", err)
 		return
 	}
 	if len(tickets) == 0 {
@@ -558,8 +558,7 @@ func (d *Dispatcher) checkWorkStreamCompletion(ctx context.Context, completed *t
 		}
 	}
 
-	log.Printf("dispatch: work stream %s complete — all %d tickets done (project=%s)",
-		completed.WorkStreamID, len(tickets), completed.ProjectID)
+	slog.Info("dispatch: work stream complete", "work_stream", completed.WorkStreamID, "ticket_count", len(tickets), "project", completed.ProjectID)
 	d.bus.Publish(ctx, events.Event{
 		Type: events.EventWorkStreamCompleted,
 		Payload: map[string]any{
@@ -595,7 +594,7 @@ func (d *Dispatcher) spawn(ctx context.Context, t *ticket.Ticket) {
 		}()
 
 		if err := d.runWorker(workerCtx, t); err != nil {
-			log.Printf("dispatch: worker %s failed: %v", t.ID, err)
+			slog.Error("dispatch: worker failed", "ticket", t.ID, "error", err)
 		}
 
 		// Layer 1 failure recovery: if the worker exited without submitting or
@@ -604,7 +603,7 @@ func (d *Dispatcher) spawn(ctx context.Context, t *ticket.Ticket) {
 		d.handleWorkerExit(t.ID)
 	}()
 
-	log.Printf("dispatch: spawned worker for %s (%d/%d active)", t.ID, d.activeCount(), d.cfg.MaxWorkers)
+	slog.Info("dispatch: spawned worker", "ticket", t.ID, "active", d.activeCount(), "max", d.cfg.MaxWorkers)
 }
 
 // DetermineWorkerType selects the appropriate worker type based on ticket state
@@ -663,7 +662,7 @@ func (d *Dispatcher) runTypedWorker(ctx context.Context, t *ticket.Ticket, wt Wo
 	if t.TargetRepo != "" && d.repoResolver != nil && d.clones != nil {
 		repoURL, _, resolveErr := d.repoResolver.ResolveRepo(ctx, t.ProjectID, t.TargetRepo)
 		if resolveErr != nil {
-			log.Printf("dispatch: resolve repo %s for %s: %v (falling back to primary)", t.TargetRepo, t.ID, resolveErr)
+			slog.Warn("dispatch: resolve repo failed, falling back to primary", "target_repo", t.TargetRepo, "ticket", t.ID, "error", resolveErr)
 		} else if repoURL != "" {
 			cloneDir, cloneErr := d.clones.EnsureClone(repoURL, t.ProjectID+"/"+t.TargetRepo)
 			if cloneErr != nil {
@@ -696,7 +695,7 @@ func (d *Dispatcher) runTypedWorker(ctx context.Context, t *ticket.Ticket, wt Wo
 	// Build type-specific task prompt.
 	taskMsg := buildTypedTaskPrompt(wt, t.ID, t.ProjectID)
 
-	log.Printf("dispatch: running %s worker for %s", wt, t.ID)
+	slog.Info("dispatch: running worker", "type", string(wt), "ticket", t.ID)
 
 	// Spawn worker.
 	result, selected, err := d.spawnWorker(ctx, proj, t.ID, t.ProjectID, string(wt), wt, prompt, taskMsg, workDir)
@@ -706,9 +705,9 @@ func (d *Dispatcher) runTypedWorker(ctx context.Context, t *ticket.Ticket, wt Wo
 	d.recordUsage(ctx, selected.Config, t.ProjectID, t.ID, workerRoleForType(wt), operationTypeForType(wt), prompt, taskMsg, result)
 
 	if !result.Success {
-		log.Printf("dispatch: %s worker %s completed with error: %s\nOutput: %s", wt, t.ID, result.Error, result.Output)
+		slog.Error("dispatch: worker completed with error", "type", string(wt), "ticket", t.ID, "error", result.Error, "output", result.Output)
 	} else {
-		log.Printf("dispatch: %s worker %s completed successfully", wt, t.ID)
+		slog.Info("dispatch: worker completed", "type", string(wt), "ticket", t.ID)
 	}
 
 	return nil
@@ -748,9 +747,9 @@ func (d *Dispatcher) handleWorkerExit(ticketID string) {
 		return
 	}
 
-	log.Printf("dispatch: worker %s exited without completing — releasing lease (state=%s)", ticketID, t.State)
+	slog.Warn("dispatch: worker exited without completing, releasing lease", "ticket", ticketID, "state", t.State)
 	if err := d.leaseReleaser.ForceReleaseLease(ctx, ticketID); err != nil {
-		log.Printf("dispatch: failed to release lease for %s: %v", ticketID, err)
+		slog.Error("dispatch: failed to release lease", "ticket", ticketID, "error", err)
 	}
 }
 
@@ -768,7 +767,7 @@ func (d *Dispatcher) spawnReviewer(ctx context.Context, t *ticket.Ticket) {
 	d.mu.Lock()
 	if len(d.active) >= d.cfg.MaxWorkers {
 		d.mu.Unlock()
-		log.Printf("dispatch: at capacity, deferring review of %s", t.ID)
+		slog.Info("dispatch: at capacity, deferring review", "ticket", t.ID)
 		return
 	}
 	if _, running := d.active[reviewKey]; running {
@@ -793,11 +792,11 @@ func (d *Dispatcher) spawnReviewer(ctx context.Context, t *ticket.Ticket) {
 		}()
 
 		if err := d.runReviewer(workerCtx, t); err != nil {
-			log.Printf("dispatch: reviewer %s failed: %v", t.ID, err)
+			slog.Error("dispatch: reviewer failed", "ticket", t.ID, "error", err)
 		}
 	}()
 
-	log.Printf("dispatch: spawned reviewer for %s (%d/%d active)", t.ID, d.activeCount(), d.cfg.MaxWorkers)
+	slog.Info("dispatch: spawned reviewer", "ticket", t.ID, "active", d.activeCount(), "max", d.cfg.MaxWorkers)
 }
 
 // runReviewer spawns a validator worker that reviews the ticket's PR and approves or rejects.
@@ -824,7 +823,7 @@ func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
 	case <-time.After(100 * time.Millisecond):
 	}
 
-	log.Printf("dispatch: running validator worker for %s", t.ID)
+	slog.Info("dispatch: running validator worker", "ticket", t.ID)
 
 	taskMsg := buildTypedTaskPrompt(WorkerTypeValidator, t.ID, t.ProjectID)
 	result, selected, err := d.spawnWorker(ctx, proj, t.ID, t.ProjectID, string(WorkerTypeValidator), WorkerTypeValidator, prompt, taskMsg, workDir)
@@ -834,9 +833,9 @@ func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
 	d.recordUsage(ctx, selected.Config, t.ProjectID, t.ID, "review", cost.OpReview, prompt, taskMsg, result)
 
 	if !result.Success {
-		log.Printf("dispatch: validator %s completed with error: %s\nOutput: %s", t.ID, result.Error, result.Output)
+		slog.Error("dispatch: validator completed with error", "ticket", t.ID, "error", result.Error, "output", result.Output)
 	} else {
-		log.Printf("dispatch: validator %s completed successfully", t.ID)
+		slog.Info("dispatch: validator completed", "ticket", t.ID)
 	}
 
 	return nil
@@ -874,7 +873,7 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		output := string(out)
-		log.Printf("dispatch: auto-merge %s failed: %v\n%s", t.ID, err, output)
+		slog.Error("dispatch: auto-merge failed", "ticket", t.ID, "error", err, "output", output)
 
 		d.mu.Lock()
 		d.mergeAttempts[t.ID]++
@@ -884,7 +883,7 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 			d.spawnConflictResolver(ctx, t, prURL)
 		}
 	} else {
-		log.Printf("dispatch: auto-merged PR for %s", t.ID)
+		slog.Info("dispatch: auto-merged PR", "ticket", t.ID)
 		// Delete remote branch (best-effort).
 		branch := "ticket/" + t.ID
 		delCmd := exec.Command("git", "push", "origin", "--delete", branch)
@@ -900,7 +899,7 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 // Nil-safe: if ticketTransitioner is nil, logs and returns.
 func (d *Dispatcher) closeMergedTicket(ctx context.Context, t *ticket.Ticket) {
 	if d.ticketTransitioner == nil {
-		log.Printf("dispatch: ticket transitioner not set, cannot close merged ticket %s", t.ID)
+		slog.Warn("dispatch: ticket transitioner not set, cannot close merged ticket", "ticket", t.ID)
 		return
 	}
 
@@ -908,12 +907,12 @@ func (d *Dispatcher) closeMergedTicket(ctx context.Context, t *ticket.Ticket) {
 
 	for _, trigger := range []string{ticket.TriggerDeploy, ticket.TriggerObserve, ticket.TriggerClose} {
 		if err := d.ticketTransitioner.TransitionTicket(ctx, t.ID, trigger, actor, nil); err != nil {
-			log.Printf("dispatch: post-merge transition %s for %s failed: %v", trigger, t.ID, err)
+			slog.Error("dispatch: post-merge transition failed", "trigger", trigger, "ticket", t.ID, "error", err)
 			return
 		}
 	}
 
-	log.Printf("dispatch: ticket %s closed after merge", t.ID)
+	slog.Info("dispatch: ticket closed after merge", "ticket", t.ID)
 
 	d.mu.Lock()
 	delete(d.mergeAttempts, t.ID)
@@ -923,7 +922,7 @@ func (d *Dispatcher) closeMergedTicket(ctx context.Context, t *ticket.Ticket) {
 // escalateMergeFailure publishes an escalation event when merge attempts exceed the threshold.
 // The ticket stays in validated state for manual intervention.
 func (d *Dispatcher) escalateMergeFailure(ctx context.Context, t *ticket.Ticket, reason string) {
-	log.Printf("dispatch: escalating merge failure for %s: %s", t.ID, reason)
+	slog.Warn("dispatch: escalating merge failure", "ticket", t.ID, "reason", reason)
 	_ = d.bus.Publish(ctx, events.Event{
 		Type: events.EventTicketEscalated,
 		Payload: map[string]any{
@@ -948,7 +947,7 @@ func (d *Dispatcher) validatePRChecks(ctx context.Context, t *ticket.Ticket, prU
 	if err != nil {
 		// gh pr checks exits non-zero if any check failed or is pending.
 		if strings.Contains(output, "fail") || strings.Contains(output, "X") {
-			log.Printf("dispatch: CI checks failed for %s, emitting tests_failed event", t.ID)
+			slog.Warn("dispatch: CI checks failed", "ticket", t.ID)
 			_ = d.bus.Publish(ctx, events.Event{
 				Type: events.EventTestsFailed,
 				Payload: map[string]any{
@@ -962,11 +961,11 @@ func (d *Dispatcher) validatePRChecks(ctx context.Context, t *ticket.Ticket, prU
 		}
 		// Checks still pending — skip for now, will retry on next scan.
 		if strings.Contains(output, "pending") || strings.Contains(output, "-") {
-			log.Printf("dispatch: CI checks pending for %s, will retry later", t.ID)
+			slog.Info("dispatch: CI checks pending, will retry later", "ticket", t.ID)
 			return false
 		}
 		// No checks configured or other error — allow merge.
-		log.Printf("dispatch: gh pr checks %s: %v (proceeding with merge)", t.ID, err)
+		slog.Info("dispatch: pr checks error, proceeding with merge", "ticket", t.ID, "error", err)
 	}
 
 	return true
@@ -987,7 +986,7 @@ func (d *Dispatcher) spawnConflictResolver(ctx context.Context, t *ticket.Ticket
 	d.mu.Lock()
 	if len(d.active) >= d.cfg.MaxWorkers {
 		d.mu.Unlock()
-		log.Printf("dispatch: at capacity, deferring conflict resolution for %s", t.ID)
+		slog.Info("dispatch: at capacity, deferring conflict resolution", "ticket", t.ID)
 		return
 	}
 	if _, running := d.active[resolveKey]; running {
@@ -1012,11 +1011,11 @@ func (d *Dispatcher) spawnConflictResolver(ctx context.Context, t *ticket.Ticket
 		}()
 
 		if err := d.runConflictResolver(workerCtx, t, prURL); err != nil {
-			log.Printf("dispatch: conflict resolver %s failed: %v", t.ID, err)
+			slog.Error("dispatch: conflict resolver failed", "ticket", t.ID, "error", err)
 		}
 	}()
 
-	log.Printf("dispatch: spawned conflict resolver for %s (%d/%d active)", t.ID, d.activeCount(), d.cfg.MaxWorkers)
+	slog.Info("dispatch: spawned conflict resolver", "ticket", t.ID, "active", d.activeCount(), "max", d.cfg.MaxWorkers)
 }
 
 // runConflictResolver rebases a ticket's branch onto main and retries the merge.
@@ -1046,18 +1045,18 @@ func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, 
 	d.recordUsage(ctx, selected.Config, t.ProjectID, t.ID, "conflict_resolution", cost.OpCodeGeneration, prompt, taskMsg, result)
 
 	if !result.Success {
-		log.Printf("dispatch: conflict resolver %s failed: %s\nOutput: %s", t.ID, result.Error, result.Output)
+		slog.Error("dispatch: conflict resolver failed", "ticket", t.ID, "error", result.Error, "output", result.Output)
 		return fmt.Errorf("resolver failed: %s", result.Error)
 	}
 
-	log.Printf("dispatch: conflict resolver %s completed, retrying merge", t.ID)
+	slog.Info("dispatch: conflict resolver completed, retrying merge", "ticket", t.ID)
 
 	_ = d.worktrees.Remove(t.ID)
 	cmd := exec.Command("gh", "pr", "merge", prURL, "--squash")
 	cmd.Dir = d.cfg.RepoDir
 	out, mergeErr := cmd.CombinedOutput()
 	if mergeErr != nil {
-		log.Printf("dispatch: retry merge %s still failed: %v\n%s", t.ID, mergeErr, string(out))
+		slog.Error("dispatch: retry merge still failed", "ticket", t.ID, "error", mergeErr, "output", string(out))
 
 		d.mu.Lock()
 		d.mergeAttempts[t.ID]++
@@ -1066,7 +1065,7 @@ func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, 
 		return fmt.Errorf("retry merge: %w", mergeErr)
 	}
 
-	log.Printf("dispatch: auto-merged PR for %s (after conflict resolution)", t.ID)
+	slog.Info("dispatch: auto-merged PR after conflict resolution", "ticket", t.ID)
 	// Delete remote branch (best-effort).
 	delCmd := exec.Command("git", "push", "origin", "--delete", branch)
 	delCmd.Dir = d.cfg.RepoDir
@@ -1092,15 +1091,14 @@ func (d *Dispatcher) spawnWorker(ctx context.Context, proj *project.Project, tic
 			lastWorker = candidate
 			continue
 		}
-		log.Printf(
-			"dispatch: selected worker %s (%s) for %s on %s using runner=%s driver=%s model=%s",
-			candidate.ID,
-			candidate.Name,
-			role,
-			ticketID,
-			resolveRunnerType(candidate.Config),
-			candidate.Config.AgentDriver,
-			candidate.Config.AgentModel,
+		slog.Info("dispatch: selected worker",
+			"worker_id", candidate.ID,
+			"worker_name", candidate.Name,
+			"role", role,
+			"ticket", ticketID,
+			"runner", resolveRunnerType(candidate.Config),
+			"driver", candidate.Config.AgentDriver,
+			"model", candidate.Config.AgentModel,
 		)
 
 		var (
@@ -1131,7 +1129,7 @@ func (d *Dispatcher) spawnWorker(ctx context.Context, proj *project.Project, tic
 		lastErr = err
 		lastWorker = candidate
 		if index < len(candidates)-1 && ShouldFailoverToNextWorker(err, result) {
-			log.Printf("dispatch: worker %s failed for %s, trying next candidate", candidate.ID, ticketID)
+			slog.Warn("dispatch: worker failed, trying next candidate", "worker", candidate.ID, "ticket", ticketID)
 			continue
 		}
 		if err != nil {
@@ -1176,7 +1174,7 @@ func (d *Dispatcher) traceWorkerOutput(ticketID string, wt WorkerType) (WorkerOu
 					"text":   chunk.text,
 				},
 			}); err != nil {
-				log.Printf("dispatch: append worker output for %s: %v", ticketID, err)
+				slog.Error("dispatch: append worker output failed", "ticket", ticketID, "error", err)
 			}
 		}
 	}()
