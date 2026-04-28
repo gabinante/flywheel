@@ -718,3 +718,291 @@ describe("Admin Routes — POST /residuals/create-payout", () => {
     );
   });
 });
+
+// ─── Workflow integration tests ─────────────────────────────────────
+
+describe("Admin Routes — Approval Workflow (end-to-end)", () => {
+  let app: express.Express;
+  let mockPrisma: Record<string, unknown>;
+  let mockTx: Record<string, unknown>;
+
+  beforeEach(() => {
+    mockTx = {
+      residualPayout: {
+        create: vi.fn().mockResolvedValue({
+          id: "payout-wf",
+          agencyId: "agency-1",
+          periodStart: new Date("2026-03-01"),
+          totalAmount: 1150,
+          directShare: 1000,
+          twoTierShare: 150,
+          method: "ach",
+          reference: null,
+          status: "PAID",
+          paidAt: new Date(),
+        }),
+      },
+      residualEntry: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      auditLog: {
+        create: vi.fn().mockResolvedValue({}),
+      },
+    };
+
+    mockPrisma = {
+      merchant: { findMany: vi.fn().mockResolvedValue([]) },
+      residualEntry: {
+        create: vi.fn(),
+        findMany: vi.fn().mockResolvedValue([]),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      auditLog: {
+        create: vi.fn().mockResolvedValue({}),
+      },
+      residualPayout: { create: vi.fn() },
+      $queryRaw: vi.fn().mockResolvedValue([{ total: BigInt(0) }]),
+      $executeRaw: vi.fn().mockResolvedValue(1),
+      $transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+        return fn(mockTx);
+      }),
+    };
+
+    app = express();
+    app.use(express.json());
+    const router = createAdminRouter({
+      prisma: mockPrisma as unknown as import("@prisma/client").PrismaClient,
+    });
+    app.use("/api/v1/admin", router);
+  });
+
+  it("only approves PENDING entries — ignores already APPROVED", async () => {
+    // updateMany only updates PENDING entries (WHERE status='PENDING')
+    (mockPrisma.residualEntry as Record<string, unknown>).updateMany = vi
+      .fn()
+      .mockResolvedValue({ count: 1 }); // only 1 of 2 was PENDING
+
+    const res = await request(app, "POST", "/api/v1/admin/residuals/approve", {
+      entryIds: ["e1-pending", "e2-already-approved"],
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.countApproved).toBe(1);
+
+    const updateManyMock = (mockPrisma.residualEntry as Record<string, ReturnType<typeof vi.fn>>).updateMany;
+    expect(updateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: { in: ["e1-pending", "e2-already-approved"] },
+          status: "PENDING",
+        },
+      })
+    );
+  });
+
+  it("only holds PENDING entries — ignores APPROVED or PAID entries", async () => {
+    (mockPrisma.residualEntry as Record<string, unknown>).updateMany = vi
+      .fn()
+      .mockResolvedValue({ count: 0 }); // none were PENDING
+
+    const res = await request(app, "POST", "/api/v1/admin/residuals/hold", {
+      entryIds: ["e1-approved"],
+      reason: "attempt to hold approved entry",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.countHeld).toBe(0);
+  });
+
+  it("approve sets approvedAt timestamp and approvedBy admin ID", async () => {
+    (mockPrisma.residualEntry as Record<string, unknown>).updateMany = vi
+      .fn()
+      .mockResolvedValue({ count: 1 });
+
+    await request(app, "POST", "/api/v1/admin/residuals/approve", {
+      entryIds: ["e1"],
+    });
+
+    const updateManyMock = (mockPrisma.residualEntry as Record<string, ReturnType<typeof vi.fn>>).updateMany;
+    const callArgs = updateManyMock.mock.calls[0][0];
+
+    expect(callArgs.data.status).toBe("APPROVED");
+    expect(callArgs.data.approvedBy).toBe("admin-test-user");
+    expect(callArgs.data.approvedAt).toBeInstanceOf(Date);
+  });
+
+  it("hold creates audit log with reason for each entry", async () => {
+    (mockPrisma.residualEntry as Record<string, unknown>).updateMany = vi
+      .fn()
+      .mockResolvedValue({ count: 2 });
+
+    await request(app, "POST", "/api/v1/admin/residuals/hold", {
+      entryIds: ["e1", "e2"],
+      reason: "chargeback review",
+    });
+
+    const createMock = (mockPrisma.auditLog as Record<string, ReturnType<typeof vi.fn>>).create;
+    expect(createMock).toHaveBeenCalledTimes(2);
+
+    // Verify both entries get individual audit logs with the reason
+    for (const call of createMock.mock.calls) {
+      const data = call[0].data;
+      expect(data.action).toBe("RESIDUAL_HELD");
+      expect(data.performedBy).toBe("admin-test-user");
+      expect(data.details.reason).toBe("chargeback review");
+      expect(data.details.heldAt).toBeDefined();
+    }
+  });
+
+  it("payout fails when mix of APPROVED and HELD entries exist", async () => {
+    (mockPrisma.residualEntry as Record<string, unknown>).findMany = vi
+      .fn()
+      .mockResolvedValue([
+        { id: "e1", agencyShare: 1000, twoTierShare: 0, status: "APPROVED" },
+        { id: "e2", agencyShare: 500, twoTierShare: 0, status: "HELD" },
+      ]);
+
+    const res = await request(
+      app,
+      "POST",
+      "/api/v1/admin/residuals/create-payout",
+      {
+        agencyId: "agency-1",
+        periodStart: "2026-03-01",
+        method: "ach",
+      }
+    );
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("All entries must be APPROVED");
+    expect((res.body.nonApprovedCounts as Record<string, number>).HELD).toBe(1);
+  });
+
+  it("payout fails when mix of APPROVED and PAID entries exist", async () => {
+    (mockPrisma.residualEntry as Record<string, unknown>).findMany = vi
+      .fn()
+      .mockResolvedValue([
+        { id: "e1", agencyShare: 1000, twoTierShare: 0, status: "APPROVED" },
+        { id: "e2", agencyShare: 800, twoTierShare: 0, status: "PAID" },
+      ]);
+
+    const res = await request(
+      app,
+      "POST",
+      "/api/v1/admin/residuals/create-payout",
+      {
+        agencyId: "agency-1",
+        periodStart: "2026-03-01",
+        method: "manual",
+      }
+    );
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("All entries must be APPROVED");
+  });
+
+  it("payout with manual method works", async () => {
+    (mockPrisma.residualEntry as Record<string, unknown>).findMany = vi
+      .fn()
+      .mockResolvedValue([
+        { id: "e1", agencyShare: 1000, twoTierShare: 150, status: "APPROVED" },
+      ]);
+
+    const res = await request(
+      app,
+      "POST",
+      "/api/v1/admin/residuals/create-payout",
+      {
+        agencyId: "agency-1",
+        periodStart: "2026-03-01",
+        method: "manual",
+      }
+    );
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+  });
+
+  it("summary returns zero counts when no entries for period", async () => {
+    (mockPrisma.residualEntry as Record<string, unknown>).findMany = vi
+      .fn()
+      .mockResolvedValue([]);
+
+    const res = await request(
+      app,
+      "GET",
+      "/api/v1/admin/residuals/summary?periodStart=2026-01-01"
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.totalEntries).toBe(0);
+    expect(res.body.totalAgencyShare).toBe(0);
+    expect(res.body.totalTwoTierShare).toBe(0);
+    expect(res.body.totalOwed).toBe(0);
+    const byStatus = res.body.byStatus as Record<string, number>;
+    expect(byStatus.PENDING).toBe(0);
+    expect(byStatus.APPROVED).toBe(0);
+    expect(byStatus.HELD).toBe(0);
+    expect(byStatus.PAID).toBe(0);
+  });
+
+  it("GET /residuals filters by agencyId correctly", async () => {
+    const entries = [
+      makeMockEntry({
+        id: "e1",
+        agencyId: "agency-1",
+        merchantId: "m1",
+      }),
+    ];
+
+    (mockPrisma.residualEntry as Record<string, unknown>).findMany = vi
+      .fn()
+      .mockResolvedValue(entries);
+
+    const res = await request(
+      app,
+      "GET",
+      "/api/v1/admin/residuals?periodStart=2026-03-01&agencyId=agency-1"
+    );
+
+    expect(res.status).toBe(200);
+    const findManyMock = (mockPrisma.residualEntry as Record<string, ReturnType<typeof vi.fn>>).findMany;
+    expect(findManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          agencyId: "agency-1",
+        }),
+      })
+    );
+  });
+
+  it("GET /residuals returns entry details with approvedAt and approvedBy", async () => {
+    const approvedDate = new Date("2026-03-15T10:00:00Z");
+    const entries = [
+      makeMockEntry({
+        id: "e-approved",
+        status: "APPROVED",
+        approvedAt: approvedDate,
+        approvedBy: "admin-user-123",
+      }),
+    ];
+
+    (mockPrisma.residualEntry as Record<string, unknown>).findMany = vi
+      .fn()
+      .mockResolvedValue(entries);
+
+    const res = await request(
+      app,
+      "GET",
+      "/api/v1/admin/residuals?periodStart=2026-03-01"
+    );
+
+    expect(res.status).toBe(200);
+    const agencies = res.body.agencies as Array<Record<string, unknown>>;
+    expect(agencies).toHaveLength(1);
+    const entry = (agencies[0].entries as Array<Record<string, unknown>>)[0];
+    expect(entry.status).toBe("APPROVED");
+    expect(entry.approvedAt).toBe(approvedDate.toISOString());
+    expect(entry.approvedBy).toBe("admin-user-123");
+  });
+});
