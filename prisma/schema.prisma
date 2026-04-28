@@ -127,3 +127,16 @@ enum PayoutStatus {
   PAID
   FAILED
 }
+
+// ─── AuditLog ─────────────────────────────────────────────────────────
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  action      String
+  details     Json?
+  performedBy String?
+  createdAt   DateTime @default(now())
+
+  @@index([action])
+  @@index([createdAt])
+}

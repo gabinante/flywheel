@@ -1,0 +1,36 @@
+{
+  "name": "gohighpayment-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GoHighPayment backend services — residual calculation, jobs, admin routes, and agency auth",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev"
+  },
+  "dependencies": {
+    "@fastify/jwt": "^8.0.0",
+    "@prisma/client": "^6.9.0",
+    "bcrypt": "^5.1.1",
+    "express": "^4.21.0",
+    "fastify": "^4.28.0",
+    "fastify-plugin": "^5.1.0",
+    "nanoid": "^3.3.7",
+    "pg-boss": "^10.1.5",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.0",
+    "prisma": "^6.9.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.1.0"
+  }
+}
