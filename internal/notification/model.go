@@ -45,9 +45,10 @@ func UrgencyRank(u Urgency) int {
 type Channel string
 
 const (
-	ChannelSlack Channel = "slack"
-	ChannelEmail Channel = "email"
-	ChannelSMS   Channel = "sms"
+	ChannelSlack   Channel = "slack"
+	ChannelEmail   Channel = "email"
+	ChannelSMS     Channel = "sms"
+	ChannelWebhook Channel = "webhook" // Outbound signed webhook
 )
 
 // Routing determines whether a notification is pushed immediately or batched into a digest.
@@ -104,6 +105,7 @@ type Preferences struct {
 	SlackWebhookURL  string    `json:"slack_webhook_url,omitempty"`
 	EmailAddress     string    `json:"email_address,omitempty"`
 	SMSNumber        string    `json:"sms_number,omitempty"`
+	WebhookURL       string    `json:"webhook_url,omitempty"` // URL for outbound signed webhook delivery
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }

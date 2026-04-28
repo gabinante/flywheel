@@ -20,6 +20,7 @@ type Project struct {
 	Status          string         `json:"status"`           // "active" or "closed"
 	DispatchEnabled bool           `json:"dispatch_enabled"` // whether the dispatcher picks up tickets for this project (default true)
 	DispatchConfig  DispatchConfig `json:"dispatch_config,omitempty"`
+	WebhookSecret   string         `json:"webhook_secret,omitempty"` // 32-byte hex HMAC key for outbound webhook signing
 	CreatedAt       time.Time      `json:"created_at"`
 }
 

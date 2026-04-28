@@ -2,10 +2,12 @@ package project
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/gabinante/flywheel/events/hooks"
 	"github.com/google/uuid"
 )
 
@@ -22,6 +24,7 @@ type ProjectStore interface {
 	UpdateContextPack(ctx context.Context, projectID string, pack ContextPack) error
 	UpdateDispatchEnabled(ctx context.Context, projectID string, enabled bool) error
 	UpdateDispatchConfig(ctx context.Context, projectID string, cfg DispatchConfig) error
+	UpdateWebhookSecret(ctx context.Context, projectID, secret string) error
 }
 
 // Service provides project operations.
@@ -35,11 +38,16 @@ func NewService(store ProjectStore) *Service {
 }
 
 // CreateProject creates a project under an org.
+// A webhook signing secret is auto-generated for every new project.
 func (s *Service) CreateProject(ctx context.Context, orgID, name, slug, repoURL string, techStack []string) (*Project, error) {
 	if slug == "" {
 		slug = slugify(name)
 	}
 	id := uuid.Must(uuid.NewV7()).String()
+	webhookSecret, err := hooks.GenerateWebhookSecret()
+	if err != nil {
+		return nil, fmt.Errorf("create project: generate webhook secret: %w", err)
+	}
 	p := &Project{
 		ID:              id,
 		OrgID:           orgID,
@@ -50,6 +58,7 @@ func (s *Service) CreateProject(ctx context.Context, orgID, name, slug, repoURL 
 		ContextPack:     ContextPack{},
 		Status:          "active",
 		DispatchEnabled: true,
+		WebhookSecret:   webhookSecret,
 		CreatedAt:       time.Now().UTC(),
 	}
 	if err := s.store.Create(ctx, p); err != nil {
@@ -116,6 +125,30 @@ func (s *Service) UpdateDispatchEnabled(ctx context.Context, projectID string, e
 // UpdateDispatchConfig stores project-specific dispatch worker and policy configuration.
 func (s *Service) UpdateDispatchConfig(ctx context.Context, projectID string, cfg DispatchConfig) error {
 	return s.store.UpdateDispatchConfig(ctx, projectID, cfg.Normalized())
+}
+
+// GetWebhookConfig returns the project's webhook secret (masked) for display.
+// The full secret is never returned through this method; use RotateWebhookSecret
+// to obtain the full secret (returned exactly once on rotation).
+func (s *Service) GetWebhookConfig(ctx context.Context, projectID string) (maskedSecret string, err error) {
+	p, err := s.store.GetByID(ctx, projectID)
+	if err != nil {
+		return "", err
+	}
+	return hooks.MaskSecret(p.WebhookSecret), nil
+}
+
+// RotateWebhookSecret generates a new webhook signing secret for the project.
+// Returns the full new secret (caller should display it once, then discard).
+func (s *Service) RotateWebhookSecret(ctx context.Context, projectID string) (newSecret string, err error) {
+	secret, err := hooks.GenerateWebhookSecret()
+	if err != nil {
+		return "", fmt.Errorf("rotate webhook secret: %w", err)
+	}
+	if err := s.store.UpdateWebhookSecret(ctx, projectID, secret); err != nil {
+		return "", err
+	}
+	return secret, nil
 }
 
 func slugify(s string) string {

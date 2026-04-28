@@ -35,7 +35,8 @@ type RouterConfig struct {
 	ClaimsHandler       *ClaimsHandler       // Claims registry for concurrency control (spec v0.2 §4.3)
 	HooksHandler        *HooksHandler        // Change event webhook receiver (spec v0.2 §2.4)
 	PillarsHandler      *PillarsHandler      // Pillar and strategy layer (Layer 15)
-	DeliveryHandler     *DeliveryHandler     // Delivery integrations (pipeline, PR, config)
+	DeliveryHandler      *DeliveryHandler      // Delivery integrations (pipeline, PR, config)
+	WebhookConfigHandler *WebhookConfigHandler // Webhook secret management (signing config & rotation)
 	// HealthCheckers are called by /readyz for deep readiness checks.
 	HealthCheckers []HealthChecker
 	// WebDist is the Vite outDir (contains index.html and assets/). Empty skips SPA routes.
@@ -177,6 +178,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	if cfg.DeliveryHandler != nil {
 		cfg.DeliveryHandler.RegisterRoutes(mux)
+	}
+	if cfg.WebhookConfigHandler != nil {
+		cfg.WebhookConfigHandler.RegisterRoutes(mux)
 	}
 
 	h := http.Handler(mux)

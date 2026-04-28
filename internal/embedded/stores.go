@@ -270,9 +270,9 @@ func (s *ProjectStore) Create(_ context.Context, p *project.Project) error {
 		dispatchEnabled = 0
 	}
 	_, err := s.db.Exec(
-		`INSERT INTO projects (id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, dispatch_config, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.ID, p.OrgID, p.Name, p.Slug, nilIfEmpty(p.RepoURL), branch, string(techJSON), string(packJSON), status, dispatchEnabled, string(dispatchConfigJSON),
+		`INSERT INTO projects (id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, dispatch_config, webhook_secret, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.ID, p.OrgID, p.Name, p.Slug, nilIfEmpty(p.RepoURL), branch, string(techJSON), string(packJSON), status, dispatchEnabled, string(dispatchConfigJSON), nilIfEmpty(p.WebhookSecret),
 		p.CreatedAt.UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return err
@@ -284,13 +284,13 @@ func (s *ProjectStore) Create(_ context.Context, p *project.Project) error {
 func (s *ProjectStore) GetByID(_ context.Context, id string) (*project.Project, error) {
 	var p project.Project
 	var techJSON, packJSON, dispatchConfigJSON string
-	var repoURL, defaultBranch sql.NullString
+	var repoURL, defaultBranch, webhookSecret sql.NullString
 	var dispatchEnabled int
 	var ts string
 	err := s.db.QueryRow(
-		`SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, dispatch_config, created_at
+		`SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, dispatch_config, webhook_secret, created_at
 		 FROM projects WHERE id = ?`, id).
-		Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techJSON, &packJSON, &p.Status, &dispatchEnabled, &dispatchConfigJSON, &ts)
+		Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techJSON, &packJSON, &p.Status, &dispatchEnabled, &dispatchConfigJSON, &webhookSecret, &ts)
 	if err != nil {
 		return nil, err
 	}
@@ -302,6 +302,9 @@ func (s *ProjectStore) GetByID(_ context.Context, id string) (*project.Project, 
 	} else {
 		p.DefaultBranch = "main"
 	}
+	if webhookSecret.Valid {
+		p.WebhookSecret = webhookSecret.String
+	}
 	p.DispatchEnabled = dispatchEnabled != 0
 	_ = json.Unmarshal([]byte(techJSON), &p.TechStack)
 	_ = json.Unmarshal([]byte(packJSON), &p.ContextPack)
@@ -312,7 +315,7 @@ func (s *ProjectStore) GetByID(_ context.Context, id string) (*project.Project, 
 }
 
 func (s *ProjectStore) ListByOrgID(_ context.Context, orgID string, statusFilter string) ([]project.Project, error) {
-	q := `SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, dispatch_config, created_at
+	q := `SELECT id, org_id, name, slug, repo_url, default_branch, tech_stack, context_pack, status, dispatch_enabled, dispatch_config, webhook_secret, created_at
 		  FROM projects WHERE org_id = ?`
 	if statusFilter == "" || statusFilter == "active" {
 		q += ` AND status = 'active'`
@@ -329,10 +332,10 @@ func (s *ProjectStore) ListByOrgID(_ context.Context, orgID string, statusFilter
 	for rows.Next() {
 		var p project.Project
 		var techJSON, packJSON, dispatchConfigJSON string
-		var repoURL, defaultBranch sql.NullString
+		var repoURL, defaultBranch, webhookSecret sql.NullString
 		var dispatchEnabled int
 		var ts string
-		if err := rows.Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techJSON, &packJSON, &p.Status, &dispatchEnabled, &dispatchConfigJSON, &ts); err != nil {
+		if err := rows.Scan(&p.ID, &p.OrgID, &p.Name, &p.Slug, &repoURL, &defaultBranch, &techJSON, &packJSON, &p.Status, &dispatchEnabled, &dispatchConfigJSON, &webhookSecret, &ts); err != nil {
 			return nil, err
 		}
 		if repoURL.Valid {
@@ -342,6 +345,9 @@ func (s *ProjectStore) ListByOrgID(_ context.Context, orgID string, statusFilter
 			p.DefaultBranch = defaultBranch.String
 		} else {
 			p.DefaultBranch = "main"
+		}
+		if webhookSecret.Valid {
+			p.WebhookSecret = webhookSecret.String
 		}
 		p.DispatchEnabled = dispatchEnabled != 0
 		_ = json.Unmarshal([]byte(techJSON), &p.TechStack)
@@ -445,6 +451,18 @@ func (s *ProjectStore) UpdateDispatchEnabled(_ context.Context, projectID string
 func (s *ProjectStore) UpdateDispatchConfig(_ context.Context, projectID string, cfg project.DispatchConfig) error {
 	dispatchConfigJSON, _ := json.Marshal(cfg.Normalized())
 	res, err := s.db.Exec(`UPDATE projects SET dispatch_config = ? WHERE id = ?`, string(dispatchConfigJSON), projectID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return project.ErrProjectNotFound
+	}
+	return nil
+}
+
+func (s *ProjectStore) UpdateWebhookSecret(_ context.Context, projectID, secret string) error {
+	res, err := s.db.Exec(`UPDATE projects SET webhook_secret = ? WHERE id = ?`, nilIfEmpty(secret), projectID)
 	if err != nil {
 		return err
 	}

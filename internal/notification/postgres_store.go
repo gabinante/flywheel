@@ -191,14 +191,14 @@ func (s *PostgresStore) GetPreferences(ctx context.Context, projectID string) (*
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, project_id, critical_channel, high_channel, medium_channel, low_channel,
 			digest_enabled, digest_interval, push_threshold,
-			slack_webhook_url, email_address, sms_number,
+			slack_webhook_url, email_address, sms_number, webhook_url,
 			created_at, updated_at
 		FROM notification_preferences WHERE project_id = $1`, projectID,
 	).Scan(
 		&p.ID, &p.ProjectID, &p.CriticalChannel, &p.HighChannel,
 		&p.MediumChannel, &p.LowChannel,
 		&p.DigestEnabled, &p.DigestInterval, &p.PushThreshold,
-		&p.SlackWebhookURL, &p.EmailAddress, &p.SMSNumber,
+		&p.SlackWebhookURL, &p.EmailAddress, &p.SMSNumber, &p.WebhookURL,
 		&p.CreatedAt, &p.UpdatedAt,
 	)
 	if err != nil {
@@ -212,9 +212,9 @@ func (s *PostgresStore) UpsertPreferences(ctx context.Context, prefs *Preference
 		INSERT INTO notification_preferences (
 			id, project_id, critical_channel, high_channel, medium_channel, low_channel,
 			digest_enabled, digest_interval, push_threshold,
-			slack_webhook_url, email_address, sms_number,
+			slack_webhook_url, email_address, sms_number, webhook_url,
 			created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		ON CONFLICT (project_id) DO UPDATE SET
 			critical_channel = EXCLUDED.critical_channel,
 			high_channel = EXCLUDED.high_channel,
@@ -226,12 +226,13 @@ func (s *PostgresStore) UpsertPreferences(ctx context.Context, prefs *Preference
 			slack_webhook_url = EXCLUDED.slack_webhook_url,
 			email_address = EXCLUDED.email_address,
 			sms_number = EXCLUDED.sms_number,
+			webhook_url = EXCLUDED.webhook_url,
 			updated_at = EXCLUDED.updated_at`,
 		prefs.ID, prefs.ProjectID,
 		string(prefs.CriticalChannel), string(prefs.HighChannel),
 		string(prefs.MediumChannel), string(prefs.LowChannel),
 		prefs.DigestEnabled, prefs.DigestInterval, string(prefs.PushThreshold),
-		prefs.SlackWebhookURL, prefs.EmailAddress, prefs.SMSNumber,
+		prefs.SlackWebhookURL, prefs.EmailAddress, prefs.SMSNumber, prefs.WebhookURL,
 		prefs.CreatedAt, prefs.UpdatedAt,
 	)
 	return err

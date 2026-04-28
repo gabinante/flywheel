@@ -7,14 +7,16 @@ import (
 )
 
 type mockProjectStore struct {
-	createErr     error
-	getByID       *Project
-	getByIDErr    error
-	list          []Project
-	listErr       error
-	updateErr     error
-	updatePackErr error
-	updateCfgErr  error
+	createErr        error
+	getByID          *Project
+	getByIDErr       error
+	list             []Project
+	listErr          error
+	updateErr        error
+	updatePackErr    error
+	updateCfgErr     error
+	updateSecretErr  error
+	lastWebhookSecret string
 }
 
 func (m *mockProjectStore) Create(ctx context.Context, p *Project) error {
@@ -62,6 +64,14 @@ func (m *mockProjectStore) UpdateDispatchEnabled(ctx context.Context, projectID 
 
 func (m *mockProjectStore) UpdateDispatchConfig(ctx context.Context, projectID string, cfg DispatchConfig) error {
 	return m.updateCfgErr
+}
+
+func (m *mockProjectStore) UpdateWebhookSecret(ctx context.Context, projectID, secret string) error {
+	if m.updateSecretErr != nil {
+		return m.updateSecretErr
+	}
+	m.lastWebhookSecret = secret
+	return nil
 }
 
 func TestService_CreateProject_Slugify(t *testing.T) {
@@ -284,6 +294,87 @@ func TestService_CreateProject_DispatchEnabledByDefault(t *testing.T) {
 	}
 	if !p.DispatchEnabled {
 		t.Error("DispatchEnabled should default to true")
+	}
+}
+
+func TestService_CreateProject_GeneratesWebhookSecret(t *testing.T) {
+	store := &mockProjectStore{}
+	svc := NewService(store)
+	ctx := context.Background()
+
+	p, err := svc.CreateProject(ctx, "org1", "My Project", "", "", nil)
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	if p.WebhookSecret == "" {
+		t.Error("WebhookSecret should be auto-generated on creation")
+	}
+	if len(p.WebhookSecret) != 64 {
+		t.Errorf("WebhookSecret should be 64 hex chars, got %d", len(p.WebhookSecret))
+	}
+}
+
+func TestService_GetWebhookConfig_MaskedSecret(t *testing.T) {
+	proj := &Project{
+		ID:            "p1",
+		OrgID:         "org1",
+		Name:          "P",
+		Slug:          "p",
+		Status:        "active",
+		WebhookSecret: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+	}
+	store := &mockProjectStore{getByID: proj}
+	svc := NewService(store)
+	ctx := context.Background()
+
+	masked, err := svc.GetWebhookConfig(ctx, "p1")
+	if err != nil {
+		t.Fatalf("GetWebhookConfig: %v", err)
+	}
+	if masked != "****a1b2" {
+		t.Errorf("expected masked secret '****a1b2', got %q", masked)
+	}
+}
+
+func TestService_GetWebhookConfig_NotFound(t *testing.T) {
+	store := &mockProjectStore{getByIDErr: ErrProjectNotFound}
+	svc := NewService(store)
+	ctx := context.Background()
+
+	_, err := svc.GetWebhookConfig(ctx, "p1")
+	if err == nil {
+		t.Fatal("expected error for nonexistent project")
+	}
+}
+
+func TestService_RotateWebhookSecret(t *testing.T) {
+	store := &mockProjectStore{}
+	svc := NewService(store)
+	ctx := context.Background()
+
+	newSecret, err := svc.RotateWebhookSecret(ctx, "p1")
+	if err != nil {
+		t.Fatalf("RotateWebhookSecret: %v", err)
+	}
+	if newSecret == "" {
+		t.Error("new secret should not be empty")
+	}
+	if len(newSecret) != 64 {
+		t.Errorf("new secret should be 64 hex chars, got %d", len(newSecret))
+	}
+	if store.lastWebhookSecret != newSecret {
+		t.Error("store should have been updated with the new secret")
+	}
+}
+
+func TestService_RotateWebhookSecret_StoreError(t *testing.T) {
+	store := &mockProjectStore{updateSecretErr: ErrProjectNotFound}
+	svc := NewService(store)
+	ctx := context.Background()
+
+	_, err := svc.RotateWebhookSecret(ctx, "p1")
+	if err == nil {
+		t.Fatal("expected error")
 	}
 }
 

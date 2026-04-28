@@ -330,6 +330,8 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE execution_steps ADD COLUMN worker_type TEXT`,
 		// Add dispatch_config for project-level worker routing.
 		`ALTER TABLE projects ADD COLUMN dispatch_config TEXT NOT NULL DEFAULT '{}'`,
+		// Add webhook_secret for outbound webhook HMAC signing.
+		`ALTER TABLE projects ADD COLUMN webhook_secret TEXT`,
 	}
 	for _, s := range alterStmts {
 		// Ignore errors from ALTER — column may already exist.
