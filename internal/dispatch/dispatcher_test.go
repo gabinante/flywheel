@@ -471,7 +471,8 @@ func TestProjectCapacityUsesProjectMaxActiveWorkers(t *testing.T) {
 	bus := events.NewInProcessBus()
 	tg := newMockTicketGetter()
 	pg := newMockProjectGetter(&project.Project{
-		ID: "p-1",
+		ID:      "p-1",
+		RepoURL: "https://github.com/test/repo.git",
 		DispatchConfig: project.DispatchConfig{
 			MaxActiveWorkers: 2,
 		},
@@ -506,8 +507,8 @@ func TestProjectCapacityCountsWorkersByProject(t *testing.T) {
 	bus := events.NewInProcessBus()
 	tg := newMockTicketGetter()
 	pg := newMockProjectGetter(
-		&project.Project{ID: "p-1", DispatchConfig: project.DispatchConfig{MaxActiveWorkers: 1}},
-		&project.Project{ID: "p-2", DispatchConfig: project.DispatchConfig{MaxActiveWorkers: 1}},
+		&project.Project{ID: "p-1", RepoURL: "https://github.com/test/repo.git", DispatchConfig: project.DispatchConfig{MaxActiveWorkers: 1}},
+		&project.Project{ID: "p-2", RepoURL: "https://github.com/test/repo2.git", DispatchConfig: project.DispatchConfig{MaxActiveWorkers: 1}},
 	)
 	d := New(Config{MaxWorkers: 1}, bus, tg, pg)
 
@@ -594,7 +595,7 @@ func TestTryDispatchDependenciesMet(t *testing.T) {
 		State:   ticket.StateDone,
 		Outputs: map[string]any{"summary": "done"},
 	}
-	proj := &project.Project{ID: "p-1", Name: "test"}
+	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git"}
 	tk := &ticket.Ticket{
 		ID:        "t-1",
 		ProjectID: "p-1",
@@ -722,7 +723,7 @@ func TestStartSubscribesEvents(t *testing.T) {
 }
 
 func TestSpawnDuplicatePrevented(t *testing.T) {
-	proj := &project.Project{ID: "p-1", Name: "test"}
+	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git"}
 	tk := &ticket.Ticket{
 		ID:        "t-dup",
 		ProjectID: "p-1",
@@ -774,8 +775,9 @@ func TestSpawnDuplicatePrevented(t *testing.T) {
 
 func TestRunWorkerDockerMode(t *testing.T) {
 	proj := &project.Project{
-		ID:   "p-1",
-		Name: "test-proj",
+		ID:      "p-1",
+		Name:    "test-proj",
+		RepoURL: "https://github.com/test/repo.git",
 		ContextPack: project.ContextPack{
 			SystemPrompt: "Be helpful",
 		},
@@ -840,7 +842,7 @@ func TestRunWorkerDockerMode(t *testing.T) {
 }
 
 func TestRunWorkerContextCancelled(t *testing.T) {
-	proj := &project.Project{ID: "p-1", Name: "test"}
+	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git"}
 	tk := &ticket.Ticket{
 		ID:        "t-1",
 		ProjectID: "p-1",
@@ -940,7 +942,7 @@ func (m *mockLeaseReleaser) lastTicketID() string {
 func TestHandleWorkerExit_WorkerCrash_ReleasesLease(t *testing.T) {
 	// Simulate: worker exits with error while ticket is still in executing state.
 	// Expected: lease is immediately released, ticket goes back to draft (pending).
-	proj := &project.Project{ID: "p-1", Name: "test"}
+	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git"}
 	tk := &ticket.Ticket{
 		ID:        "t-crash",
 		ProjectID: "p-1",
@@ -995,7 +997,7 @@ func TestHandleWorkerExit_WorkerCrash_ReleasesLease(t *testing.T) {
 func TestHandleWorkerExit_SuccessfulSubmit_NoRelease(t *testing.T) {
 	// Simulate: worker submits successfully, ticket moves to awaiting_validation.
 	// Expected: no lease release (ticket already advanced past worker's responsibility).
-	proj := &project.Project{ID: "p-1", Name: "test"}
+	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git"}
 	tk := &ticket.Ticket{
 		ID:        "t-submit",
 		ProjectID: "p-1",
@@ -1041,7 +1043,7 @@ func TestHandleWorkerExit_SuccessfulSubmit_NoRelease(t *testing.T) {
 func TestHandleWorkerExit_PlanningState_ReleasesLease(t *testing.T) {
 	// Simulate: worker exits while ticket is in planning (claimed) state.
 	// Expected: lease is released.
-	proj := &project.Project{ID: "p-1", Name: "test"}
+	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git"}
 	tk := &ticket.Ticket{
 		ID:        "t-planning",
 		ProjectID: "p-1",
@@ -1126,7 +1128,7 @@ func TestHandleWorkerExit_PreSpawnFailure_NoRelease(t *testing.T) {
 
 func TestHandleWorkerExit_NilReleaser_NoOp(t *testing.T) {
 	// When leaseReleaser is nil, handleWorkerExit is a graceful no-op.
-	proj := &project.Project{ID: "p-1", Name: "test"}
+	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git"}
 	tk := &ticket.Ticket{
 		ID:        "t-nil",
 		ProjectID: "p-1",
@@ -1168,7 +1170,7 @@ func TestHandleWorkerExit_NilReleaser_NoOp(t *testing.T) {
 func TestHandleWorkerExit_Escalation_NoRelease(t *testing.T) {
 	// Simulate: worker escalates, ticket moves to awaiting_input (needs_human).
 	// Expected: no release — escalation is a valid worker exit.
-	proj := &project.Project{ID: "p-1", Name: "test"}
+	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git"}
 	tk := &ticket.Ticket{
 		ID:        "t-escalate",
 		ProjectID: "p-1",
@@ -1213,7 +1215,7 @@ func TestHandleWorkerExit_Escalation_NoRelease(t *testing.T) {
 
 func TestHandleWorkerExit_ActiveMapCleanup(t *testing.T) {
 	// Verify: after worker crash + lease release, the ticket is removed from the active map.
-	proj := &project.Project{ID: "p-1", Name: "test"}
+	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git"}
 	tk := &ticket.Ticket{
 		ID:        "t-cleanup",
 		ProjectID: "p-1",
@@ -1260,7 +1262,7 @@ func TestHandleWorkerExit_ActiveMapCleanup(t *testing.T) {
 func TestHandleWorkerExit_ReleaserError_Logged(t *testing.T) {
 	// Verify: if ForceReleaseLease returns an error, we don't panic and the
 	// worker is still cleaned up from active map (Layer 2 TTL will handle it).
-	proj := &project.Project{ID: "p-1", Name: "test"}
+	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git"}
 	tk := &ticket.Ticket{
 		ID:        "t-err",
 		ProjectID: "p-1",
@@ -1310,7 +1312,7 @@ func TestHandleWorkerExit_ReleaserError_Logged(t *testing.T) {
 
 func TestHandleWorkerExit_ConcurrentWorkers(t *testing.T) {
 	// Verify: multiple workers crashing concurrently each get their lease released.
-	proj := &project.Project{ID: "p-1", Name: "test"}
+	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git"}
 	tk1 := &ticket.Ticket{
 		ID:        "t-c1",
 		ProjectID: "p-1",
@@ -1363,7 +1365,7 @@ func TestHandleWorkerExit_ConcurrentWorkers(t *testing.T) {
 }
 
 func TestEventBusIntegration(t *testing.T) {
-	proj := &project.Project{ID: "p-1", Name: "test", DispatchEnabled: true}
+	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git", DispatchEnabled: true}
 	tk := &ticket.Ticket{
 		ID:        "t-evt",
 		ProjectID: "p-1",
@@ -1410,7 +1412,7 @@ func TestEventBusIntegration(t *testing.T) {
 
 func TestDispatchDisabledSkipsTickets(t *testing.T) {
 	// When dispatch_enabled=false, the dispatcher should skip the project's tickets.
-	proj := &project.Project{ID: "p-1", Name: "test", DispatchEnabled: false}
+	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git", DispatchEnabled: false}
 	tk := &ticket.Ticket{
 		ID:        "t-disabled",
 		ProjectID: "p-1",
@@ -1457,7 +1459,7 @@ func TestDispatchDisabledSkipsTickets(t *testing.T) {
 
 func TestDispatchEnabledAllowsTickets(t *testing.T) {
 	// When dispatch_enabled=true, the dispatcher should process the project's tickets.
-	proj := &project.Project{ID: "p-1", Name: "test", DispatchEnabled: true}
+	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git", DispatchEnabled: true}
 	tk := &ticket.Ticket{
 		ID:        "t-enabled",
 		ProjectID: "p-1",
@@ -1499,6 +1501,41 @@ func TestDispatchEnabledAllowsTickets(t *testing.T) {
 
 	if worker.callCount() != 1 {
 		t.Errorf("expected 1 worker call when dispatch enabled, got %d", worker.callCount())
+	}
+}
+
+func TestDispatchBlockedWhenNoRepoURL(t *testing.T) {
+	// Projects without repo_url must not have workers dispatched.
+	// This prevents workers from operating on the server's own codebase.
+	proj := &project.Project{ID: "p-no-repo", Name: "no-repo-project", DispatchEnabled: true}
+	tk := &ticket.Ticket{
+		ID:        "t-norepo",
+		ProjectID: "p-no-repo",
+		State:     ticket.StatePending,
+		Title:     "should not dispatch",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "test"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+	worker := &mockWorker{}
+	cfg := Config{MaxWorkers: 5, ProjectID: "p-no-repo", DockerEnabled: true, RepoDir: "/tmp", ServerURL: "http://localhost", AgentID: "test"}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.Start(context.Background())
+
+	bus.Publish(context.Background(), events.Event{
+		Type:    events.EventTicketCreated,
+		Payload: map[string]any{"ticket_id": "t-norepo"},
+	})
+
+	time.Sleep(500 * time.Millisecond)
+	d.Stop()
+
+	if worker.callCount() != 0 {
+		t.Errorf("expected 0 worker calls for project with no repo_url, got %d", worker.callCount())
 	}
 }
 

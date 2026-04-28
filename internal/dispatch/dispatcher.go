@@ -349,6 +349,34 @@ func (d *Dispatcher) isProjectDispatchEnabled(ctx context.Context, projectID str
 	return proj.DispatchEnabled
 }
 
+// projectHasRepo checks whether a project has a repo_url configured.
+// Returns false if the project has no repo — workers must not execute against
+// the server's own codebase when no target repo is defined.
+func (d *Dispatcher) projectHasRepo(ctx context.Context, projectID string) bool {
+	proj, err := d.projects.GetProject(ctx, projectID)
+	if err != nil || proj == nil {
+		return false // fail-closed: don't dispatch if we can't verify the repo
+	}
+	return proj.RepoURL != ""
+}
+
+// resolveProjectRepoDir returns a local directory for the project's git repo.
+// Uses the clone manager when available; falls back to d.cfg.RepoDir for legacy
+// single-project deployments.
+func (d *Dispatcher) resolveProjectRepoDir(ctx context.Context, projectID string) (string, error) {
+	proj, err := d.projects.GetProject(ctx, projectID)
+	if err != nil {
+		return "", fmt.Errorf("get project: %w", err)
+	}
+	if proj.RepoURL == "" {
+		return "", fmt.Errorf("project %s has no repo_url configured", projectID)
+	}
+	if d.clones != nil {
+		return d.clones.EnsureClone(proj.RepoURL, proj.ID)
+	}
+	return d.cfg.RepoDir, nil
+}
+
 func (d *Dispatcher) handleTicketReady(ctx context.Context, e events.Event) {
 	ticketID, _ := e.Payload["ticket_id"].(string)
 	if ticketID == "" {
@@ -466,6 +494,12 @@ func (d *Dispatcher) handleTicketRolledBack(_ context.Context, e events.Event) {
 
 func (d *Dispatcher) tryDispatch(ctx context.Context, t *ticket.Ticket) {
 	if t.State != ticket.StatePending {
+		return
+	}
+
+	// Safety: refuse to dispatch tickets for projects with no repo configured.
+	if !d.projectHasRepo(ctx, t.ProjectID) {
+		slog.Error("dispatch: project has no repo_url, skipping ticket", "ticket", t.ID, "project", t.ProjectID)
 		return
 	}
 
@@ -680,7 +714,13 @@ func (d *Dispatcher) runTypedWorkerWithProject(ctx context.Context, t *ticket.Ti
 	}
 
 	// Determine working directory.
-	// Multi-repo: if the ticket targets a specific repo, resolve and clone it.
+	// SAFETY: refuse to dispatch if the project has no repo_url configured.
+	// Without this guard, workers fall back to d.cfg.RepoDir (the server's cwd)
+	// which may be a completely unrelated codebase.
+	if proj.RepoURL == "" {
+		return fmt.Errorf("dispatch: project %s (%s) has no repo_url configured — refusing to execute ticket %s against the server's own codebase", proj.ID, proj.Name, t.ID)
+	}
+
 	var workDir string
 	repoDir := d.cfg.RepoDir
 	if t.TargetRepo != "" && d.repoResolver != nil && d.clones != nil {
@@ -947,7 +987,7 @@ func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
 	prompt := AssembleTypedWorkerPrompt(WorkerTypeValidator, proj, t, depOutputs, d.cfg.ServerURL, d.cfg.AgentID)
 
 	// Reviewer works in the repo dir (needs access to the code for `gh` and `make test`).
-	// Use the existing worktree if available (the worker's branch), otherwise the main repo.
+	// Use the existing worktree if available (the worker's branch), otherwise fall back.
 	workDir := d.worktrees.Path(t.ID)
 	if workDir == "" {
 		workDir = d.cfg.RepoDir
@@ -999,17 +1039,23 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 
 	_ = d.worktrees.Remove(t.ID)
 
+	repoDir, err := d.resolveProjectRepoDir(ctx, t.ProjectID)
+	if err != nil {
+		slog.Error("dispatch: cannot resolve repo for auto-merge", "ticket", t.ID, "error", err)
+		return
+	}
+
 	// Validate CI checks before attempting merge.
-	if !d.validatePRChecks(ctx, t, prURL) {
+	if !d.validatePRChecks(ctx, t, prURL, repoDir) {
 		return
 	}
 
 	cmd := exec.Command("gh", "pr", "merge", prURL, "--squash")
-	cmd.Dir = d.cfg.RepoDir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
+	cmd.Dir = repoDir
+	out, mergeErr := cmd.CombinedOutput()
+	if mergeErr != nil {
 		output := string(out)
-		slog.Error("dispatch: auto-merge failed", "ticket", t.ID, "error", err, "output", output)
+		slog.Error("dispatch: auto-merge failed", "ticket", t.ID, "error", mergeErr, "output", output)
 
 		d.mu.Lock()
 		d.mergeAttempts[t.ID]++
@@ -1023,7 +1069,7 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 		// Delete remote branch (best-effort).
 		branch := "ticket/" + t.ID
 		delCmd := exec.Command("git", "push", "origin", "--delete", branch)
-		delCmd.Dir = d.cfg.RepoDir
+		delCmd.Dir = repoDir
 		_ = delCmd.Run()
 
 		d.closeMergedTicket(ctx, t)
@@ -1111,10 +1157,10 @@ func (d *Dispatcher) escalateMergeFailure(ctx context.Context, t *ticket.Ticket,
 // validatePRChecks verifies CI checks pass on the PR before merging.
 // Returns true if checks pass (or no checks exist), false if failing/pending.
 // Emits EventTestsFailed when checks fail.
-func (d *Dispatcher) validatePRChecks(ctx context.Context, t *ticket.Ticket, prURL string) bool {
+func (d *Dispatcher) validatePRChecks(ctx context.Context, t *ticket.Ticket, prURL, repoDir string) bool {
 	// Use `gh pr checks` to get CI status.
 	cmd := exec.Command("gh", "pr", "checks", prURL)
-	cmd.Dir = d.cfg.RepoDir
+	cmd.Dir = repoDir
 	out, err := cmd.CombinedOutput()
 	output := string(out)
 
@@ -1186,7 +1232,18 @@ func (d *Dispatcher) spawnConflictResolver(ctx context.Context, t *ticket.Ticket
 func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, prURL string) error {
 	branch := "ticket/" + t.ID
 
-	workDir, err := d.worktrees.Create(t.ID, branch)
+	proj, err := d.projects.GetProject(ctx, t.ProjectID)
+	if err != nil {
+		return err
+	}
+
+	// Resolve the repo dir from the project (not the server's cwd).
+	repoDir, err := d.resolveProjectRepoDir(ctx, t.ProjectID)
+	if err != nil {
+		return fmt.Errorf("resolve repo for conflict resolver: %w", err)
+	}
+
+	workDir, err := d.worktrees.CreateFromRepo(t.ID, branch, repoDir)
 	if err != nil {
 		return fmt.Errorf("create worktree: %w", err)
 	}
@@ -1198,10 +1255,6 @@ func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, 
 		branch, prURL,
 	)
 
-	proj, err := d.projects.GetProject(ctx, t.ProjectID)
-	if err != nil {
-		return err
-	}
 	result, selected, err := d.spawnWorker(ctx, proj, t.ID, t.ProjectID, WorkerRoleConflictResolver, WorkerType(WorkerRoleConflictResolver), prompt, taskMsg, workDir)
 	if err != nil {
 		return err
@@ -1217,7 +1270,7 @@ func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, 
 
 	_ = d.worktrees.Remove(t.ID)
 	cmd := exec.Command("gh", "pr", "merge", prURL, "--squash")
-	cmd.Dir = d.cfg.RepoDir
+	cmd.Dir = repoDir
 	out, mergeErr := cmd.CombinedOutput()
 	if mergeErr != nil {
 		slog.Error("dispatch: retry merge still failed", "ticket", t.ID, "error", mergeErr, "output", string(out))
@@ -1232,7 +1285,7 @@ func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, 
 	slog.Info("dispatch: auto-merged PR after conflict resolution", "ticket", t.ID)
 	// Delete remote branch (best-effort).
 	delCmd := exec.Command("git", "push", "origin", "--delete", branch)
-	delCmd.Dir = d.cfg.RepoDir
+	delCmd.Dir = repoDir
 	_ = delCmd.Run()
 
 	d.closeMergedTicket(ctx, t)

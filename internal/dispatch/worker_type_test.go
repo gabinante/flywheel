@@ -325,8 +325,9 @@ func TestBuildMCPConfigForType(t *testing.T) {
 func TestRunTypedWorker(t *testing.T) {
 	// Test that runTypedWorker passes the correct worker type through to the prompt.
 	proj := &project.Project{
-		ID:   "p-1",
-		Name: "test-proj",
+		ID:      "p-1",
+		Name:    "test-proj",
+		RepoURL: "https://github.com/test/repo.git",
 		ContextPack: project.ContextPack{
 			SystemPrompt: "Be helpful",
 		},
