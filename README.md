@@ -32,6 +32,14 @@ Script flags: `--ghcr` (use the published image instead of building), `--no-buil
 
 **Option B — by hand:** `cp .env.example .env`, edit, then `docker compose up -d`. See `.env.example` and [docs/deployment.md](docs/deployment.md).
 
+## Claude Code setup
+
+```bash
+./scripts/setup-local.sh
+```
+
+Builds the server, provisions an agent API key, installs the MCP proxy, and configures Claude Code in one step. Safe to re-run. See [docs/bootstrap-quickstart.md](docs/bootstrap-quickstart.md) for details and manual setup.
+
 ## After it’s running
 
 - **Health:** `curl -s http://localhost:8080/healthz` should print `ok`.

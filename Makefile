@@ -1,4 +1,4 @@
-.PHONY: run run-mcp run-embedded migrate migrate-create migrate-down test generate docker-up docker-down docker-embedded-up docker-embedded-down build build-flywheel-git build-flywheel-mcp web-build varlock-validate install
+.PHONY: run run-mcp run-embedded migrate migrate-create migrate-down test generate docker-up docker-down docker-embedded-up docker-embedded-down build build-flywheel-git build-flywheel-mcp web-build varlock-validate install setup-local
 
 VARLOCK := ./scripts/varlock
 
@@ -66,3 +66,9 @@ docker-embedded-up:
 
 docker-embedded-down:
 	docker compose -f docker-compose.embedded.yml down
+
+# ─── Claude Code Local Setup ─────────────────────────────────────────────────
+
+# One-command setup: build server, provision agent, install MCP proxy, configure Claude Code.
+setup-local:
+	./scripts/setup-local.sh

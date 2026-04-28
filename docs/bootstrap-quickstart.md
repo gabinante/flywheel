@@ -10,7 +10,7 @@ Choose one method:
 
 ```bash
 brew tap gabinante/tap
-brew install warrant
+brew install flywheel
 ```
 
 ### curl|sh (Linux/macOS with Go)
@@ -24,24 +24,24 @@ curl -fsSL https://raw.githubusercontent.com/gabinante/flywheel/main/scripts/ins
 ```bash
 docker run -it --rm \
   -p 8080:8080 \
-  -v $HOME/.warrant/data:/data \
+  -v $HOME/.flywheel/data:/data \
   ghcr.io/gabinante/flywheel:embedded
 ```
 
 Or build locally:
 
 ```bash
-docker build -f Dockerfile.embedded -t warrant:embedded .
-docker run -it --rm -p 8080:8080 -v $HOME/.warrant/data:/data warrant:embedded
+docker build -f Dockerfile.embedded -t flywheel:embedded .
+docker run -it --rm -p 8080:8080 -v $HOME/.flywheel/data:/data flywheel:embedded
 ```
 
 ## First Launch
 
-On first launch (or when no database exists), Warrant runs an interactive setup wizard:
+On first launch (or when no database exists), Flywheel runs an interactive setup wizard:
 
 ```
 ╔═════���════════════════════════════════════════════════╗
-║           Warrant — First-Run Setup                 ║
+║           Flywheel — First-Run Setup                 ║
 ║    Adderall for coding agents. Let's get started.   ║
 ╚══════════════════════════════════════════════════════╝
 
@@ -75,31 +75,43 @@ After the wizard completes:
 | Organization | `default` org for single-operator use |
 | Project | Named after your repo directory, with detected tech stack |
 | Agent | `bootstrap-agent` with an API key for MCP access |
-| Config file | `~/.warrant/data/config.env` with settings |
-| Project map | `~/.warrant/data/project-map.json` with scan results |
+| Config file | `~/.flywheel/data/config.env` with settings |
+| Project map | `~/.flywheel/data/project-map.json` with scan results |
 
 ## Connect Your Agent
 
+**Recommended (Claude Code):** Run the setup script from the repo root -- it builds the server, provisions an API key, installs the MCP proxy, and configures Claude Code automatically:
+
 ```bash
-# Claude Code
-claude --mcp-server warrant=http://localhost:8080/mcp
+./scripts/setup-local.sh
+# or: make setup-local
+```
+
+**Manual setup** (if you prefer):
+
+```bash
+# Claude Code (requires the proxy at ~/.local/bin/flywheel-mcp-proxy)
+claude mcp add flywheel -s user \
+  -e FLYWHEEL_API_KEY=wf_YOUR_KEY \
+  -e FLYWHEEL_MCP_URL=http://localhost:8080/mcp \
+  -- ~/.local/bin/flywheel-mcp-proxy
 
 # Codex CLI
 codex mcp add flywheel --url http://localhost:8080/mcp
 
 # Set the API key (printed during setup)
-export WARRANT_API_KEY=wf_...
+export FLYWHEEL_API_KEY=wf_...
 ```
 
 ## Zero-Config Defaults
 
-In embedded mode, Warrant uses:
+In embedded mode, Flywheel uses:
 
 | Component | Default | Production |
 |-----------|---------|------------|
-| Database | SQLite (`~/.warrant/data/warrant.db`) | Postgres |
+| Database | SQLite (`~/.flywheel/data/flywheel.db`) | Postgres |
 | Lease store | In-memory (miniredis) | Redis |
-| Findings | Filesystem (`~/.warrant/data/`) | Postgres + object storage |
+| Findings | Filesystem (`~/.flywheel/data/`) | Postgres + object storage |
 | Auth | API key only | GitHub OAuth + JWT |
 | Secrets | No SOPS/age keys needed | SOPS/age encrypted |
 | Event bus | In-process | Redis Pub/Sub |
@@ -114,14 +126,14 @@ When you outgrow embedded mode, migrate incrementally:
 
 ```bash
 # Start Postgres (Docker or managed service)
-docker run -d --name warrant-pg \
-  -e POSTGRES_USER=warrant -e POSTGRES_PASSWORD=warrant -e POSTGRES_DB=warrant \
+docker run -d --name flywheel-pg \
+  -e POSTGRES_USER=flywheel -e POSTGRES_PASSWORD=flywheel -e POSTGRES_DB=flywheel \
   -p 5433:5432 postgres:16-alpine
 
-# Switch warrant to Postgres
-export DATABASE_URL="postgres://warrant:warrant@localhost:5433/warrant?sslmode=disable"
+# Switch flywheel to Postgres
+export DATABASE_URL="postgres://flywheel:flywheel@localhost:5433/flywheel?sslmode=disable"
 unset STORAGE_MODE
-warrant
+flywheel
 ```
 
 Data migration: Export from SQLite, import to Postgres (tooling TBD — for now, fresh start with Postgres is recommended for early users).
@@ -130,7 +142,7 @@ Data migration: Export from SQLite, import to Postgres (tooling TBD — for now,
 
 ```bash
 # Start Redis
-docker run -d --name warrant-redis -p 6379:6379 redis:7-alpine
+docker run -d --name flywheel-redis -p 6379:6379 redis:7-alpine
 
 # Configure
 export REDIS_URL="redis://localhost:6379/0"
@@ -153,10 +165,10 @@ export JWT_SECRET="$(openssl rand -hex 32)"
 Once you have Postgres and Redis, use the full stack:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gabinante/flywheel/main/scripts/warrant-docker-setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/gabinante/flywheel/main/scripts/flywheel-docker-setup.sh | bash
 ```
 
-This sets up Postgres, Redis, and the Warrant server with migrations.
+This sets up Postgres, Redis, and the Flywheel server with migrations.
 
 ### Step 5: Enable Agent Dispatch
 
@@ -192,7 +204,7 @@ export OPENAI_API_KEY="local-token-or-gateway-key"
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `STORAGE_MODE` | (empty) | Set to `embedded` for zero-config SQLite mode |
-| `WARRANT_DATA_DIR` | `~/.warrant/data` | Directory for SQLite DB and config |
+| `FLYWHEEL_DATA_DIR` | `~/.flywheel/data` | Directory for SQLite DB and config |
 | `PORT` | `8080` | HTTP server port |
 | `DATABASE_URL` | `postgres://...` | Postgres connection (non-embedded) |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis connection (non-embedded) |
@@ -212,19 +224,19 @@ export OPENAI_API_KEY="local-token-or-gateway-key"
 
 ### "first run detected" on every start
 
-The wizard runs when `~/.warrant/data/warrant.db` doesn't exist. Ensure the data directory is persisted (Docker volume, stable path).
+The wizard runs when `~/.flywheel/data/flywheel.db` doesn't exist. Ensure the data directory is persisted (Docker volume, stable path).
 
 ### Port already in use
 
 ```bash
 export PORT=9090
-warrant
+flywheel
 ```
 
 ### Existing .env file detected
 
-The scanner detects `.env` files in your repo. This is informational — Warrant doesn't read your project's `.env`. It creates its own config at `~/.warrant/data/config.env`.
+The scanner detects `.env` files in your repo. This is informational — Flywheel doesn't read your project's `.env`. It creates its own config at `~/.flywheel/data/config.env`.
 
 ### Upgrading from embedded to Postgres
 
-Currently a fresh start. Your ticket history lives in the SQLite file at `~/.warrant/data/warrant.db` and can be queried directly if needed.
+Currently a fresh start. Your ticket history lives in the SQLite file at `~/.flywheel/data/flywheel.db` and can be queried directly if needed.
