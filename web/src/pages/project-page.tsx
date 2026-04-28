@@ -9,6 +9,7 @@ import {
   LayoutList,
   PieChart,
   Plus,
+  Save,
   ShieldCheck,
   Ticket,
 } from 'lucide-react'
@@ -26,6 +27,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { ProjectPageSkeleton, Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/contexts/use-auth'
 import { formatApiError } from '@/lib/api/client'
@@ -184,6 +186,97 @@ function CopyButton({ text }: { text: string }) {
         <ClipboardCopy className="size-3.5" />
       )}
     </Button>
+  )
+}
+
+function RepositoryCard({
+  projectId,
+  project,
+  onProjectChange,
+}: {
+  projectId: string
+  project: Project
+  onProjectChange: (project: Project) => void
+}) {
+  const { client } = useAuth()
+  const [repoUrl, setRepoUrl] = useState(project.repo_url ?? '')
+  const [defaultBranch, setDefaultBranch] = useState(project.default_branch ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [savedAt, setSavedAt] = useState<number | null>(null)
+
+  useEffect(() => {
+    setRepoUrl(project.repo_url ?? '')
+    setDefaultBranch(project.default_branch ?? '')
+  }, [project.repo_url, project.default_branch])
+
+  async function saveRepo() {
+    setSaving(true)
+    setError(null)
+    setSavedAt(null)
+    const { data, error: apiError, response } = await client.PATCH(
+      '/projects/{projectID}',
+      {
+        params: { path: { projectID: projectId } },
+        body: { repo_url: repoUrl || undefined, default_branch: defaultBranch || undefined },
+      },
+    )
+    if (!response.ok || !data) {
+      setError(formatApiError(apiError))
+      setSaving(false)
+      return
+    }
+    onProjectChange(data)
+    setSavedAt(Date.now())
+    setSaving(false)
+  }
+
+  return (
+    <section>
+      <h2 className="mb-3 text-sm font-medium text-muted-foreground">
+        Repository
+      </h2>
+      <Card className="border-white/10 bg-white/5 backdrop-blur-md">
+        <CardContent className="px-5 py-4">
+          <div className="flex flex-col gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-1.5">
+                <span className="text-xs font-medium text-muted-foreground">
+                  Repository URL
+                </span>
+                <Input
+                  value={repoUrl}
+                  onChange={(e) => setRepoUrl(e.target.value)}
+                  placeholder="https://github.com/org/repo.git"
+                />
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-xs font-medium text-muted-foreground">
+                  Default branch
+                </span>
+                <Input
+                  value={defaultBranch}
+                  onChange={(e) => setDefaultBranch(e.target.value)}
+                  placeholder="main"
+                />
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button size="xs" onClick={() => void saveRepo()} disabled={saving}>
+                <Save className="size-3.5" />
+                {saving ? 'Saving…' : 'Save'}
+              </Button>
+              {savedAt ? (
+                <span className="text-xs text-emerald-400">Saved</span>
+              ) : null}
+              {error ? (
+                <span className="text-xs text-destructive">{error}</span>
+              ) : null}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </section>
   )
 }
 
@@ -527,34 +620,11 @@ export function ProjectPage() {
 
       <DispatchDashboard orgId={orgId} projectId={projectId} />
 
-      {project.repo_url ? (
-        <section>
-          <h2 className="mb-3 text-sm font-medium text-muted-foreground">
-            Repository
-          </h2>
-          <Card className="border-white/10 bg-white/5 backdrop-blur-md">
-            <CardContent className="px-5 py-4">
-              <div className="flex items-center gap-3">
-                <GitBranch className="size-4 shrink-0 text-muted-foreground" />
-                <div className="flex min-w-0 flex-1 flex-col gap-1">
-                  <div className="flex items-center gap-2">
-                    <span className="break-all font-mono text-sm">
-                      {project.repo_url}
-                    </span>
-                    <CopyButton text={project.repo_url} />
-                  </div>
-                  {project.default_branch ? (
-                    <span className="text-xs text-muted-foreground">
-                      Default branch:{' '}
-                      <span className="font-mono">{project.default_branch}</span>
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </section>
-      ) : null}
+      <RepositoryCard
+        projectId={projectId}
+        project={project}
+        onProjectChange={setProject}
+      />
 
       {stats && stats.blocked > 0 ? (
         <section>
