@@ -5,7 +5,6 @@
 /dist
 web/node_modules
 web/dist
-prisma/node_modules
 
 /bin/
 /logs/
