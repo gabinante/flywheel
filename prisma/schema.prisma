@@ -1,0 +1,129 @@
+// GoHighPayment Prisma Schema
+// Agency, Merchant, ResidualEntry, ResidualPayout models
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Agency ─────────────────────────────────────────────────────────
+
+model Agency {
+  id                 String           @id @default(cuid())
+  name               String
+  contactEmail       String           @unique
+  contactPhone       String?
+  passwordHash       String
+  referralCode       String           @unique // e.g., "agency-abc123"
+  referredByAgencyId String?
+  referredByAgency   Agency?          @relation("AgencyReferrals", fields: [referredByAgencyId], references: [id])
+  referredAgencies   Agency[]         @relation("AgencyReferrals")
+  tier               AgencyTier       @default(TIER_1)
+  tierOverride       Boolean          @default(false)
+  status             AgencyStatus     @default(ACTIVE)
+  payoutEmail        String?
+  payoutBankLast4    String?
+  taxIdOnFile        Boolean          @default(false)
+  merchants          Merchant[]
+  residualEntries    ResidualEntry[]
+  residualPayouts    ResidualPayout[]
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+}
+
+enum AgencyTier {
+  TIER_1
+  TIER_2
+  TIER_3
+}
+
+enum AgencyStatus {
+  ACTIVE
+  SUSPENDED
+  CHURNED
+}
+
+// ─── Merchant ───────────────────────────────────────────────────────
+
+model Merchant {
+  id              String          @id @default(cuid())
+  name            String
+  email           String          @unique
+  phone           String?
+  nmiMerchantId   String?         @unique
+  ghlLocationId   String?         @unique
+  status          MerchantStatus  @default(ACTIVE)
+  agencyId        String?
+  agency          Agency?         @relation(fields: [agencyId], references: [id])
+  attributedAt    DateTime?
+  residualEntries ResidualEntry[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+enum MerchantStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+// ─── ResidualEntry ──────────────────────────────────────────────────
+
+model ResidualEntry {
+  id                String         @id @default(cuid())
+  agencyId          String
+  agency            Agency         @relation(fields: [agencyId], references: [id])
+  merchantId        String
+  merchant          Merchant       @relation(fields: [merchantId], references: [id])
+  periodStart       DateTime
+  periodEnd         DateTime
+  merchantVolume    Int            // cents
+  nmiResidualEarned Int            // cents
+  agencyBps         Int
+  agencyShare       Int            // cents
+  twoTierAgencyId   String?
+  twoTierShare      Int            @default(0)
+  status            ResidualStatus @default(PENDING)
+  approvedAt        DateTime?
+  approvedBy        String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@unique([agencyId, merchantId, periodStart])
+}
+
+enum ResidualStatus {
+  PENDING
+  APPROVED
+  PAID
+  HELD
+}
+
+// ─── ResidualPayout ─────────────────────────────────────────────────
+
+model ResidualPayout {
+  id           String       @id @default(cuid())
+  agencyId     String
+  agency       Agency       @relation(fields: [agencyId], references: [id])
+  periodStart  DateTime
+  totalAmount  Int
+  directShare  Int
+  twoTierShare Int
+  method       String
+  reference    String?
+  status       PayoutStatus @default(PENDING)
+  paidAt       DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+enum PayoutStatus {
+  PENDING
+  APPROVED
+  PAID
+  FAILED
+}
