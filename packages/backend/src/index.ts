@@ -6,7 +6,15 @@
  * - Correlation ID propagation for transaction flows
  * - Sensitive field redaction (PCI compliance)
  * - Configurable log level via LOG_LEVEL env var
+ *
+ * Observability:
+ * - Sentry error tracking and performance monitoring
+ * - Health check endpoints (liveness, readiness, detailed)
  */
+
+// Initialize Sentry BEFORE importing Fastify (must be first)
+import { initSentry, registerSentryErrorHandler, flushSentry } from './utils/sentry.js';
+initSentry();
 
 import Fastify from 'fastify';
 import rateLimit from '@fastify/rate-limit';
@@ -17,11 +25,18 @@ import { registerAdminRoutes } from './routes/admin.js';
 import { registerSubscriptionRoutes } from './routes/subscriptions.js';
 import { registerCheckoutRoutes } from './routes/checkout.js';
 import { registerWebhookRoutes } from './routes/webhooks.js';
+import { registerHealthRoutes, type HealthCheckDeps } from './routes/health.js';
 import { loggerConfig, createCorrelationId, createTimer, createServiceLogger } from './utils/logger.js';
 
 // Re-export logging utilities for use across the codebase
 export { createCorrelationId, createTimer, createServiceLogger, loggerConfig } from './utils/logger.js';
 export { REDACT_PATHS } from './utils/logger.js';
+
+// Re-export Sentry utilities
+export { initSentry, captureException, setSentryContext, isSentryEnabled } from './utils/sentry.js';
+
+// Re-export health check utilities
+export { runReadinessChecks, type ReadinessResponse, type DetailedHealthResponse, type CheckResult } from './routes/health.js';
 
 // Re-export services
 export {
@@ -71,6 +86,7 @@ export {
 export async function buildApp(opts?: {
   redis?: Redis;
   prisma?: PrismaClient;
+  pgBoss?: HealthCheckDeps['pgBoss'] | null;
   logger?: boolean | object;
 }) {
   const app = Fastify({
@@ -96,6 +112,9 @@ export async function buildApp(opts?: {
     await redis.connect();
   }
 
+  // ---- Sentry error handler (before routes so it captures all errors) ----
+  registerSentryErrorHandler(app);
+
   // ---- Global rate limit (outer backstop) ----
   await app.register(rateLimit, {
     max: 5000,
@@ -117,7 +136,14 @@ export async function buildApp(opts?: {
         return null;
       }
     },
-    skipPrefixes: ['/api/v1/admin', '/api/v1/webhooks'],
+    skipPrefixes: ['/api/v1/admin', '/api/v1/webhooks', '/health'],
+  });
+
+  // ---- Health check routes ----
+  registerHealthRoutes(app, {
+    prisma,
+    redis,
+    pgBoss: opts?.pgBoss ?? null,
   });
 
   // ---- Routes ----
@@ -147,16 +173,14 @@ export async function buildApp(opts?: {
     { prefix: '/api/v1/webhooks' }
   );
 
-  // Health check
-  app.get('/health', async () => ({ status: 'ok' }));
-
   // Graceful shutdown
   app.addHook('onClose', async () => {
+    await flushSentry();
     await prisma.$disconnect();
     redis.disconnect();
   });
 
-  app.log.info({ action: 'app_built', logLevel: loggerConfig.level }, 'Fastify app configured with structured logging');
+  app.log.info({ action: 'app_built', logLevel: loggerConfig.level }, 'Fastify app configured with structured logging and health checks');
 
   return app;
 }
@@ -176,9 +200,7 @@ if (isMainModule) {
       return app.listen({ port, host });
     })
     .then((address) => {
-      // This log is emitted by Fastify itself, but we keep a startup marker
-      // that goes through the structured logger too.
-      // Note: Fastify logs its own "Server listening at..." message automatically
+      // Fastify logs its own "Server listening at..." message automatically
     })
     .catch((err) => {
       // Use structured logging even for fatal startup errors
