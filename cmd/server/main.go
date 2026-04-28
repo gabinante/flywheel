@@ -515,7 +515,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			AgentStore: agentStore,
 		},
 		ClaimsHandler:  &rest.ClaimsHandler{ClaimsSvc: claimsSvc},
-		HooksHandler:   &rest.HooksHandler{Client: hooksClient},
+		HooksHandler:   &rest.HooksHandler{Client: hooksClient, Signatures: webhookSignatures(cfg)},
 		PillarsHandler: &rest.PillarsHandler{PillarSvc: pillarSvc},
 		DeliveryHandler: &rest.DeliveryHandler{
 			DeliverySvc: deliverySvc,
@@ -792,7 +792,7 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 			AgentStore: agentSt,
 		},
 		StreamsHandler: &rest.StreamsHandler{Svc: streamSvc},
-		HooksHandler:   &rest.HooksHandler{Client: hooksClient},
+		HooksHandler:   &rest.HooksHandler{Client: hooksClient, Signatures: webhookSignatures(cfg)},
 		CatalogHandler: &rest.CatalogHandler{Svc: catalogSvc, Scanner: catalogScanner},
 		PillarsHandler: &rest.PillarsHandler{PillarSvc: pillarSvc},
 		DeliveryHandler: &rest.DeliveryHandler{
@@ -849,4 +849,27 @@ func autoGenerateSecret() string {
 	b := make([]byte, 32)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// webhookSignatures builds a map of source → SignatureConfig from the global config.
+// Sources are only registered when a secret is configured (non-empty) or when the
+// source name is explicitly mapped (even with an empty secret, to trigger the
+// dev-mode warning). Both NMI and Seamlesschex are always registered so that
+// dev-mode warnings fire when secrets are missing.
+func webhookSignatures(cfg *config.Config) map[string]hooks.SignatureConfig {
+	sigs := make(map[string]hooks.SignatureConfig)
+
+	// NMI webhook signature verification.
+	sigs["nmi"] = hooks.SignatureConfig{
+		Secret: cfg.Webhooks.NMIWebhookSecret,
+		Header: "X-NMI-Signature",
+	}
+
+	// Seamlesschex webhook signature verification.
+	sigs["seamlesschex"] = hooks.SignatureConfig{
+		Secret: cfg.Webhooks.SeamlesschexWebhookSecret,
+		Header: "X-Seamlesschex-Signature",
+	}
+
+	return sigs
 }

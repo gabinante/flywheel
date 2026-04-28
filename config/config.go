@@ -162,6 +162,10 @@ func Load() *Config {
 			WeaviateAPIKey:     getEnv("WEAVIATE_API_KEY", ""),
 			WeaviateVectorizer: getEnv("WEAVIATE_VECTORIZER", "text2vec-openai"),
 		},
+		Webhooks: WebhooksConfig{
+			NMIWebhookSecret:          getEnv("NMI_WEBHOOK_SECRET", ""),
+			SeamlesschexWebhookSecret: getEnv("SEAMLESSCHEX_WEBHOOK_SECRET", ""),
+		},
 	}
 
 	for _, w := range cfg.Validate() {
@@ -283,7 +287,17 @@ type Config struct {
 	Notification              NotificationConfig
 	Embedded                  EmbeddedConfig
 	Findings                  FindingsConfig
+	Webhooks                  WebhooksConfig
 	RunAcceptanceTestOnSubmit bool
+}
+
+// WebhooksConfig holds signing secrets for inbound webhook signature verification.
+// When a secret is configured, inbound requests from that source must carry a valid
+// HMAC-SHA256 signature. When empty (dev mode), a warning is logged but the request
+// is allowed through.
+type WebhooksConfig struct {
+	NMIWebhookSecret          string // HMAC signing secret for NMI webhooks
+	SeamlesschexWebhookSecret string // HMAC signing secret for Seamlesschex webhooks
 }
 
 // PolicyConfig controls the policy layer behavior.

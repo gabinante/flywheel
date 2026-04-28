@@ -64,6 +64,19 @@ type WebhookConfig struct {
 	// Transformers maps source names to specific transformers.
 	// The "generic" transformer is always available as a fallback.
 	Transformers map[string]WebhookTransformer
+
+	// Signatures maps source names to signature verification configs.
+	// When a source has a SignatureConfig with a non-empty Secret, inbound
+	// requests must carry a valid HMAC-SHA256 signature in the configured
+	// header. If the Secret is empty, a warning is logged but the request
+	// is allowed through (dev mode).
+	//
+	// Sources not present in this map skip verification entirely.
+	Signatures map[string]SignatureConfig
+
+	// Audit receives audit entries for rejected webhooks. If nil,
+	// DefaultAuditLogger() (slog) is used.
+	Audit AuditLogger
 }
 
 // WebhookHandler returns an http.Handler that receives change events from
@@ -80,6 +93,7 @@ func WebhookHandler(client *Client, cfg ...WebhookConfig) http.Handler {
 	config := WebhookConfig{
 		MaxBodyBytes: 1 << 20, // 1 MB
 		Transformers: make(map[string]WebhookTransformer),
+		Signatures:   make(map[string]SignatureConfig),
 	}
 	if len(cfg) > 0 {
 		if cfg[0].MaxBodyBytes > 0 {
@@ -88,6 +102,15 @@ func WebhookHandler(client *Client, cfg ...WebhookConfig) http.Handler {
 		for k, v := range cfg[0].Transformers {
 			config.Transformers[k] = v
 		}
+		for k, v := range cfg[0].Signatures {
+			config.Signatures[k] = v
+		}
+		if cfg[0].Audit != nil {
+			config.Audit = cfg[0].Audit
+		}
+	}
+	if config.Audit == nil {
+		config.Audit = DefaultAuditLogger()
 	}
 
 	generic := GenericTransformer{}
@@ -115,6 +138,24 @@ func WebhookHandler(client *Client, cfg ...WebhookConfig) http.Handler {
 		if len(body) == 0 {
 			writeWebhookError(w, http.StatusBadRequest, "empty request body")
 			return
+		}
+
+		// Signature verification: if a SignatureConfig exists for this source, verify.
+		if sigCfg, hasSig := config.Signatures[source]; hasSig {
+			if err := VerifySignature(sigCfg, body, r); err != nil {
+				config.Audit.Log(AuditEntry{
+					Action:   "webhook_rejected",
+					Resource: source + "_webhook",
+					Details: map[string]any{
+						"reason":   err.Error(),
+						"source_ip": sourceIP(r),
+						"headers":  flattenHeaders(r.Header),
+						"source":   source,
+					},
+				})
+				writeWebhookError(w, http.StatusUnauthorized, "signature verification failed")
+				return
+			}
 		}
 
 		// Pick transformer.
