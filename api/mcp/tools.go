@@ -681,10 +681,14 @@ func getPayloadMap(args map[string]any, key string) map[string]any {
 }
 
 func getAgentIDFromArgs(ctx context.Context, args map[string]any) (string, error) {
-	if id := getString(args, "agent_id", ""); id != "" {
+	// HTTP auth context is authoritative — never let args override the
+	// authenticated identity (prevents impersonation via agent_id arg).
+	if id := rest.GetAgentID(ctx); id != "" {
 		return id, nil
 	}
-	if id := rest.GetAgentID(ctx); id != "" {
+	// Stdio / non-HTTP transports: accept agent_id from args since there is
+	// no HTTP auth layer.
+	if id := getString(args, "agent_id", ""); id != "" {
 		return id, nil
 	}
 	// Stdio fallback: resolve agent ID from FLYWHEEL_TOKEN env var (JWT).

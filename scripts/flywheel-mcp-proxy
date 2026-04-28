@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""Stdio-to-HTTP bridge for Flywheel MCP.
+
+Reads JSON-RPC from stdin, forwards to the Flywheel HTTP MCP endpoint,
+and writes responses to stdout. This lets Claude Code connect to a
+running Flywheel server via the standard stdio MCP transport.
+"""
+
+import json
+import os
+import sys
+import urllib.request
+
+SERVER_URL = os.environ.get("FLYWHEEL_MCP_URL", "http://localhost:8080/mcp")
+API_KEY = os.environ.get("FLYWHEEL_API_KEY", "")
+
+# Track the MCP session ID returned by the server after initialize.
+session_id = None
+
+
+def send_request(payload: dict) -> str | None:
+    global session_id
+
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+    }
+    if API_KEY:
+        headers["X-API-Key"] = API_KEY
+    if session_id:
+        headers["Mcp-Session-Id"] = session_id
+
+    data = json.dumps(payload).encode()
+    req = urllib.request.Request(SERVER_URL, data=data, headers=headers, method="POST")
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            # Capture the session ID from the response.
+            sid = resp.headers.get("Mcp-Session-Id")
+            if sid:
+                session_id = sid
+            body = resp.read().decode()
+    except Exception as e:
+        # Return a JSON-RPC error
+        return json.dumps({
+            "jsonrpc": "2.0",
+            "id": payload.get("id"),
+            "error": {"code": -32000, "message": str(e)},
+        })
+
+    # The server returns SSE format: "event: message\ndata: {...}\n\n"
+    # Extract the JSON from the data lines.
+    lines = body.strip().split("\n")
+    for line in lines:
+        if line.startswith("data: "):
+            return line[6:]
+
+    # If no SSE envelope, return raw body
+    return body
+
+
+def main():
+    # Disable buffering
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        result = send_request(payload)
+        if result:
+            sys.stdout.write(result + "\n")
+            sys.stdout.flush()
+
+
+if __name__ == "__main__":
+    main()
