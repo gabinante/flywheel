@@ -6,6 +6,7 @@ export {
   createResidualService,
   TIER_BPS,
   TWO_TIER_BPS,
+  type AgencyTier,
   type ResidualCalculationResult,
   type MerchantVolume,
   type NmiReportingClient,

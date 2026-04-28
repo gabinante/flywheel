@@ -45,33 +45,34 @@ export async function registerJobHandlers(
 
   await boss.work<ResidualJobData>(
     RESIDUAL_CALCULATION_JOB,
-    async (job) => {
-      const { periodStart, periodEnd } = job.data;
+    async (jobs) => {
+      // pg-boss v10 delivers an array of jobs to the handler
+      for (const job of jobs) {
+        const { periodStart, periodEnd } = job.data;
 
-      console.log(
-        `[ResidualJob] Starting calculation for period ${periodStart} — ${periodEnd}`
-      );
-
-      const result = await residualService.calculateResiduals(
-        new Date(periodStart),
-        new Date(periodEnd)
-      );
-
-      console.log(
-        `[ResidualJob] Completed: ${result.entriesCreated} entries created, ` +
-          `${result.entriesSkipped} skipped, ` +
-          `${result.merchantsProcessed} merchants processed, ` +
-          `${result.errors.length} errors`
-      );
-
-      if (result.errors.length > 0) {
-        console.warn(
-          "[ResidualJob] Errors:",
-          JSON.stringify(result.errors)
+        console.log(
+          `[ResidualJob] Starting calculation for period ${periodStart} — ${periodEnd}`
         );
-      }
 
-      return result;
+        const result = await residualService.calculateResiduals(
+          new Date(periodStart),
+          new Date(periodEnd)
+        );
+
+        console.log(
+          `[ResidualJob] Completed: ${result.entriesCreated} entries created, ` +
+            `${result.entriesSkipped} skipped, ` +
+            `${result.merchantsProcessed} merchants processed, ` +
+            `${result.errors.length} errors`
+        );
+
+        if (result.errors.length > 0) {
+          console.warn(
+            "[ResidualJob] Errors:",
+            JSON.stringify(result.errors)
+          );
+        }
+      }
     }
   );
 }

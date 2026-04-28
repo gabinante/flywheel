@@ -8,7 +8,12 @@
  * NMI is source of truth when available; our transaction table is fallback.
  */
 
-import type { PrismaClient, AgencyTier } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
+
+// ─── Types ───────────────────────────────────────────────────────────
+
+/** Agency tier enum — mirrors the Prisma AgencyTier enum */
+export type AgencyTier = "TIER_1" | "TIER_2" | "TIER_3";
 
 // ─── Constants ────────────────────────────────────────────────────────
 
@@ -22,7 +27,7 @@ export const TIER_BPS: Record<AgencyTier, number> = {
 /** Two-tier referral bonus in basis points */
 export const TWO_TIER_BPS = 3;
 
-// ─── Types ────────────────────────────────────────────────────────────
+// ─── Interfaces ──────────────────────────────────────────────────────
 
 export interface ResidualCalculationResult {
   entriesCreated: number;
@@ -156,7 +161,7 @@ export function createResidualService(deps: ResidualServiceDeps) {
         // Skip merchants with zero volume
         if (volumeCents <= 0) continue;
 
-        const agencyBps = TIER_BPS[agency.tier];
+        const agencyBps = TIER_BPS[agency.tier as AgencyTier];
 
         // Agency share calculation:
         // agencyShare = floor(volumeCents * rateBps / 100_000)
