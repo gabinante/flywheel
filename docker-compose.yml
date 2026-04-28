@@ -41,3 +41,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  admin-dashboard:
+    build:
+      context: ./packages/admin-dashboard
+      dockerfile: Dockerfile
+    ports:
+      - "5176:5176"
+    environment:
+      VITE_API_URL: http://server:3000

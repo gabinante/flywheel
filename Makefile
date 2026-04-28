@@ -1,4 +1,4 @@
-.PHONY: run run-mcp run-embedded migrate migrate-create migrate-down test generate docker-up docker-down docker-embedded-up docker-embedded-down build build-flywheel-git build-flywheel-mcp web-build varlock-validate install setup-local
+.PHONY: run run-mcp run-embedded migrate migrate-create migrate-down test generate docker-up docker-down docker-embedded-up docker-embedded-down build build-flywheel-git build-flywheel-mcp web-build varlock-validate install setup-local dev-admin backend-test
 
 VARLOCK := ./scripts/varlock
 
@@ -66,6 +66,14 @@ docker-embedded-up:
 
 docker-embedded-down:
 	docker compose -f docker-compose.embedded.yml down
+
+# ─── GoHighPayment Services ──────────────────────────────────────────────────
+
+dev-admin:
+	cd packages/admin-dashboard && npm run dev
+
+backend-test:
+	cd packages/backend && npm test
 
 # ─── Claude Code Local Setup ─────────────────────────────────────────────────
 
