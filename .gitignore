@@ -3,11 +3,14 @@
 /flywheel-mcp
 /flywheel-git
 /dist
+node_modules
 web/node_modules
 web/dist
 prisma/node_modules
+packages/*/node_modules
 
 /bin/
 /logs/
 .DS_Store
 .claude/worktrees/
+.flywheel-mcp-config.json
