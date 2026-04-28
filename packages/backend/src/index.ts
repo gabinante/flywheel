@@ -32,6 +32,16 @@ export {
 } from "./routes/admin.js";
 
 export {
+  createPaymentRouter,
+  createNmiTransactionClient,
+  type PaymentRouterDeps,
+  type PaymentRequest,
+  type NmiTransactionClient,
+  type NmiTransactionResult,
+  type MerchantKeyLookup,
+} from "./routes/payments.js";
+
+export {
   createRevenueAnalyticsService,
   type RevenueAnalyticsParams,
   type RevenueAnalyticsResult,

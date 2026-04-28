@@ -1,0 +1,40 @@
+{
+  "name": "@nostripetax/js",
+  "version": "0.1.0",
+  "description": "NoStripeTax SDK — PCI-compliant embeddable card fields powered by NMI Collect.js",
+  "type": "module",
+  "main": "dist/nostripetax.umd.cjs",
+  "module": "dist/nostripetax.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/nostripetax.js",
+      "require": "./dist/nostripetax.umd.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build && tsc --emitDeclarationOnly",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.0",
+    "typescript": "^5.9.3",
+    "vite": "^6.3.0",
+    "vitest": "^3.1.0"
+  },
+  "keywords": [
+    "nostripetax",
+    "payment",
+    "nmi",
+    "collect.js",
+    "elements",
+    "pci"
+  ],
+  "license": "MIT"
+}
