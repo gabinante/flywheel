@@ -113,6 +113,12 @@ const (
 	EventNotificationFailed     = "notification.failed"      // notification delivery failed
 	EventNotificationDismissed  = "notification.dismissed"   // operator dismissed notification
 	EventNotificationDigestSent = "notification.digest_sent" // digest batch delivered
+
+	// --- Webhook delivery events ---
+	EventWebhookDeliveryQueued    = "webhook.delivery_queued"    // webhook event queued for delivery
+	EventWebhookDeliverySuccess   = "webhook.delivery_success"   // webhook delivered successfully
+	EventWebhookDeliveryFailed    = "webhook.delivery_failed"    // webhook delivery failed permanently
+	EventWebhookDeliveryRetry     = "webhook.delivery_retry"     // webhook delivery scheduled for retry
 )
 
 // Event carries type and typed payload for the bus.
