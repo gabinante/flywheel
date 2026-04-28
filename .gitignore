@@ -5,6 +5,7 @@
 /dist
 web/node_modules
 web/dist
+packages/backend/node_modules
 
 /bin/
 /logs/
