@@ -281,7 +281,7 @@ export function ProjectIntegrationsSection({
     setError(null)
 
     Promise.all([
-      fetchConfig(`/api/v1/projects/${projectId}/integrations`, token),
+      fetchConfig(`/projects/${projectId}/integrations`, token),
       client.GET('/projects/{projectID}/environments', {
         params: { path: { projectID: projectId } },
       }),
@@ -364,7 +364,7 @@ export function ProjectIntegrationsSection({
     setError(null)
     const payload = serializePayload(draft, credentialStatus)
     try {
-      const response = await fetch(`/api/v1/projects/${projectId}/integrations`, {
+      const response = await fetch(`/projects/${projectId}/integrations`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

@@ -1,0 +1,460 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import {
+  ArrowRight,
+  GitBranch,
+  Plug,
+  Save,
+  ServerCog,
+  Settings,
+  SlidersHorizontal,
+  Workflow,
+} from 'lucide-react'
+
+import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
+import { ProjectDispatchRoutingCard } from '@/components/project-dispatch-routing-card'
+import { ProjectIntegrationsSection } from '@/components/project-integrations-section'
+import { WorkflowTimelineEditor } from '@/components/workflow-timeline-editor'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { ProjectPageSkeleton } from '@/components/ui/skeleton'
+import { useAuth } from '@/contexts/use-auth'
+import { formatApiError } from '@/lib/api/client'
+import type { components } from '@/lib/api/v1'
+
+type Project = components['schemas']['Project']
+
+type SettingsSectionID = 'dispatch' | 'workers' | 'workflow' | 'integrations'
+
+const SETTINGS_SECTIONS: Array<{
+  id: SettingsSectionID
+  label: string
+  description: string
+  icon: React.ComponentType<{ className?: string }>
+}> = [
+  {
+    id: 'dispatch',
+    label: 'Dispatch',
+    description: 'Enable or pause automatic ticket pickup for this project.',
+    icon: SlidersHorizontal,
+  },
+  {
+    id: 'workers',
+    label: 'Workers and roles',
+    description: 'Configure worker capacity, executor profiles, role routing, and custom roles.',
+    icon: ServerCog,
+  },
+  {
+    id: 'workflow',
+    label: 'Workflow stages',
+    description: 'Define the staged ticket lifecycle for this project.',
+    icon: Workflow,
+  },
+  {
+    id: 'integrations',
+    label: 'Integrations',
+    description: 'Connect delivery, infrastructure, and provider integrations.',
+    icon: Plug,
+  },
+]
+
+function isSettingsSection(value: string | undefined): value is SettingsSectionID {
+  return SETTINGS_SECTIONS.some((section) => section.id === value)
+}
+
+function ScopeModelCard() {
+  return (
+    <Card className="border-white/10 bg-white/5 backdrop-blur-md">
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Settings className="size-4 text-muted-foreground" />
+          <CardTitle className="text-sm">Scope model</CardTitle>
+        </div>
+        <CardDescription>
+          Some settings are inherited from the installation; this page is for
+          project-specific overrides.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-2xl border border-white/10 bg-black/10 p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <Badge variant="outline">Global</Badge>
+            <span className="text-sm font-medium">Runtime defaults</span>
+          </div>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Server-level runner defaults, provider credentials, and fallback worker
+            behavior are still operator-managed through environment/config.
+          </p>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-black/10 p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <Badge variant="outline">Project</Badge>
+            <span className="text-sm font-medium">Overrides</span>
+          </div>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Active worker limits, configured executors, custom roles, routing
+            policy, workflows, and integrations are stored on this project.
+          </p>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-black/10 p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <Badge variant="outline">Org</Badge>
+            <span className="text-sm font-medium">Default layer</span>
+          </div>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            The right long-term home for shared worker pools and reusable workflows
+            is an org/default layer that projects can inherit or override.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function DispatchControlCard({
+  project,
+  saving,
+  onToggle,
+}: {
+  project: Project
+  saving: boolean
+  onToggle: () => void
+}) {
+  const dispatchOn = project.dispatch_enabled !== false
+  return (
+    <Card className="border-white/10 bg-white/5 backdrop-blur-md">
+      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <SlidersHorizontal className="size-4 text-muted-foreground" />
+            <CardTitle className="text-sm">Dispatch controls</CardTitle>
+          </div>
+          <CardDescription>
+            Project-level switch for whether workers can automatically claim new
+            tickets here.
+          </CardDescription>
+        </div>
+        <Button
+          variant={dispatchOn ? 'default' : 'outline'}
+          size="sm"
+          className={
+            dispatchOn ? 'shrink-0 bg-emerald-600 hover:bg-emerald-700' : 'shrink-0'
+          }
+          disabled={saving}
+          onClick={onToggle}
+        >
+          {saving ? 'Saving...' : dispatchOn ? 'Dispatch enabled' : 'Dispatch disabled'}
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Capacity and worker selection are configured in the workers panel below.
+          Turning dispatch off leaves existing tickets and settings unchanged.
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function RepositorySettingsCard({
+  projectId,
+  project,
+  onProjectChange,
+}: {
+  projectId: string
+  project: Project
+  onProjectChange: (project: Project) => void
+}) {
+  const { client } = useAuth()
+  const [repoUrl, setRepoUrl] = useState(project.repo_url ?? '')
+  const [defaultBranch, setDefaultBranch] = useState(project.default_branch ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [savedAt, setSavedAt] = useState<number | null>(null)
+
+  useEffect(() => {
+    setRepoUrl(project.repo_url ?? '')
+    setDefaultBranch(project.default_branch ?? '')
+  }, [project.repo_url, project.default_branch])
+
+  async function saveRepo() {
+    setSaving(true)
+    setError(null)
+    setSavedAt(null)
+    const { data, error: apiError, response } = await client.PATCH(
+      '/projects/{projectID}',
+      {
+        params: { path: { projectID: projectId } },
+        body: { repo_url: repoUrl || undefined, default_branch: defaultBranch || undefined },
+      },
+    )
+    if (!response.ok || !data) {
+      setError(formatApiError(apiError))
+      setSaving(false)
+      return
+    }
+    onProjectChange(data)
+    setSavedAt(Date.now())
+    setSaving(false)
+  }
+
+  return (
+    <Card className="border-white/10 bg-white/5 backdrop-blur-md">
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <GitBranch className="size-4 text-muted-foreground" />
+          <CardTitle className="text-sm">Repository</CardTitle>
+        </div>
+        <CardDescription>
+          Git repository for this project. Workers clone and push to this repo.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">
+              Repository URL
+            </span>
+            <Input
+              value={repoUrl}
+              onChange={(e) => setRepoUrl(e.target.value)}
+              placeholder="git@github.com:org/repo.git"
+            />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">
+              Default branch
+            </span>
+            <Input
+              value={defaultBranch}
+              onChange={(e) => setDefaultBranch(e.target.value)}
+              placeholder="main"
+            />
+          </label>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="xs" onClick={() => void saveRepo()} disabled={saving}>
+            <Save className="size-3.5" />
+            {saving ? 'Saving…' : 'Save'}
+          </Button>
+          {savedAt ? (
+            <span className="text-xs text-emerald-400">Saved</span>
+          ) : null}
+          {error ? (
+            <span className="text-xs text-destructive">{error}</span>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function SettingsOverview({
+  orgId,
+  projectId,
+  project,
+  onProjectChange,
+}: {
+  orgId: string
+  projectId: string
+  project: Project
+  onProjectChange: (project: Project) => void
+}) {
+  return (
+    <div className="space-y-6">
+      <RepositorySettingsCard projectId={projectId} project={project} onProjectChange={onProjectChange} />
+      <ScopeModelCard />
+      <div className="grid gap-3 md:grid-cols-2">
+        {SETTINGS_SECTIONS.map((section) => (
+          <Link
+            key={section.id}
+            to={`/orgs/${orgId}/projects/${projectId}/settings/${section.id}`}
+            className="group"
+          >
+            <Card className="h-full border-white/10 bg-white/5 backdrop-blur-md transition-colors hover:border-white/20 hover:bg-white/10">
+              <CardContent className="flex h-full items-start gap-4 px-5 py-5">
+                <div className="rounded-xl border border-white/10 bg-black/20 p-2.5">
+                  <section.icon className="size-5 text-foreground" />
+                </div>
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="text-sm font-semibold text-foreground">
+                      {section.label}
+                    </h2>
+                    <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" />
+                  </div>
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    {section.description}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+export function ProjectSettingsPage() {
+  const { orgId, projectId, section } = useParams<{
+    orgId: string
+    projectId: string
+    section?: string
+  }>()
+  const { client } = useAuth()
+  const [project, setProject] = useState<Project | null | undefined>(undefined)
+  const [err, setErr] = useState<string | null>(null)
+  const [dispatchSaving, setDispatchSaving] = useState(false)
+
+  useEffect(() => {
+    if (!projectId) return
+    let cancelled = false
+    ;(async () => {
+      const { data, error, response } = await client.GET('/projects/{projectID}', {
+        params: { path: { projectID: projectId } },
+      })
+      if (cancelled) return
+      if (!response.ok) {
+        setErr(formatApiError(error))
+        setProject(null)
+        return
+      }
+      setErr(null)
+      setProject(data ?? null)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [client, projectId])
+
+  const toggleDispatch = useCallback(async () => {
+    if (!projectId || !project) return
+    setDispatchSaving(true)
+    const nextValue = !(project.dispatch_enabled !== false)
+    const { error, response } = await client.PATCH('/projects/{projectID}', {
+      params: { path: { projectID: projectId } },
+      body: { dispatch_enabled: nextValue },
+    })
+    if (response.ok) {
+      setProject((prev) =>
+        prev ? { ...prev, dispatch_enabled: nextValue } : prev,
+      )
+      setErr(null)
+    } else {
+      setErr(formatApiError(error))
+    }
+    setDispatchSaving(false)
+  }, [client, project, projectId])
+
+  const projectLabel = useMemo(
+    () => project?.name ?? project?.slug ?? project?.id ?? 'Project',
+    [project],
+  )
+  const selectedSection = isSettingsSection(section) ? section : undefined
+  const selectedSectionMeta = SETTINGS_SECTIONS.find(
+    (entry) => entry.id === selectedSection,
+  )
+
+  if (!orgId || !projectId) {
+    return <p className="text-sm text-destructive">Missing route params.</p>
+  }
+  if (err) {
+    return <p className="text-sm text-destructive">{err}</p>
+  }
+  if (project === undefined) {
+    return <ProjectPageSkeleton />
+  }
+  if (!project) {
+    return <p className="text-sm text-muted-foreground">Project not found.</p>
+  }
+
+  const title = selectedSectionMeta?.label ?? 'Project settings'
+  const description =
+    selectedSectionMeta?.description ??
+    "Configure this project's dispatch behavior, worker overrides, delivery workflow, and provider integrations."
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-1.5">
+        <p className="text-xs text-muted-foreground">
+          <OrgProjectCrumbs
+            orgId={orgId}
+            projectId={projectId}
+            projectLabel={projectLabel}
+          />
+          <span className="px-1">/</span>
+          {selectedSectionMeta ? (
+            <>
+              <Link
+                to={`/orgs/${orgId}/projects/${projectId}/settings`}
+                className="hover:underline"
+              >
+                Settings
+              </Link>
+              <span className="px-1">/</span>
+              <span>{selectedSectionMeta.label}</span>
+            </>
+          ) : (
+            <span>Settings</span>
+          )}
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {title}
+          </h1>
+          {project.status ? <Badge variant="outline">{project.status}</Badge> : null}
+        </div>
+        <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">
+          {description}
+        </p>
+      </div>
+
+      {selectedSection === undefined ? (
+        <SettingsOverview orgId={orgId} projectId={projectId} project={project} onProjectChange={setProject} />
+      ) : (
+        <div className="space-y-6">
+          {selectedSection === 'dispatch' ? (
+            <DispatchControlCard
+              project={project}
+              saving={dispatchSaving}
+              onToggle={toggleDispatch}
+            />
+          ) : null}
+
+          {selectedSection === 'workers' ? (
+            <ProjectDispatchRoutingCard
+              projectId={projectId}
+              project={project}
+              onProjectChange={setProject}
+            />
+          ) : null}
+
+          {selectedSection === 'workflow' ? (
+            <WorkflowTimelineEditor projectId={projectId} />
+          ) : null}
+
+          {selectedSection === 'integrations' ? (
+            <ProjectIntegrationsSection projectId={projectId} project={project} />
+          ) : null}
+
+          <div className="flex justify-end">
+            <Button asChild variant="ghost" size="sm">
+              <Link to={`/orgs/${orgId}/projects/${projectId}/settings`}>
+                Back to settings
+              </Link>
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
-  Check,
-  ClipboardCopy,
   Eye,
   GitBranch,
   Layers,
@@ -159,35 +157,6 @@ function ProgressBar({ value, max }: { value: number; max: number }) {
   )
 }
 
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-
-  const handleCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      // Clipboard API may be unavailable.
-    }
-  }, [text])
-
-  return (
-    <Button
-      variant="ghost"
-      size="icon-xs"
-      onClick={handleCopy}
-      title="Copy to clipboard"
-      className="shrink-0"
-    >
-      {copied ? (
-        <Check className="size-3.5 text-emerald-400" />
-      ) : (
-        <ClipboardCopy className="size-3.5" />
-      )}
-    </Button>
-  )
-}
 
 function RepositoryCard({
   projectId,

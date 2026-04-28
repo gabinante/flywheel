@@ -26,6 +26,9 @@ func (h *DeliveryHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/v1/projects/{projectID}/integrations", h.updateConfig)
 	mux.HandleFunc("GET /api/v1/projects/{projectID}/delivery-config", h.getConfig)
 	mux.HandleFunc("PUT /api/v1/projects/{projectID}/delivery-config", h.updateConfig)
+	// Prefix-free aliases matching the OpenAPI route convention used by the frontend.
+	mux.HandleFunc("GET /projects/{projectID}/integrations", h.getConfig)
+	mux.HandleFunc("PUT /projects/{projectID}/integrations", h.updateConfig)
 }
 
 func (h *DeliveryHandler) listPullRequests(w http.ResponseWriter, r *http.Request) {

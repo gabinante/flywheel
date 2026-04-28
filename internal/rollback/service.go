@@ -259,7 +259,7 @@ func (s *Service) rollbackPostObserve(ctx context.Context, t *ticket.Ticket, act
 		ticket.TypeTask,
 		ticket.P0, // Rollback tickets are high priority.
 		actor.ID,
-		nil, // No dependencies — rollback should start immediately.
+		[]string{}, // No dependencies — rollback should start immediately.
 		t.WorkStreamID,
 		revertObjective,
 		revertContext,
@@ -322,7 +322,7 @@ func (s *Service) createIncidentTicket(ctx context.Context, t *ticket.Ticket, re
 		ticket.TypeBug, // Incidents map to bug type.
 		ticket.P0,      // Production incidents are P0.
 		actor.ID,
-		nil, // No dependencies.
+		[]string{}, // No dependencies.
 		t.WorkStreamID,
 		incidentObjective,
 		incidentContext,
