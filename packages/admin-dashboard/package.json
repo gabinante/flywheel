@@ -1,8 +1,8 @@
 {
-  "name": "gohighpayment-admin-dashboard",
+  "name": "nostripetax-admin-dashboard",
   "version": "0.1.0",
   "private": true,
-  "description": "GoHighPayment admin dashboard — revenue analytics, agency management, and monitoring",
+  "description": "NoStripeTax admin dashboard — revenue analytics, agency management, and monitoring",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -1,8 +1,8 @@
 {
-  "name": "gohighpayment-backend",
+  "name": "nostripetax-backend",
   "version": "0.1.0",
   "private": true,
-  "description": "GoHighPayment backend services — residual calculation, jobs, and admin routes",
+  "description": "NoStripeTax backend services — residual calculation, jobs, and admin routes",
   "scripts": {
     "build": "tsc",
     "test": "vitest run",

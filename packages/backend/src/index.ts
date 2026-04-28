@@ -1,5 +1,5 @@
 /**
- * GoHighPayment Backend — public API surface
+ * NoStripeTax Backend — public API surface
  */
 
 export {
