@@ -125,7 +125,7 @@ function extractApiKey(request: FastifyRequest): string | null {
   }
 
   // Check if API key is stored in request context (set by prior auth middleware)
-  const requestAny = request as Record<string, unknown>;
+  const requestAny = request as unknown as Record<string, unknown>;
   if (
     requestAny.merchant &&
     typeof requestAny.merchant === 'object' &&

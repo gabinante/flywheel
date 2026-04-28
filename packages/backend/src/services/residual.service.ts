@@ -8,7 +8,10 @@
  * NMI is source of truth when available; our transaction table is fallback.
  */
 
-import type { PrismaClient, AgencyTier } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
+
+/** AgencyTier type — defined locally until Prisma client is generated */
+type AgencyTier = 'TIER_1' | 'TIER_2' | 'TIER_3';
 
 /** Logger interface — accepts any pino-compatible logger */
 interface ResidualLogger {
@@ -164,7 +167,7 @@ export function createResidualService(deps: ResidualServiceDeps) {
         // Skip merchants with zero volume
         if (volumeCents <= 0) continue;
 
-        const agencyBps = TIER_BPS[agency.tier];
+        const agencyBps = TIER_BPS[agency.tier as AgencyTier];
 
         // Agency share calculation:
         // agencyShare = floor(volumeCents * rateBps / 100_000)

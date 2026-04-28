@@ -61,8 +61,7 @@ export {
 } from './jobs/queue.js';
 
 export {
-  createAdminRouter,
-  type AdminRouterDeps,
+  registerAdminRoutes,
 } from './routes/admin.js';
 
 /**

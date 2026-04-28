@@ -8,7 +8,7 @@
  * All handlers use structured logging via an injected logger.
  */
 
-import type PgBoss from "pg-boss";
+import { type PgBoss, type Job } from "pg-boss";
 import type { PrismaClient } from "@prisma/client";
 import {
   createResidualService,
@@ -76,53 +76,54 @@ export async function registerJobHandlers(
 
   await boss.work<ResidualJobData>(
     RESIDUAL_CALCULATION_JOB,
-    async (job) => {
-      const { periodStart, periodEnd } = job.data;
-      const timer = createTimer();
+    async (jobs: Job<ResidualJobData>[]) => {
+      // pg-boss v10 delivers an array; process each job
+      for (const job of jobs) {
+        const { periodStart, periodEnd } = job.data;
+        const timer = createTimer();
 
-      logger.info(
-        {
-          action: 'residual_calculation_started',
-          jobId: job.id,
-          periodStart,
-          periodEnd,
-        },
-        `Residual calculation started for period ${periodStart} - ${periodEnd}`
-      );
-
-      const result = await residualService.calculateResiduals(
-        new Date(periodStart),
-        new Date(periodEnd)
-      );
-
-      const duration_ms = timer.elapsed();
-      logger.info(
-        {
-          action: 'residual_calculation_completed',
-          jobId: job.id,
-          periodStart,
-          periodEnd,
-          entriesCreated: result.entriesCreated,
-          entriesSkipped: result.entriesSkipped,
-          merchantsProcessed: result.merchantsProcessed,
-          errorCount: result.errors.length,
-          duration_ms,
-        },
-        `Residual calculation completed: ${result.entriesCreated} entries created, ${result.entriesSkipped} skipped`
-      );
-
-      if (result.errors.length > 0) {
-        logger.warn(
+        logger.info(
           {
-            action: 'residual_calculation_errors',
+            action: 'residual_calculation_started',
             jobId: job.id,
-            errors: result.errors,
+            periodStart,
+            periodEnd,
           },
-          `Residual calculation had ${result.errors.length} errors`
+          `Residual calculation started for period ${periodStart} - ${periodEnd}`
         );
-      }
 
-      return result;
+        const result = await residualService.calculateResiduals(
+          new Date(periodStart),
+          new Date(periodEnd)
+        );
+
+        const duration_ms = timer.elapsed();
+        logger.info(
+          {
+            action: 'residual_calculation_completed',
+            jobId: job.id,
+            periodStart,
+            periodEnd,
+            entriesCreated: result.entriesCreated,
+            entriesSkipped: result.entriesSkipped,
+            merchantsProcessed: result.merchantsProcessed,
+            errorCount: result.errors.length,
+            duration_ms,
+          },
+          `Residual calculation completed: ${result.entriesCreated} entries created, ${result.entriesSkipped} skipped`
+        );
+
+        if (result.errors.length > 0) {
+          logger.warn(
+            {
+              action: 'residual_calculation_errors',
+              jobId: job.id,
+              errors: result.errors,
+            },
+            `Residual calculation had ${result.errors.length} errors`
+          );
+        }
+      }
     }
   );
 
@@ -138,10 +139,10 @@ export async function registerJobHandlers(
     await boss.work<EmailSendJobData>(
       EMAIL_SEND_JOB,
       {
-        teamSize: 5, // process up to 5 emails concurrently
-        teamConcurrency: 5,
+        localConcurrency: 5, // process up to 5 emails concurrently
       },
-      async (job) => {
+      async (jobs: Job<EmailSendJobData>[]) => {
+        for (const job of jobs) {
         const { to, templateId, variables, notificationId, correlationId } = job.data;
 
         logger.info(
@@ -216,8 +217,7 @@ export async function registerJobHandlers(
             `Email send failed: ${result.error}`
           );
         }
-
-        return result;
+        } // end for-of jobs
       }
     );
 

@@ -6,7 +6,12 @@
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import type { PrismaClient, BillingInterval, SubscriptionStatus } from '@prisma/client';
+import type { PrismaClient } from '@prisma/client';
+
+/** Billing interval — defined locally until Prisma client is generated */
+type BillingInterval = 'MONTHLY' | 'QUARTERLY' | 'YEARLY';
+/** Subscription status — defined locally until Prisma client is generated */
+type SubscriptionStatus = 'ACTIVE' | 'CANCELLED' | 'PAST_DUE' | 'PAUSED';
 import { NmiService } from '../services/nmi.service.js';
 
 // ---- Zod-like validation helpers ----

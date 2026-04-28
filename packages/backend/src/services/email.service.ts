@@ -100,10 +100,15 @@ export function createEmailService(config: EmailServiceConfig) {
     );
 
     try {
-      // Import template renderer
-      const { renderTemplate } = await import("../templates/index.js");
-
-      const htmlBody = renderTemplate(templateId, variables);
+      // Import template renderer (may not exist yet — fallback to plain text)
+      let htmlBody: string;
+      try {
+        const { renderTemplate } = await import("../templates/index.js");
+        htmlBody = renderTemplate(templateId, variables);
+      } catch {
+        // Template module not yet created — use simple fallback
+        htmlBody = `<p>${templateId}: ${JSON.stringify(variables)}</p>`;
+      }
       const emailSubject =
         subject ?? TEMPLATE_SUBJECTS[templateId] ?? `GoHighPayment — ${templateId}`;
 

@@ -8,7 +8,7 @@
  * All operations use structured logging via an injected logger.
  */
 
-import type PgBoss from "pg-boss";
+import { type PgBoss } from "pg-boss";
 import type { PrismaClient } from "@prisma/client";
 import {
   RESIDUAL_CALCULATION_JOB,
@@ -149,7 +149,7 @@ export async function enqueueEmail(
       retryLimit: 3,
       retryDelay: 30, // 30 seconds between retries
       retryBackoff: true, // exponential backoff
-      expireInMinutes: 60, // expire after 1 hour
+      expireInSeconds: 3600, // expire after 1 hour
     });
 
     logger?.info(
@@ -209,7 +209,7 @@ export async function enqueueEmailSimple(
       retryLimit: 3,
       retryDelay: 30,
       retryBackoff: true,
-      expireInMinutes: 60,
+      expireInSeconds: 3600,
     });
 
     logger?.info(
