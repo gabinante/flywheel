@@ -30,3 +30,12 @@ export {
   createAdminRouter,
   type AdminRouterDeps,
 } from "./routes/admin.js";
+
+export {
+  createRevenueAnalyticsService,
+  type RevenueAnalyticsParams,
+  type RevenueAnalyticsResult,
+  type MonthlyBreakdown,
+  type RevenuePeriod,
+  type RevenueAnalyticsServiceDeps,
+} from "./services/revenue-analytics.service.js";

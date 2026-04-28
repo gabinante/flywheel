@@ -1,9 +1,13 @@
 /**
- * Admin Routes — manual residual calculation trigger
+ * Admin Routes — residual calculation trigger and revenue analytics
  *
  * POST /api/v1/admin/residuals/calculate
  *   Body: { periodStart: string, periodEnd: string }
  *   Returns: { entriesCreated, entriesSkipped, merchantsProcessed, errors }
+ *
+ * GET /api/v1/admin/analytics/revenue
+ *   Query: { period: trailing_30d|trailing_12m|custom, startDate?, endDate? }
+ *   Returns: platform volume, NMI residual, agency payouts, net retained, etc.
  */
 
 import { Router, type Request, type Response } from "express";
@@ -13,6 +17,10 @@ import {
   createResidualService,
   type NmiReportingClient,
 } from "../services/residual.service.js";
+import {
+  createRevenueAnalyticsService,
+  type RevenuePeriod,
+} from "../services/revenue-analytics.service.js";
 
 // ─── Validation ───────────────────────────────────────────────────────
 
@@ -20,6 +28,20 @@ const calculateResidualsSchema = z.object({
   periodStart: z.string().datetime({ message: "periodStart must be ISO 8601" }),
   periodEnd: z.string().datetime({ message: "periodEnd must be ISO 8601" }),
 });
+
+const revenueAnalyticsSchema = z.object({
+  period: z.enum(["trailing_30d", "trailing_12m", "custom"]),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+}).refine(
+  (data) => {
+    if (data.period === "custom") {
+      return !!data.startDate && !!data.endDate;
+    }
+    return true;
+  },
+  { message: "startDate and endDate are required when period is 'custom'" }
+);
 
 // ─── Router factory ───────────────────────────────────────────────────
 
@@ -33,6 +55,9 @@ export function createAdminRouter(deps: AdminRouterDeps): Router {
   const residualService = createResidualService({
     prisma: deps.prisma,
     nmiClient: deps.nmiClient,
+  });
+  const revenueAnalyticsService = createRevenueAnalyticsService({
+    prisma: deps.prisma,
   });
 
   /**
@@ -86,6 +111,48 @@ export function createAdminRouter(deps: AdminRouterDeps): Router {
         console.error("[Admin] Residual calculation failed:", message);
         res.status(500).json({
           error: "Residual calculation failed",
+          message,
+        });
+      }
+    }
+  );
+
+  /**
+   * GET /api/v1/admin/analytics/revenue
+   *
+   * Platform-level financial overview: NMI residual received, agency payouts,
+   * net retained revenue, active counts, chargeback ratio, monthly breakdown.
+   *
+   * Query params:
+   *   period    — "trailing_30d" | "trailing_12m" | "custom"
+   *   startDate — ISO 8601 (required when period=custom)
+   *   endDate   — ISO 8601 (required when period=custom)
+   */
+  router.get(
+    "/analytics/revenue",
+    async (req: Request, res: Response): Promise<void> => {
+      const parsed = revenueAnalyticsSchema.safeParse(req.query);
+      if (!parsed.success) {
+        res.status(400).json({
+          error: "Invalid query parameters",
+          details: parsed.error.issues,
+        });
+        return;
+      }
+
+      try {
+        const result = await revenueAnalyticsService.getRevenueAnalytics({
+          period: parsed.data.period as RevenuePeriod,
+          startDate: parsed.data.startDate,
+          endDate: parsed.data.endDate,
+        });
+
+        res.status(200).json(result);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("[Admin] Revenue analytics failed:", message);
+        res.status(500).json({
+          error: "Revenue analytics query failed",
           message,
         });
       }
