@@ -13,7 +13,7 @@ import { ProjectsPage } from '@/pages/projects-page'
 import { TicketsPage } from '@/pages/tickets-page'
 import { TicketDetailPage } from '@/pages/ticket-detail-page'
 import { ReviewsPage } from '@/pages/reviews-page'
-import { ProjectPage } from '@/pages/project-page'
+import { ProjectSettingsPage } from '@/pages/project-settings-page'
 import { WorkStreamsPage } from '@/pages/work-streams-page'
 import { WorkStreamCreatePage } from '@/pages/work-stream-create-page'
 import { WorkStreamEditPage } from '@/pages/work-stream-edit-page'
@@ -98,7 +98,11 @@ export default function App() {
                   />
                   <Route
                     path="/orgs/:orgId/projects/:projectId/settings"
-                    element={<ProjectPage />}
+                    element={<ProjectSettingsPage />}
+                  />
+                  <Route
+                    path="/orgs/:orgId/projects/:projectId/settings/:section"
+                    element={<ProjectSettingsPage />}
                   />
                   <Route
                     path="/orgs/:orgId/projects/:projectId/tickets"

@@ -1864,6 +1864,15 @@ components:
     DispatchConfig:
       type: object
       properties:
+        max_active_workers:
+          type: integer
+          minimum: 0
+          description: Maximum concurrent active workers for this project. Set 0 or omit to inherit the server DISPATCH_MAX_WORKERS default.
+        roles:
+          type: array
+          description: Custom dispatch roles. Each role has its own routing policy and inherits prompt/tool behavior from a built-in worker type.
+          items:
+            $ref: '#/components/schemas/DispatchWorkerRole'
         workers:
           type: array
           items:
@@ -1872,6 +1881,21 @@ components:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/DispatchRolePolicy'
+    DispatchWorkerRole:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Stable custom role key used in dispatch policies and ticket inputs.
+        name:
+          type: string
+        description:
+          type: string
+          description: Additional instructions appended to workers launched for this custom role.
+        base_type:
+          type: string
+          enum: [planner, executor, validator, deployer, investigator]
+          description: Built-in worker behavior this custom role inherits for prompts and tool access.
     DispatchWorkerProfile:
       type: object
       properties:
@@ -2050,6 +2074,12 @@ components:
           description: Repository alias for multi-repo projects (from project_repositories). Empty means primary repo.
         assigned_to:
           type: string
+        workflow_id:
+          type: string
+          description: Active workflow definition ID. Empty means legacy state machine.
+        workflow_phase:
+          type: string
+          description: Current phase ID within the workflow. Empty means no active phase.
         created_by:
           type: string
         created_at:
@@ -2861,3 +2891,92 @@ components:
           enum: [accepted, rejected, dismissed]
         resolved_by:
           type: string
+
+    # ── Workflow Definitions ──────────────────────────────────────────
+    WorkflowPhase:
+      type: object
+      required: [id, name, type]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [agent, external, gate, manual, automated, deploy, observe]
+        description:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+        on_failure:
+          type: string
+    WorkflowDefinition:
+      type: object
+      required: [name, phases]
+      properties:
+        id:
+          type: string
+        scope:
+          type: string
+          enum: [system, org, project]
+        scope_id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        version:
+          type: integer
+        phases:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowPhase'
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    WorkflowPosition:
+      type: object
+      properties:
+        workflow_id:
+          type: string
+        workflow_name:
+          type: string
+        current_phase:
+          $ref: '#/components/schemas/WorkflowPhase'
+        phase_index:
+          type: integer
+        total_phases:
+          type: integer
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/PhaseCompletion'
+    PhaseCompletion:
+      type: object
+      properties:
+        id:
+          type: string
+        ticket_id:
+          type: string
+        workflow_id:
+          type: string
+        phase_id:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        outcome:
+          type: string
+          enum: [success, failed, skipped]
+        metadata:
+          type: object
+          additionalProperties: true

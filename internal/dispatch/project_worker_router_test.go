@@ -74,6 +74,37 @@ func TestProjectWorkerRouter_OrderedPolicyUsesConfiguredWorkers(t *testing.T) {
 	}
 }
 
+func TestProjectWorkerRouter_CustomRolePolicy(t *testing.T) {
+	router := NewProjectWorkerRouter(Config{
+		AgentRunner: RunnerCLI,
+		AgentDriver: "claude",
+	})
+	proj := &project.Project{
+		DispatchConfig: project.DispatchConfig{
+			Workers: []project.DispatchWorkerProfile{
+				{ID: "codex-sec", Name: "Codex security", Enabled: true, Driver: "codex"},
+			},
+			Policies: map[string]project.DispatchRolePolicy{
+				"security_review": {
+					SelectionMode: "ordered",
+					WorkerIDs:     []string{"codex-sec"},
+				},
+			},
+		},
+	}
+
+	candidates := router.Candidates(proj, "security-review")
+	if len(candidates) != 1 {
+		t.Fatalf("expected 1 candidate, got %d", len(candidates))
+	}
+	if candidates[0].ID != "codex-sec" {
+		t.Fatalf("expected codex-sec, got %q", candidates[0].ID)
+	}
+	if candidates[0].Config.AgentDriver != "codex" {
+		t.Fatalf("expected codex driver, got %q", candidates[0].Config.AgentDriver)
+	}
+}
+
 func TestProjectWorkerRouter_AnyModeRotatesAcrossWorkers(t *testing.T) {
 	router := NewProjectWorkerRouter(Config{
 		AgentRunner: RunnerCLI,

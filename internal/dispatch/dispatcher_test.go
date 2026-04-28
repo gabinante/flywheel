@@ -467,6 +467,70 @@ func TestTryDispatchAtCapacity(t *testing.T) {
 	}
 }
 
+func TestProjectCapacityUsesProjectMaxActiveWorkers(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter()
+	pg := newMockProjectGetter(&project.Project{
+		ID: "p-1",
+		DispatchConfig: project.DispatchConfig{
+			MaxActiveWorkers: 2,
+		},
+	})
+	d := New(Config{MaxWorkers: 5}, bus, tg, pg)
+
+	_, cancel1 := context.WithCancel(context.Background())
+	_, cancel2 := context.WithCancel(context.Background())
+	defer cancel1()
+	defer cancel2()
+
+	d.mu.Lock()
+	d.active["t-1"] = cancel1
+	d.activeProjects["t-1"] = "p-1"
+	d.active["review:t-2"] = cancel2
+	d.activeProjects["review:t-2"] = "p-1"
+	d.mu.Unlock()
+
+	active, limit, hasCapacity := d.projectCapacity(context.Background(), "p-1")
+	if active != 2 {
+		t.Fatalf("expected 2 active project workers, got %d", active)
+	}
+	if limit != 2 {
+		t.Fatalf("expected project worker limit 2, got %d", limit)
+	}
+	if hasCapacity {
+		t.Fatal("expected project to be at capacity")
+	}
+}
+
+func TestProjectCapacityCountsWorkersByProject(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter()
+	pg := newMockProjectGetter(
+		&project.Project{ID: "p-1", DispatchConfig: project.DispatchConfig{MaxActiveWorkers: 1}},
+		&project.Project{ID: "p-2", DispatchConfig: project.DispatchConfig{MaxActiveWorkers: 1}},
+	)
+	d := New(Config{MaxWorkers: 1}, bus, tg, pg)
+
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	d.mu.Lock()
+	d.active["t-2"] = cancel
+	d.activeProjects["t-2"] = "p-2"
+	d.mu.Unlock()
+
+	active, limit, hasCapacity := d.projectCapacity(context.Background(), "p-1")
+	if active != 0 {
+		t.Fatalf("expected no active workers for p-1, got %d", active)
+	}
+	if limit != 1 {
+		t.Fatalf("expected project worker limit 1, got %d", limit)
+	}
+	if !hasCapacity {
+		t.Fatal("expected p-1 to have capacity independent of p-2")
+	}
+}
+
 func TestTryDispatchAlreadyRunning(t *testing.T) {
 	tk := &ticket.Ticket{
 		ID:        "t-1",

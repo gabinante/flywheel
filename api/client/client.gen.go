@@ -1691,9 +1691,28 @@ type Project struct {
 
 // DispatchConfig defines model for DispatchConfig.
 type DispatchConfig struct {
-	Policies *map[string]DispatchRolePolicy `json:"policies,omitempty"`
-	Workers  *[]DispatchWorkerProfile       `json:"workers,omitempty"`
+	// MaxActiveWorkers Maximum concurrent active workers for this project. Set 0 or omit to inherit the server DISPATCH_MAX_WORKERS default.
+	MaxActiveWorkers *int                           `json:"max_active_workers,omitempty"`
+	Policies         *map[string]DispatchRolePolicy `json:"policies,omitempty"`
+	Roles            *[]DispatchWorkerRole          `json:"roles,omitempty"`
+	Workers          *[]DispatchWorkerProfile       `json:"workers,omitempty"`
 }
+
+// DispatchWorkerRole defines model for DispatchWorkerRole.
+type DispatchWorkerRole struct {
+	// BaseType Built-in worker behavior this custom role inherits for prompts and tool access.
+	BaseType *DispatchWorkerRoleBaseType `json:"base_type,omitempty"`
+
+	// Description Additional instructions appended to workers launched for this custom role.
+	Description *string `json:"description,omitempty"`
+
+	// Id Stable custom role key used in dispatch policies and ticket inputs.
+	Id   *string `json:"id,omitempty"`
+	Name *string `json:"name,omitempty"`
+}
+
+// DispatchWorkerRoleBaseType defines model for DispatchWorkerRole.BaseType.
+type DispatchWorkerRoleBaseType string
 
 // DispatchRolePolicy defines model for DispatchRolePolicy.
 type DispatchRolePolicy struct {

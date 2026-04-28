@@ -38,6 +38,12 @@ type PolicyEvaluator interface {
 	EvaluateForTicket(ctx context.Context, t *Ticket, trigger string) (*PolicyDecision, error)
 }
 
+// WorkflowResolver resolves the effective workflow for a project.
+// Returns (workflowID, firstPhaseID, error). Empty workflowID means no workflow.
+type WorkflowResolver interface {
+	ResolveForProject(ctx context.Context, orgID, projectID string) (workflowID, firstPhaseID string, err error)
+}
+
 // Service provides ticket operations.
 type Service struct {
 	store             TicketStore
@@ -48,6 +54,7 @@ type Service struct {
 	policyEvaluator   PolicyEvaluator
 	acceptanceRunner  AcceptanceRunner
 	autoApproveOnPass bool
+	workflowResolver  WorkflowResolver
 }
 
 // NewService returns a new Service. The store parameter accepts any TicketStore
@@ -90,6 +97,12 @@ func (s *Service) SetAcceptanceRunner(r AcceptanceRunner) {
 // Only applies to tickets that have an acceptance_test defined.
 func (s *Service) SetAutoApproveOnPass(enabled bool) {
 	s.autoApproveOnPass = enabled
+}
+
+// SetWorkflowResolver sets the optional workflow resolver. When set, CreateTicket
+// auto-attaches the resolved workflow to new tickets.
+func (s *Service) SetWorkflowResolver(wr WorkflowResolver) {
+	s.workflowResolver = wr
 }
 
 // ErrAcceptanceCriteriaRequired is returned when a task or bug is created without success_criteria or acceptance_test.
@@ -152,6 +165,14 @@ func (s *Service) CreateTicket(ctx context.Context, projectID, title string, typ
 		CreatedBy:    createdBy,
 		CreatedAt:    now,
 		UpdatedAt:    now,
+	}
+	// Auto-attach workflow if resolver is configured.
+	if s.workflowResolver != nil {
+		wfID, phaseID, wfErr := s.workflowResolver.ResolveForProject(ctx, p.OrgID, projectID)
+		if wfErr == nil && wfID != "" {
+			t.WorkflowID = wfID
+			t.WorkflowPhase = phaseID
+		}
 	}
 	if err := s.store.Create(ctx, t); err != nil {
 		return nil, err

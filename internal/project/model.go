@@ -24,8 +24,17 @@ type Project struct {
 }
 
 type DispatchConfig struct {
-	Workers  []DispatchWorkerProfile       `json:"workers,omitempty"`
-	Policies map[string]DispatchRolePolicy `json:"policies,omitempty"`
+	MaxActiveWorkers int                           `json:"max_active_workers,omitempty"`
+	Roles            []DispatchWorkerRole          `json:"roles,omitempty"`
+	Workers          []DispatchWorkerProfile       `json:"workers,omitempty"`
+	Policies         map[string]DispatchRolePolicy `json:"policies,omitempty"`
+}
+
+type DispatchWorkerRole struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	BaseType    string `json:"base_type,omitempty"`
 }
 
 type DispatchWorkerProfile struct {
@@ -49,6 +58,12 @@ type DispatchRolePolicy struct {
 
 func (c DispatchConfig) Normalized() DispatchConfig {
 	out := c
+	if out.MaxActiveWorkers < 0 {
+		out.MaxActiveWorkers = 0
+	}
+	if out.Roles == nil {
+		out.Roles = []DispatchWorkerRole{}
+	}
 	if out.Workers == nil {
 		out.Workers = []DispatchWorkerProfile{}
 	}
@@ -64,6 +79,33 @@ func (c DispatchConfig) Normalized() DispatchConfig {
 		}
 		out.Policies[key] = policy
 	}
+	roles := make([]DispatchWorkerRole, 0, len(out.Roles))
+	seenRoles := make(map[string]struct{}, len(out.Roles))
+	for i, role := range out.Roles {
+		role.ID = normalizeDispatchRoleID(role.ID)
+		if role.ID == "" {
+			role.ID = normalizeDispatchRoleID(role.Name)
+		}
+		if role.ID == "" {
+			role.ID = fmt.Sprintf("custom_role_%d", i+1)
+		}
+		if isReservedDispatchRoleID(role.ID) {
+			continue
+		}
+		if _, ok := seenRoles[role.ID]; ok {
+			continue
+		}
+		seenRoles[role.ID] = struct{}{}
+
+		role.Name = strings.TrimSpace(role.Name)
+		if role.Name == "" {
+			role.Name = role.ID
+		}
+		role.Description = strings.TrimSpace(role.Description)
+		role.BaseType = normalizeDispatchRoleBaseType(role.BaseType)
+		roles = append(roles, role)
+	}
+	out.Roles = roles
 	for i := range out.Workers {
 		out.Workers[i].ID = strings.TrimSpace(out.Workers[i].ID)
 		if out.Workers[i].ID == "" {
@@ -85,6 +127,52 @@ func (c DispatchConfig) Normalized() DispatchConfig {
 		}
 	}
 	return out
+}
+
+func normalizeDispatchRoleID(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	var b strings.Builder
+	lastSeparator := false
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r)
+			lastSeparator = false
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+			lastSeparator = false
+		case r == '_' || r == '-' || r == ' ' || r == '/':
+			if b.Len() > 0 && !lastSeparator {
+				b.WriteByte('_')
+				lastSeparator = true
+			}
+		}
+	}
+	return strings.Trim(b.String(), "_")
+}
+
+func normalizeDispatchRoleBaseType(value string) string {
+	switch normalizeDispatchRoleID(value) {
+	case "planner", "planning":
+		return "planner"
+	case "validator", "review", "validation":
+		return "validator"
+	case "deployer", "deploy", "deployment":
+		return "deployer"
+	case "investigator", "investigation":
+		return "investigator"
+	default:
+		return "executor"
+	}
+}
+
+func isReservedDispatchRoleID(id string) bool {
+	switch normalizeDispatchRoleID(id) {
+	case "orchestrator", "planner", "executor", "validator", "deployer", "investigator", "conflict_resolver":
+		return true
+	default:
+		return false
+	}
 }
 
 // ContextPack is injected into every agent ticket claim.

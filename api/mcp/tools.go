@@ -92,6 +92,10 @@ var ToolScopeRegistry = map[string]ToolScope{
 	"approve_ticket": ToolScopeForbiddenCoordinator,
 	"reject_ticket":  ToolScopeForbiddenCoordinator,
 	"reopen_ticket":  ToolScopeForbiddenCoordinator,
+
+	// Workflow tools (read-only)
+	"get_workflow_position":   ToolScopeRead,
+	"list_workflow_templates": ToolScopeRead,
 }
 
 // GetToolScope returns the scope classification for a tool name.
@@ -558,6 +562,9 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 
 	// Pillar and strategy layer (Layer 15).
 	registerPillarTools(s, b, wrap)
+
+	// Workflow tools.
+	registerWorkflowTools(s, b, wrap)
 }
 
 func requireString(args map[string]any, key string) (string, error) {

@@ -16,6 +16,7 @@ import (
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/ticket"
+	"github.com/gabinante/flywheel/internal/workflow"
 )
 
 // TicketGetter retrieves tickets and their dependencies.
@@ -104,13 +105,15 @@ type Dispatcher struct {
 	repoResolver       RepoResolver           // nil-safe: only used for multi-repo projects
 	leaseReleaser      LeaseReleaser          // nil-safe: if nil, worker exit does not release lease (Layer 2 TTL handles it)
 	ticketTransitioner TicketTransitioner     // nil-safe: if nil, merged tickets are not auto-closed
+	workflowEngine     *workflow.Engine       // nil-safe: if nil, workflow-aware dispatching is disabled
 
-	mu            sync.Mutex
-	active        map[string]context.CancelFunc // ticketID → cancel
-	mergeAttempts map[string]int                // ticketID → failed merge count
-	wg            sync.WaitGroup
-	scanning      int32              // atomic CAS guard for reconcile
-	stopCancel    context.CancelFunc // cancels the internal context on Stop()
+	mu             sync.Mutex
+	active         map[string]context.CancelFunc // ticketID/role-prefixed key → cancel
+	activeProjects map[string]string             // active key → projectID
+	mergeAttempts  map[string]int                // ticketID → failed merge count
+	wg             sync.WaitGroup
+	scanning       int32              // atomic CAS guard for reconcile
+	stopCancel     context.CancelFunc // cancels the internal context on Stop()
 }
 
 // New creates a dispatcher that subscribes to the event bus.
@@ -126,9 +129,10 @@ func New(cfg Config, bus events.Bus, tickets TicketGetter, projects ProjectGette
 			BaseDir: cfg.WorktreeDir,
 			RepoDir: cfg.RepoDir,
 		},
-		clones:        NewMultiRepoCloneManager(filepath.Join(cfg.WorktreeDir, ".clones")),
-		active:        make(map[string]context.CancelFunc),
-		mergeAttempts: make(map[string]int),
+		clones:         NewMultiRepoCloneManager(filepath.Join(cfg.WorktreeDir, ".clones")),
+		active:         make(map[string]context.CancelFunc),
+		activeProjects: make(map[string]string),
+		mergeAttempts:  make(map[string]int),
 	}
 	// Detect if bus supports durable event delivery.
 	if durable, ok := bus.(events.DurableEventBus); ok {
@@ -232,8 +236,9 @@ func (d *Dispatcher) Stop() {
 		d.stopCancel()
 	}
 	d.mu.Lock()
-	for _, cancel := range d.active {
+	for key, cancel := range d.active {
 		cancel()
+		delete(d.activeProjects, key)
 	}
 	d.mu.Unlock()
 	d.wg.Wait()
@@ -254,6 +259,11 @@ func (d *Dispatcher) SetTicketTransitioner(tt TicketTransitioner) {
 
 // SetRepoResolver configures multi-repo resolution. When set, tickets with
 // target_repo are resolved to the correct repository for worktree creation.
+// SetWorkflowEngine sets the optional workflow engine for workflow-aware dispatching.
+func (d *Dispatcher) SetWorkflowEngine(we *workflow.Engine) {
+	d.workflowEngine = we
+}
+
 func (d *Dispatcher) SetRepoResolver(rr RepoResolver) {
 	d.repoResolver = rr
 }
@@ -426,16 +436,21 @@ func (d *Dispatcher) handleTicketRolledBack(_ context.Context, e events.Event) {
 	if cancel, ok := d.active[ticketID]; ok {
 		cancel()
 		delete(d.active, ticketID)
+		delete(d.activeProjects, ticketID)
 	}
 	// Also cancel reviewer if running.
-	if cancel, ok := d.active["review:"+ticketID]; ok {
+	reviewKey := "review:" + ticketID
+	if cancel, ok := d.active[reviewKey]; ok {
 		cancel()
-		delete(d.active, "review:"+ticketID)
+		delete(d.active, reviewKey)
+		delete(d.activeProjects, reviewKey)
 	}
 	// Also cancel conflict resolver if running.
-	if cancel, ok := d.active["resolve:"+ticketID]; ok {
+	resolveKey := "resolve:" + ticketID
+	if cancel, ok := d.active[resolveKey]; ok {
 		cancel()
-		delete(d.active, "resolve:"+ticketID)
+		delete(d.active, resolveKey)
+		delete(d.activeProjects, resolveKey)
 	}
 	d.mu.Unlock()
 
@@ -455,12 +470,12 @@ func (d *Dispatcher) tryDispatch(ctx context.Context, t *ticket.Ticket) {
 	}
 
 	// Check capacity.
-	d.mu.Lock()
-	if len(d.active) >= d.cfg.MaxWorkers {
-		d.mu.Unlock()
-		slog.Warn("dispatch: at capacity, skipping", "active", len(d.active), "max", d.cfg.MaxWorkers, "ticket", t.ID)
+	active, limit, hasCapacity := d.projectCapacity(ctx, t.ProjectID)
+	if !hasCapacity {
+		slog.Warn("dispatch: at capacity, skipping", "active", active, "max", limit, "ticket", t.ID, "project", t.ProjectID)
 		return
 	}
+	d.mu.Lock()
 	if _, running := d.active[t.ID]; running {
 		d.mu.Unlock()
 		return
@@ -518,6 +533,7 @@ func (d *Dispatcher) handleTicketDone(ctx context.Context, e events.Event) {
 	if cancel, ok := d.active[ticketID]; ok {
 		cancel()
 		delete(d.active, ticketID)
+		delete(d.activeProjects, ticketID)
 	}
 	d.mu.Unlock()
 
@@ -571,15 +587,11 @@ func (d *Dispatcher) checkWorkStreamCompletion(ctx context.Context, completed *t
 
 func (d *Dispatcher) spawn(ctx context.Context, t *ticket.Ticket) {
 	// Register as active.
-	workerCtx, cancel := context.WithCancel(ctx)
-	d.mu.Lock()
-	if _, running := d.active[t.ID]; running {
-		d.mu.Unlock()
-		cancel()
+	workerCtx, _, active, limit, started := d.startActive(ctx, t.ID, t.ProjectID)
+	if !started {
+		slog.Info("dispatch: at capacity, deferring worker", "ticket", t.ID, "project", t.ProjectID, "active", active, "max", limit)
 		return
 	}
-	d.active[t.ID] = cancel
-	d.mu.Unlock()
 
 	d.wg.Add(1)
 	go func() {
@@ -587,6 +599,7 @@ func (d *Dispatcher) spawn(ctx context.Context, t *ticket.Ticket) {
 		defer func() {
 			d.mu.Lock()
 			delete(d.active, t.ID)
+			delete(d.activeProjects, t.ID)
 			d.mu.Unlock()
 
 			// Re-scan for pending tickets to fill the freed slot.
@@ -603,7 +616,7 @@ func (d *Dispatcher) spawn(ctx context.Context, t *ticket.Ticket) {
 		d.handleWorkerExit(t.ID)
 	}()
 
-	slog.Info("dispatch: spawned worker", "ticket", t.ID, "active", d.activeCount(), "max", d.cfg.MaxWorkers)
+	slog.Info("dispatch: spawned worker", "ticket", t.ID, "project", t.ProjectID, "active", active, "max", limit)
 }
 
 // DetermineWorkerType selects the appropriate worker type based on ticket state
@@ -628,7 +641,12 @@ func DetermineWorkerType(t *ticket.Ticket) WorkerType {
 }
 
 func (d *Dispatcher) runWorker(ctx context.Context, t *ticket.Ticket) error {
-	return d.runTypedWorker(ctx, t, DetermineWorkerType(t))
+	proj, err := d.projects.GetProject(ctx, t.ProjectID)
+	if err != nil {
+		return err
+	}
+	role, wt := resolveTicketWorkerRole(proj, t)
+	return d.runTypedWorkerWithProject(ctx, t, proj, role, wt)
 }
 
 func (d *Dispatcher) runTypedWorker(ctx context.Context, t *ticket.Ticket, wt WorkerType) error {
@@ -637,7 +655,10 @@ func (d *Dispatcher) runTypedWorker(ctx context.Context, t *ticket.Ticket, wt Wo
 	if err != nil {
 		return err
 	}
+	return d.runTypedWorkerWithProject(ctx, t, proj, string(wt), wt)
+}
 
+func (d *Dispatcher) runTypedWorkerWithProject(ctx context.Context, t *ticket.Ticket, proj *project.Project, role string, wt WorkerType) error {
 	// Gather dependency outputs.
 	depOutputs := make(map[string]map[string]any)
 	if len(t.DependsOn) > 0 {
@@ -654,6 +675,9 @@ func (d *Dispatcher) runTypedWorker(ctx context.Context, t *ticket.Ticket, wt Wo
 
 	// Assemble type-specific prompt.
 	prompt := AssembleTypedWorkerPrompt(wt, proj, t, depOutputs, d.cfg.ServerURL, d.cfg.AgentID)
+	if roleDef, ok := dispatchRoleDefinition(proj, role); ok {
+		prompt = appendCustomRoleContext(prompt, roleDef)
+	}
 
 	// Determine working directory.
 	// Multi-repo: if the ticket targets a specific repo, resolve and clone it.
@@ -695,22 +719,91 @@ func (d *Dispatcher) runTypedWorker(ctx context.Context, t *ticket.Ticket, wt Wo
 	// Build type-specific task prompt.
 	taskMsg := buildTypedTaskPrompt(wt, t.ID, t.ProjectID)
 
-	slog.Info("dispatch: running worker", "type", string(wt), "ticket", t.ID)
+	slog.Info("dispatch: running worker", "type", string(wt), "role", role, "ticket", t.ID)
 
 	// Spawn worker.
-	result, selected, err := d.spawnWorker(ctx, proj, t.ID, t.ProjectID, string(wt), wt, prompt, taskMsg, workDir)
+	result, selected, err := d.spawnWorker(ctx, proj, t.ID, t.ProjectID, role, wt, prompt, taskMsg, workDir)
 	if err != nil {
 		return err
 	}
-	d.recordUsage(ctx, selected.Config, t.ProjectID, t.ID, workerRoleForType(wt), operationTypeForType(wt), prompt, taskMsg, result)
+	usageRole := role
+	if role == string(wt) {
+		usageRole = workerRoleForType(wt)
+	}
+	d.recordUsage(ctx, selected.Config, t.ProjectID, t.ID, usageRole, operationTypeForType(wt), prompt, taskMsg, result)
 
 	if !result.Success {
-		slog.Error("dispatch: worker completed with error", "type", string(wt), "ticket", t.ID, "error", result.Error, "output", result.Output)
+		slog.Error("dispatch: worker completed with error", "type", string(wt), "role", role, "ticket", t.ID, "error", result.Error, "output", result.Output)
 	} else {
-		slog.Info("dispatch: worker completed", "type", string(wt), "ticket", t.ID)
+		slog.Info("dispatch: worker completed", "type", string(wt), "role", role, "ticket", t.ID)
 	}
 
 	return nil
+}
+
+func resolveTicketWorkerRole(proj *project.Project, t *ticket.Ticket) (string, WorkerType) {
+	if hint := ticketWorkerRoleHint(t); hint != "" {
+		role := normalizePolicyRole(hint)
+		if wt, ok := workerTypeForConfiguredRole(proj, role); ok {
+			return role, wt
+		}
+		if wt := WorkerType(role); wt.IsValid() {
+			return role, wt
+		}
+	}
+	wt := DetermineWorkerType(t)
+	return string(wt), wt
+}
+
+func ticketWorkerRoleHint(t *ticket.Ticket) string {
+	if t == nil || t.Inputs == nil {
+		return ""
+	}
+	for _, key := range []string{"worker_role", "worker_type"} {
+		if value, ok := t.Inputs[key].(string); ok && strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func workerTypeForConfiguredRole(proj *project.Project, role string) (WorkerType, bool) {
+	roleDef, ok := dispatchRoleDefinition(proj, role)
+	if !ok {
+		return "", false
+	}
+	wt := WorkerType(normalizePolicyRole(roleDef.BaseType))
+	if wt.IsValid() {
+		return wt, true
+	}
+	return WorkerTypeExecutor, true
+}
+
+func dispatchRoleDefinition(proj *project.Project, role string) (project.DispatchWorkerRole, bool) {
+	if proj == nil {
+		return project.DispatchWorkerRole{}, false
+	}
+	role = normalizePolicyRole(role)
+	for _, roleDef := range proj.DispatchConfig.Normalized().Roles {
+		if normalizePolicyRole(roleDef.ID) == role {
+			return roleDef, true
+		}
+	}
+	return project.DispatchWorkerRole{}, false
+}
+
+func appendCustomRoleContext(prompt string, role project.DispatchWorkerRole) string {
+	var b strings.Builder
+	b.WriteString(prompt)
+	b.WriteString("\n\n## Custom dispatch role\n\n")
+	b.WriteString(fmt.Sprintf("- **Role:** %s (`%s`)\n", role.Name, role.ID))
+	b.WriteString(fmt.Sprintf("- **Base worker type:** %s\n", role.BaseType))
+	if role.Description != "" {
+		b.WriteString("\n")
+		b.WriteString(role.Description)
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 // handleWorkerExit is Layer 1 of failure recovery. When a worker process exits
@@ -759,27 +852,69 @@ func (d *Dispatcher) activeCount() int {
 	return len(d.active)
 }
 
+func (d *Dispatcher) projectWorkerLimit(ctx context.Context, projectID string) int {
+	limit := d.cfg.MaxWorkers
+	if d.projects == nil || projectID == "" {
+		return limit
+	}
+	proj, err := d.projects.GetProject(ctx, projectID)
+	if err != nil || proj == nil {
+		return limit
+	}
+	if configured := proj.DispatchConfig.Normalized().MaxActiveWorkers; configured > 0 {
+		return configured
+	}
+	return limit
+}
+
+func (d *Dispatcher) activeCountForProjectLocked(projectID string) int {
+	count := 0
+	for key := range d.active {
+		activeProjectID := d.activeProjects[key]
+		if projectID == "" || activeProjectID == "" || activeProjectID == projectID {
+			count++
+		}
+	}
+	return count
+}
+
+func (d *Dispatcher) projectCapacity(ctx context.Context, projectID string) (active int, limit int, hasCapacity bool) {
+	limit = d.projectWorkerLimit(ctx, projectID)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	active = d.activeCountForProjectLocked(projectID)
+	return active, limit, active < limit
+}
+
+func (d *Dispatcher) startActive(ctx context.Context, key, projectID string) (context.Context, context.CancelFunc, int, int, bool) {
+	limit := d.projectWorkerLimit(ctx, projectID)
+	workerCtx, cancel := context.WithCancel(ctx)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if _, running := d.active[key]; running {
+		cancel()
+		return nil, nil, d.activeCountForProjectLocked(projectID), limit, false
+	}
+	active := d.activeCountForProjectLocked(projectID)
+	if active >= limit {
+		cancel()
+		return nil, nil, active, limit, false
+	}
+	d.active[key] = cancel
+	d.activeProjects[key] = projectID
+	return workerCtx, cancel, active + 1, limit, true
+}
+
 // spawnReviewer launches a reviewer agent for a ticket in awaiting_review.
 // Reviewers count against the worker capacity limit.
 func (d *Dispatcher) spawnReviewer(ctx context.Context, t *ticket.Ticket) {
 	reviewKey := "review:" + t.ID
 
-	d.mu.Lock()
-	if len(d.active) >= d.cfg.MaxWorkers {
-		d.mu.Unlock()
-		slog.Info("dispatch: at capacity, deferring review", "ticket", t.ID)
+	workerCtx, _, active, limit, started := d.startActive(ctx, reviewKey, t.ProjectID)
+	if !started {
+		slog.Info("dispatch: at capacity, deferring review", "ticket", t.ID, "project", t.ProjectID, "active", active, "max", limit)
 		return
 	}
-	if _, running := d.active[reviewKey]; running {
-		d.mu.Unlock()
-		return
-	}
-	d.mu.Unlock()
-
-	workerCtx, cancel := context.WithCancel(ctx)
-	d.mu.Lock()
-	d.active[reviewKey] = cancel
-	d.mu.Unlock()
 
 	d.wg.Add(1)
 	go func() {
@@ -787,6 +922,7 @@ func (d *Dispatcher) spawnReviewer(ctx context.Context, t *ticket.Ticket) {
 		defer func() {
 			d.mu.Lock()
 			delete(d.active, reviewKey)
+			delete(d.activeProjects, reviewKey)
 			d.mu.Unlock()
 			go d.reconcile(ctx)
 		}()
@@ -796,7 +932,7 @@ func (d *Dispatcher) spawnReviewer(ctx context.Context, t *ticket.Ticket) {
 		}
 	}()
 
-	slog.Info("dispatch: spawned reviewer", "ticket", t.ID, "active", d.activeCount(), "max", d.cfg.MaxWorkers)
+	slog.Info("dispatch: spawned reviewer", "ticket", t.ID, "project", t.ProjectID, "active", active, "max", limit)
 }
 
 // runReviewer spawns a validator worker that reviews the ticket's PR and approves or rejects.
@@ -894,8 +1030,9 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 	}
 }
 
-// closeMergedTicket advances a ticket through the post-merge lifecycle:
-// validated → deploying → observing → closed. Uses a system actor.
+// closeMergedTicket advances a ticket through the post-merge lifecycle.
+// If the ticket has a workflow, advances through remaining workflow phases.
+// Otherwise, uses the hardcoded path: validated → deploying → observing → closed.
 // Nil-safe: if ticketTransitioner is nil, logs and returns.
 func (d *Dispatcher) closeMergedTicket(ctx context.Context, t *ticket.Ticket) {
 	if d.ticketTransitioner == nil {
@@ -905,6 +1042,43 @@ func (d *Dispatcher) closeMergedTicket(ctx context.Context, t *ticket.Ticket) {
 
 	actor := ticket.Actor{ID: "dispatcher", Type: ticket.ActorSystem}
 
+	// Workflow-aware: advance through remaining phases instead of hardcoded triggers.
+	if t.WorkflowID != "" && d.workflowEngine != nil && t.WorkflowPhase != "" {
+		for i := 0; i < 20; i++ { // safety limit
+			next, err := d.workflowEngine.AdvancePhase(ctx, t.ID, t.WorkflowID, t.WorkflowPhase, "success", nil)
+			if err != nil {
+				slog.Error("dispatch: workflow advance failed", "ticket", t.ID, "phase", t.WorkflowPhase, "error", err)
+				return
+			}
+			if next == nil {
+				// Workflow complete — close the ticket.
+				if err := d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerClose, actor, nil); err != nil {
+					// May already be closed or in wrong state; log and move on.
+					slog.Warn("dispatch: close after workflow complete failed", "ticket", t.ID, "error", err)
+				}
+				break
+			}
+			t.WorkflowPhase = next.ID
+			// For phases that need external action (agent, manual), stop advancing.
+			if next.Type == workflow.PhaseAgent || next.Type == workflow.PhaseManual {
+				break
+			}
+			// For deploy/observe/automated, fire the corresponding state triggers.
+			switch next.Type {
+			case workflow.PhaseDeploy:
+				_ = d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerDeploy, actor, nil)
+			case workflow.PhaseObserve:
+				_ = d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerObserve, actor, nil)
+			}
+		}
+		slog.Info("dispatch: ticket advanced through workflow after merge", "ticket", t.ID)
+		d.mu.Lock()
+		delete(d.mergeAttempts, t.ID)
+		d.mu.Unlock()
+		return
+	}
+
+	// Legacy path: hardcoded post-merge transitions.
 	for _, trigger := range []string{ticket.TriggerDeploy, ticket.TriggerObserve, ticket.TriggerClose} {
 		if err := d.ticketTransitioner.TransitionTicket(ctx, t.ID, trigger, actor, nil); err != nil {
 			slog.Error("dispatch: post-merge transition failed", "trigger", trigger, "ticket", t.ID, "error", err)
@@ -983,22 +1157,11 @@ func truncate(s string, maxLen int) string {
 func (d *Dispatcher) spawnConflictResolver(ctx context.Context, t *ticket.Ticket, prURL string) {
 	resolveKey := "resolve:" + t.ID
 
-	d.mu.Lock()
-	if len(d.active) >= d.cfg.MaxWorkers {
-		d.mu.Unlock()
-		slog.Info("dispatch: at capacity, deferring conflict resolution", "ticket", t.ID)
+	workerCtx, _, active, limit, started := d.startActive(ctx, resolveKey, t.ProjectID)
+	if !started {
+		slog.Info("dispatch: at capacity, deferring conflict resolution", "ticket", t.ID, "project", t.ProjectID, "active", active, "max", limit)
 		return
 	}
-	if _, running := d.active[resolveKey]; running {
-		d.mu.Unlock()
-		return
-	}
-	d.mu.Unlock()
-
-	workerCtx, cancel := context.WithCancel(ctx)
-	d.mu.Lock()
-	d.active[resolveKey] = cancel
-	d.mu.Unlock()
 
 	d.wg.Add(1)
 	go func() {
@@ -1006,6 +1169,7 @@ func (d *Dispatcher) spawnConflictResolver(ctx context.Context, t *ticket.Ticket
 		defer func() {
 			d.mu.Lock()
 			delete(d.active, resolveKey)
+			delete(d.activeProjects, resolveKey)
 			d.mu.Unlock()
 			go d.reconcile(ctx)
 		}()
@@ -1015,7 +1179,7 @@ func (d *Dispatcher) spawnConflictResolver(ctx context.Context, t *ticket.Ticket
 		}
 	}()
 
-	slog.Info("dispatch: spawned conflict resolver", "ticket", t.ID, "active", d.activeCount(), "max", d.cfg.MaxWorkers)
+	slog.Info("dispatch: spawned conflict resolver", "ticket", t.ID, "project", t.ProjectID, "active", active, "max", limit)
 }
 
 // runConflictResolver rebases a ticket's branch onto main and retries the merge.

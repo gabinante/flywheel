@@ -893,10 +893,26 @@ export interface components {
             dispatch_config?: components["schemas"]["DispatchConfig"];
         };
         DispatchConfig: {
+            /** @description Maximum concurrent active workers for this project. Set 0 or omit to inherit the server DISPATCH_MAX_WORKERS default. */
+            max_active_workers?: number;
+            /** @description Custom dispatch roles. Each role has its own routing policy and inherits prompt/tool behavior from a built-in worker type. */
+            roles?: components["schemas"]["DispatchWorkerRole"][];
             workers?: components["schemas"]["DispatchWorkerProfile"][];
             policies?: {
                 [key: string]: components["schemas"]["DispatchRolePolicy"];
             };
+        };
+        DispatchWorkerRole: {
+            /** @description Stable custom role key used in dispatch policies and ticket inputs. */
+            id?: string;
+            name?: string;
+            /** @description Additional instructions appended to workers launched for this custom role. */
+            description?: string;
+            /**
+             * @description Built-in worker behavior this custom role inherits for prompts and tool access.
+             * @enum {string}
+             */
+            base_type?: "planner" | "executor" | "validator" | "deployer" | "investigator";
         };
         DispatchWorkerProfile: {
             id?: string;
@@ -992,6 +1008,10 @@ export interface components {
             /** @description Repository alias for multi-repo projects (from project_repositories). Empty means primary repo. */
             target_repo?: string;
             assigned_to?: string;
+            /** @description Active workflow definition ID. Empty means legacy state machine. */
+            workflow_id?: string;
+            /** @description Current phase ID within the workflow. Empty means no active phase. */
+            workflow_phase?: string;
             created_by?: string;
             /** Format: date-time */
             created_at?: string;
@@ -1436,6 +1456,55 @@ export interface components {
             /** @enum {string} */
             status: "accepted" | "rejected" | "dismissed";
             resolved_by?: string;
+        };
+        WorkflowPhase: {
+            id: string;
+            name: string;
+            /** @enum {string} */
+            type: "agent" | "external" | "gate" | "manual" | "automated" | "deploy" | "observe";
+            description?: string;
+            config?: {
+                [key: string]: unknown;
+            };
+            on_failure?: string;
+        };
+        WorkflowDefinition: {
+            id?: string;
+            /** @enum {string} */
+            scope?: "system" | "org" | "project";
+            scope_id?: string;
+            name: string;
+            description?: string;
+            version?: number;
+            phases: components["schemas"]["WorkflowPhase"][];
+            is_active?: boolean;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        WorkflowPosition: {
+            workflow_id?: string;
+            workflow_name?: string;
+            current_phase?: components["schemas"]["WorkflowPhase"];
+            phase_index?: number;
+            total_phases?: number;
+            history?: components["schemas"]["PhaseCompletion"][];
+        };
+        PhaseCompletion: {
+            id?: string;
+            ticket_id?: string;
+            workflow_id?: string;
+            phase_id?: string;
+            /** Format: date-time */
+            started_at?: string;
+            /** Format: date-time */
+            completed_at?: string;
+            /** @enum {string} */
+            outcome?: "success" | "failed" | "skipped";
+            metadata?: {
+                [key: string]: unknown;
+            };
         };
     };
     responses: never;

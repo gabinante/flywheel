@@ -27,11 +27,20 @@ import type { components } from '@/lib/api/v1'
 
 type Project = components['schemas']['Project']
 type DispatchConfig = components['schemas']['DispatchConfig']
+type DispatchWorkerRole = components['schemas']['DispatchWorkerRole']
 type DispatchWorkerProfile = components['schemas']['DispatchWorkerProfile']
 type DispatchRolePolicy = components['schemas']['DispatchRolePolicy']
 
+type DispatchWorkerRoleDraft = {
+  id: string
+  name: string
+  description: string
+  base_type: NonNullable<DispatchWorkerRole['base_type']>
+}
 type DispatchWorkerDraft = NonNullable<DispatchConfig['workers']>[number]
 type DispatchConfigDraft = {
+  max_active_workers: number
+  roles: DispatchWorkerRoleDraft[]
   workers: DispatchWorkerDraft[]
   policies: Record<string, DispatchRolePolicy>
 }
@@ -54,6 +63,14 @@ const DRIVER_OPTIONS = [
 const SELECTION_OPTIONS = [
   { value: 'ordered', label: 'Ordered failover' },
   { value: 'any', label: 'Rotate across workers' },
+] as const
+
+const BASE_TYPE_OPTIONS = [
+  { value: 'executor', label: 'Implementation' },
+  { value: 'validator', label: 'Review' },
+  { value: 'planner', label: 'Planning' },
+  { value: 'deployer', label: 'Deployment' },
+  { value: 'investigator', label: 'Investigation' },
 ] as const
 
 const ROLE_OPTIONS = [
@@ -94,6 +111,15 @@ const ROLE_OPTIONS = [
   },
 ] as const
 
+type RoleOption = {
+  key: string
+  label: string
+  description: string
+  builtIn: boolean
+  customIndex?: number
+  baseType?: DispatchWorkerRoleDraft['base_type']
+}
+
 function emptyPolicy(policy?: DispatchRolePolicy): DispatchRolePolicy {
   return {
     selection_mode: policy?.selection_mode === 'any' ? 'any' : 'ordered',
@@ -101,7 +127,73 @@ function emptyPolicy(policy?: DispatchRolePolicy): DispatchRolePolicy {
   }
 }
 
+function normalizeRoleKey(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
+function humanizeRoleKey(value: string): string {
+  return normalizeRoleKey(value)
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function isBuiltInRoleKey(value: string): boolean {
+  const key = normalizeRoleKey(value)
+  return ROLE_OPTIONS.some((role) => role.key === key)
+}
+
+function parseRoleBaseType(
+  value?: string,
+): DispatchWorkerRoleDraft['base_type'] {
+  switch (normalizeRoleKey(value ?? '')) {
+    case 'planner':
+    case 'planning':
+      return 'planner'
+    case 'validator':
+    case 'review':
+    case 'validation':
+      return 'validator'
+    case 'deployer':
+    case 'deploy':
+    case 'deployment':
+      return 'deployer'
+    case 'investigator':
+    case 'investigation':
+      return 'investigator'
+    default:
+      return 'executor'
+  }
+}
+
+function uniqueRoleKey(base: string, roles: DispatchWorkerRoleDraft[], skipIndex = -1) {
+  const root = normalizeRoleKey(base) || 'custom_role'
+  const used = new Set(
+    roles
+      .filter((_, index) => index !== skipIndex)
+      .map((role) => role.id)
+      .filter(Boolean),
+  )
+  for (const role of ROLE_OPTIONS) {
+    used.add(role.key)
+  }
+  if (!used.has(root)) return root
+  for (let index = 2; ; index += 1) {
+    const candidate = `${root}_${index}`
+    if (!used.has(candidate)) return candidate
+  }
+}
+
 function normalizeDispatchConfig(input?: DispatchConfig | null): DispatchConfigDraft {
+  const maxActiveWorkers =
+    typeof input?.max_active_workers === 'number' && input.max_active_workers > 0
+      ? input.max_active_workers
+      : 0
   const workers = (input?.workers ?? []).map((worker, index) => ({
     id: worker.id?.trim() || `worker-${index + 1}`,
     name: worker.name?.trim() || worker.id?.trim() || `worker-${index + 1}`,
@@ -116,19 +208,57 @@ function normalizeDispatchConfig(input?: DispatchConfig | null): DispatchConfigD
     args: [...(worker.args ?? [])],
   }))
 
+  const roles: DispatchWorkerRoleDraft[] = []
+  for (const role of input?.roles ?? []) {
+    const requestedID = normalizeRoleKey(
+      role.id || role.name || `custom_role_${roles.length + 1}`,
+    )
+    if (isBuiltInRoleKey(requestedID)) continue
+    const id = uniqueRoleKey(requestedID, roles)
+    roles.push({
+      id,
+      name: role.name?.trim() || humanizeRoleKey(id) || id,
+      description: role.description?.trim() ?? '',
+      base_type: parseRoleBaseType(role.base_type),
+    })
+  }
+
   const policies: Record<string, DispatchRolePolicy> = {}
   for (const role of ROLE_OPTIONS) {
     policies[role.key] = emptyPolicy(input?.policies?.[role.key])
   }
   for (const [key, value] of Object.entries(input?.policies ?? {})) {
-    policies[key] = emptyPolicy(value)
+    const roleKey = normalizeRoleKey(key)
+    if (!roleKey) continue
+    policies[roleKey] = emptyPolicy(value)
+    if (
+      !isBuiltInRoleKey(roleKey) &&
+      !roles.some((role) => role.id === roleKey)
+    ) {
+      roles.push({
+        id: roleKey,
+        name: humanizeRoleKey(roleKey) || roleKey,
+        description: '',
+        base_type: 'executor',
+      })
+    }
   }
 
-  return { workers, policies }
+  return { max_active_workers: maxActiveWorkers, roles, workers, policies }
 }
 
 function serializeDispatchConfig(draft: DispatchConfigDraft): DispatchConfig {
   return {
+    max_active_workers:
+      Number.isFinite(draft.max_active_workers) && draft.max_active_workers > 0
+        ? Math.floor(draft.max_active_workers)
+        : undefined,
+    roles: draft.roles.map((role) => ({
+      id: normalizeRoleKey(role.id),
+      name: role.name.trim() || humanizeRoleKey(role.id) || role.id,
+      description: role.description.trim() || undefined,
+      base_type: parseRoleBaseType(role.base_type),
+    })),
     workers: draft.workers.map((worker) => ({
       id: worker.id?.trim() || undefined,
       name: worker.name?.trim() || worker.id?.trim() || undefined,
@@ -239,6 +369,28 @@ export function ProjectDispatchRoutingCard({
     [draft.workers],
   )
 
+  const roleOptions = useMemo<RoleOption[]>(
+    () => [
+      ...ROLE_OPTIONS.map((role) => ({
+        key: role.key,
+        label: role.label,
+        description: role.description,
+        builtIn: true,
+      })),
+      ...draft.roles.map((role, index) => ({
+        key: role.id,
+        label: role.name || humanizeRoleKey(role.id) || role.id,
+        description:
+          role.description ||
+          `Custom role using ${humanizeRoleKey(role.base_type).toLowerCase()} behavior.`,
+        builtIn: false,
+        customIndex: index,
+        baseType: role.base_type,
+      })),
+    ],
+    [draft.roles],
+  )
+
   function updateWorker(index: number, patch: Partial<DispatchWorkerProfile>) {
     setDraft((current) => {
       const workers = [...current.workers]
@@ -249,6 +401,7 @@ export function ProjectDispatchRoutingCard({
 
   function removeWorker(workerID: string) {
     setDraft((current) => ({
+      ...current,
       workers: current.workers.filter((worker) => worker.id !== workerID),
       policies: Object.fromEntries(
         Object.entries(current.policies).map(([role, policy]) => [
@@ -282,6 +435,67 @@ export function ProjectDispatchRoutingCard({
         },
       ],
     }))
+  }
+
+  function addRole() {
+    setDraft((current) => {
+      const id = uniqueRoleKey(`custom_role_${current.roles.length + 1}`, current.roles)
+      return {
+        ...current,
+        roles: [
+          ...current.roles,
+          {
+            id,
+            name: humanizeRoleKey(id),
+            description: '',
+            base_type: 'executor',
+          },
+        ],
+        policies: {
+          ...current.policies,
+          [id]: emptyPolicy(),
+        },
+      }
+    })
+  }
+
+  function updateRole(index: number, patch: Partial<DispatchWorkerRoleDraft>) {
+    setDraft((current) => {
+      const roles = [...current.roles]
+      const previous = roles[index]
+      if (!previous) return current
+
+      const nextID =
+        patch.id !== undefined
+          ? uniqueRoleKey(patch.id, current.roles, index)
+          : previous.id
+      roles[index] = {
+        ...previous,
+        ...patch,
+        id: nextID,
+        base_type: parseRoleBaseType(patch.base_type ?? previous.base_type),
+      }
+
+      if (nextID === previous.id) {
+        return { ...current, roles }
+      }
+
+      const policies = { ...current.policies }
+      policies[nextID] = emptyPolicy(policies[previous.id])
+      delete policies[previous.id]
+      return { ...current, roles, policies }
+    })
+  }
+
+  function removeRole(index: number) {
+    setDraft((current) => {
+      const role = current.roles[index]
+      if (!role) return current
+      const roles = current.roles.filter((_, roleIndex) => roleIndex !== index)
+      const policies = { ...current.policies }
+      delete policies[role.id]
+      return { ...current, roles, policies }
+    })
   }
 
   function setPolicy(role: string, patch: Partial<DispatchRolePolicy>) {
@@ -339,10 +553,9 @@ export function ProjectDispatchRoutingCard({
       <CardHeader className="gap-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-1.5">
-            <CardTitle className="text-sm">Worker routing</CardTitle>
+            <CardTitle className="text-sm">Worker settings</CardTitle>
             <CardDescription>
-              Configure reusable Claude, Codex, or API-compatible worker
-              profiles and decide which roles can use them.
+              Set project worker capacity, runtime profiles, and role routing.
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
@@ -355,25 +568,57 @@ export function ProjectDispatchRoutingCard({
             </Button>
             <Button size="xs" onClick={() => void saveConfig()} disabled={saving}>
               <Save className="size-3.5" />
-              {saving ? 'Saving…' : 'Save routing'}
+              {saving ? 'Saving…' : 'Save settings'}
             </Button>
           </div>
         </div>
         <p className="text-xs leading-relaxed text-muted-foreground">
-          `credential_env_var` is the name of an environment variable on the
-          Flywheel server. Secrets stay in the server environment, not in the
-          project record.
+          Worker profile secrets are referenced by environment variable name.
+          Secret values stay in the Flywheel server environment.
         </p>
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
       </CardHeader>
       <CardContent className="space-y-6">
+        <section className="rounded-2xl border border-white/10 bg-black/10 p-4">
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_12rem] md:items-end">
+            <div className="space-y-1">
+              <h3 className="text-sm font-medium text-foreground">
+                Active worker limit
+              </h3>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Maximum workers this project can run at once across implementation,
+                review, and conflict-resolution work. Use 0 to inherit the server
+                default.
+              </p>
+            </div>
+            <Label>
+              Max active
+              <Input
+                type="number"
+                min={0}
+                step={1}
+                value={draft.max_active_workers}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    max_active_workers: Math.max(
+                      0,
+                      Math.floor(Number(event.target.value) || 0),
+                    ),
+                  }))
+                }
+              />
+            </Label>
+          </div>
+        </section>
+
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-medium text-foreground">Worker profiles</h3>
               <p className="text-xs text-muted-foreground">
-                Profiles can target Claude, Codex, Docker, or OpenAI-compatible
-                API runners.
+                Optional runtime overrides. Leave empty to use the server default
+                worker.
               </p>
             </div>
             <Badge variant="outline">
@@ -561,17 +806,23 @@ export function ProjectDispatchRoutingCard({
         </section>
 
         <section className="space-y-3">
-          <div>
-            <h3 className="text-sm font-medium text-foreground">Role policies</h3>
-            <p className="text-xs text-muted-foreground">
-              Leave a role empty to use every enabled worker for that role.
-              Ordered mode fails over in sequence. Rotate mode spreads initial
-              attempts across the selected workers and still fails over.
-            </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h3 className="text-sm font-medium text-foreground">Role policies</h3>
+              <p className="text-xs text-muted-foreground">
+                Leave a role empty to use every enabled worker for that role.
+                Ordered mode fails over in sequence. Rotate mode spreads initial
+                attempts across the selected workers and still fails over.
+              </p>
+            </div>
+            <Button variant="outline" size="xs" onClick={addRole}>
+              <Plus className="size-3.5" />
+              Add role
+            </Button>
           </div>
 
           <div className="space-y-3">
-            {ROLE_OPTIONS.map((role) => {
+            {roleOptions.map((role) => {
               const policy = emptyPolicy(draft.policies[role.key])
               const selectedWorkerIDs = policy.worker_ids ?? []
               const selectedWorkers = selectedWorkerIDs.map(
@@ -586,6 +837,10 @@ export function ProjectDispatchRoutingCard({
               const available = workerOptions.filter(
                 (worker) => !selectedWorkerIDs.includes(worker.id),
               )
+              const customRole =
+                role.customIndex !== undefined
+                  ? draft.roles[role.customIndex]
+                  : undefined
 
               return (
                 <div
@@ -593,39 +848,122 @@ export function ProjectDispatchRoutingCard({
                   className="rounded-2xl border border-white/10 bg-black/10 p-4"
                 >
                   <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                    <div className="space-y-1">
+                    <div className="flex-1 space-y-3">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-medium text-foreground">
                           {role.label}
                         </p>
                         <Badge variant="outline">{role.key}</Badge>
+                        <Badge variant="outline">
+                          {role.builtIn ? 'Built-in' : 'Custom'}
+                        </Badge>
+                        {role.baseType ? (
+                          <Badge variant="outline">
+                            {humanizeRoleKey(role.baseType)} base
+                          </Badge>
+                        ) : null}
                       </div>
                       <p className="text-xs text-muted-foreground">
                         {role.description}
                       </p>
+                      {customRole ? (
+                        <div className="grid gap-3 md:grid-cols-3">
+                          <Label>
+                            Role name
+                            <Input
+                              value={customRole.name}
+                              onChange={(event) =>
+                                updateRole(role.customIndex ?? -1, {
+                                  name: event.target.value,
+                                })
+                              }
+                              placeholder="Security review"
+                            />
+                          </Label>
+                          <Label>
+                            Role key
+                            <Input
+                              value={customRole.id}
+                              onChange={(event) =>
+                                updateRole(role.customIndex ?? -1, {
+                                  id: event.target.value,
+                                })
+                              }
+                              placeholder="security_review"
+                            />
+                          </Label>
+                          <Label>
+                            Base behavior
+                            <Select
+                              value={customRole.base_type}
+                              onValueChange={(value) =>
+                                updateRole(role.customIndex ?? -1, {
+                                  base_type: parseRoleBaseType(value),
+                                })
+                              }
+                            >
+                              <SelectTrigger className="w-full bg-white/5">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {BASE_TYPE_OPTIONS.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </Label>
+                          <Label className="md:col-span-3">
+                            Role instructions
+                            <Textarea
+                              value={customRole.description}
+                              onChange={(event) =>
+                                updateRole(role.customIndex ?? -1, {
+                                  description: event.target.value,
+                                })
+                              }
+                              rows={2}
+                              placeholder="Additional instructions appended to workers launched for this role."
+                            />
+                          </Label>
+                        </div>
+                      ) : null}
                     </div>
-                    <Label className="xl:w-52">
-                      Selection mode
-                      <Select
-                        value={policy.selection_mode === 'any' ? 'any' : 'ordered'}
-                        onValueChange={(value) =>
-                          setPolicy(role.key, {
-                            selection_mode: value === 'any' ? 'any' : 'ordered',
-                          })
-                        }
-                      >
-                        <SelectTrigger className="w-full bg-white/5">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {SELECTION_OPTIONS.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </Label>
+                    <div className="flex flex-col gap-3 xl:w-52">
+                      <Label>
+                        Selection mode
+                        <Select
+                          value={policy.selection_mode === 'any' ? 'any' : 'ordered'}
+                          onValueChange={(value) =>
+                            setPolicy(role.key, {
+                              selection_mode: value === 'any' ? 'any' : 'ordered',
+                            })
+                          }
+                        >
+                          <SelectTrigger className="w-full bg-white/5">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {SELECTION_OPTIONS.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </Label>
+                      {role.customIndex !== undefined ? (
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          onClick={() => removeRole(role.customIndex ?? -1)}
+                        >
+                          <Trash2 className="size-3.5" />
+                          Remove role
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
 
                   <div className="mt-4 space-y-3">

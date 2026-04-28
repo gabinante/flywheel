@@ -167,6 +167,34 @@ func TestDetermineWorkerType(t *testing.T) {
 	}
 }
 
+func TestResolveTicketWorkerRoleCustomRole(t *testing.T) {
+	proj := &project.Project{
+		ID: "p-1",
+		DispatchConfig: project.DispatchConfig{
+			Roles: []project.DispatchWorkerRole{
+				{
+					ID:          "security_review",
+					Name:        "Security Review",
+					Description: "Focus on auth boundaries.",
+					BaseType:    "validator",
+				},
+			},
+		},
+	}
+	tk := &ticket.Ticket{
+		State:  ticket.StatePending,
+		Inputs: map[string]any{"worker_role": "security-review"},
+	}
+
+	role, wt := resolveTicketWorkerRole(proj, tk)
+	if role != "security_review" {
+		t.Fatalf("role = %q, want security_review", role)
+	}
+	if wt != WorkerTypeValidator {
+		t.Fatalf("worker type = %q, want validator", wt)
+	}
+}
+
 func TestAssembleTypedWorkerPrompt(t *testing.T) {
 	proj := &project.Project{
 		ID:   "p-1",

@@ -51,6 +51,7 @@ import (
 	"github.com/gabinante/flywheel/internal/stream"
 	"github.com/gabinante/flywheel/internal/ticket"
 	"github.com/gabinante/flywheel/internal/user"
+	"github.com/gabinante/flywheel/internal/workflow"
 	"github.com/gabinante/flywheel/internal/workstream"
 
 	"github.com/alicebob/miniredis/v2"
@@ -123,6 +124,12 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	if cfg.Dispatch.AutoApproveOnAcceptancePass {
 		ticketSvc.SetAutoApproveOnPass(true)
 	}
+
+	// Workflow engine: configurable SDLC pipelines per system/org/project.
+	workflowStore := workflow.NewStore(pool)
+	workflowEngine := workflow.NewEngine(workflowStore, ticketStore)
+	workflowResolver := workflow.NewResolver(workflowEngine)
+	ticketSvc.SetWorkflowResolver(workflowResolver)
 
 	// Policy layer: composable rules with most-restrictive-wins semantics.
 	postureStore := policy.NewPostgresStore(pool)
@@ -409,6 +416,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			Pillar:         pillarSvc,
 			StateIndex:     stateIndexSvc,
 			Rollback:       rollbackSvc,
+			Workflow:       workflowEngine,
 		})
 		if err != nil {
 			slog.Error("mcp server init failed", "error", err)
@@ -461,6 +469,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		}, bus, ticketSvc, projectSvc)
 		dispatcher.SetLeaseReleaser(queueSvc)
 		dispatcher.SetTicketTransitioner(ticketSvc)
+		dispatcher.SetWorkflowEngine(workflowEngine)
 		// Wire worktree cleanup for rollback when dispatcher manages worktrees.
 		rollbackSvc.SetWorktreeRemover(&dispatch.WorktreeManager{
 			BaseDir: cfg.Dispatch.WorktreeDir,
@@ -522,6 +531,14 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			ProjectSvc:  projectSvc,
 			OrgSvc:      orgSvc,
 			AgentStore:  agentStore,
+		},
+		WorkflowHandler: &rest.WorkflowHandler{
+			Engine:     workflowEngine,
+			Store:      workflowStore,
+			TicketSvc:  ticketSvc,
+			ProjectSvc: projectSvc,
+			OrgSvc:     orgSvc,
+			AgentStore: agentStore,
 		},
 		HealthCheckers: []rest.HealthChecker{
 			&rest.PostgresHealthChecker{Pool: pool},

@@ -33,6 +33,7 @@ type NavItem = {
   /** Match pattern: if location starts with this, the item is active */
   match?: string
   badgeCount?: number
+  children?: NavItem[]
 }
 
 function formatBadgeCount(count: number): string {
@@ -62,32 +63,56 @@ function NavSection({
           ? currentPath.startsWith(item.match)
           : currentPath === item.href
         return (
-          <Link
-            key={item.href}
-            to={item.href}
-            className={cn(
-              'group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-              active
-                ? 'bg-sidebar-accent text-sidebar-primary'
-                : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
-              !expanded && 'justify-center px-0',
-            )}
-            title={expanded ? undefined : item.label}
-          >
-            <item.icon className="size-4 shrink-0" />
-            {expanded && <span className="truncate">{item.label}</span>}
-            {item.badgeCount && item.badgeCount > 0 ? (
-              expanded ? (
-                <Badge className="ml-auto border-red-500/30 bg-red-500/15 text-red-400">
-                  {formatBadgeCount(item.badgeCount)}
-                </Badge>
-              ) : (
-                <span className="absolute right-1.5 top-1.5 flex min-w-4 items-center justify-center rounded-full border border-red-500/30 bg-red-500/90 px-1 text-[10px] font-semibold leading-4 text-white shadow-sm">
-                  {formatBadgeCount(item.badgeCount)}
-                </span>
-              )
+          <div key={item.href} className="flex flex-col gap-0.5">
+            <Link
+              to={item.href}
+              className={cn(
+                'group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                active
+                  ? 'bg-sidebar-accent text-sidebar-primary'
+                  : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
+                !expanded && 'justify-center px-0',
+              )}
+              title={expanded ? undefined : item.label}
+            >
+              <item.icon className="size-4 shrink-0" />
+              {expanded && <span className="truncate">{item.label}</span>}
+              {item.badgeCount && item.badgeCount > 0 ? (
+                expanded ? (
+                  <Badge className="ml-auto border-red-500/30 bg-red-500/15 text-red-400">
+                    {formatBadgeCount(item.badgeCount)}
+                  </Badge>
+                ) : (
+                  <span className="absolute right-1.5 top-1.5 flex min-w-4 items-center justify-center rounded-full border border-red-500/30 bg-red-500/90 px-1 text-[10px] font-semibold leading-4 text-white shadow-sm">
+                    {formatBadgeCount(item.badgeCount)}
+                  </span>
+                )
+              ) : null}
+            </Link>
+            {expanded && item.children && item.children.length > 0 ? (
+              <div className="ml-5 flex flex-col gap-0.5 border-l border-sidebar-border/70 pl-2">
+                {item.children.map((child) => {
+                  const childActive = child.match
+                    ? currentPath.startsWith(child.match)
+                    : currentPath === child.href
+                  return (
+                    <Link
+                      key={child.href}
+                      to={child.href}
+                      className={cn(
+                        'rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
+                        childActive
+                          ? 'bg-sidebar-accent/80 text-sidebar-primary'
+                          : 'text-sidebar-foreground/55 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground',
+                      )}
+                    >
+                      {child.label}
+                    </Link>
+                  )
+                })}
+              </div>
             ) : null}
-          </Link>
+          </div>
         )
       })}
     </div>
@@ -164,6 +189,32 @@ export function LeftSidebar() {
           icon: Settings,
           href: `${projectBase}/settings`,
           match: `${projectBase}/settings`,
+          children: [
+            {
+              label: 'Dispatch',
+              icon: Settings,
+              href: `${projectBase}/settings/dispatch`,
+              match: `${projectBase}/settings/dispatch`,
+            },
+            {
+              label: 'Workers and roles',
+              icon: Settings,
+              href: `${projectBase}/settings/workers`,
+              match: `${projectBase}/settings/workers`,
+            },
+            {
+              label: 'Workflow stages',
+              icon: Settings,
+              href: `${projectBase}/settings/workflow`,
+              match: `${projectBase}/settings/workflow`,
+            },
+            {
+              label: 'Integrations',
+              icon: Settings,
+              href: `${projectBase}/settings/integrations`,
+              match: `${projectBase}/settings/integrations`,
+            },
+          ],
         },
       ]
     : []

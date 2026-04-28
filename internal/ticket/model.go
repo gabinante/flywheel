@@ -186,8 +186,10 @@ type Ticket struct {
 	Outputs       map[string]any `json:"outputs"`
 	DependsOn     []string       `json:"depends_on"`
 	WorkStreamID  string         `json:"work_stream_id,omitempty"`
-	TargetRepo    string         `json:"target_repo,omitempty"` // repo alias from project_repositories; empty = primary repo
+	TargetRepo    string         `json:"target_repo,omitempty"`    // repo alias from project_repositories; empty = primary repo
 	AssignedTo    string         `json:"assigned_to,omitempty"`
+	WorkflowID    string         `json:"workflow_id,omitempty"`    // active workflow definition; empty = legacy state machine
+	WorkflowPhase string         `json:"workflow_phase,omitempty"` // current phase ID within the workflow
 	CreatedBy     string         `json:"created_by"`
 	CreatedAt     time.Time      `json:"created_at"`
 	UpdatedAt     time.Time      `json:"updated_at"`

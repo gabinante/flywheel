@@ -123,6 +123,10 @@ func (s *inMemoryTicketStore) UpdateTargetRepo(_ context.Context, _ string, _ st
 	return nil
 }
 
+func (s *inMemoryTicketStore) UpdateWorkflowPhase(_ context.Context, _ string, _ string) error {
+	return nil
+}
+
 func (s *inMemoryTicketStore) UpdateTitleAndObjective(_ context.Context, id string, title string, objective Objective) error {
 	if t, ok := s.tickets[id]; ok {
 		t.Title = title

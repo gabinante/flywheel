@@ -36,6 +36,7 @@ type RouterConfig struct {
 	HooksHandler        *HooksHandler        // Change event webhook receiver (spec v0.2 §2.4)
 	PillarsHandler      *PillarsHandler      // Pillar and strategy layer (Layer 15)
 	DeliveryHandler     *DeliveryHandler     // Delivery integrations (pipeline, PR, config)
+	WorkflowHandler     *WorkflowHandler     // Configurable SDLC workflow definitions
 	// HealthCheckers are called by /readyz for deep readiness checks.
 	HealthCheckers []HealthChecker
 	// WebDist is the Vite outDir (contains index.html and assets/). Empty skips SPA routes.
@@ -177,6 +178,10 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	if cfg.DeliveryHandler != nil {
 		cfg.DeliveryHandler.RegisterRoutes(mux)
+
+		if cfg.WorkflowHandler != nil {
+			cfg.WorkflowHandler.RegisterRoutes(mux)
+		}
 	}
 
 	h := http.Handler(mux)

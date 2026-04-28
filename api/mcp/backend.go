@@ -16,6 +16,7 @@ import (
 	"github.com/gabinante/flywheel/internal/rollback"
 	"github.com/gabinante/flywheel/internal/stateindex"
 	"github.com/gabinante/flywheel/internal/ticket"
+	"github.com/gabinante/flywheel/internal/workflow"
 	"github.com/gabinante/flywheel/internal/workstream"
 )
 
@@ -53,6 +54,7 @@ type Backend struct {
 	StateIndex *stateindex.Service
 
 	Rollback   *rollback.Service
+	Workflow   *workflow.Engine
 
 	// DefaultAgentID is used as a fallback when agent_id is not passed in args
 	// and not available from HTTP auth context (e.g. stdio mode with FLYWHEEL_TOKEN).

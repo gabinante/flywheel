@@ -39,10 +39,10 @@ func (s *Store) Create(ctx context.Context, t *Ticket) error {
 	inJSON, _ := json.Marshal(t.Inputs)
 	outJSON, _ := json.Marshal(t.Outputs)
 	_, err := s.pool.Exec(ctx,
-		`INSERT INTO tickets (id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, created_by, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+		`INSERT INTO tickets (id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, workflow_id, workflow_phase, created_by, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
 		t.ID, t.ProjectID, t.Title, string(t.Type), int(t.Priority), string(t.State), t.Version,
-		objJSON, ctxJSON, inJSON, outJSON, t.DependsOn, nullIfEmpty(t.WorkStreamID), nullIfEmpty(t.EnvironmentID), nullIfEmpty(t.TargetRepo), t.CreatedBy, t.CreatedAt, t.UpdatedAt)
+		objJSON, ctxJSON, inJSON, outJSON, t.DependsOn, nullIfEmpty(t.WorkStreamID), nullIfEmpty(t.EnvironmentID), nullIfEmpty(t.TargetRepo), nullIfEmpty(t.WorkflowID), nullIfEmpty(t.WorkflowPhase), t.CreatedBy, t.CreatedAt, t.UpdatedAt)
 	return err
 }
 
@@ -51,15 +51,12 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Ticket, error) {
 	var t Ticket
 	var objJSON, ctxJSON, inJSON, outJSON []byte
 	var dependsOn []string
-	var assignedTo *string
-	var workStreamID *string
-	var environmentID *string
-	var targetRepo *string
+	var assignedTo, workStreamID, environmentID, targetRepo, workflowID, workflowPhase *string
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, created_by, created_at, updated_at
+		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_phase, created_by, created_at, updated_at
 		 FROM tickets WHERE id = $1`, id).
 		Scan(&t.ID, &t.ProjectID, &t.Title, &t.Type, &t.Priority, &t.State, &t.Version,
-			&objJSON, &ctxJSON, &inJSON, &outJSON, &dependsOn, &workStreamID, &environmentID, &targetRepo, &assignedTo, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt)
+			&objJSON, &ctxJSON, &inJSON, &outJSON, &dependsOn, &workStreamID, &environmentID, &targetRepo, &assignedTo, &workflowID, &workflowPhase, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -74,6 +71,12 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Ticket, error) {
 	}
 	if targetRepo != nil {
 		t.TargetRepo = *targetRepo
+	}
+	if workflowID != nil {
+		t.WorkflowID = *workflowID
+	}
+	if workflowPhase != nil {
+		t.WorkflowPhase = *workflowPhase
 	}
 	_ = json.Unmarshal(objJSON, &t.Objective)
 	_ = json.Unmarshal(ctxJSON, &t.Context)
@@ -94,7 +97,7 @@ func (s *Store) GetByIDs(ctx context.Context, ids []string) ([]*Ticket, error) {
 		return nil, nil
 	}
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, created_by, created_at, updated_at
+		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_phase, created_by, created_at, updated_at
 		 FROM tickets WHERE id = ANY($1)`, ids)
 	if err != nil {
 		return nil, err
@@ -105,7 +108,7 @@ func (s *Store) GetByIDs(ctx context.Context, ids []string) ([]*Ticket, error) {
 
 // GetByProject returns tickets for a project. If workStreamID is non-empty, filters by work_stream_id. If state is non-empty, filters by state.
 func (s *Store) GetByProject(ctx context.Context, projectID string, workStreamID string, state State) ([]*Ticket, error) {
-	q := `SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, created_by, created_at, updated_at
+	q := `SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_phase, created_by, created_at, updated_at
 		 FROM tickets WHERE project_id = $1`
 	args := []any{projectID}
 	argNum := 2
@@ -133,11 +136,11 @@ func (s *Store) ListByState(ctx context.Context, projectID string, state State) 
 	var q string
 	var args []any
 	if projectID != "" {
-		q = `SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, created_by, created_at, updated_at
+		q = `SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_phase, created_by, created_at, updated_at
 		     FROM tickets WHERE project_id = $1 AND state = $2 ORDER BY priority, created_at`
 		args = []any{projectID, string(state)}
 	} else {
-		q = `SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, created_by, created_at, updated_at
+		q = `SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_phase, created_by, created_at, updated_at
 		     FROM tickets WHERE state = $1 ORDER BY priority, created_at`
 		args = []any{string(state)}
 	}
@@ -200,6 +203,12 @@ func (s *Store) UpdateWorkStreamID(ctx context.Context, id string, workStreamID 
 // UpdateEnvironmentID sets the environment_id for a ticket.
 func (s *Store) UpdateEnvironmentID(ctx context.Context, id string, environmentID string) error {
 	_, err := s.pool.Exec(ctx, `UPDATE tickets SET environment_id = $1, updated_at = now() WHERE id = $2`, nullIfEmpty(environmentID), id)
+	return err
+}
+
+// UpdateWorkflowPhase sets the workflow_phase for a ticket.
+func (s *Store) UpdateWorkflowPhase(ctx context.Context, id string, workflowPhase string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE tickets SET workflow_phase = $1, updated_at = now() WHERE id = $2`, nullIfEmpty(workflowPhase), id)
 	return err
 }
 
@@ -298,7 +307,7 @@ func (s *Store) ListStaleTickets(ctx context.Context, states []State, threshold 
 	}
 	cutoff := time.Now().UTC().Add(-threshold)
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, created_by, created_at, updated_at
+		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_phase, created_by, created_at, updated_at
 		 FROM tickets WHERE state = ANY($1) AND updated_at < $2 ORDER BY updated_at`, stateStrings, cutoff)
 	if err != nil {
 		return nil, err
@@ -313,9 +322,9 @@ func (s *Store) scanRows(rows pgx.Rows) ([]*Ticket, error) {
 		var t Ticket
 		var objJSON, ctxJSON, inJSON, outJSON []byte
 		var dependsOn []string
-		var workStreamID, environmentID, targetRepo, assignedTo *string
+		var workStreamID, environmentID, targetRepo, assignedTo, workflowID, workflowPhase *string
 		if err := rows.Scan(&t.ID, &t.ProjectID, &t.Title, &t.Type, &t.Priority, &t.State, &t.Version,
-			&objJSON, &ctxJSON, &inJSON, &outJSON, &dependsOn, &workStreamID, &environmentID, &targetRepo, &assignedTo, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			&objJSON, &ctxJSON, &inJSON, &outJSON, &dependsOn, &workStreamID, &environmentID, &targetRepo, &assignedTo, &workflowID, &workflowPhase, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, err
 		}
 		if assignedTo != nil {
@@ -329,6 +338,12 @@ func (s *Store) scanRows(rows pgx.Rows) ([]*Ticket, error) {
 		}
 		if targetRepo != nil {
 			t.TargetRepo = *targetRepo
+		}
+		if workflowID != nil {
+			t.WorkflowID = *workflowID
+		}
+		if workflowPhase != nil {
+			t.WorkflowPhase = *workflowPhase
 		}
 		_ = json.Unmarshal(objJSON, &t.Objective)
 		_ = json.Unmarshal(ctxJSON, &t.Context)

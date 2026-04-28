@@ -21,6 +21,7 @@ type TicketStore interface {
 	UpdateWorkStreamID(ctx context.Context, id string, workStreamID string) error
 	UpdateEnvironmentID(ctx context.Context, id string, environmentID string) error
 	UpdateTargetRepo(ctx context.Context, id string, targetRepo string) error
+	UpdateWorkflowPhase(ctx context.Context, id string, workflowPhase string) error
 	UpdateTitleAndObjective(ctx context.Context, id string, title string, obj Objective) error
 	CountByCreatedBy(ctx context.Context, createdBy string) (int, error)
 	CountByCreatedByPerDay(ctx context.Context, createdBy string, days int) ([]int, error)

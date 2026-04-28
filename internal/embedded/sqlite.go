@@ -131,9 +131,35 @@ func migrate(db *sql.DB) error {
 			environment_id  TEXT,
 			target_repo     TEXT,
 			assigned_to     TEXT,
+			workflow_id     TEXT,
+			workflow_phase  TEXT,
 			created_by      TEXT NOT NULL,
 			created_at      TEXT NOT NULL DEFAULT (datetime('now')),
 			updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		// Workflow definitions
+		`CREATE TABLE IF NOT EXISTS workflow_definitions (
+			id          TEXT PRIMARY KEY,
+			scope       TEXT NOT NULL CHECK (scope IN ('system', 'org', 'project')),
+			scope_id    TEXT NOT NULL DEFAULT '',
+			name        TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			version     INTEGER NOT NULL DEFAULT 1,
+			phases      TEXT NOT NULL DEFAULT '[]',
+			is_active   INTEGER NOT NULL DEFAULT 0,
+			created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		// Workflow phase completions
+		`CREATE TABLE IF NOT EXISTS workflow_phase_completions (
+			id           TEXT PRIMARY KEY,
+			ticket_id    TEXT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+			workflow_id  TEXT NOT NULL,
+			phase_id     TEXT NOT NULL,
+			started_at   TEXT NOT NULL,
+			completed_at TEXT NOT NULL DEFAULT (datetime('now')),
+			outcome      TEXT NOT NULL CHECK (outcome IN ('success', 'failed', 'skipped')),
+			metadata     TEXT NOT NULL DEFAULT '{}'
 		)`,
 		// Environments (compound tuple: infrastructure × data_tenancy × integration_mode)
 		`CREATE TABLE IF NOT EXISTS environments (

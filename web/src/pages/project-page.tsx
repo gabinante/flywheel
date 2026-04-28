@@ -16,6 +16,7 @@ import {
 import { DispatchDashboard } from '@/components/dispatch-dashboard'
 import { ProjectDispatchRoutingCard } from '@/components/project-dispatch-routing-card'
 import { ProjectIntegrationsSection } from '@/components/project-integrations-section'
+import { WorkflowTimelineEditor } from '@/components/workflow-timeline-editor'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -368,6 +369,8 @@ export function ProjectPage() {
           </Button>
         </CardHeader>
       </Card>
+
+      <WorkflowTimelineEditor projectId={projectId} />
 
       <ProjectDispatchRoutingCard
         projectId={projectId}
