@@ -1,0 +1,58 @@
+// GoHighPayment Prisma Schema
+// This is the database schema for the GoHighPayment platform.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Merchant {
+  id                String    @id @default(uuid())
+  name              String
+  email             String    @unique
+  apiKey            String    @unique @map("api_key")
+  apiKeyHash        String    @unique @map("api_key_hash")
+  webhookSecret     String?   @map("webhook_secret")
+  webhookUrl        String?   @map("webhook_url")
+  isActive          Boolean   @default(true) @map("is_active")
+  rateLimitOverride Json?     @map("rate_limit_override")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  checkoutSessions CheckoutSession[]
+  webhookEvents    WebhookEvent[]
+
+  @@map("merchants")
+}
+
+model CheckoutSession {
+  id          String   @id @default(uuid())
+  merchantId  String   @map("merchant_id")
+  amount      Int
+  currency    String   @default("USD")
+  status      String   @default("pending")
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id])
+
+  @@map("checkout_sessions")
+}
+
+model WebhookEvent {
+  id         String   @id @default(uuid())
+  merchantId String   @map("merchant_id")
+  eventType  String   @map("event_type")
+  payload    Json
+  status     String   @default("pending")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id])
+
+  @@map("webhook_events")
+}
