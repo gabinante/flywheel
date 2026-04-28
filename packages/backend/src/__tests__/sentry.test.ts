@@ -21,6 +21,7 @@ vi.mock('@sentry/node', () => {
     flush: vi.fn().mockResolvedValue(true),
     getCurrentScope: vi.fn().mockReturnValue(scope),
     withScope: vi.fn((callback: (s: typeof scope) => void) => callback(scope)),
+    startSpan: vi.fn((_opts: unknown, callback: () => unknown) => callback()),
   };
 });
 
@@ -47,6 +48,7 @@ describe('Sentry Utils', () => {
         flush: vi.fn().mockResolvedValue(true),
         getCurrentScope: vi.fn().mockReturnValue(scope),
         withScope: vi.fn((callback: (s: typeof scope) => void) => callback(scope)),
+        startSpan: vi.fn((_opts: unknown, callback: () => unknown) => callback()),
       };
     });
 
@@ -159,6 +161,58 @@ describe('Sentry Utils', () => {
       sentryUtils.initSentry({ dsn: 'https://test@sentry.io/123' });
       await sentryUtils.flushSentry(3000);
       expect(SentryMock.flush).toHaveBeenCalledWith(3000);
+    });
+  });
+
+  describe('sentryTrace', () => {
+    it('executes callback directly when Sentry is not initialized', async () => {
+      const callback = vi.fn().mockResolvedValue('result');
+      const result = await sentryUtils.sentryTrace('test.op', { key: 'val' }, callback);
+      expect(result).toBe('result');
+      expect(callback).toHaveBeenCalledTimes(1);
+      expect((SentryMock as any).startSpan).not.toHaveBeenCalled();
+    });
+
+    it('wraps callback with Sentry.startSpan when initialized', async () => {
+      sentryUtils.initSentry({ dsn: 'https://test@sentry.io/123' });
+      const callback = vi.fn().mockResolvedValue('traced-result');
+      const result = await sentryUtils.sentryTrace(
+        'checkout.subscribe',
+        { merchantId: 'merch_1', correlationId: 'corr_1' },
+        callback
+      );
+      expect(result).toBe('traced-result');
+      expect((SentryMock as any).startSpan).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'checkout.subscribe',
+          op: 'checkout.subscribe',
+          attributes: { merchantId: 'merch_1', correlationId: 'corr_1' },
+        }),
+        expect.any(Function)
+      );
+    });
+
+    it('filters undefined attributes', async () => {
+      sentryUtils.initSentry({ dsn: 'https://test@sentry.io/123' });
+      await sentryUtils.sentryTrace(
+        'test.op',
+        { present: 'yes', absent: undefined },
+        async () => 'ok'
+      );
+      expect((SentryMock as any).startSpan).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attributes: { present: 'yes' },
+        }),
+        expect.any(Function)
+      );
+    });
+
+    it('propagates errors from the callback', async () => {
+      sentryUtils.initSentry({ dsn: 'https://test@sentry.io/123' });
+      const error = new Error('trace error');
+      await expect(
+        sentryUtils.sentryTrace('fail.op', {}, async () => { throw error; })
+      ).rejects.toThrow('trace error');
     });
   });
 });

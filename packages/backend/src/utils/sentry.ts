@@ -146,6 +146,36 @@ export function registerSentryErrorHandler(app: FastifyInstance): void {
 }
 
 /**
+ * Start a Sentry span for tracing key operations.
+ * Returns the result of the callback. No-op wrapper if Sentry is not initialized.
+ *
+ * Usage:
+ *   const result = await sentryTrace('checkout.subscribe', { merchantId }, async () => {
+ *     return doWork();
+ *   });
+ */
+export async function sentryTrace<T>(
+  name: string,
+  attributes: Record<string, string | number | boolean | undefined>,
+  callback: () => Promise<T>
+): Promise<T> {
+  if (!initialized) {
+    return callback();
+  }
+
+  return Sentry.startSpan(
+    {
+      name,
+      op: name,
+      attributes: Object.fromEntries(
+        Object.entries(attributes).filter(([, v]) => v !== undefined)
+      ) as Record<string, string | number | boolean>,
+    },
+    async () => callback()
+  );
+}
+
+/**
  * Flush Sentry events before shutdown.
  */
 export async function flushSentry(timeout = 2000): Promise<void> {

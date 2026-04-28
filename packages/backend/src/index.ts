@@ -33,7 +33,7 @@ export { createCorrelationId, createTimer, createServiceLogger, loggerConfig } f
 export { REDACT_PATHS } from './utils/logger.js';
 
 // Re-export Sentry utilities
-export { initSentry, captureException, setSentryContext, isSentryEnabled } from './utils/sentry.js';
+export { initSentry, captureException, setSentryContext, sentryTrace, isSentryEnabled } from './utils/sentry.js';
 
 // Re-export health check utilities
 export { runReadinessChecks, type ReadinessResponse, type DetailedHealthResponse, type CheckResult } from './routes/health.js';

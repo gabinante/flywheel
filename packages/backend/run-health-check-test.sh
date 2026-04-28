@@ -36,11 +36,11 @@ echo ""
 check "Health check tests pass (14 tests)" \
   bash -c "cd packages/backend && npx vitest run src/__tests__/health.test.ts 2>&1 | grep -q '14 passed'"
 
-check "Sentry tests pass (12 tests)" \
-  bash -c "cd packages/backend && npx vitest run src/__tests__/sentry.test.ts 2>&1 | grep -q '12 passed'"
+check "Sentry tests pass (16 tests)" \
+  bash -c "cd packages/backend && npx vitest run src/__tests__/sentry.test.ts 2>&1 | grep -q '16 passed'"
 
-check "All backend tests pass (67 tests)" \
-  bash -c "cd packages/backend && npx vitest run 2>&1 | grep -q '67 passed'"
+check "All backend tests pass (71 tests)" \
+  bash -c "cd packages/backend && npx vitest run 2>&1 | grep -q '71 passed'"
 
 # ── 2. Health route files exist ─────────────────────────────────
 check "/health/live endpoint defined" \
@@ -94,6 +94,21 @@ check "Sentry captures requestId context" \
 
 check "@sentry/node in backend dependencies" \
   grep -q "@sentry/node" packages/backend/package.json
+
+check "Sentry tracing helper (sentryTrace) exists" \
+  grep -q "sentryTrace" packages/backend/src/utils/sentry.ts
+
+check "Checkout route uses sentryTrace" \
+  grep -q "sentryTrace" packages/backend/src/routes/checkout.ts
+
+check "Webhook route uses sentryTrace" \
+  grep -q "sentryTrace" packages/backend/src/routes/webhooks.ts
+
+check "Checkout route sets Sentry context" \
+  grep -q "setSentryContext" packages/backend/src/routes/checkout.ts
+
+check "Webhook route sets Sentry context" \
+  grep -q "setSentryContext" packages/backend/src/routes/webhooks.ts
 
 # ── 4. Sentry frontend integration ─────────────────────────────
 for pkg in admin-dashboard merchant-dashboard checkout agency-dashboard; do

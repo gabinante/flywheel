@@ -12,6 +12,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { PrismaClient } from '@prisma/client';
 import { createTimer } from '../utils/logger.js';
+import { sentryTrace, setSentryContext, captureException } from '../utils/sentry.js';
 
 /** How many consecutive failures before marking as PAST_DUE */
 const PAST_DUE_THRESHOLD = 3;
@@ -115,6 +116,15 @@ export async function registerWebhookRoutes(
       });
       const correlationId = recentTx?.correlationId ?? undefined;
 
+      // Set Sentry context for this webhook
+      setSentryContext({
+        correlationId: correlationId ?? '',
+        merchantId,
+        subscriptionId: subscription.id,
+        eventType: eventType ?? 'unknown',
+        requestId: request.id,
+      });
+
       request.log.info(
         {
           action: 'webhook_processing',
@@ -136,24 +146,30 @@ export async function registerWebhookRoutes(
       });
 
       try {
-        if (
-          eventType === 'recurring.success' ||
-          eventType === 'recurring_success' ||
-          payload.condition === 'complete'
-        ) {
-          await handleRecurringSuccess(prisma, subscription, payload, request, correlationId);
-        } else if (
-          eventType === 'recurring.failure' ||
-          eventType === 'recurring_failure' ||
-          payload.condition === 'failed'
-        ) {
-          await handleRecurringFailure(prisma, subscription, payload, request, correlationId);
-        } else {
-          request.log.info(
-            { action: 'webhook_unhandled_event', eventType, merchantId, correlationId },
-            'Unhandled webhook event type'
-          );
-        }
+        await sentryTrace(
+          'webhook.nmi',
+          { eventType: eventType ?? 'unknown', merchantId, correlationId: correlationId ?? '' },
+          async () => {
+            if (
+              eventType === 'recurring.success' ||
+              eventType === 'recurring_success' ||
+              payload.condition === 'complete'
+            ) {
+              await handleRecurringSuccess(prisma, subscription, payload, request, correlationId);
+            } else if (
+              eventType === 'recurring.failure' ||
+              eventType === 'recurring_failure' ||
+              payload.condition === 'failed'
+            ) {
+              await handleRecurringFailure(prisma, subscription, payload, request, correlationId);
+            } else {
+              request.log.info(
+                { action: 'webhook_unhandled_event', eventType, merchantId, correlationId },
+                'Unhandled webhook event type'
+              );
+            }
+          }
+        );
 
         const duration_ms = webhookTimer.elapsed();
         request.log.info(
@@ -164,6 +180,7 @@ export async function registerWebhookRoutes(
         return reply.code(200).send({ received: true });
       } catch (err) {
         const duration_ms = webhookTimer.elapsed();
+        captureException(err, { merchantId, correlationId, eventType: eventType ?? 'unknown' });
         request.log.error(
           { err, action: 'webhook_processing_failed', eventType, merchantId, correlationId, duration_ms },
           'Failed to process webhook'

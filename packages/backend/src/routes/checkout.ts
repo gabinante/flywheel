@@ -11,6 +11,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { PrismaClient } from '@prisma/client';
 import { NmiService, intervalToNmiFrequency } from '../services/nmi.service.js';
 import { createCorrelationId, createTimer } from '../utils/logger.js';
+import { sentryTrace, setSentryContext, captureException } from '../utils/sentry.js';
 
 interface SubscribeBody {
   planId: string;
@@ -128,12 +129,19 @@ export async function registerCheckoutRoutes(
       // Generate correlation ID for end-to-end tracing
       const correlationId = createCorrelationId();
 
+      // Set Sentry context for this request
+      setSentryContext({ correlationId, sessionId, planId, requestId: request.id });
+
       request.log.info(
         { action: 'checkout_subscribe_started', correlationId, sessionId, planId },
         'Checkout subscribe initiated'
       );
 
       try {
+        return await sentryTrace(
+          'checkout.subscribe',
+          { correlationId, sessionId, planId },
+          async () => {
         // 1. Validate session + plan
         const session = await prisma.checkoutSession.findUnique({
           where: { id: sessionId },
@@ -399,8 +407,10 @@ export async function registerCheckoutRoutes(
           },
           correlationId,
         });
+          }); // end sentryTrace
       } catch (err) {
         const duration_ms = overallTimer.elapsed();
+        captureException(err, { correlationId, sessionId, planId });
         request.log.error(
           { err, action: 'checkout_subscribe_failed', correlationId, duration_ms },
           'Failed to create subscription'
