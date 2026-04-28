@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 
 import { useAuth } from '@/contexts/use-auth'
+import { resolvePreferredOrgId, setPreferredOrgId } from '@/lib/org-preferences'
 
 /* ------------------------------------------------------------------ */
 /* SVG icon helpers (inline to avoid extra deps)                      */
@@ -110,6 +111,7 @@ function AnimatedBackground() {
 export function HomePage() {
   const { token, client, signOut } = useAuth()
   const [verified, setVerified] = useState<boolean | null>(null)
+  const [authenticatedTarget, setAuthenticatedTarget] = useState('/orgs')
 
   useEffect(() => {
     if (!token) return
@@ -126,6 +128,13 @@ export function HomePage() {
         setVerified(false)
         return
       }
+      const orgId = resolvePreferredOrgId(data)
+      if (orgId) {
+        setPreferredOrgId(orgId)
+        setAuthenticatedTarget(`/orgs/${orgId}/projects`)
+      } else {
+        setAuthenticatedTarget('/orgs')
+      }
       setVerified(Array.isArray(data))
     })()
     return () => {
@@ -135,7 +144,7 @@ export function HomePage() {
 
   /* Redirect authenticated users */
   if (token && verified === true) {
-    return <Navigate to="/orgs" replace />
+    return <Navigate to={authenticatedTarget} replace />
   }
 
   if (token && verified === null) {
