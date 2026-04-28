@@ -1,0 +1,470 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─── Enums ──────────────────────────────────────────────
+
+enum MerchantStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum TransactionStatus {
+  PENDING
+  AUTHORIZED
+  CAPTURED
+  SETTLED
+  DECLINED
+  VOIDED
+  REFUNDED
+  PARTIALLY_REFUNDED
+  ERROR
+  RETURNED
+}
+
+enum PaymentMethod {
+  CARD
+  ACH
+  GOOGLE_PAY
+  APPLE_PAY
+}
+
+enum ChargebackStatus {
+  OPENED
+  EVIDENCE_SUBMITTED
+  UNDER_REVIEW
+  WON
+  LOST
+  EXPIRED
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  OPS_ADMIN
+}
+
+enum ApplicationStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum WebhookEventType {
+  TRANSACTION_COMPLETED
+  TRANSACTION_FAILED
+  TRANSACTION_REFUNDED
+  CHARGEBACK_OPENED
+  CHARGEBACK_RESOLVED
+  ACH_SETTLED
+  ACH_RETURNED
+}
+
+enum AchCheckStatus {
+  CREATED
+  PENDING
+  IN_TRANSIT
+  CLEARED
+  SETTLED
+  RETURNED
+  VOIDED
+  ERROR
+}
+
+// ─── Models ─────────────────────────────────────────────
+
+model Merchant {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Identity
+  businessName    String  @map("business_name")
+  contactEmail    String  @unique @map("contact_email")
+  contactPhone    String? @map("contact_phone")
+  website         String?
+  passwordHash    String? @map("password_hash")
+
+  // Status
+  status MerchantStatus @default(PENDING)
+
+  // GHL Integration
+  ghlLocationId     String? @unique @map("ghl_location_id")
+  ghlCompanyId      String? @map("ghl_company_id")
+  ghlAccessToken    String? @map("ghl_access_token")
+  ghlRefreshToken   String? @map("ghl_refresh_token")
+  ghlTokenExpiresAt DateTime? @map("ghl_token_expires_at")
+
+  // Merchant's own NMI credentials (they get their own MID from NMI)
+  nmiSecurityKey     String? @map("nmi_security_key")     // encrypted, for server-side charges
+  nmiTokenizationKey String? @map("nmi_tokenization_key") // public key for Collect.js
+  nmiCustomerVaultId String? @map("nmi_customer_vault_id")
+
+  // Merchant's own Seamlesschex credentials (optional, for ACH)
+  seamlesschexApiKey String? @map("seamlesschex_api_key") // encrypted
+
+  // Our platform API keys (for merchant to call our API)
+  apiKeyLive     String? @unique @map("api_key_live")
+  apiKeyTest     String? @unique @map("api_key_test")
+  apiKeyLiveHash String? @map("api_key_live_hash")
+  apiKeyTestHash String? @map("api_key_test_hash")
+
+  // Webhook
+  webhookUrl    String? @map("webhook_url")
+  webhookSecret String? @map("webhook_secret")
+
+  // Relations
+  transactions           Transaction[]
+  customers              Customer[]
+  chargebacks            Chargeback[]
+  webhookEvents          WebhookEvent[]
+  webhookDeliveries      MerchantWebhookDelivery[]
+  auditLogs              AuditLog[]
+  application            Application?
+
+  @@map("merchants")
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  merchantId String @map("merchant_id")
+  email      String
+  firstName  String? @map("first_name")
+  lastName   String? @map("last_name")
+  phone      String?
+
+  // NMI
+  nmiCustomerVaultId String? @map("nmi_customer_vault_id")
+
+  // Relations
+  merchant     Merchant      @relation(fields: [merchantId], references: [id])
+  transactions Transaction[]
+
+  @@unique([merchantId, email])
+  @@map("customers")
+}
+
+model Transaction {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  merchantId String @map("merchant_id")
+  customerId String? @map("customer_id")
+
+  // Payment
+  amountCents     Int              @map("amount_cents")
+  currency        String           @default("USD")
+  status          TransactionStatus @default(PENDING)
+  paymentMethod   PaymentMethod    @map("payment_method")
+  description     String?
+
+  // Card details (masked)
+  cardBrand       String? @map("card_brand")
+  cardLast4       String? @map("card_last4")
+  cardExpMonth    String? @map("card_exp_month")
+  cardExpYear     String? @map("card_exp_year")
+
+  // NMI
+  nmiTransactionId String? @map("nmi_transaction_id")
+  nmiResponseCode  String? @map("nmi_response_code")
+  nmiResponseText  String? @map("nmi_response_text")
+  nmiAuthCode      String? @map("nmi_auth_code")
+
+  // Seamlesschex (ACH)
+  seamlesschexTransactionId String? @map("seamlesschex_transaction_id")
+
+  // Refund
+  refundedAmountCents Int    @default(0) @map("refunded_amount_cents")
+  refundReason        String? @map("refund_reason")
+
+  // Metadata
+  checkoutSessionId String? @map("checkout_session_id")
+  metadata          Json?
+  ipAddress         String? @map("ip_address")
+  userAgent         String? @map("user_agent")
+
+  // Relations
+  merchant                  Merchant                   @relation(fields: [merchantId], references: [id])
+  customer                  Customer?                  @relation(fields: [customerId], references: [id])
+  chargebacks               Chargeback[]
+  seamlesschexTransaction   SeamlesschexTransaction?
+  webhookEvents             WebhookEvent[]
+
+  @@index([merchantId, createdAt])
+  @@index([status])
+  @@index([checkoutSessionId])
+  @@map("transactions")
+}
+
+model SeamlesschexTransaction {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  transactionId String @unique @map("transaction_id")
+
+  checkId       String       @unique @map("check_id")
+  bankName      String?      @map("bank_name")
+  routingLast4  String?      @map("routing_last4")
+  accountLast4  String?      @map("account_last4")
+  accountType   String?      @map("account_type")
+  nameOnAccount String?      @map("name_on_account")
+  checkStatus   AchCheckStatus @default(CREATED) @map("check_status")
+  returnCode    String?      @map("return_code")
+  returnReason  String?      @map("return_reason")
+  settledAt     DateTime?    @map("settled_at")
+
+  // Relation
+  transaction Transaction @relation(fields: [transactionId], references: [id])
+
+  @@map("seamlesschex_transactions")
+}
+
+model Chargeback {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  merchantId    String           @map("merchant_id")
+  transactionId String           @map("transaction_id")
+  amountCents   Int              @map("amount_cents")
+  reason        String?
+  reasonCode    String?          @map("reason_code")
+  status        ChargebackStatus @default(OPENED)
+  dueDate       DateTime?        @map("due_date")
+  resolvedAt    DateTime?        @map("resolved_at")
+  outcome       String?
+
+  // Relations
+  merchant     Merchant              @relation(fields: [merchantId], references: [id])
+  transaction  Transaction           @relation(fields: [transactionId], references: [id])
+
+  @@index([merchantId])
+  @@index([status])
+  @@map("chargebacks")
+}
+
+model AdminUser {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  name         String
+  role         AdminRole @default(OPS_ADMIN)
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime? @map("last_login_at")
+
+  @@map("admin_users")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  merchantId  String? @map("merchant_id")
+  actorType   String  @map("actor_type")
+  actorId     String  @map("actor_id")
+  action      String
+  resource    String
+  resourceId  String? @map("resource_id")
+  details     Json?
+  ipAddress   String? @map("ip_address")
+
+  merchant Merchant? @relation(fields: [merchantId], references: [id])
+
+  @@index([merchantId])
+  @@index([actorId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model WebhookEvent {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  merchantId    String           @map("merchant_id")
+  transactionId String?          @map("transaction_id")
+  eventType     WebhookEventType @map("event_type")
+  payload       Json
+  delivered     Boolean          @default(false)
+  deliveredAt   DateTime?        @map("delivered_at")
+  attempts      Int              @default(0)
+
+  merchant    Merchant     @relation(fields: [merchantId], references: [id])
+  transaction Transaction? @relation(fields: [transactionId], references: [id])
+  deliveries  MerchantWebhookDelivery[]
+
+  @@index([merchantId])
+  @@map("webhook_events")
+}
+
+model MerchantWebhookDelivery {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  merchantId     String @map("merchant_id")
+  webhookEventId String @map("webhook_event_id")
+  url            String
+  statusCode     Int?   @map("status_code")
+  responseBody   String? @map("response_body")
+  success        Boolean @default(false)
+  attemptNumber  Int     @map("attempt_number")
+
+  merchant     Merchant     @relation(fields: [merchantId], references: [id])
+  webhookEvent WebhookEvent @relation(fields: [webhookEventId], references: [id])
+
+  @@map("merchant_webhook_deliveries")
+}
+
+model DailyMetrics {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  date               DateTime @unique
+  totalTransactions  Int      @default(0) @map("total_transactions")
+  totalVolumeCents   Int      @default(0) @map("total_volume_cents")
+  cardTransactions   Int      @default(0) @map("card_transactions")
+  achTransactions    Int      @default(0) @map("ach_transactions")
+  declinedCount      Int      @default(0) @map("declined_count")
+  chargebackCount    Int      @default(0) @map("chargeback_count")
+  refundCount        Int      @default(0) @map("refund_count")
+  refundVolumeCents  Int      @default(0) @map("refund_volume_cents")
+  newMerchants       Int      @default(0) @map("new_merchants")
+  activeMerchants    Int      @default(0) @map("active_merchants")
+
+  @@map("daily_metrics")
+}
+
+model DeadLetterQueue {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  jobName   String  @map("job_name")
+  payload   Json
+  error     String
+  attempts  Int     @default(0)
+  resolved  Boolean @default(false)
+  resolvedAt DateTime? @map("resolved_at")
+  resolvedBy String?   @map("resolved_by")
+
+  @@index([resolved])
+  @@map("dead_letter_queue")
+}
+
+model Application {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  merchantId      String            @unique @map("merchant_id")
+  status          ApplicationStatus @default(DRAFT)
+  businessType    String?           @map("business_type")
+  ein             String?
+  averageTicketCents Int?           @map("average_ticket_cents")
+  monthlyVolumeCents Int?           @map("monthly_volume_cents")
+  businessDescription String?       @map("business_description")
+  reviewedBy      String?           @map("reviewed_by")
+  reviewedAt      DateTime?         @map("reviewed_at")
+  rejectionReason String?           @map("rejection_reason")
+  kycData         Json?             @map("kyc_data")
+
+  // NMI Boarding
+  nmiBoardingId      String?  @map("nmi_boarding_id")      // NMI's boarding reference ID
+  nmiBoardingStatus  String?  @map("nmi_boarding_status")  // PENDING, APPROVED, DECLINED
+  boardingSubmittedAt DateTime? @map("boarding_submitted_at")
+
+  // Owner details (for NMI underwriting)
+  ownerFirstName     String?  @map("owner_first_name")
+  ownerLastName      String?  @map("owner_last_name")
+  ownerEmail         String?  @map("owner_email")
+  ownerPhone         String?  @map("owner_phone")
+  ownerDob           String?  @map("owner_dob")          // stored as YYYY-MM-DD string
+  ownerSsnLast4      String?  @map("owner_ssn_last4")
+  ownerAddress       String?  @map("owner_address")
+  ownerCity          String?  @map("owner_city")
+  ownerState         String?  @map("owner_state")
+  ownerZip           String?  @map("owner_zip")
+
+  // Business address
+  businessAddress    String?  @map("business_address")
+  businessCity       String?  @map("business_city")
+  businessState      String?  @map("business_state")
+  businessZip        String?  @map("business_zip")
+
+  // Bank details (for NMI to settle to merchant)
+  bankName           String?  @map("bank_name")
+  bankRoutingNumber  String?  @map("bank_routing_number")   // encrypted
+  bankAccountNumber  String?  @map("bank_account_number")   // encrypted
+  bankAccountType    String?  @map("bank_account_type")     // checking or savings
+
+  merchant Merchant @relation(fields: [merchantId], references: [id])
+
+  @@map("applications")
+}
+
+model NotificationSchedule {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  type          String
+  recipientType String @map("recipient_type")
+  recipientId   String @map("recipient_id")
+  channel       String
+  scheduledFor  DateTime @map("scheduled_for")
+  sentAt        DateTime? @map("sent_at")
+  payload       Json
+  status        String @default("PENDING")
+
+  @@index([status, scheduledFor])
+  @@map("notification_schedules")
+}
+
+model GhlOAuthState {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  state     String   @unique
+  expiresAt DateTime @map("expires_at")
+  metadata  Json?
+
+  @@map("ghl_oauth_states")
+}
+
+model CheckoutSession {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  merchantId    String  @map("merchant_id")
+  amountCents   Int     @map("amount_cents")
+  currency      String  @default("USD")
+  description   String?
+  customerEmail String? @map("customer_email")
+  customerName  String? @map("customer_name")
+  metadata      Json?
+  status        String  @default("PENDING")
+  expiresAt     DateTime @map("expires_at")
+  successUrl    String? @map("success_url")
+  cancelUrl     String? @map("cancel_url")
+  transactionId String? @map("transaction_id")
+
+  @@index([merchantId])
+  @@index([status])
+  @@map("checkout_sessions")
+}

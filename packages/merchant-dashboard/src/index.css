@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ghp-blue-500: #3B82F6;
+  --ghp-blue-600: #2563EB;
+  --ghp-blue-700: #1D4ED8;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: #f8fafc;
+  color: #0f172a;
+  margin: 0;
+}

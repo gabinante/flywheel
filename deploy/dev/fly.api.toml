@@ -1,0 +1,37 @@
+app = "ghp-dev-api"
+primary_region = "ord"
+
+[build]
+  dockerfile = "deploy/Dockerfile.backend"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+[checks]
+  [checks.health]
+    type = "http"
+    port = 3000
+    path = "/health"
+    interval = "30s"
+    timeout = "5s"
+
+[env]
+  NODE_ENV = "development"
+  PORT = "3000"
+  HOST = "0.0.0.0"
+  NMI_MOCK_MODE = "true"
+  SEAMLESSCHEX_SANDBOX = "true"
+  ADMIN_URL = "https://ghp-dev-admin.fly.dev"
+  MERCHANT_URL = "https://ghp-dev-merchant.fly.dev"
+  CHECKOUT_URL = "https://ghp-dev-checkout.fly.dev"
+  API_BASE_URL = "https://ghp-dev-api.fly.dev"
+  FRONTEND_URL = "https://ghp-dev-checkout.fly.dev"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512

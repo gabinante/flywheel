@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ghp-blue-50:  #EFF6FF;
+  --ghp-blue-100: #DBEAFE;
+  --ghp-blue-200: #BFDBFE;
+  --ghp-blue-300: #93C5FD;
+  --ghp-blue-400: #60A5FA;
+  --ghp-blue-500: #3B82F6;
+  --ghp-blue-600: #2563EB;
+  --ghp-blue-700: #1D4ED8;
+  --ghp-blue-800: #1E40AF;
+  --ghp-blue-900: #1E3A8A;
+
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --border: #e2e8f0;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --destructive: #ef4444;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: var(--background);
+  color: var(--foreground);
+  margin: 0;
+}
