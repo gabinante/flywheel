@@ -128,6 +128,38 @@ enum PayoutStatus {
   FAILED
 }
 
+// ─── NotificationSchedule ──────────────────────────────────────────────
+
+model NotificationSchedule {
+  id           String             @id @default(cuid())
+  merchantId   String?
+  agencyId     String?
+  templateId   String             // e.g., "merchant-welcome", "transaction-receipt"
+  to           String             // recipient email address
+  variables    Json               // template variables
+  status       NotificationStatus @default(QUEUED)
+  attempts     Int                @default(0)
+  lastError    String?
+  sentAt       DateTime?
+  deliveredAt  DateTime?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@index([merchantId])
+  @@index([agencyId])
+  @@index([status])
+  @@index([templateId])
+  @@index([createdAt])
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+  BOUNCED
+}
+
 // ─── AuditLog ─────────────────────────────────────────────────────────
 
 model AuditLog {
