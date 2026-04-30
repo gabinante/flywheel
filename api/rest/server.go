@@ -37,6 +37,8 @@ type RouterConfig struct {
 	PillarsHandler      *PillarsHandler      // Pillar and strategy layer (Layer 15)
 	DeliveryHandler     *DeliveryHandler     // Delivery integrations (pipeline, PR, config)
 	WorkflowHandler     *WorkflowHandler     // Configurable SDLC workflow definitions
+	InvitesHandler      *InvitesHandler      // Org invite links
+	WorkerConfigHandler *WorkerConfigHandler // MCP config for local Claude Code workers
 	// HealthCheckers are called by /readyz for deep readiness checks.
 	HealthCheckers []HealthChecker
 	// WebDist is the Vite outDir (contains index.html and assets/). Empty skips SPA routes.
@@ -182,6 +184,12 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		if cfg.WorkflowHandler != nil {
 			cfg.WorkflowHandler.RegisterRoutes(mux)
 		}
+	}
+	if cfg.InvitesHandler != nil {
+		cfg.InvitesHandler.RegisterRoutes(mux)
+	}
+	if cfg.WorkerConfigHandler != nil {
+		mux.HandleFunc("GET /worker-config", cfg.WorkerConfigHandler.getConfig)
 	}
 
 	h := http.Handler(mux)

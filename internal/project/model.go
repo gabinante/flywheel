@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/gabinante/flywheel/internal/plan"
 )
 
 // Project is a project under an org (e.g. "hubble-backend").
@@ -28,6 +30,7 @@ type DispatchConfig struct {
 	Roles            []DispatchWorkerRole          `json:"roles,omitempty"`
 	Workers          []DispatchWorkerProfile       `json:"workers,omitempty"`
 	Policies         map[string]DispatchRolePolicy `json:"policies,omitempty"`
+	GitPolicy        *plan.GitPolicy               `json:"git_policy,omitempty"`
 }
 
 type DispatchWorkerRole struct {

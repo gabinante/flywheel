@@ -44,6 +44,11 @@ type LeaseReleaser interface {
 	ForceReleaseLease(ctx context.Context, ticketID string) error
 }
 
+// TicketOutputPatcher persists merge metadata into ticket outputs.
+type TicketOutputPatcher interface {
+	PatchOutputs(ctx context.Context, id string, patch map[string]any) error
+}
+
 // TicketTransitioner applies state transitions to tickets.
 // Matches the ticket.Service.TransitionTicket signature.
 type TicketTransitioner interface {
@@ -70,6 +75,7 @@ type Config struct {
 	ProjectID         string        // only dispatch tickets for this project (empty = all)
 	AutoApprove       bool          // auto-approve tickets when acceptance tests pass
 	ReconcileInterval time.Duration // periodic reconciliation interval (default: 60s)
+	BranchGCInterval  time.Duration // stale branch GC interval (default: 6h)
 	AgentRunner       string        // execution backend: cli, docker, openai-responses, or openai-compatible
 	// Agent driver selection.
 	AgentDriver          string   // driver name: "claude" (default), "generic", or custom
@@ -106,11 +112,11 @@ type Dispatcher struct {
 	leaseReleaser      LeaseReleaser          // nil-safe: if nil, worker exit does not release lease (Layer 2 TTL handles it)
 	ticketTransitioner TicketTransitioner     // nil-safe: if nil, merged tickets are not auto-closed
 	workflowEngine     *workflow.Engine       // nil-safe: if nil, workflow-aware dispatching is disabled
+	outputPatcher      TicketOutputPatcher    // nil-safe: if nil, merge state is not persisted
 
 	mu             sync.Mutex
 	active         map[string]context.CancelFunc // ticketID/role-prefixed key → cancel
 	activeProjects map[string]string             // active key → projectID
-	mergeAttempts  map[string]int                // ticketID → failed merge count
 	wg             sync.WaitGroup
 	scanning       int32              // atomic CAS guard for reconcile
 	stopCancel     context.CancelFunc // cancels the internal context on Stop()
@@ -132,7 +138,6 @@ func New(cfg Config, bus events.Bus, tickets TicketGetter, projects ProjectGette
 		clones:         NewMultiRepoCloneManager(filepath.Join(cfg.WorktreeDir, ".clones")),
 		active:         make(map[string]context.CancelFunc),
 		activeProjects: make(map[string]string),
-		mergeAttempts:  make(map[string]int),
 	}
 	// Detect if bus supports durable event delivery.
 	if durable, ok := bus.(events.DurableEventBus); ok {
@@ -175,6 +180,9 @@ func (d *Dispatcher) Start(ctx context.Context) {
 		_ = d.durableBus.SubscribePattern("ticket.rolled_back", "dispatcher:rolled-back", func(_ context.Context, e events.Event) {
 			d.handleTicketRolledBack(ctx, e)
 		})
+		_ = d.durableBus.SubscribePattern("ticket.cancelled", "dispatcher:cancelled", func(_ context.Context, e events.Event) {
+			d.handleTicketCancelled(ctx, e)
+		})
 	} else {
 		// Legacy exact subscriptions (backward compatible).
 		d.bus.Subscribe(events.EventTicketCreated, func(_ context.Context, e events.Event) {
@@ -200,6 +208,9 @@ func (d *Dispatcher) Start(ctx context.Context) {
 		})
 		d.bus.Subscribe(events.EventTicketRolledBack, func(_ context.Context, e events.Event) {
 			d.handleTicketRolledBack(ctx, e)
+		})
+		d.bus.Subscribe(events.EventTicketCancelled, func(_ context.Context, e events.Event) {
+			d.handleTicketCancelled(ctx, e)
 		})
 	}
 
@@ -228,6 +239,9 @@ func (d *Dispatcher) Start(ctx context.Context) {
 			}
 		}
 	}()
+
+	// Start periodic branch GC.
+	d.startBranchGC(ctx)
 }
 
 // Stop cancels all active workers and background goroutines, then waits for completion.
@@ -266,6 +280,11 @@ func (d *Dispatcher) SetWorkflowEngine(we *workflow.Engine) {
 
 func (d *Dispatcher) SetRepoResolver(rr RepoResolver) {
 	d.repoResolver = rr
+}
+
+// SetOutputPatcher wires the ticket output patcher for durable merge state.
+func (d *Dispatcher) SetOutputPatcher(op TicketOutputPatcher) {
+	d.outputPatcher = op
 }
 
 // reconcile wraps scanPending with an atomic CAS to prevent concurrent runs.
@@ -492,6 +511,35 @@ func (d *Dispatcher) handleTicketRolledBack(_ context.Context, e events.Event) {
 	slog.Info("dispatch: ticket rolled back", "ticket", ticketID)
 }
 
+// handleTicketCancelled cancels workers and cleans up the branch on cancellation.
+func (d *Dispatcher) handleTicketCancelled(ctx context.Context, e events.Event) {
+	ticketID, _ := e.Payload["ticket_id"].(string)
+	projectID, _ := e.Payload["project_id"].(string)
+	if ticketID == "" {
+		return
+	}
+
+	// Cancel any active worker for this ticket.
+	d.mu.Lock()
+	for _, key := range []string{ticketID, "review:" + ticketID, "resolve:" + ticketID} {
+		if cancel, ok := d.active[key]; ok {
+			cancel()
+			delete(d.active, key)
+			delete(d.activeProjects, key)
+		}
+	}
+	d.mu.Unlock()
+
+	// Safe to delete branch: ticket explicitly cancelled.
+	if projectID != "" {
+		d.cleanupTicketBranch(ctx, ticketID, projectID)
+	} else {
+		_ = d.worktrees.Remove(ticketID)
+	}
+
+	slog.Info("dispatch: ticket cancelled, branch cleaned up", "ticket", ticketID)
+}
+
 func (d *Dispatcher) tryDispatch(ctx context.Context, t *ticket.Ticket) {
 	if t.State != ticket.StatePending {
 		return
@@ -500,6 +548,13 @@ func (d *Dispatcher) tryDispatch(ctx context.Context, t *ticket.Ticket) {
 	// Safety: refuse to dispatch tickets for projects with no repo configured.
 	if !d.projectHasRepo(ctx, t.ProjectID) {
 		slog.Error("dispatch: project has no repo_url, skipping ticket", "ticket", t.ID, "project", t.ProjectID)
+		return
+	}
+
+	// Priority guard: don't start new work if review/merge work is waiting.
+	if d.hasHigherPriorityWork(ctx, t.ProjectID) {
+		slog.Info("dispatch: deferring new work, higher-priority tickets need attention",
+			"ticket", t.ID, "project", t.ProjectID)
 		return
 	}
 
@@ -636,7 +691,10 @@ func (d *Dispatcher) spawn(ctx context.Context, t *ticket.Ticket) {
 			delete(d.activeProjects, t.ID)
 			d.mu.Unlock()
 
-			// Re-scan for pending tickets to fill the freed slot.
+			// Priority: spawn any waiting reviewers before scanning for new work.
+			d.spawnWaitingReviewers(ctx, t.ProjectID)
+
+			// Then scan for remaining work.
 			go d.reconcile(ctx)
 		}()
 
@@ -741,11 +799,17 @@ func (d *Dispatcher) runTypedWorkerWithProject(ctx context.Context, t *ticket.Ti
 		workDir = repoDir
 	} else {
 		// Host mode: create git worktree for isolation.
-		branch := "ticket/" + t.ID
+		branch := d.branchForTicket(ctx, t)
 		var err error
 		workDir, err = d.worktrees.CreateFromRepo(t.ID, branch, repoDir)
 		if err != nil {
 			return err
+		}
+		// Persist branch name so merge/cleanup know exactly which branch to target.
+		if d.outputPatcher != nil {
+			_ = d.outputPatcher.PatchOutputs(ctx, t.ID, map[string]any{
+				"_branch": branch,
+			})
 		}
 	}
 
@@ -902,7 +966,10 @@ func (d *Dispatcher) projectWorkerLimit(ctx context.Context, projectID string) i
 		return limit
 	}
 	if configured := proj.DispatchConfig.Normalized().MaxActiveWorkers; configured > 0 {
-		return configured
+		// Per-project config can restrict below the server limit but never exceed it.
+		if limit <= 0 || configured < limit {
+			return configured
+		}
 	}
 	return limit
 }
@@ -943,6 +1010,57 @@ func (d *Dispatcher) startActive(ctx context.Context, key, projectID string) (co
 	d.active[key] = cancel
 	d.activeProjects[key] = projectID
 	return workerCtx, cancel, active + 1, limit, true
+}
+
+// hasHigherPriorityWork returns true if there are awaiting_review or validated
+// tickets for the project that need attention but don't have an active worker.
+// Used by tryDispatch to avoid starting new pending work when in-flight work
+// should be prioritized (review/merge before new execution).
+func (d *Dispatcher) hasHigherPriorityWork(ctx context.Context, projectID string) bool {
+	// Check for awaiting_review tickets that need a reviewer.
+	reviewing, err := d.tickets.ListByState(ctx, projectID, ticket.StateAwaitingReview)
+	if err == nil {
+		for _, t := range reviewing {
+			d.mu.Lock()
+			_, active := d.active["review:"+t.ID]
+			d.mu.Unlock()
+			if !active {
+				return true
+			}
+		}
+	}
+
+	// Check for validated tickets with PRs that need merge.
+	validated, err := d.tickets.ListByState(ctx, projectID, ticket.StateValidated)
+	if err == nil {
+		for _, t := range validated {
+			if prURL, ok := t.Outputs["pr_url"].(string); ok && prURL != "" {
+				d.mu.Lock()
+				_, resolving := d.active["resolve:"+t.ID]
+				d.mu.Unlock()
+				if !resolving {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// spawnWaitingReviewers spawns reviewers for any awaiting_review tickets in the
+// project. Called synchronously from the worker exit defer to ensure review work
+// gets the freed slot before async reconcile picks up new pending tickets.
+func (d *Dispatcher) spawnWaitingReviewers(ctx context.Context, projectID string) {
+	reviewing, err := d.tickets.ListByState(ctx, projectID, ticket.StateAwaitingReview)
+	if err != nil {
+		return
+	}
+	for _, t := range reviewing {
+		if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
+			continue
+		}
+		d.spawnReviewer(ctx, t)
+	}
 }
 
 // spawnReviewer launches a reviewer agent for a ticket in awaiting_review.
@@ -1028,14 +1146,22 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 		return
 	}
 
-	// Check escalation threshold before attempting.
-	d.mu.Lock()
-	attempts := d.mergeAttempts[t.ID]
-	d.mu.Unlock()
+	// Read merge attempts from persisted outputs (survives restarts).
+	attempts := 0
+	if v, ok := t.Outputs["_merge_attempts"]; ok {
+		switch n := v.(type) {
+		case float64:
+			attempts = int(n)
+		case int:
+			attempts = n
+		}
+	}
 	if attempts >= maxMergeAttempts {
 		d.escalateMergeFailure(ctx, t, fmt.Sprintf("merge failed %d times", attempts))
 		return
 	}
+
+	d.persistMergeState(ctx, t.ID, attempts, "merging", "")
 
 	_ = d.worktrees.Remove(t.ID)
 
@@ -1057,20 +1183,19 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 		output := string(out)
 		slog.Error("dispatch: auto-merge failed", "ticket", t.ID, "error", mergeErr, "output", output)
 
-		d.mu.Lock()
-		d.mergeAttempts[t.ID]++
-		d.mu.Unlock()
+		newAttempts := attempts + 1
+		status := "conflict"
+		d.persistMergeState(ctx, t.ID, newAttempts, status, truncate(output, 500))
 
 		if strings.Contains(output, "not mergeable") || strings.Contains(output, "CONFLICT") || strings.Contains(output, "cannot be cleanly created") {
 			d.spawnConflictResolver(ctx, t, prURL)
 		}
 	} else {
 		slog.Info("dispatch: auto-merged PR", "ticket", t.ID)
-		// Delete remote branch (best-effort).
-		branch := "ticket/" + t.ID
-		delCmd := exec.Command("git", "push", "origin", "--delete", branch)
-		delCmd.Dir = repoDir
-		_ = delCmd.Run()
+		d.persistMergeState(ctx, t.ID, attempts, "merged", "")
+
+		// Delete remote branch (best-effort) using persisted branch name.
+		d.cleanupTicketBranch(ctx, t.ID, t.ProjectID)
 
 		d.closeMergedTicket(ctx, t)
 	}
@@ -1118,9 +1243,6 @@ func (d *Dispatcher) closeMergedTicket(ctx context.Context, t *ticket.Ticket) {
 			}
 		}
 		slog.Info("dispatch: ticket advanced through workflow after merge", "ticket", t.ID)
-		d.mu.Lock()
-		delete(d.mergeAttempts, t.ID)
-		d.mu.Unlock()
 		return
 	}
 
@@ -1133,16 +1255,13 @@ func (d *Dispatcher) closeMergedTicket(ctx context.Context, t *ticket.Ticket) {
 	}
 
 	slog.Info("dispatch: ticket closed after merge", "ticket", t.ID)
-
-	d.mu.Lock()
-	delete(d.mergeAttempts, t.ID)
-	d.mu.Unlock()
 }
 
 // escalateMergeFailure publishes an escalation event when merge attempts exceed the threshold.
 // The ticket stays in validated state for manual intervention.
 func (d *Dispatcher) escalateMergeFailure(ctx context.Context, t *ticket.Ticket, reason string) {
 	slog.Warn("dispatch: escalating merge failure", "ticket", t.ID, "reason", reason)
+	d.persistMergeState(ctx, t.ID, maxMergeAttempts, "escalated", reason)
 	_ = d.bus.Publish(ctx, events.Event{
 		Type: events.EventTicketEscalated,
 		Payload: map[string]any{
@@ -1152,6 +1271,66 @@ func (d *Dispatcher) escalateMergeFailure(ctx context.Context, t *ticket.Ticket,
 			"source":     "auto_merge",
 		},
 	})
+}
+
+// persistMergeState writes merge metadata into the ticket's outputs JSONB.
+// Keys are prefixed with _ to distinguish system metadata from worker outputs.
+func (d *Dispatcher) persistMergeState(ctx context.Context, ticketID string, attempts int, status, lastErr string) {
+	if d.outputPatcher == nil {
+		return
+	}
+	_ = d.outputPatcher.PatchOutputs(ctx, ticketID, map[string]any{
+		"_merge_attempts":       attempts,
+		"_merge_status":         status,
+		"_merge_last_error":     lastErr,
+		"_merge_last_attempt_at": time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+// branchForTicket returns the branch name for a ticket, using the project's
+// GitPolicy if configured, falling back to "ticket/<id>".
+func (d *Dispatcher) branchForTicket(ctx context.Context, t *ticket.Ticket) string {
+	if d.projects != nil {
+		if proj, err := d.projects.GetProject(ctx, t.ProjectID); err == nil && proj != nil {
+			if gp := proj.DispatchConfig.Normalized().GitPolicy; gp != nil {
+				return gp.BranchNameForTicket(t.ID)
+			}
+		}
+	}
+	return "ticket/" + t.ID
+}
+
+// branchFromOutputs reads the persisted branch name from ticket outputs,
+// falling back to "ticket/<id>" if absent.
+func branchFromOutputs(t *ticket.Ticket) string {
+	if b, ok := t.Outputs["_branch"].(string); ok && b != "" {
+		return b
+	}
+	return "ticket/" + t.ID
+}
+
+// cleanupTicketBranch removes the worktree and deletes the remote branch.
+// Only called for safe terminal states (cancelled, merged).
+func (d *Dispatcher) cleanupTicketBranch(ctx context.Context, ticketID, projectID string) {
+	_ = d.worktrees.Remove(ticketID)
+
+	repoDir, err := d.resolveProjectRepoDir(ctx, projectID)
+	if err != nil {
+		return
+	}
+
+	// Read branch name from outputs; fall back to convention.
+	branch := "ticket/" + ticketID
+	if t, err := d.tickets.GetTicket(ctx, ticketID); err == nil && t != nil {
+		branch = branchFromOutputs(t)
+	}
+
+	cmd := exec.Command("git", "push", "origin", "--delete", branch)
+	cmd.Dir = repoDir
+	out, err := cmd.CombinedOutput()
+	if err != nil && !strings.Contains(string(out), "remote ref does not exist") {
+		slog.Warn("dispatch: branch cleanup failed", "ticket", ticketID, "branch", branch, "error", err)
+	}
 }
 
 // validatePRChecks verifies CI checks pass on the PR before merging.
@@ -1230,7 +1409,7 @@ func (d *Dispatcher) spawnConflictResolver(ctx context.Context, t *ticket.Ticket
 
 // runConflictResolver rebases a ticket's branch onto main and retries the merge.
 func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, prURL string) error {
-	branch := "ticket/" + t.ID
+	branch := branchFromOutputs(t)
 
 	proj, err := d.projects.GetProject(ctx, t.ProjectID)
 	if err != nil {
@@ -1273,20 +1452,29 @@ func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, 
 	cmd.Dir = repoDir
 	out, mergeErr := cmd.CombinedOutput()
 	if mergeErr != nil {
-		slog.Error("dispatch: retry merge still failed", "ticket", t.ID, "error", mergeErr, "output", string(out))
+		output := string(out)
+		slog.Error("dispatch: retry merge still failed", "ticket", t.ID, "error", mergeErr, "output", output)
 
-		d.mu.Lock()
-		d.mergeAttempts[t.ID]++
-		d.mu.Unlock()
+		// Read current attempts from outputs for accurate count.
+		attempts := 0
+		if fresh, ferr := d.tickets.GetTicket(ctx, t.ID); ferr == nil && fresh != nil {
+			if v, ok := fresh.Outputs["_merge_attempts"]; ok {
+				switch n := v.(type) {
+				case float64:
+					attempts = int(n)
+				case int:
+					attempts = n
+				}
+			}
+		}
+		d.persistMergeState(ctx, t.ID, attempts+1, "conflict", truncate(output, 500))
 
 		return fmt.Errorf("retry merge: %w", mergeErr)
 	}
 
 	slog.Info("dispatch: auto-merged PR after conflict resolution", "ticket", t.ID)
-	// Delete remote branch (best-effort).
-	delCmd := exec.Command("git", "push", "origin", "--delete", branch)
-	delCmd.Dir = repoDir
-	_ = delCmd.Run()
+	d.persistMergeState(ctx, t.ID, 0, "merged", "")
+	d.cleanupTicketBranch(ctx, t.ID, t.ProjectID)
 
 	d.closeMergedTicket(ctx, t)
 	return nil

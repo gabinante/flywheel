@@ -8,6 +8,7 @@ import {
   GitBranch,
   Layers,
   Plus,
+  Settings,
   Sparkles,
   TicketCheck,
 } from 'lucide-react'
@@ -309,9 +310,18 @@ export function ProjectsPage() {
           </Link>
           <span className="px-1">/</span>
         </p>
-        <h1 className="text-xl font-semibold tracking-tight">
-          Projects{orgName ? ` — ${orgName}` : ''}
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold tracking-tight">
+            Projects{orgName ? ` — ${orgName}` : ''}
+          </h1>
+          <Link
+            to={`/orgs/${orgId}/settings`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground"
+          >
+            <Settings className="size-3.5" />
+            Org settings
+          </Link>
+        </div>
       </motion.div>
       {projects.length === 0 ? (
         <EmptyProjectsState orgId={orgId} />

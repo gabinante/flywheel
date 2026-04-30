@@ -17,6 +17,8 @@ import { ProjectSettingsPage } from '@/pages/project-settings-page'
 import { WorkStreamsPage } from '@/pages/work-streams-page'
 import { WorkStreamCreatePage } from '@/pages/work-stream-create-page'
 import { WorkStreamEditPage } from '@/pages/work-stream-edit-page'
+import { OrgSettingsPage } from '@/pages/org-settings-page'
+import { InviteAcceptPage } from '@/pages/invite-accept-page'
 
 // Lazy-load heavy pages that aren't needed on initial render
 const CommandCenterPage = lazy(() =>
@@ -75,9 +77,15 @@ export default function App() {
             <Routes>
               {/* Home/landing page renders full-width, outside AppShell constraints */}
               <Route path="/" element={<HomeRoute />} />
+              {/* Invite accept page — accessible without auth, handles sign-in flow */}
+              <Route path="/invite/:code" element={<InviteAcceptPage />} />
               <Route element={<AppShell />}>
                 <Route element={<RequireAuthLayout />}>
                   <Route path="/orgs" element={<OrgsPage />} />
+                  <Route
+                    path="/orgs/:orgId/settings"
+                    element={<OrgSettingsPage />}
+                  />
                   <Route
                     path="/orgs/:orgId/projects"
                     element={<ProjectsPage />}

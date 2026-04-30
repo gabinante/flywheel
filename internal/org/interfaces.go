@@ -12,4 +12,11 @@ type OrgStore interface {
 	ListMembers(ctx context.Context, orgID string) ([]Member, error)
 	ListOrgIDsByUserID(ctx context.Context, userID string) ([]string, error)
 	ListOrgsByUserID(ctx context.Context, userID string) ([]*Org, error)
+
+	// Invite management
+	CreateInvite(ctx context.Context, inv *Invite) error
+	GetInviteByCode(ctx context.Context, code string) (*Invite, error)
+	ListInvitesByOrg(ctx context.Context, orgID string) ([]Invite, error)
+	IncrementInviteUseCount(ctx context.Context, id string) error
+	RevokeInvite(ctx context.Context, id string) error
 }

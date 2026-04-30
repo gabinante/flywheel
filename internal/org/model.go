@@ -25,3 +25,17 @@ type Member struct {
 	UserID string
 	Role   Role
 }
+
+// Invite is a shareable link to join an organization.
+type Invite struct {
+	ID        string    `json:"id"`
+	OrgID     string    `json:"org_id"`
+	Code      string    `json:"code"`
+	Role      Role      `json:"role"`
+	CreatedBy string    `json:"created_by"`
+	ExpiresAt time.Time `json:"expires_at"`
+	MaxUses   int       `json:"max_uses"`
+	UseCount  int       `json:"use_count"`
+	Revoked   bool      `json:"revoked"`
+	CreatedAt time.Time `json:"created_at"`
+}

@@ -470,6 +470,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		dispatcher.SetLeaseReleaser(queueSvc)
 		dispatcher.SetTicketTransitioner(ticketSvc)
 		dispatcher.SetWorkflowEngine(workflowEngine)
+		dispatcher.SetOutputPatcher(ticketStore)
 		// Wire worktree cleanup for rollback when dispatcher manages worktrees.
 		rollbackSvc.SetWorktreeRemover(&dispatch.WorktreeManager{
 			BaseDir: cfg.Dispatch.WorktreeDir,
@@ -539,6 +540,13 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			ProjectSvc: projectSvc,
 			OrgSvc:     orgSvc,
 			AgentStore: agentStore,
+		},
+		InvitesHandler: &rest.InvitesHandler{
+			OrgSvc:     orgSvc,
+			AgentStore: agentStore,
+		},
+		WorkerConfigHandler: &rest.WorkerConfigHandler{
+			BaseURL: cfg.Auth.BaseURL,
 		},
 		HealthCheckers: []rest.HealthChecker{
 			&rest.PostgresHealthChecker{Pool: pool},
@@ -817,6 +825,13 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 			ProjectSvc:  projectSvc,
 			OrgSvc:      orgSvc,
 			AgentStore:  agentSt,
+		},
+		InvitesHandler: &rest.InvitesHandler{
+			OrgSvc:     orgSvc,
+			AgentStore: agentSt,
+		},
+		WorkerConfigHandler: &rest.WorkerConfigHandler{
+			BaseURL: cfg.Auth.BaseURL,
 		},
 		HealthCheckers: []rest.HealthChecker{
 			&rest.RedisHealthChecker{Client: redisClient},

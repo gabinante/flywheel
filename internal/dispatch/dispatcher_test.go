@@ -532,6 +532,41 @@ func TestProjectCapacityCountsWorkersByProject(t *testing.T) {
 	}
 }
 
+func TestProjectCapacityCapsAtServerLimit(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter()
+	pg := newMockProjectGetter(&project.Project{
+		ID:      "p-1",
+		RepoURL: "https://github.com/test/repo.git",
+		DispatchConfig: project.DispatchConfig{
+			MaxActiveWorkers: 10, // exceeds server limit
+		},
+	})
+	d := New(Config{MaxWorkers: 4}, bus, tg, pg)
+
+	// Fill to server limit.
+	for i := 0; i < 4; i++ {
+		_, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		key := fmt.Sprintf("t-%d", i)
+		d.mu.Lock()
+		d.active[key] = cancel
+		d.activeProjects[key] = "p-1"
+		d.mu.Unlock()
+	}
+
+	active, limit, hasCapacity := d.projectCapacity(context.Background(), "p-1")
+	if limit != 4 {
+		t.Fatalf("expected server limit 4 to cap project limit 10, got %d", limit)
+	}
+	if active != 4 {
+		t.Fatalf("expected 4 active, got %d", active)
+	}
+	if hasCapacity {
+		t.Fatal("expected project to be at capacity (capped by server limit)")
+	}
+}
+
 func TestTryDispatchAlreadyRunning(t *testing.T) {
 	tk := &ticket.Ticket{
 		ID:        "t-1",
@@ -1591,11 +1626,6 @@ func TestCloseMergedTicket_HappyPath(t *testing.T) {
 	trans := &mockTicketTransitioner{}
 	d.SetTicketTransitioner(trans)
 
-	// Seed a merge attempt to verify it gets cleared.
-	d.mu.Lock()
-	d.mergeAttempts["t-1"] = 3
-	d.mu.Unlock()
-
 	tk := &ticket.Ticket{ID: "t-1", ProjectID: "p-1", State: ticket.StateValidated}
 	d.closeMergedTicket(context.Background(), tk)
 
@@ -1608,14 +1638,6 @@ func TestCloseMergedTicket_HappyPath(t *testing.T) {
 		if triggers[i] != exp {
 			t.Errorf("transition %d: expected %q, got %q", i, exp, triggers[i])
 		}
-	}
-
-	// Verify merge attempts cleared.
-	d.mu.Lock()
-	remaining := d.mergeAttempts["t-1"]
-	d.mu.Unlock()
-	if remaining != 0 {
-		t.Errorf("expected merge attempts cleared, got %d", remaining)
 	}
 }
 
@@ -1686,18 +1708,16 @@ func TestAutoMergePR_Escalation(t *testing.T) {
 		ID:        "t-esc",
 		ProjectID: "p-1",
 		State:     ticket.StateValidated,
-		Outputs:   map[string]any{"pr_url": "https://github.com/test/pr/1"},
+		Outputs: map[string]any{
+			"pr_url":          "https://github.com/test/pr/1",
+			"_merge_attempts": float64(maxMergeAttempts), // persisted as JSON number
+		},
 	}
 	tg := newMockTicketGetter(tk)
 	pg := newMockProjectGetter()
 	cfg := Config{MaxWorkers: 5, RepoDir: t.TempDir(), WorktreeDir: t.TempDir()}
 
 	d := New(cfg, bus, tg, pg)
-
-	// Seed merge attempts at threshold.
-	d.mu.Lock()
-	d.mergeAttempts["t-esc"] = maxMergeAttempts
-	d.mu.Unlock()
 
 	// Subscribe to escalation events.
 	var escalated []events.Event
@@ -1801,5 +1821,301 @@ func TestWorkStreamCompletionNoWorkStream(t *testing.T) {
 
 	if len(received) != 0 {
 		t.Errorf("expected no work_stream.completed event for ticket without work_stream_id, got %d", len(received))
+	}
+}
+
+// --- Durable merge state tests ---
+
+// mockOutputPatcher implements TicketOutputPatcher for tests.
+type mockOutputPatcher struct {
+	mu      sync.Mutex
+	patches map[string]map[string]any // ticketID → merged patches
+}
+
+func newMockOutputPatcher() *mockOutputPatcher {
+	return &mockOutputPatcher{patches: make(map[string]map[string]any)}
+}
+
+func (m *mockOutputPatcher) PatchOutputs(_ context.Context, id string, patch map[string]any) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.patches[id] == nil {
+		m.patches[id] = make(map[string]any)
+	}
+	for k, v := range patch {
+		m.patches[id][k] = v
+	}
+	return nil
+}
+
+func (m *mockOutputPatcher) get(id, key string) any {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.patches[id] == nil {
+		return nil
+	}
+	return m.patches[id][key]
+}
+
+func TestPersistMergeState(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter()
+	pg := newMockProjectGetter()
+	cfg := Config{MaxWorkers: 5}
+
+	d := New(cfg, bus, tg, pg)
+	patcher := newMockOutputPatcher()
+	d.SetOutputPatcher(patcher)
+
+	ctx := context.Background()
+	d.persistMergeState(ctx, "t-1", 3, "conflict", "merge conflict in main.go")
+
+	if got := patcher.get("t-1", "_merge_attempts"); got != 3 {
+		t.Errorf("expected _merge_attempts=3, got %v", got)
+	}
+	if got := patcher.get("t-1", "_merge_status"); got != "conflict" {
+		t.Errorf("expected _merge_status=conflict, got %v", got)
+	}
+	if got := patcher.get("t-1", "_merge_last_error"); got != "merge conflict in main.go" {
+		t.Errorf("expected _merge_last_error set, got %v", got)
+	}
+	if got := patcher.get("t-1", "_merge_last_attempt_at"); got == nil || got == "" {
+		t.Error("expected _merge_last_attempt_at to be set")
+	}
+}
+
+func TestPersistMergeState_NilPatcher(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter()
+	pg := newMockProjectGetter()
+	cfg := Config{MaxWorkers: 5}
+
+	d := New(cfg, bus, tg, pg)
+	// outputPatcher is nil — should not panic.
+	d.persistMergeState(context.Background(), "t-1", 1, "merging", "")
+}
+
+func TestAutoMergePR_ReadsAttemptsFromOutputs(t *testing.T) {
+	bus := events.NewInProcessBus()
+
+	// Ticket with 4 attempts persisted — should still try (< maxMergeAttempts).
+	tk := &ticket.Ticket{
+		ID:        "t-4",
+		ProjectID: "p-1",
+		State:     ticket.StateValidated,
+		Outputs: map[string]any{
+			"pr_url":          "https://github.com/test/pr/4",
+			"_merge_attempts": float64(4),
+			"_merge_status":   "conflict",
+		},
+	}
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter()
+	cfg := Config{MaxWorkers: 5, RepoDir: t.TempDir(), WorktreeDir: t.TempDir()}
+
+	d := New(cfg, bus, tg, pg)
+	patcher := newMockOutputPatcher()
+	d.SetOutputPatcher(patcher)
+
+	// autoMergePR will fail to resolve repo (no project in mock with repo_url), but
+	// the key assertion is that it reads attempts from outputs and doesn't escalate for 4.
+	d.autoMergePR(context.Background(), tk, "https://github.com/test/pr/4")
+
+	// With 4 attempts it should NOT escalate (threshold is 5).
+	// It will fail at resolveProjectRepoDir, but merge status should be set to "merging".
+	if got := patcher.get("t-4", "_merge_status"); got != "merging" {
+		t.Errorf("expected _merge_status=merging (tried before failing on repo), got %v", got)
+	}
+}
+
+func TestBranchFromOutputs(t *testing.T) {
+	tests := []struct {
+		name     string
+		outputs  map[string]any
+		expected string
+	}{
+		{"with _branch", map[string]any{"_branch": "feature/custom"}, "feature/custom"},
+		{"without _branch", map[string]any{}, "ticket/t-1"},
+		{"empty _branch", map[string]any{"_branch": ""}, "ticket/t-1"},
+		{"nil outputs", nil, "ticket/t-1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tk := &ticket.Ticket{ID: "t-1", Outputs: tt.outputs}
+			if tk.Outputs == nil {
+				tk.Outputs = make(map[string]any)
+			}
+			got := branchFromOutputs(tk)
+			if got != tt.expected {
+				t.Errorf("branchFromOutputs() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestHandleTicketCancelled_CleansUpWorker(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter()
+	pg := newMockProjectGetter()
+	cfg := Config{MaxWorkers: 5, WorktreeDir: t.TempDir(), RepoDir: t.TempDir()}
+
+	d := New(cfg, bus, tg, pg)
+
+	// Simulate an active worker.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d.mu.Lock()
+	d.active["t-cancel"] = cancel
+	d.activeProjects["t-cancel"] = "p-1"
+	d.mu.Unlock()
+
+	d.handleTicketCancelled(ctx, events.Event{
+		Type: events.EventTicketCancelled,
+		Payload: map[string]any{
+			"ticket_id":  "t-cancel",
+			"project_id": "p-1",
+		},
+	})
+
+	// Worker should be removed from active map.
+	d.mu.Lock()
+	_, stillActive := d.active["t-cancel"]
+	d.mu.Unlock()
+	if stillActive {
+		t.Error("expected worker to be removed from active map after cancel")
+	}
+}
+
+func TestEscalateMergeFailure_PersistsState(t *testing.T) {
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter()
+	pg := newMockProjectGetter()
+	cfg := Config{MaxWorkers: 5}
+
+	d := New(cfg, bus, tg, pg)
+	patcher := newMockOutputPatcher()
+	d.SetOutputPatcher(patcher)
+
+	var escalated []events.Event
+	bus.Subscribe(events.EventTicketEscalated, func(_ context.Context, e events.Event) {
+		escalated = append(escalated, e)
+	})
+
+	tk := &ticket.Ticket{ID: "t-esc2", ProjectID: "p-1", State: ticket.StateValidated}
+	d.escalateMergeFailure(context.Background(), tk, "too many conflicts")
+
+	if got := patcher.get("t-esc2", "_merge_status"); got != "escalated" {
+		t.Errorf("expected _merge_status=escalated, got %v", got)
+	}
+	if got := patcher.get("t-esc2", "_merge_last_error"); got != "too many conflicts" {
+		t.Errorf("expected _merge_last_error='too many conflicts', got %v", got)
+	}
+	if len(escalated) != 1 {
+		t.Fatalf("expected 1 escalation event, got %d", len(escalated))
+	}
+}
+
+func TestHasHigherPriorityWork_ReviewWaiting(t *testing.T) {
+	reviewTicket := &ticket.Ticket{
+		ID:        "t-review",
+		ProjectID: "p-1",
+		State:     ticket.StateAwaitingReview,
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(reviewTicket)
+	pg := newMockProjectGetter()
+	d := New(Config{MaxWorkers: 5}, bus, tg, pg)
+
+	// Awaiting_review ticket exists and no reviewer active → higher priority work.
+	if !d.hasHigherPriorityWork(context.Background(), "p-1") {
+		t.Error("expected hasHigherPriorityWork=true when awaiting_review ticket exists")
+	}
+
+	// Mark a reviewer as active → no longer higher priority.
+	_, cancel := context.WithCancel(context.Background())
+	d.mu.Lock()
+	d.active["review:t-review"] = cancel
+	d.activeProjects["review:t-review"] = "p-1"
+	d.mu.Unlock()
+
+	if d.hasHigherPriorityWork(context.Background(), "p-1") {
+		t.Error("expected hasHigherPriorityWork=false when reviewer is active")
+	}
+	cancel()
+}
+
+func TestHasHigherPriorityWork_ValidatedPRWaiting(t *testing.T) {
+	validatedTicket := &ticket.Ticket{
+		ID:        "t-val",
+		ProjectID: "p-1",
+		State:     ticket.StateValidated,
+		Outputs:   map[string]any{"pr_url": "https://github.com/test/repo/pull/1"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(validatedTicket)
+	pg := newMockProjectGetter()
+	d := New(Config{MaxWorkers: 5}, bus, tg, pg)
+
+	// Validated ticket with PR, no resolver active → higher priority.
+	if !d.hasHigherPriorityWork(context.Background(), "p-1") {
+		t.Error("expected hasHigherPriorityWork=true when validated ticket with PR exists")
+	}
+
+	// Mark resolver as active → no longer higher priority.
+	_, cancel := context.WithCancel(context.Background())
+	d.mu.Lock()
+	d.active["resolve:t-val"] = cancel
+	d.activeProjects["resolve:t-val"] = "p-1"
+	d.mu.Unlock()
+
+	if d.hasHigherPriorityWork(context.Background(), "p-1") {
+		t.Error("expected hasHigherPriorityWork=false when resolver is active")
+	}
+	cancel()
+}
+
+func TestHasHigherPriorityWork_NoPriorityWork(t *testing.T) {
+	pendingTicket := &ticket.Ticket{
+		ID:        "t-pending",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(pendingTicket)
+	pg := newMockProjectGetter()
+	d := New(Config{MaxWorkers: 5}, bus, tg, pg)
+
+	// Only pending tickets exist → no higher priority work.
+	if d.hasHigherPriorityWork(context.Background(), "p-1") {
+		t.Error("expected hasHigherPriorityWork=false when only pending tickets exist")
+	}
+}
+
+func TestTryDispatchDefersWhenHigherPriorityWork(t *testing.T) {
+	reviewTicket := &ticket.Ticket{
+		ID:        "t-review",
+		ProjectID: "p-1",
+		State:     ticket.StateAwaitingReview,
+	}
+	pendingTicket := &ticket.Ticket{
+		ID:        "t-pending",
+		ProjectID: "p-1",
+		State:     ticket.StatePending,
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(reviewTicket, pendingTicket)
+	pg := newMockProjectGetter(&project.Project{
+		ID:              "p-1",
+		RepoURL:         "https://github.com/test/repo.git",
+		DispatchEnabled: true,
+	})
+	d := New(Config{MaxWorkers: 5}, bus, tg, pg)
+
+	// tryDispatch should skip the pending ticket because review work is waiting.
+	d.tryDispatch(context.Background(), pendingTicket)
+
+	if d.activeCount() != 0 {
+		t.Error("should not dispatch pending ticket when review work is waiting")
 	}
 }

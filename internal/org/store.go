@@ -117,3 +117,63 @@ func (s *Store) ListOrgsByUserID(ctx context.Context, userID string) ([]*Org, er
 	}
 	return list, rows.Err()
 }
+
+// CreateInvite inserts an org invite.
+func (s *Store) CreateInvite(ctx context.Context, inv *Invite) error {
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO org_invites (id, org_id, code, role, created_by, expires_at, max_uses, use_count, revoked, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		inv.ID, inv.OrgID, inv.Code, string(inv.Role), inv.CreatedBy,
+		inv.ExpiresAt, inv.MaxUses, inv.UseCount, inv.Revoked, inv.CreatedAt)
+	return err
+}
+
+// GetInviteByCode returns an invite by its unique code.
+func (s *Store) GetInviteByCode(ctx context.Context, code string) (*Invite, error) {
+	var inv Invite
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, org_id, code, role, created_by, expires_at, max_uses, use_count, revoked, created_at
+		 FROM org_invites WHERE code = $1`, code).
+		Scan(&inv.ID, &inv.OrgID, &inv.Code, &inv.Role, &inv.CreatedBy,
+			&inv.ExpiresAt, &inv.MaxUses, &inv.UseCount, &inv.Revoked, &inv.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &inv, nil
+}
+
+// ListInvitesByOrg returns non-revoked invites for an org.
+func (s *Store) ListInvitesByOrg(ctx context.Context, orgID string) ([]Invite, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, org_id, code, role, created_by, expires_at, max_uses, use_count, revoked, created_at
+		 FROM org_invites WHERE org_id = $1 AND revoked = FALSE
+		 ORDER BY created_at DESC`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []Invite
+	for rows.Next() {
+		var inv Invite
+		if err := rows.Scan(&inv.ID, &inv.OrgID, &inv.Code, &inv.Role, &inv.CreatedBy,
+			&inv.ExpiresAt, &inv.MaxUses, &inv.UseCount, &inv.Revoked, &inv.CreatedAt); err != nil {
+			return nil, err
+		}
+		list = append(list, inv)
+	}
+	return list, rows.Err()
+}
+
+// IncrementInviteUseCount atomically increments use_count.
+func (s *Store) IncrementInviteUseCount(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE org_invites SET use_count = use_count + 1 WHERE id = $1`, id)
+	return err
+}
+
+// RevokeInvite sets revoked=true on an invite.
+func (s *Store) RevokeInvite(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE org_invites SET revoked = TRUE WHERE id = $1`, id)
+	return err
+}

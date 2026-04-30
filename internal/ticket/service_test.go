@@ -2,6 +2,7 @@ package ticket
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -157,6 +158,20 @@ func (s *inMemoryTicketStore) SetCreateIdempotency(_ context.Context, projectID,
 
 func (s *inMemoryTicketStore) ListStaleTickets(_ context.Context, _ []State, _ time.Duration) ([]*Ticket, error) {
 	return nil, nil
+}
+
+func (s *inMemoryTicketStore) PatchOutputs(_ context.Context, id string, patch map[string]any) error {
+	t, ok := s.tickets[id]
+	if !ok {
+		return fmt.Errorf("ticket %q not found", id)
+	}
+	if t.Outputs == nil {
+		t.Outputs = make(map[string]any)
+	}
+	for k, v := range patch {
+		t.Outputs[k] = v
+	}
+	return nil
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────

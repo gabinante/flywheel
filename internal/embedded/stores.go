@@ -124,6 +124,66 @@ func (s *OrgStore) ListOrgsByUserID(_ context.Context, userID string) ([]*org.Or
 	return list, rows.Err()
 }
 
+func (s *OrgStore) CreateInvite(_ context.Context, inv *org.Invite) error {
+	_, err := s.db.Exec(
+		`INSERT INTO org_invites (id, org_id, code, role, created_by, expires_at, max_uses, use_count, revoked, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		inv.ID, inv.OrgID, inv.Code, string(inv.Role), inv.CreatedBy,
+		inv.ExpiresAt.UTC().Format(time.RFC3339Nano), inv.MaxUses, inv.UseCount,
+		inv.Revoked, inv.CreatedAt.UTC().Format(time.RFC3339Nano))
+	return err
+}
+
+func (s *OrgStore) GetInviteByCode(_ context.Context, code string) (*org.Invite, error) {
+	var inv org.Invite
+	var expiresTS, createdTS string
+	err := s.db.QueryRow(
+		`SELECT id, org_id, code, role, created_by, expires_at, max_uses, use_count, revoked, created_at
+		 FROM org_invites WHERE code = ?`, code).
+		Scan(&inv.ID, &inv.OrgID, &inv.Code, &inv.Role, &inv.CreatedBy,
+			&expiresTS, &inv.MaxUses, &inv.UseCount, &inv.Revoked, &createdTS)
+	if err != nil {
+		return nil, err
+	}
+	inv.ExpiresAt, _ = time.Parse(time.RFC3339Nano, expiresTS)
+	inv.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdTS)
+	return &inv, nil
+}
+
+func (s *OrgStore) ListInvitesByOrg(_ context.Context, orgID string) ([]org.Invite, error) {
+	rows, err := s.db.Query(
+		`SELECT id, org_id, code, role, created_by, expires_at, max_uses, use_count, revoked, created_at
+		 FROM org_invites WHERE org_id = ? AND revoked = 0
+		 ORDER BY created_at DESC`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []org.Invite
+	for rows.Next() {
+		var inv org.Invite
+		var expiresTS, createdTS string
+		if err := rows.Scan(&inv.ID, &inv.OrgID, &inv.Code, &inv.Role, &inv.CreatedBy,
+			&expiresTS, &inv.MaxUses, &inv.UseCount, &inv.Revoked, &createdTS); err != nil {
+			return nil, err
+		}
+		inv.ExpiresAt, _ = time.Parse(time.RFC3339Nano, expiresTS)
+		inv.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdTS)
+		list = append(list, inv)
+	}
+	return list, rows.Err()
+}
+
+func (s *OrgStore) IncrementInviteUseCount(_ context.Context, id string) error {
+	_, err := s.db.Exec(`UPDATE org_invites SET use_count = use_count + 1 WHERE id = ?`, id)
+	return err
+}
+
+func (s *OrgStore) RevokeInvite(_ context.Context, id string) error {
+	_, err := s.db.Exec(`UPDATE org_invites SET revoked = 1 WHERE id = ?`, id)
+	return err
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // AgentStore (implements agent.AgentStore)
 // ────────────────────────────────────────────────────────────────────────────
@@ -771,9 +831,27 @@ func (s *TicketStore) ListStaleTickets(_ context.Context, states []ticket.State,
 	return s.scanTickets(rows)
 }
 
-// scanTicket scans a single ticket row.
 func (s *TicketStore) UpdateWorkflowPhase(_ context.Context, id string, workflowPhase string) error {
 	_, err := s.db.Exec(`UPDATE tickets SET workflow_phase = ?, updated_at = datetime('now') WHERE id = ?`, nilIfEmpty(workflowPhase), id)
+	return err
+}
+
+// PatchOutputs merges the given keys into existing outputs without overwriting
+// unrelated keys. SQLite equivalent of Postgres jsonb || operator.
+func (s *TicketStore) PatchOutputs(_ context.Context, id string, patch map[string]any) error {
+	// Read current outputs.
+	var outJSON string
+	err := s.db.QueryRow(`SELECT COALESCE(outputs, '{}') FROM tickets WHERE id = ?`, id).Scan(&outJSON)
+	if err != nil {
+		return err
+	}
+	existing := make(map[string]any)
+	_ = json.Unmarshal([]byte(outJSON), &existing)
+	for k, v := range patch {
+		existing[k] = v
+	}
+	merged, _ := json.Marshal(existing)
+	_, err = s.db.Exec(`UPDATE tickets SET outputs = ?, updated_at = datetime('now') WHERE id = ?`, string(merged), id)
 	return err
 }
 

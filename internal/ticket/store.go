@@ -295,6 +295,17 @@ func (s *Store) SetCreateIdempotency(ctx context.Context, projectID, idempotency
 	return err
 }
 
+// PatchOutputs merges the given keys into existing outputs without overwriting
+// unrelated keys. Uses Postgres jsonb || operator for atomic merge.
+func (s *Store) PatchOutputs(ctx context.Context, id string, patch map[string]any) error {
+	patchJSON, _ := json.Marshal(patch)
+	_, err := s.pool.Exec(ctx,
+		`UPDATE tickets SET outputs = COALESCE(outputs, '{}'::jsonb) || $1::jsonb,
+		 updated_at = now() WHERE id = $2`,
+		patchJSON, id)
+	return err
+}
+
 // ListStaleTickets returns tickets in any of the given states whose updated_at
 // is older than now - threshold. Scans across all projects.
 func (s *Store) ListStaleTickets(ctx context.Context, states []State, threshold time.Duration) ([]*Ticket, error) {

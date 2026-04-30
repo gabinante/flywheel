@@ -251,8 +251,12 @@ function SortablePhaseNode({
 
 export function WorkflowTimelineEditor({
   projectId,
+  orgId,
+  scope = 'project',
 }: {
-  projectId: string
+  projectId?: string
+  orgId?: string
+  scope?: 'project' | 'org'
 }) {
   const { client } = useAuth()
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(null)
@@ -264,6 +268,8 @@ export function WorkflowTimelineEditor({
   const [error, setError] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [isSuggested, setIsSuggested] = useState(false)
+  const [source, setSource] = useState<string | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -273,22 +279,39 @@ export function WorkflowTimelineEditor({
   useEffect(() => {
     let cancelled = false
     ;(async () => {
+      const endpoint = scope === 'org'
+        ? '/orgs/{orgID}/workflow'
+        : '/projects/{projectID}/workflow'
+      const pathParams = scope === 'org'
+        ? { orgID: orgId }
+        : { projectID: projectId }
       const { data, response } = await client.GET(
-        '/projects/{projectID}/workflow' as never,
-        { params: { path: { projectID: projectId } } } as never,
+        endpoint as never,
+        { params: { path: pathParams } } as never,
       )
       if (cancelled) return
       setLoading(false)
-      const wf = (data as { workflow?: WorkflowDefinition } | undefined)?.workflow
+      const payload = data as { workflow?: WorkflowDefinition; suggested?: WorkflowDefinition; source?: string } | undefined
+      const wf = payload?.workflow
+      const suggested = payload?.suggested
+      const wfSource = payload?.source
       if (response.ok && wf) {
         setDefinition(wf)
         setPhases(wf.phases ?? [])
         setName(wf.name ?? '')
         setDescription(wf.description ?? '')
+        setSource(wfSource ?? scope)
+        setIsSuggested(false)
+      } else if (response.ok && suggested) {
+        setPhases((suggested.phases ?? []) as WorkflowPhase[])
+        setName(suggested.name ?? 'Delivery Pipeline')
+        setDescription(suggested.description ?? '')
+        setIsSuggested(true)
+        setSource(null)
       }
     })()
     return () => { cancelled = true }
-  }, [client, projectId])
+  }, [client, projectId, orgId, scope])
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event
@@ -325,7 +348,7 @@ export function WorkflowTimelineEditor({
     })
   }, [])
 
-  const save = useCallback(async () => {
+  const saveToScope = useCallback(async (targetScope: 'project' | 'org') => {
     setSaving(true)
     setError(null)
     setSavedAt(null)
@@ -336,10 +359,17 @@ export function WorkflowTimelineEditor({
       phases,
     }
 
+    const endpoint = targetScope === 'org'
+      ? '/orgs/{orgID}/workflow'
+      : '/projects/{projectID}/workflow'
+    const pathParams = targetScope === 'org'
+      ? { orgID: orgId }
+      : { projectID: projectId }
+
     const { data, error: apiError, response } = await client.PUT(
-      '/projects/{projectID}/workflow' as never,
+      endpoint as never,
       {
-        params: { path: { projectID: projectId } },
+        params: { path: pathParams },
         body,
       } as never,
     )
@@ -349,8 +379,12 @@ export function WorkflowTimelineEditor({
       return
     }
     setDefinition(data as unknown as WorkflowDefinition)
+    setIsSuggested(false)
+    setSource(targetScope)
     setSavedAt(Date.now())
-  }, [client, projectId, name, description, phases])
+  }, [client, projectId, orgId, name, description, phases])
+
+  const save = useCallback(() => saveToScope(scope), [saveToScope, scope])
 
   if (loading) {
     return (
@@ -366,23 +400,57 @@ export function WorkflowTimelineEditor({
     <Card className="border-white/10 bg-white/5 backdrop-blur-md">
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1.5">
-          <CardTitle className="text-sm">Delivery Pipeline</CardTitle>
+          <CardTitle className="text-sm">
+            {scope === 'org' ? 'Organization Default Pipeline' : 'Delivery Pipeline'}
+          </CardTitle>
           <CardDescription>
-            {definition
-              ? 'Define the stages tickets move through in this project.'
-              : 'No pipeline configured. Add steps to create one.'}
+            {scope === 'org'
+              ? definition
+                ? 'Default pipeline inherited by all projects in this organization.'
+                : isSuggested
+                  ? 'Pre-populated with the suggested default. Save to set as org default.'
+                  : 'No org default configured. Add steps to create one.'
+              : definition
+                ? 'Define the stages tickets move through in this project.'
+                : isSuggested
+                  ? 'Pre-populated with the suggested default. Save to activate.'
+                  : 'No pipeline configured. Add steps to create one.'}
           </CardDescription>
         </div>
         <div className="flex items-center gap-2">
           {savedAt ? <span className="text-xs text-emerald-400">Saved</span> : null}
           <Button size="xs" onClick={() => void save()} disabled={saving}>
             <Save className="size-3.5" />
-            {saving ? 'Saving…' : 'Save pipeline'}
+            {saving ? 'Saving…' : scope === 'org' ? 'Save org default' : 'Save pipeline'}
           </Button>
+          {scope === 'project' && orgId && phases.length > 0 ? (
+            <Button
+              size="xs"
+              variant="outline"
+              onClick={() => void saveToScope('org')}
+              disabled={saving}
+              title="Save this pipeline as the default for all projects in this organization"
+            >
+              <Save className="size-3.5" />
+              Set as org default
+            </Button>
+          ) : null}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
+
+        {isSuggested ? (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
+            This is the suggested default pipeline (Standard SDLC). Click <strong>{scope === 'org' ? 'Save org default' : 'Save pipeline'}</strong> to activate it.
+          </div>
+        ) : null}
+
+        {!isSuggested && scope === 'project' && source && source !== 'project' ? (
+          <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-sm text-blue-300">
+            Inherited from <strong>{source}</strong> scope. Save to override for this project.
+          </div>
+        ) : null}
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Label>

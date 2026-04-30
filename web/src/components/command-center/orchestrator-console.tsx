@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  AlertTriangle,
   BrainCircuit,
-  CheckCircle2,
   LoaderCircle,
   Sparkles,
   TerminalSquare,
@@ -117,17 +115,6 @@ function eventLabel(event: OrchestratorRunEvent): string {
   return event.kind
 }
 
-function eventBadgeLabel(event: OrchestratorRunEvent): string {
-  if (event.kind === 'worker_output') {
-    const stream = event.payload?.stream
-    return typeof stream === 'string' && stream.trim().length > 0
-      ? stream.trim()
-      : 'output'
-  }
-  if (event.kind === 'error') return 'error'
-  return 'status'
-}
-
 function MessageBubble({
   message,
   pending = false,
@@ -232,108 +219,16 @@ function LivePlannerPanel({
         <div className="h-full w-2/5 rounded-full bg-primary/70 animate-pulse" />
       </div>
 
-      <div className="mt-4 space-y-2">
-        {recentEvents.length > 0 ? (
-          recentEvents.map((event) => (
-            <div
-              key={event.id}
-              className="rounded-2xl border border-white/8 bg-black/10 px-3 py-2"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    'text-[10px] uppercase tracking-[0.18em]',
-                    event.kind === 'error'
-                      ? 'border-destructive/30 text-destructive'
-                      : event.kind === 'worker_output'
-                        ? 'border-emerald-500/30 text-emerald-300'
-                        : 'border-white/10 text-muted-foreground',
-                  )}
-                >
-                  {eventBadgeLabel(event)}
-                </Badge>
-                <span className="text-[11px] tabular-nums text-muted-foreground">
-                  {elapsed(event.created_at)}
-                </span>
-              </div>
-
-              <p
-                className={cn(
-                  'mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground',
-                  event.kind === 'worker_output' && 'font-mono text-xs',
-                )}
-              >
-                {eventLabel(event)}
-              </p>
-            </div>
-          ))
-        ) : (
-          <div className="rounded-2xl border border-dashed border-white/10 px-3 py-3 text-sm text-muted-foreground">
-            Waiting for the planner to emit activity.
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function LatestPlannerRun({
-  run,
-}: {
-  run: OrchestratorRun
-}) {
-  const recentEvents = run.events.slice(-3)
-  const isFailed = run.status === 'failed'
-
-  return (
-    <div className="rounded-3xl border border-white/10 bg-black/10 p-4">
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge
-              variant={isFailed ? 'outline' : 'secondary'}
-              className={cn(isFailed && 'border-destructive/30 text-destructive')}
-            >
-              {isFailed ? (
-                <AlertTriangle className="size-3" />
-              ) : (
-                <CheckCircle2 className="size-3" />
-              )}
-              {isFailed ? 'Latest Run Failed' : 'Latest Run'}
-            </Badge>
-            <Badge variant="outline" className="border-white/10 text-muted-foreground">
-              {formatDuration(run.started_at, run.completed_at)}
-            </Badge>
-          </div>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            {[run.worker_name, run.model, run.runner]
-              .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-              .join(' · ') || 'Planner activity'}
-          </p>
-        </div>
-      </div>
-
-      {run.error ? (
-        <p className="mt-3 text-sm leading-relaxed text-destructive">{run.error}</p>
-      ) : null}
-
-      {recentEvents.length > 0 ? (
-        <div className="mt-3 space-y-2">
-          {recentEvents.map((event) => (
-            <div key={event.id} className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-                  {eventBadgeLabel(event)}
-                </span>
-                <span className="text-[11px] tabular-nums text-muted-foreground">
-                  {elapsed(event.created_at)}
-                </span>
-              </div>
-              <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
-                {eventLabel(event)}
-              </p>
-            </div>
+      {recentEvents.length > 1 ? (
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          {recentEvents.slice(0, -1).map((event) => (
+            <span key={event.id} className="flex items-center gap-1.5">
+              <span className={cn(
+                'size-1.5 rounded-full',
+                event.kind === 'error' ? 'bg-destructive' : 'bg-primary/50',
+              )} />
+              {eventLabel(event)}
+            </span>
           ))}
         </div>
       ) : null}
@@ -365,7 +260,6 @@ export function OrchestratorConsole({
     () => runs.findLast((run) => run.status === 'running') ?? null,
     [runs],
   )
-  const latestRun = runs.length > 0 ? runs[runs.length - 1] : null
   const showLivePlanner = sending || activeRun !== null
   const pollInterval = showLivePlanner ? LIVE_POLL_INTERVAL : POLL_INTERVAL
 
@@ -563,8 +457,6 @@ export function OrchestratorConsole({
             sending={sending}
             fallbackHint={GENERATION_HINTS[hintIndex]}
           />
-        ) : latestRun ? (
-          <LatestPlannerRun run={latestRun} />
         ) : null}
 
         <div className="space-y-3 border-t border-white/10 pt-4">

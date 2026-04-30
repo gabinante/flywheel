@@ -63,6 +63,21 @@ func migrate(db *sql.DB) error {
 			role    TEXT NOT NULL DEFAULT 'member',
 			PRIMARY KEY (org_id, user_id)
 		)`,
+		// Org invites
+		`CREATE TABLE IF NOT EXISTS org_invites (
+			id          TEXT PRIMARY KEY,
+			org_id      TEXT NOT NULL REFERENCES orgs(id),
+			code        TEXT NOT NULL UNIQUE,
+			role        TEXT NOT NULL DEFAULT 'member',
+			created_by  TEXT NOT NULL,
+			expires_at  TEXT NOT NULL,
+			max_uses    INTEGER NOT NULL DEFAULT 1,
+			use_count   INTEGER NOT NULL DEFAULT 0,
+			revoked     INTEGER NOT NULL DEFAULT 0,
+			created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_org_invites_code ON org_invites(code)`,
+		`CREATE INDEX IF NOT EXISTS idx_org_invites_org ON org_invites(org_id)`,
 		// Users
 		`CREATE TABLE IF NOT EXISTS users (
 			id         TEXT PRIMARY KEY,

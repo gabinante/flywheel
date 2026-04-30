@@ -32,6 +32,7 @@ func (h *WorkflowHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/projects/{projectID}/workflow", h.deleteProjectWorkflow)
 
 	// Org-level workflow
+	mux.HandleFunc("GET /api/v1/orgs/{orgID}/workflow", h.getOrgWorkflow)
 	mux.HandleFunc("PUT /api/v1/orgs/{orgID}/workflow", h.upsertOrgWorkflow)
 	mux.HandleFunc("DELETE /api/v1/orgs/{orgID}/workflow", h.deleteOrgWorkflow)
 
@@ -65,10 +66,17 @@ func (h *WorkflowHandler) getProjectWorkflow(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if def == nil {
-		writeJSON(w, http.StatusOK, map[string]any{"workflow": nil})
+		suggested := workflow.StandardSDLC()
+		writeJSON(w, http.StatusOK, map[string]any{
+			"workflow":  nil,
+			"suggested": suggested,
+		})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"workflow": def})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"workflow": def,
+		"source":   def.Scope,
+	})
 }
 
 func (h *WorkflowHandler) getWorkflowLayers(w http.ResponseWriter, r *http.Request) {
@@ -136,6 +144,27 @@ func (h *WorkflowHandler) deleteProjectWorkflow(w http.ResponseWriter, r *http.R
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *WorkflowHandler) getOrgWorkflow(w http.ResponseWriter, r *http.Request) {
+	orgID := PathParam(r, "orgID")
+	def, err := h.Store.GetByScope(r.Context(), "org", orgID)
+	if err != nil {
+		WriteStructuredError(w, apierrors.MapError(err))
+		return
+	}
+	if def == nil {
+		suggested := workflow.StandardSDLC()
+		writeJSON(w, http.StatusOK, map[string]any{
+			"workflow":  nil,
+			"suggested": suggested,
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"workflow": def,
+		"source":   "org",
+	})
 }
 
 func (h *WorkflowHandler) upsertOrgWorkflow(w http.ResponseWriter, r *http.Request) {

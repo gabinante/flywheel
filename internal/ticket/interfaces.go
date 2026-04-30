@@ -31,4 +31,7 @@ type TicketStore interface {
 	// is older than the staleness threshold. Used by the DB staleness sweep (Layer 3
 	// recovery) to find zombie tickets across all projects.
 	ListStaleTickets(ctx context.Context, states []State, threshold time.Duration) ([]*Ticket, error)
+	// PatchOutputs merges the given keys into existing outputs without overwriting
+	// unrelated keys. Used by the dispatcher to persist merge metadata.
+	PatchOutputs(ctx context.Context, id string, patch map[string]any) error
 }

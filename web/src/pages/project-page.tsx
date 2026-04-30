@@ -432,7 +432,7 @@ export function ProjectPage() {
         </CardHeader>
       </Card>
 
-      <WorkflowTimelineEditor projectId={projectId} />
+      <WorkflowTimelineEditor projectId={projectId} orgId={orgId} />
 
       <ProjectDispatchRoutingCard
         projectId={projectId}

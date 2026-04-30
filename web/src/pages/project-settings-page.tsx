@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
   ArrowRight,
+  Check,
+  Copy,
   GitBranch,
+  Monitor,
   Plug,
   Save,
   ServerCog,
@@ -42,8 +45,8 @@ const SETTINGS_SECTIONS: Array<{
 }> = [
   {
     id: 'dispatch',
-    label: 'Dispatch',
-    description: 'Enable or pause automatic ticket pickup for this project.',
+    label: 'Server-side dispatch',
+    description: 'Enable or pause automatic server-side ticket pickup. Users can still claim tickets via local Claude Code + MCP when disabled.',
     icon: SlidersHorizontal,
   },
   {
@@ -135,11 +138,11 @@ function DispatchControlCard({
         <div className="space-y-1.5">
           <div className="flex items-center gap-2">
             <SlidersHorizontal className="size-4 text-muted-foreground" />
-            <CardTitle className="text-sm">Dispatch controls</CardTitle>
+            <CardTitle className="text-sm">Server-side auto-dispatch</CardTitle>
           </div>
           <CardDescription>
-            Project-level switch for whether workers can automatically claim new
-            tickets here.
+            Controls server-side automatic ticket pickup. When disabled, users
+            can still claim tickets via local Claude Code + MCP.
           </CardDescription>
         </div>
         <Button
@@ -257,6 +260,68 @@ function RepositorySettingsCard({
   )
 }
 
+function ConnectLocalWorkerCard() {
+  const [config, setConfig] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  async function fetchConfig() {
+    setLoading(true)
+    const resp = await fetch('/worker-config', {
+      headers: { Authorization: `Bearer ${sessionStorage.getItem('flywheel_jwt') ?? ''}` },
+    })
+    if (resp.ok) {
+      const data = await resp.json()
+      setConfig(JSON.stringify(data, null, 2))
+    }
+    setLoading(false)
+  }
+
+  return (
+    <Card className="border-white/10 bg-white/5 backdrop-blur-md">
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Monitor className="size-4 text-muted-foreground" />
+          <CardTitle className="text-sm">Connect local worker</CardTitle>
+        </div>
+        <CardDescription>
+          Run Claude Code locally against this Flywheel server. Paste the MCP config
+          into your <code className="text-xs">~/.claude/settings.json</code> or project settings.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {config === null ? (
+          <Button size="sm" variant="outline" onClick={() => void fetchConfig()} disabled={loading}>
+            {loading ? 'Loading...' : 'Show MCP config'}
+          </Button>
+        ) : (
+          <>
+            <pre className="overflow-x-auto rounded-lg border border-white/10 bg-black/30 p-3 text-xs text-muted-foreground">
+              {config}
+            </pre>
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={() => {
+                navigator.clipboard.writeText(config)
+                setCopied(true)
+                setTimeout(() => setCopied(false), 2000)
+              }}
+            >
+              {copied ? <Check className="size-3.5 text-emerald-400" /> : <Copy className="size-3.5" />}
+              {copied ? 'Copied' : 'Copy to clipboard'}
+            </Button>
+          </>
+        )}
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          After adding the config, use <code>claim_ticket</code> and other MCP tools
+          from your local Claude Code session to work on tickets.
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
 function SettingsOverview({
   orgId,
   projectId,
@@ -271,6 +336,7 @@ function SettingsOverview({
   return (
     <div className="space-y-6">
       <RepositorySettingsCard projectId={projectId} project={project} onProjectChange={onProjectChange} />
+      <ConnectLocalWorkerCard />
       <ScopeModelCard />
       <div className="grid gap-3 md:grid-cols-2">
         {SETTINGS_SECTIONS.map((section) => (
@@ -439,7 +505,7 @@ export function ProjectSettingsPage() {
           ) : null}
 
           {selectedSection === 'workflow' ? (
-            <WorkflowTimelineEditor projectId={projectId} />
+            <WorkflowTimelineEditor projectId={projectId} orgId={orgId} />
           ) : null}
 
           {selectedSection === 'integrations' ? (
