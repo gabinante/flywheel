@@ -3,9 +3,85 @@ import { z } from 'zod';
 import { prisma } from '../utils/prisma.js';
 import { env } from '../utils/env.js';
 import { generateApiKey, hashApiKey } from '../utils/api-keys.js';
+import { chargeCard, refundTransaction } from '../services/nmi.service.js';
 import crypto from 'crypto';
 
+// ─── GHL Query Endpoint Types ────────────────────────────────────────────────
+
+interface GhlQueryMeta {
+  contactId?: string;
+  locationId?: string;
+  email?: string;
+  name?: string;
+  orderId?: string;
+  /** NMI transaction ID — used for refund lookups */
+  transactionId?: string;
+}
+
+interface GhlQueryBody {
+  type: 'charge' | 'refund' | 'subscription' | string;
+  /** Amount in cents */
+  amount: number;
+  currency?: string;
+  /** Payment token (Collect.js or GHL-provided) */
+  source?: string;
+  meta?: GhlQueryMeta;
+}
+
+// ─── GHL Response Format ─────────────────────────────────────────────────────
+
+interface GhlQueryResponse {
+  success: boolean;
+  transactionId?: string;
+  message: string;
+}
+
+// ─── HMAC Verification ───────────────────────────────────────────────────────
+
+/**
+ * Verify GHL's HMAC-SHA256 signature.
+ *
+ * GHL signs the raw request body with the app's client secret and puts the
+ * hex digest in the `x-ghl-signature` header (optionally prefixed with
+ * "sha256=").  We verify using a timing-safe comparison.
+ */
+function verifyGhlSignature(rawBody: Buffer, signatureHeader: string, secret: string): boolean {
+  // Strip optional "sha256=" prefix
+  const signature = signatureHeader.startsWith('sha256=')
+    ? signatureHeader.slice(7)
+    : signatureHeader;
+
+  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+
+  try {
+    const sigBuf = Buffer.from(signature, 'hex');
+    const expBuf = Buffer.from(expected, 'hex');
+    if (sigBuf.length !== expBuf.length) return false;
+    return crypto.timingSafeEqual(sigBuf, expBuf);
+  } catch {
+    return false;
+  }
+}
+
 export async function ghlRoutes(app: FastifyInstance) {
+  // ── Raw body capture for HMAC verification ─────────────────────────────────
+  //
+  // We override the JSON content-type parser within this plugin scope so we
+  // can capture the raw bytes for signature verification on the /query route.
+  // Fastify scopes this parser to routes within this plugin only.
+  app.addContentTypeParser(
+    'application/json',
+    { parseAs: 'buffer' },
+    (_req: FastifyRequest, body: Buffer, done: (err: Error | null, result?: unknown) => void) => {
+      (_req as FastifyRequest & { rawBody?: Buffer }).rawBody = body;
+      try {
+        done(null, JSON.parse(body.toString('utf-8')));
+      } catch (err) {
+        done(err instanceof Error ? err : new Error(String(err)), undefined);
+      }
+    },
+  );
+
   // ── OAuth Install ──────────────────────────────────────
 
   app.get('/install', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -166,7 +242,7 @@ export async function ghlRoutes(app: FastifyInstance) {
       });
 
       if (!merchant) {
-        return reply.status(404).send({ error: 'Merchant not found for this location. Please install GoHighPayment first.' });
+        return reply.status(404).send({ error: 'Merchant not found for this location. Please install Shamroq first.' });
       }
 
       const token = app.jwt.sign(
@@ -195,7 +271,7 @@ export async function ghlRoutes(app: FastifyInstance) {
   });
 
   // ── GHL SSO (GET - direct redirect from GHL sidebar) ──
-  // GHL loads: https://merchant.gohighpayment.com/ghl/sso?ssoToken=xxx
+  // GHL loads: https://merchant.shamroq.com/ghl/sso?ssoToken=xxx
   // This backend route can optionally handle it server-side, validating
   // the token and redirecting with a JWT. But since our frontend handles
   // it at /ghl/sso, this is a fallback for server-side SSO.
@@ -248,5 +324,337 @@ export async function ghlRoutes(app: FastifyInstance) {
     }
 
     return { received: true };
+  });
+
+  // ── GHL queryUrl Payment Processing ────────────────────────────────────────
+  //
+  // GHL calls this endpoint for every payment made through order forms,
+  // funnels, and invoices that use Shamroq as the payment provider.
+  //
+  // Flow:
+  //   1. Verify HMAC signature (reject unsigned requests with 401)
+  //   2. Map GHL locationId → merchant
+  //   3. Route to NMI using merchant's credentials
+  //   4. Record transaction with ghlOrderId for reconciliation
+  //   5. Return GHL-expected response format
+
+  app.post('/query', async (request: FastifyRequest, reply: FastifyReply) => {
+    // ── 1. Verify HMAC signature ────────────────────────────────────────────
+    const signatureHeader = (
+      (request.headers['x-ghl-signature'] as string | undefined) ||
+      (request.headers['x-hub-signature-256'] as string | undefined)
+    );
+
+    if (!signatureHeader) {
+      app.log.warn({ url: request.url }, 'GHL query: missing signature header');
+      return reply.status(401).send({ success: false, message: 'Missing signature' } satisfies GhlQueryResponse);
+    }
+
+    const rawBody = (request as FastifyRequest & { rawBody?: Buffer }).rawBody;
+    if (!rawBody) {
+      app.log.error('GHL query: rawBody not available — content type parser misconfigured');
+      return reply.status(500).send({ success: false, message: 'Internal error' } satisfies GhlQueryResponse);
+    }
+
+    if (!verifyGhlSignature(rawBody, signatureHeader, env.GHL_CLIENT_SECRET)) {
+      app.log.warn({ url: request.url }, 'GHL query: invalid HMAC signature');
+      return reply.status(401).send({ success: false, message: 'Invalid signature' } satisfies GhlQueryResponse);
+    }
+
+    // ── 2. Parse and validate body ──────────────────────────────────────────
+    const body = request.body as GhlQueryBody;
+
+    if (!body || typeof body.type !== 'string') {
+      return reply.status(400).send({ success: false, message: 'Invalid request body' } satisfies GhlQueryResponse);
+    }
+
+    const locationId = body.meta?.locationId;
+    if (!locationId) {
+      return reply.status(400).send({ success: false, message: 'Missing locationId in meta' } satisfies GhlQueryResponse);
+    }
+
+    // ── 3. Look up merchant by GHL locationId ───────────────────────────────
+    const merchant = await prisma.merchant.findUnique({
+      where: { ghlLocationId: locationId },
+    });
+
+    if (!merchant) {
+      app.log.warn({ locationId }, 'GHL query: merchant not found for locationId');
+      await prisma.auditLog.create({
+        data: {
+          actorType: 'ghl',
+          actorId: locationId,
+          action: 'ghl_query_merchant_not_found',
+          resource: 'merchant',
+          details: { locationId, type: body.type, orderId: body.meta?.orderId },
+        },
+      }).catch((err: unknown) => {
+        app.log.error({ err }, 'Failed to write audit log');
+      });
+      return { success: false, message: 'Merchant not configured' } satisfies GhlQueryResponse;
+    }
+
+    if (!merchant.nmiSecurityKey) {
+      app.log.warn({ merchantId: merchant.id }, 'GHL query: merchant NMI credentials not configured');
+      return { success: false, message: 'Merchant payment processing not configured' } satisfies GhlQueryResponse;
+    }
+
+    // ── 4. Route by payment type ────────────────────────────────────────────
+    switch (body.type) {
+      // ── Charge ─────────────────────────────────────────────────────────────
+      case 'charge': {
+        if (!body.source) {
+          return reply.status(400).send({ success: false, message: 'Missing payment source/token' } satisfies GhlQueryResponse);
+        }
+
+        const ghlOrderId = body.meta?.orderId;
+        const amountCents = body.amount; // GHL sends amount in cents
+
+        // Parse customer name into first/last
+        const fullName = body.meta?.name || '';
+        const nameParts = fullName.trim().split(/\s+/);
+        const firstName = nameParts[0] || undefined;
+        const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : undefined;
+
+        // Create pending transaction record
+        const transaction = await prisma.transaction.create({
+          data: {
+            merchantId: merchant.id,
+            amountCents,
+            currency: body.currency || 'USD',
+            status: 'PENDING',
+            paymentMethod: 'CARD',
+            description: `GHL order ${ghlOrderId || 'unknown'}`,
+            ghlOrderId: ghlOrderId || null,
+            ipAddress: request.ip || null,
+          },
+        });
+
+        // Charge via merchant's NMI account
+        const chargeResult = await chargeCard({
+          paymentToken: body.source,
+          amountCents,
+          orderId: transaction.id,
+          customerEmail: body.meta?.email,
+          customerFirstName: firstName,
+          customerLastName: lastName,
+          ipAddress: request.ip || undefined,
+          securityKey: merchant.nmiSecurityKey,
+        });
+
+        if (!chargeResult.success) {
+          // Update transaction as declined
+          await prisma.transaction.update({
+            where: { id: transaction.id },
+            data: {
+              status: 'DECLINED',
+              nmiTransactionId: chargeResult.transactionId || null,
+              nmiResponseCode: chargeResult.responseCode || null,
+              nmiResponseText: chargeResult.responseText || null,
+            },
+          });
+
+          // Audit log
+          await prisma.auditLog.create({
+            data: {
+              merchantId: merchant.id,
+              actorType: 'ghl',
+              actorId: locationId,
+              action: 'ghl_charge_declined',
+              resource: 'transaction',
+              resourceId: transaction.id,
+              details: {
+                ghlOrderId,
+                responseCode: chargeResult.responseCode,
+                responseText: chargeResult.responseText,
+              },
+            },
+          }).catch((err: unknown) => {
+            app.log.error({ err }, 'Failed to write audit log');
+          });
+
+          return {
+            success: false,
+            message: chargeResult.responseText || 'Payment declined',
+          } satisfies GhlQueryResponse;
+        }
+
+        // Update transaction with NMI result
+        await prisma.transaction.update({
+          where: { id: transaction.id },
+          data: {
+            status: 'CAPTURED',
+            nmiTransactionId: chargeResult.transactionId || null,
+            nmiResponseCode: chargeResult.responseCode || null,
+            nmiResponseText: chargeResult.responseText || null,
+            nmiAuthCode: chargeResult.authCode || null,
+            cardBrand: chargeResult.cardBrand || null,
+            cardLast4: chargeResult.cardLast4 || null,
+            cardExpMonth: chargeResult.cardExpMonth || null,
+            cardExpYear: chargeResult.cardExpYear || null,
+          },
+        });
+
+        // Audit log success
+        await prisma.auditLog.create({
+          data: {
+            merchantId: merchant.id,
+            actorType: 'ghl',
+            actorId: locationId,
+            action: 'ghl_charge_success',
+            resource: 'transaction',
+            resourceId: transaction.id,
+            details: {
+              ghlOrderId,
+              nmiTransactionId: chargeResult.transactionId,
+              amountCents,
+            },
+          },
+        }).catch((err: unknown) => {
+          app.log.error({ err }, 'Failed to write audit log');
+        });
+
+        app.log.info(
+          { merchantId: merchant.id, transactionId: transaction.id, ghlOrderId },
+          'GHL charge processed successfully',
+        );
+
+        return {
+          success: true,
+          transactionId: transaction.id,
+          message: 'Payment successful',
+        } satisfies GhlQueryResponse;
+      }
+
+      // ── Refund ─────────────────────────────────────────────────────────────
+      case 'refund': {
+        const ghlOrderId = body.meta?.orderId;
+        const nmiTxnId = body.meta?.transactionId;
+
+        // Find the original transaction — try by NMI transaction ID first,
+        // then fall back to ghlOrderId
+        let originalTxn = null;
+
+        if (nmiTxnId) {
+          originalTxn = await prisma.transaction.findFirst({
+            where: { merchantId: merchant.id, nmiTransactionId: nmiTxnId },
+          });
+        }
+
+        if (!originalTxn && ghlOrderId) {
+          originalTxn = await prisma.transaction.findFirst({
+            where: { merchantId: merchant.id, ghlOrderId },
+          });
+        }
+
+        if (!originalTxn) {
+          app.log.warn({ merchantId: merchant.id, ghlOrderId, nmiTxnId }, 'GHL refund: original transaction not found');
+          return {
+            success: false,
+            message: 'Original transaction not found',
+          } satisfies GhlQueryResponse;
+        }
+
+        if (!originalTxn.nmiTransactionId) {
+          return {
+            success: false,
+            message: 'Original transaction has no NMI reference',
+          } satisfies GhlQueryResponse;
+        }
+
+        const refundAmountCents = body.amount || undefined;
+
+        const refundResult = await refundTransaction({
+          transactionId: originalTxn.nmiTransactionId,
+          amountCents: refundAmountCents,
+          securityKey: merchant.nmiSecurityKey,
+        });
+
+        if (!refundResult.success) {
+          await prisma.auditLog.create({
+            data: {
+              merchantId: merchant.id,
+              actorType: 'ghl',
+              actorId: locationId,
+              action: 'ghl_refund_failed',
+              resource: 'transaction',
+              resourceId: originalTxn.id,
+              details: {
+                ghlOrderId,
+                nmiTxnId: originalTxn.nmiTransactionId,
+                responseCode: refundResult.responseCode,
+                responseText: refundResult.responseText,
+              },
+            },
+          }).catch((err: unknown) => {
+            app.log.error({ err }, 'Failed to write audit log');
+          });
+
+          return {
+            success: false,
+            message: refundResult.responseText || 'Refund failed',
+          } satisfies GhlQueryResponse;
+        }
+
+        // Update transaction status
+        await prisma.transaction.update({
+          where: { id: originalTxn.id },
+          data: {
+            status: 'REFUNDED',
+            refundedAmountCents: refundAmountCents ?? originalTxn.amountCents,
+          },
+        });
+
+        // Audit log
+        await prisma.auditLog.create({
+          data: {
+            merchantId: merchant.id,
+            actorType: 'ghl',
+            actorId: locationId,
+            action: 'ghl_refund_success',
+            resource: 'transaction',
+            resourceId: originalTxn.id,
+            details: {
+              ghlOrderId,
+              nmiTxnId: originalTxn.nmiTransactionId,
+              refundAmountCents: refundAmountCents ?? originalTxn.amountCents,
+            },
+          },
+        }).catch((err: unknown) => {
+          app.log.error({ err }, 'Failed to write audit log');
+        });
+
+        app.log.info(
+          { merchantId: merchant.id, transactionId: originalTxn.id, ghlOrderId },
+          'GHL refund processed successfully',
+        );
+
+        return {
+          success: true,
+          transactionId: originalTxn.id,
+          message: 'Refund successful',
+        } satisfies GhlQueryResponse;
+      }
+
+      // ── Subscription ────────────────────────────────────────────────────────
+      case 'subscription': {
+        // Subscription support is planned but not yet implemented.
+        // Log and return a clear message.
+        app.log.warn({ merchantId: merchant.id, locationId }, 'GHL query: subscription type not yet supported');
+        return {
+          success: false,
+          message: 'Subscription payments not yet supported',
+        } satisfies GhlQueryResponse;
+      }
+
+      // ── Unknown ─────────────────────────────────────────────────────────────
+      default: {
+        app.log.warn({ type: body.type }, 'GHL query: unknown payment type');
+        return {
+          success: false,
+          message: `Unknown payment type: ${body.type}`,
+        } satisfies GhlQueryResponse;
+      }
+    }
   });
 }

@@ -250,6 +250,9 @@ model Transaction {
   refundedAmountCents Int    @default(0) @map("refunded_amount_cents")
   refundReason        String? @map("refund_reason")
 
+  // GHL reconciliation
+  ghlOrderId        String? @map("ghl_order_id")
+
   // Metadata
   checkoutSessionId String? @map("checkout_session_id")
   metadata          Json?
