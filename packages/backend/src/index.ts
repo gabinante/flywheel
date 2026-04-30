@@ -48,3 +48,27 @@ export {
   createAdminRouter,
   type AdminRouterDeps,
 } from "./routes/admin.js";
+
+export {
+  createMerchantAuthRouter,
+  type MerchantAuthRouterDeps,
+} from "./routes/merchant-auth.js";
+
+export {
+  createGhlRouter,
+  type GhlRouterDeps,
+  type GhlTokenResponse,
+  type GhlLocationInfo,
+} from "./routes/ghl.js";
+
+export {
+  AttributionImmutableError,
+  enforceAttributionImmutability,
+} from "./utils/attribution.js";
+
+export {
+  parseReferralCookie,
+  buildReferralCookieHeader,
+  REFERRAL_COOKIE_NAME,
+  REFERRAL_COOKIE_MAX_AGE_DAYS,
+} from "./utils/cookies.js";

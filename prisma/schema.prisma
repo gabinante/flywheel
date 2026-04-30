@@ -160,6 +160,19 @@ enum NotificationStatus {
   BOUNCED
 }
 
+// ─── GhlOAuthState ──────────────────────────────────────────────────────
+
+model GhlOAuthState {
+  id           String   @id @default(cuid())
+  state        String   @unique // CSRF token
+  referralCode String?  // agency referral code from ?ref= query param
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+
+  @@index([state])
+  @@index([expiresAt])
+}
+
 // ─── AuditLog ─────────────────────────────────────────────────────────
 
 model AuditLog {
