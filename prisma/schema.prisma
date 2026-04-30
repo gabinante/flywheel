@@ -61,6 +61,13 @@ model Merchant {
   agency          Agency?         @relation(fields: [agencyId], references: [id])
   attributedAt    DateTime?
   residualEntries ResidualEntry[]
+  transactions    Transaction[]
+  chargebacks     Chargeback[]
+
+  // Chargeback risk monitoring (set by chargeback-monitor daily job)
+  chargebackRiskLevel     String?   // null, WARNING, CRITICAL, HIGH
+  chargebackRiskUpdatedAt DateTime?
+
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 }
@@ -69,6 +76,62 @@ enum MerchantStatus {
   ACTIVE
   INACTIVE
   SUSPENDED
+}
+
+// ─── Transaction ────────────────────────────────────────────────────
+
+model Transaction {
+  id          String            @id @default(cuid())
+  merchantId  String
+  merchant    Merchant          @relation(fields: [merchantId], references: [id])
+  amountCents Int
+  status      TransactionStatus @default(PENDING)
+  chargebacks Chargeback[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([merchantId, createdAt])
+  @@index([status])
+}
+
+enum TransactionStatus {
+  PENDING
+  AUTHORIZED
+  CAPTURED
+  SETTLED
+  DECLINED
+  VOIDED
+  REFUNDED
+}
+
+// ─── Chargeback ─────────────────────────────────────────────────────
+
+model Chargeback {
+  id            String           @id @default(cuid())
+  merchantId    String
+  merchant      Merchant         @relation(fields: [merchantId], references: [id])
+  transactionId String
+  transaction   Transaction      @relation(fields: [transactionId], references: [id])
+  amountCents   Int
+  reason        String?
+  reasonCode    String?
+  status        ChargebackStatus @default(OPENED)
+  dueDate       DateTime?
+  resolvedAt    DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([merchantId])
+  @@index([status])
+}
+
+enum ChargebackStatus {
+  OPENED
+  EVIDENCE_SUBMITTED
+  UNDER_REVIEW
+  WON
+  LOST
+  EXPIRED
 }
 
 // ─── ResidualEntry ──────────────────────────────────────────────────

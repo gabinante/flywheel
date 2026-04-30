@@ -486,5 +486,84 @@ export function createAdminRouter(deps: AdminRouterDeps): Router {
     }
   );
 
+  // ─── Chargeback Risk Endpoint ──────────────────────────────────────────
+
+  /**
+   * GET /api/v1/admin/chargebacks/risk
+   *
+   * Returns all active merchants ranked by 30-day chargeback ratio (descending).
+   * Optional query param: ?riskLevel=WARNING|CRITICAL|HIGH
+   *
+   * Response: { merchantId, merchantName, transactionCount, chargebackCount, ratio, riskLevel }[]
+   */
+  router.get(
+    "/chargebacks/risk",
+    async (req: Request, res: Response) => {
+      try {
+        const { riskLevel } = req.query as { riskLevel?: string };
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const where: Record<string, unknown> = { status: "ACTIVE" };
+        if (riskLevel) {
+          where.chargebackRiskLevel = riskLevel;
+        }
+
+        const merchants = await deps.prisma.merchant.findMany({
+          where,
+          select: {
+            id: true,
+            name: true,
+            chargebackRiskLevel: true,
+            chargebackRiskUpdatedAt: true,
+          },
+        });
+
+        // Compute live ratio for each merchant
+        const results = await Promise.all(
+          merchants.map(async (merchant) => {
+            const [transactionCount, chargebackCount] = await Promise.all([
+              deps.prisma.transaction.count({
+                where: {
+                  merchantId: merchant.id,
+                  status: { in: ["CAPTURED", "SETTLED"] },
+                  createdAt: { gte: thirtyDaysAgo },
+                },
+              }),
+              deps.prisma.chargeback.count({
+                where: {
+                  merchantId: merchant.id,
+                  createdAt: { gte: thirtyDaysAgo },
+                },
+              }),
+            ]);
+
+            const ratio =
+              transactionCount === 0 ? 0 : chargebackCount / transactionCount;
+
+            return {
+              merchantId: merchant.id,
+              merchantName: merchant.name,
+              transactionCount,
+              chargebackCount,
+              ratio,
+              riskLevel: merchant.chargebackRiskLevel ?? null,
+              riskUpdatedAt: merchant.chargebackRiskUpdatedAt,
+            };
+          })
+        );
+
+        // Sort by ratio descending
+        results.sort((a, b) => b.ratio - a.ratio);
+
+        res.status(200).json(results);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("[Admin] Chargeback risk endpoint failed:", message);
+        res.status(500).json({ error: "Failed to fetch chargeback risk data", message });
+      }
+    }
+  );
+
   return router;
 }

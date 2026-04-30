@@ -4,6 +4,7 @@
  * Registers pg-boss job handlers for background processing.
  * - residual-calculation: runs monthly (1st of month, 00:00 UTC)
  * - email-send: sends transactional emails via Postmark
+ * - chargeback-monitor: runs daily at 06:00 UTC, computes CB ratios
  */
 
 import type PgBoss from "pg-boss";
@@ -16,11 +17,20 @@ import {
   createEmailService,
   type EmailServiceConfig,
 } from "../services/email.service.js";
+import {
+  computeChargebackRatio,
+  getRiskLevel,
+} from "./chargeback-thresholds.js";
+
+// Re-export threshold utilities for admin routes
+export { getRiskLevel, computeChargebackRatio } from "./chargeback-thresholds.js";
+export { CB_WARNING_THRESHOLD, CB_CRITICAL_THRESHOLD, CB_HIGH_THRESHOLD } from "./chargeback-thresholds.js";
 
 // ─── Job Names ────────────────────────────────────────────────────────
 
 export const RESIDUAL_CALCULATION_JOB = "residual-calculation";
 export const EMAIL_SEND_JOB = "email-send";
+export const CHARGEBACK_MONITOR_JOB = "chargeback-monitor";
 
 // ─── Types ────────────────────────────────────────────────────────────
 
@@ -42,6 +52,15 @@ export interface JobHandlerDeps {
   prisma: PrismaClient;
   nmiClient?: NmiReportingClient;
   emailConfig?: EmailServiceConfig;
+}
+
+export interface ChargebackMonitorResult {
+  merchantId: string;
+  merchantName: string;
+  transactionCount: number;
+  chargebackCount: number;
+  ratio: number;
+  riskLevel: string | null;
 }
 
 // ─── Registration ─────────────────────────────────────────────────────
@@ -89,6 +108,23 @@ export async function registerJobHandlers(
       return result;
     }
   );
+
+  // ─── Chargeback Monitor Handler ──────────────────────────────────
+
+  await boss.work<Record<string, never>>(
+    CHARGEBACK_MONITOR_JOB,
+    async (_job) => {
+      console.log("[ChargebackMonitor] Starting daily chargeback ratio scan");
+      const results = await runChargebackMonitor(deps.prisma);
+      const flagged = results.filter((r) => r.riskLevel !== null);
+      console.log(
+        `[ChargebackMonitor] Complete: ${results.length} merchants scanned, ${flagged.length} flagged`
+      );
+      return results;
+    }
+  );
+
+  console.log("[Handlers] Chargeback monitor handler registered");
 
   // ─── Email Send Handler ───────────────────────────────────────────
 
@@ -175,6 +211,96 @@ export async function registerJobHandlers(
       "[Handlers] Email send handler skipped (no POSTMARK_API_KEY configured)"
     );
   }
+}
+
+// ─── Chargeback Monitor Logic ──────────────────────────────────────
+
+/**
+ * For each ACTIVE merchant:
+ *  - Count transactions in last 30 days with status CAPTURED or SETTLED
+ *  - Count chargebacks in last 30 days
+ *  - Compute ratio; assign WARNING / CRITICAL / HIGH risk level
+ *  - Persist risk level on the merchant record
+ *  - Queue NotificationSchedule records for operators
+ */
+export async function runChargebackMonitor(
+  prisma: PrismaClient
+): Promise<ChargebackMonitorResult[]> {
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const merchants = await prisma.merchant.findMany({
+    where: { status: "ACTIVE" },
+    select: { id: true, name: true },
+  });
+
+  const results: ChargebackMonitorResult[] = [];
+
+  for (const merchant of merchants) {
+    const [transactionCount, chargebackCount] = await Promise.all([
+      prisma.transaction.count({
+        where: {
+          merchantId: merchant.id,
+          status: { in: ["CAPTURED", "SETTLED"] },
+          createdAt: { gte: thirtyDaysAgo },
+        },
+      }),
+      prisma.chargeback.count({
+        where: {
+          merchantId: merchant.id,
+          createdAt: { gte: thirtyDaysAgo },
+        },
+      }),
+    ]);
+
+    const ratio = computeChargebackRatio(transactionCount, chargebackCount);
+    const riskLevel = getRiskLevel(ratio);
+
+    // Persist risk level on merchant
+    await prisma.merchant.update({
+      where: { id: merchant.id },
+      data: {
+        chargebackRiskLevel: riskLevel,
+        chargebackRiskUpdatedAt: new Date(),
+      },
+    });
+
+    // Queue operator notifications for elevated risk
+    if (riskLevel !== null) {
+      const ratioPercent = (ratio * 100).toFixed(2);
+      const urgency = riskLevel === "HIGH" ? "urgent" : riskLevel === "CRITICAL" ? "high" : "normal";
+
+      await prisma.notificationSchedule.create({
+        data: {
+          templateId: "chargeback-risk-alert",
+          to: "ops@shamroq.com",
+          variables: {
+            merchantId: merchant.id,
+            merchantName: merchant.name,
+            riskLevel,
+            ratioPercent,
+            transactionCount,
+            chargebackCount,
+            urgency,
+            message: `Merchant "${merchant.name}" has a chargeback ratio of ${ratioPercent}% (${chargebackCount}/${transactionCount}) — ${riskLevel}`,
+          },
+          status: "QUEUED",
+          merchantId: merchant.id,
+        },
+      });
+    }
+
+    results.push({
+      merchantId: merchant.id,
+      merchantName: merchant.name,
+      transactionCount,
+      chargebackCount,
+      ratio,
+      riskLevel,
+    });
+  }
+
+  return results;
 }
 
 // ─── Job helpers ──────────────────────────────────────────────────────
