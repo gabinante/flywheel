@@ -88,6 +88,7 @@ func AssembleTypedWorkerPrompt(wt WorkerType, proj *project.Project, t *ticket.T
 		for i, a := range t.Context.PriorAttempts {
 			b.WriteString(fmt.Sprintf("**Attempt %d** (outcome: %s):\n%s\n\n", i+1, a.Outcome, a.Summary))
 		}
+		b.WriteString("**Tip:** Call `get_trace` with this ticket's ID to see the previous agent's detailed execution log.\n\n")
 	}
 
 	// Human answers from escalation
@@ -248,7 +249,15 @@ func workerTypeWorkflow(wt WorkerType, projectID, ticketID string) string {
 				"7. If blocked, use `escalate_ticket` to ask for human help.\n\n"+
 				"**IMPORTANT:** You MUST call claim_ticket first before doing any work.\n\n"+
 				"**Database migrations:** Use timestamp naming: `YYYYMMDDHHmmss_description.up.sql`. "+
-				"Generate prefix with `date -u +%%Y%%m%%d%%H%%M%%S`. NEVER use sequential numbers.",
+				"Generate prefix with `date -u +%%Y%%m%%d%%H%%M%%S`. NEVER use sequential numbers.\n\n"+
+				"**Git troubleshooting:**\n"+
+				"- Before your first commit, verify your branch shares history with origin/main: "+
+				"`git log --oneline origin/main..HEAD` (should show commits, not an error).\n"+
+				"- If you see \"no common history\", \"fatal: refusing to merge unrelated histories\", "+
+				"or merge-base errors: this is an infrastructure problem you CANNOT fix. "+
+				"Call `escalate_ticket` immediately with the error details.\n"+
+				"- If `git push` fails with 'non-fast-forward': run `git fetch origin && git rebase origin/main`, then retry once.\n"+
+				"- After one failed retry of any git operation, call `escalate_ticket` — do not spin on infrastructure failures.",
 			projectID,
 		)
 

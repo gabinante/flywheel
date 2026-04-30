@@ -105,9 +105,58 @@ func (d *Dispatcher) runBranchGC(ctx context.Context) {
 		}
 	}
 
+	// Scan draft tickets with failed attempts for dangling branches.
+	// Only clean up branches where the ticket has been stale for >24 hours,
+	// has a system-identified failure in PriorAttempts, and no PR exists.
+	draftTickets, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, ticket.StateDraft)
+	if err == nil {
+		for _, t := range draftTickets {
+			if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
+				continue
+			}
+			// Only consider tickets stale for >24 hours.
+			if time.Since(t.UpdatedAt) <= 24*time.Hour {
+				continue
+			}
+			// Only clean up if there's a system-identified failure.
+			if !hasFailedAttempt(t) {
+				continue
+			}
+			branch := branchFromOutputs(t)
+			if branch == "ticket/"+t.ID {
+				// No branch was persisted in outputs — check if one exists on remote.
+			}
+			repoDir, err := d.resolveProjectRepoDir(ctx, t.ProjectID)
+			if err != nil {
+				continue
+			}
+			if remoteBranchExists(repoDir, branch) {
+				cmd := exec.Command("git", "push", "origin", "--delete", branch)
+				cmd.Dir = repoDir
+				if out, err := cmd.CombinedOutput(); err != nil && !strings.Contains(string(out), "remote ref does not exist") {
+					slog.Warn("dispatch: branch GC delete failed (draft)", "ticket", t.ID, "branch", branch, "error", err)
+				} else {
+					deleted++
+					slog.Info("dispatch: branch GC cleaned dangling branch from failed run", "ticket", t.ID, "branch", branch)
+				}
+			}
+		}
+	}
+
 	if deleted > 0 || warnings > 0 {
 		slog.Info("dispatch: branch GC completed", "deleted", deleted, "warnings", warnings)
 	}
+}
+
+// hasFailedAttempt returns true if the ticket has a PriorAttempt with a
+// system-identified failure outcome (worker_exit or infrastructure_failure).
+func hasFailedAttempt(t *ticket.Ticket) bool {
+	for _, a := range t.Context.PriorAttempts {
+		if a.Outcome == "worker_exit" || a.Outcome == "infrastructure_failure" {
+			return true
+		}
+	}
+	return false
 }
 
 // remoteBranchExists checks if a branch exists on the remote.

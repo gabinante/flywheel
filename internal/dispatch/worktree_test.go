@@ -39,6 +39,9 @@ func TestWorktreeCreateAndRemove(t *testing.T) {
 	repoDir := t.TempDir()
 	runGit(t, repoDir, "init", "--initial-branch=main")
 	runGit(t, repoDir, "commit", "--allow-empty", "-m", "init")
+	// Add self as origin so ancestry validation passes.
+	runGit(t, repoDir, "remote", "add", "origin", repoDir)
+	runGit(t, repoDir, "fetch", "origin")
 
 	baseDir := t.TempDir()
 	m := &WorktreeManager{BaseDir: baseDir, RepoDir: repoDir}
@@ -88,6 +91,8 @@ func TestWorktreeCreateExistingBranch(t *testing.T) {
 	repoDir := t.TempDir()
 	runGit(t, repoDir, "init", "--initial-branch=main")
 	runGit(t, repoDir, "commit", "--allow-empty", "-m", "init")
+	runGit(t, repoDir, "remote", "add", "origin", repoDir)
+	runGit(t, repoDir, "fetch", "origin")
 	// Pre-create the branch so the -b flag fails and the fallback path is taken.
 	runGit(t, repoDir, "branch", "ticket/existing")
 
@@ -114,6 +119,8 @@ func TestWorktreeCreateCleansUpLeftover(t *testing.T) {
 	repoDir := t.TempDir()
 	runGit(t, repoDir, "init", "--initial-branch=main")
 	runGit(t, repoDir, "commit", "--allow-empty", "-m", "init")
+	runGit(t, repoDir, "remote", "add", "origin", repoDir)
+	runGit(t, repoDir, "fetch", "origin")
 
 	baseDir := t.TempDir()
 	m := &WorktreeManager{BaseDir: baseDir, RepoDir: repoDir}
@@ -163,10 +170,14 @@ func TestWorktreeCreateFromRepo(t *testing.T) {
 	repo1Dir := t.TempDir()
 	runGit(t, repo1Dir, "init", "--initial-branch=main")
 	runGit(t, repo1Dir, "commit", "--allow-empty", "-m", "init repo1")
+	runGit(t, repo1Dir, "remote", "add", "origin", repo1Dir)
+	runGit(t, repo1Dir, "fetch", "origin")
 
 	repo2Dir := t.TempDir()
 	runGit(t, repo2Dir, "init", "--initial-branch=main")
 	runGit(t, repo2Dir, "commit", "--allow-empty", "-m", "init repo2")
+	runGit(t, repo2Dir, "remote", "add", "origin", repo2Dir)
+	runGit(t, repo2Dir, "fetch", "origin")
 
 	baseDir := t.TempDir()
 	m := &WorktreeManager{BaseDir: baseDir, RepoDir: repo1Dir}
@@ -181,7 +192,7 @@ func TestWorktreeCreateFromRepo(t *testing.T) {
 	}
 
 	// Create worktree from repo2 (secondary, multi-repo).
-	dir2, err := m.CreateFromRepo("ticket-2", "ticket/ticket-2", repo2Dir)
+	dir2, err := m.CreateFromRepo("ticket-2", "ticket/ticket-2", repo2Dir, "main")
 	if err != nil {
 		t.Fatalf("CreateFromRepo from repo2: %v", err)
 	}

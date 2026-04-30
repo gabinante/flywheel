@@ -19,12 +19,17 @@ type WorktreeManager struct {
 // Create creates a git worktree for a ticket branch and returns the worktree path.
 // The branch is created from the current HEAD if it doesn't exist.
 func (m *WorktreeManager) Create(ticketID, branch string) (string, error) {
-	return m.CreateFromRepo(ticketID, branch, m.RepoDir)
+	return m.CreateFromRepo(ticketID, branch, m.RepoDir, "main")
 }
 
 // CreateFromRepo creates a git worktree for a ticket branch from a specific repo directory.
 // This supports multi-repo projects where different tickets target different repos.
-func (m *WorktreeManager) CreateFromRepo(ticketID, branch, repoDir string) (string, error) {
+// defaultBranch is the project's target branch (e.g. "main") used for ancestry validation.
+func (m *WorktreeManager) CreateFromRepo(ticketID, branch, repoDir, defaultBranch string) (string, error) {
+	if defaultBranch == "" {
+		defaultBranch = "main"
+	}
+
 	dir := m.worktreePath(ticketID)
 	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 		return "", fmt.Errorf("worktree mkdir: %w", err)
@@ -34,6 +39,11 @@ func (m *WorktreeManager) CreateFromRepo(ticketID, branch, repoDir string) (stri
 	prune := exec.Command("git", "worktree", "prune")
 	prune.Dir = repoDir
 	_ = prune.Run()
+
+	// Fetch latest refs before creating worktree to avoid stale/orphaned branches.
+	fetch := exec.Command("git", "fetch", "origin")
+	fetch.Dir = repoDir
+	_ = fetch.Run()
 
 	// Remove existing directory if present (leftover from crash).
 	_ = os.RemoveAll(dir)
@@ -49,7 +59,31 @@ func (m *WorktreeManager) CreateFromRepo(ticketID, branch, repoDir string) (stri
 			return "", fmt.Errorf("worktree add: %s / %s: %w", strings.TrimSpace(string(out)), strings.TrimSpace(string(out2)), err2)
 		}
 	}
+
+	// Validate the new worktree shares history with the target branch.
+	if err := ValidateAncestry(dir, "origin/"+defaultBranch); err != nil {
+		// Cleanup the invalid worktree.
+		_ = os.RemoveAll(dir)
+		pruneCleanup := exec.Command("git", "worktree", "prune")
+		pruneCleanup.Dir = repoDir
+		_ = pruneCleanup.Run()
+		return "", err
+	}
+
 	return dir, nil
+}
+
+// ValidateAncestry checks that the worktree HEAD shares common history with the
+// given remote branch. Returns an error if the branches are disconnected (e.g. the
+// local clone was initialized from the wrong repo or is corrupted).
+func ValidateAncestry(worktreeDir, remoteBranch string) error {
+	cmd := exec.Command("git", "merge-base", "HEAD", remoteBranch)
+	cmd.Dir = worktreeDir
+	out, err := cmd.CombinedOutput()
+	if err != nil || strings.TrimSpace(string(out)) == "" {
+		return fmt.Errorf("branch HEAD has no common history with %s — local clone may be corrupted or initialized from wrong repo", remoteBranch)
+	}
+	return nil
 }
 
 // Remove cleans up a worktree for a ticket. Tries the primary repo first,
@@ -94,6 +128,19 @@ type MultiRepoCloneManager struct {
 // NewMultiRepoCloneManager creates a new clone manager.
 func NewMultiRepoCloneManager(baseDir string) *MultiRepoCloneManager {
 	return &MultiRepoCloneManager{BaseDir: baseDir}
+}
+
+// ResetClone removes an existing clone directory so the next EnsureClone call
+// will perform a fresh clone. Used to recover from corrupted or mismatched clones.
+func (m *MultiRepoCloneManager) ResetClone(alias string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	safe := strings.ReplaceAll(alias, "/", "-")
+	dir := filepath.Join(m.BaseDir, safe)
+
+	slog.Warn("multi-repo: resetting clone", "alias", alias, "dir", dir)
+	return os.RemoveAll(dir)
 }
 
 // EnsureClone ensures a local clone exists for the given repo URL and returns its path.

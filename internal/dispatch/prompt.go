@@ -218,6 +218,7 @@ func AssembleWorkerPrompt(proj *project.Project, t *ticket.Ticket, depOutputs ma
 		for i, a := range t.Context.PriorAttempts {
 			b.WriteString(fmt.Sprintf("**Attempt %d** (outcome: %s):\n%s\n\n", i+1, a.Outcome, a.Summary))
 		}
+		b.WriteString("**Tip:** Call `get_trace` with this ticket's ID to see the previous agent's detailed execution log.\n\n")
 	}
 
 	// Human answers from escalation
@@ -255,6 +256,15 @@ func AssembleWorkerPrompt(proj *project.Project, t *ticket.Ticket, depOutputs ma
 	b.WriteString("6. Call `submit_ticket` with `ticket_id`, `lease_token`, and `outputs`. Include the PR URL in outputs, e.g. `{\"summary\":\"...\", \"pr_url\":\"https://...\"}`.\n")
 	b.WriteString("7. If blocked, use `escalate_ticket` to ask for human help.\n\n")
 	b.WriteString("**IMPORTANT:** You MUST call claim_ticket first before doing any work. Every subsequent tool call requires the lease_token from claim_ticket.\n\n")
+
+	b.WriteString("**Git troubleshooting:**\n")
+	b.WriteString("- Before your first commit, verify your branch shares history with origin/main: ")
+	b.WriteString("`git log --oneline origin/main..HEAD` (should show commits, not an error).\n")
+	b.WriteString("- If you see \"no common history\", \"fatal: refusing to merge unrelated histories\", ")
+	b.WriteString("or merge-base errors: this is an infrastructure problem you CANNOT fix. ")
+	b.WriteString("Call `escalate_ticket` immediately with the error details.\n")
+	b.WriteString("- If `git push` fails with 'non-fast-forward': run `git fetch origin && git rebase origin/main`, then retry once.\n")
+	b.WriteString("- After one failed retry of any git operation, call `escalate_ticket` — do not spin on infrastructure failures.\n\n")
 
 	b.WriteString(fmt.Sprintf("**Project ID:** %s\n", proj.ID))
 	b.WriteString(fmt.Sprintf("**Server URL:** %s\n", serverURL))
