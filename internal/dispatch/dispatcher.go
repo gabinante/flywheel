@@ -44,6 +44,12 @@ type LeaseReleaser interface {
 	ForceReleaseLease(ctx context.Context, ticketID string) error
 }
 
+// FailureSummarizer injects failure context into a ticket's PriorAttempts so
+// the next agent knows why the previous attempt failed.
+type FailureSummarizer interface {
+	AppendFailureSummary(ctx context.Context, ticketID, reason string) error
+}
+
 // TicketOutputPatcher persists merge metadata into ticket outputs.
 type TicketOutputPatcher interface {
 	PatchOutputs(ctx context.Context, id string, patch map[string]any) error
@@ -110,6 +116,7 @@ type Dispatcher struct {
 	clones             *MultiRepoCloneManager // nil-safe: only used for multi-repo projects
 	repoResolver       RepoResolver           // nil-safe: only used for multi-repo projects
 	leaseReleaser      LeaseReleaser          // nil-safe: if nil, worker exit does not release lease (Layer 2 TTL handles it)
+	failureSummarizer  FailureSummarizer      // nil-safe: if nil, worker exit does not inject failure context
 	ticketTransitioner TicketTransitioner     // nil-safe: if nil, merged tickets are not auto-closed
 	workflowEngine     *workflow.Engine       // nil-safe: if nil, workflow-aware dispatching is disabled
 	outputPatcher      TicketOutputPatcher    // nil-safe: if nil, merge state is not persisted
@@ -265,6 +272,12 @@ func (d *Dispatcher) SetLeaseReleaser(lr LeaseReleaser) {
 	d.leaseReleaser = lr
 }
 
+// SetFailureSummarizer configures the failure summarizer for injecting context on worker exit.
+// Call this after construction to wire the ticket service without circular imports.
+func (d *Dispatcher) SetFailureSummarizer(fs FailureSummarizer) {
+	d.failureSummarizer = fs
+}
+
 // SetTicketTransitioner configures the ticket transitioner for post-merge lifecycle.
 // Call this after construction to wire the ticket service without circular imports.
 func (d *Dispatcher) SetTicketTransitioner(tt TicketTransitioner) {
@@ -380,8 +393,8 @@ func (d *Dispatcher) projectHasRepo(ctx context.Context, projectID string) bool 
 }
 
 // resolveProjectRepoDir returns a local directory for the project's git repo.
-// Uses the clone manager when available; falls back to d.cfg.RepoDir for legacy
-// single-project deployments.
+// Always uses the clone manager to create an isolated clone — never falls back
+// to the server's own codebase. This prevents cross-project repo contamination.
 func (d *Dispatcher) resolveProjectRepoDir(ctx context.Context, projectID string) (string, error) {
 	proj, err := d.projects.GetProject(ctx, projectID)
 	if err != nil {
@@ -390,10 +403,10 @@ func (d *Dispatcher) resolveProjectRepoDir(ctx context.Context, projectID string
 	if proj.RepoURL == "" {
 		return "", fmt.Errorf("project %s has no repo_url configured", projectID)
 	}
-	if d.clones != nil {
-		return d.clones.EnsureClone(proj.RepoURL, proj.ID)
+	if d.clones == nil {
+		return "", fmt.Errorf("clone manager not initialized — cannot safely resolve repo for project %s", projectID)
 	}
-	return d.cfg.RepoDir, nil
+	return d.clones.EnsureClone(proj.RepoURL, proj.ID)
 }
 
 func (d *Dispatcher) handleTicketReady(ctx context.Context, e events.Event) {
@@ -772,15 +785,20 @@ func (d *Dispatcher) runTypedWorkerWithProject(ctx context.Context, t *ticket.Ti
 	}
 
 	// Determine working directory.
-	// SAFETY: refuse to dispatch if the project has no repo_url configured.
-	// Without this guard, workers fall back to d.cfg.RepoDir (the server's cwd)
-	// which may be a completely unrelated codebase.
+	// SAFETY: Every project gets its own isolated clone via resolveProjectRepoDir.
+	// Workers must never use d.cfg.RepoDir (the server's own codebase) — doing so
+	// causes branches and commits to be pushed to the wrong repository.
 	if proj.RepoURL == "" {
 		return fmt.Errorf("dispatch: project %s (%s) has no repo_url configured — refusing to execute ticket %s against the server's own codebase", proj.ID, proj.Name, t.ID)
 	}
 
 	var workDir string
-	repoDir := d.cfg.RepoDir
+	repoDir, err := d.resolveProjectRepoDir(ctx, t.ProjectID)
+	if err != nil {
+		return fmt.Errorf("dispatch: resolve project repo: %w", err)
+	}
+
+	// If ticket targets a secondary repo, resolve that instead.
 	if t.TargetRepo != "" && d.repoResolver != nil && d.clones != nil {
 		repoURL, _, resolveErr := d.repoResolver.ResolveRepo(ctx, t.ProjectID, t.TargetRepo)
 		if resolveErr != nil {
@@ -801,9 +819,39 @@ func (d *Dispatcher) runTypedWorkerWithProject(ctx context.Context, t *ticket.Ti
 		// Host mode: create git worktree for isolation.
 		branch := d.branchForTicket(ctx, t)
 		var err error
-		workDir, err = d.worktrees.CreateFromRepo(t.ID, branch, repoDir)
+		workDir, err = d.worktrees.CreateFromRepo(t.ID, branch, repoDir, proj.DefaultBranch)
 		if err != nil {
-			return err
+			// If ancestry validation failed, try resetting the clone and retrying once.
+			if strings.Contains(err.Error(), "no common history") && d.clones != nil {
+				slog.Warn("dispatch: ancestry validation failed, resetting clone and retrying", "ticket", t.ID, "error", err)
+				cloneAlias := proj.ID
+				if t.TargetRepo != "" {
+					cloneAlias = proj.ID + "/" + t.TargetRepo
+				}
+				if resetErr := d.clones.ResetClone(cloneAlias); resetErr != nil {
+					slog.Error("dispatch: clone reset failed", "ticket", t.ID, "error", resetErr)
+				} else {
+					// Re-ensure the clone after reset.
+					repoURL := proj.RepoURL
+					if t.TargetRepo != "" && d.repoResolver != nil {
+						if resolved, _, resolveErr := d.repoResolver.ResolveRepo(ctx, t.ProjectID, t.TargetRepo); resolveErr == nil && resolved != "" {
+							repoURL = resolved
+						}
+					}
+					if newCloneDir, cloneErr := d.clones.EnsureClone(repoURL, cloneAlias); cloneErr == nil {
+						repoDir = newCloneDir
+						workDir, err = d.worktrees.CreateFromRepo(t.ID, branch, repoDir, proj.DefaultBranch)
+					}
+				}
+			}
+			if err != nil {
+				// Inject failure context so the next attempt knows why this failed.
+				if d.failureSummarizer != nil {
+					reason := fmt.Sprintf("Worktree creation failed: %s", err)
+					_ = d.failureSummarizer.AppendFailureSummary(ctx, t.ID, reason)
+				}
+				return err
+			}
 		}
 		// Persist branch name so merge/cleanup know exactly which branch to target.
 		if d.outputPatcher != nil {
@@ -945,6 +993,16 @@ func (d *Dispatcher) handleWorkerExit(ticketID string) {
 	}
 
 	slog.Warn("dispatch: worker exited without completing, releasing lease", "ticket", ticketID, "state", t.State)
+
+	// Inject failure context before releasing the lease so the next agent knows what happened.
+	if d.failureSummarizer != nil {
+		reason := fmt.Sprintf("Worker exited without submitting or escalating (state: %s). "+
+			"Check the execution trace via get_trace for the previous agent's detailed log.", t.State)
+		if err := d.failureSummarizer.AppendFailureSummary(ctx, ticketID, reason); err != nil {
+			slog.Error("dispatch: failed to inject failure summary", "ticket", ticketID, "error", err)
+		}
+	}
+
 	if err := d.leaseReleaser.ForceReleaseLease(ctx, ticketID); err != nil {
 		slog.Error("dispatch: failed to release lease", "ticket", ticketID, "error", err)
 	}
@@ -1105,10 +1163,14 @@ func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
 	prompt := AssembleTypedWorkerPrompt(WorkerTypeValidator, proj, t, depOutputs, d.cfg.ServerURL, d.cfg.AgentID)
 
 	// Reviewer works in the repo dir (needs access to the code for `gh` and `make test`).
-	// Use the existing worktree if available (the worker's branch), otherwise fall back.
+	// Use the existing worktree if available (the worker's branch), otherwise use
+	// the project's isolated clone — never the server's own codebase.
 	workDir := d.worktrees.Path(t.ID)
 	if workDir == "" {
-		workDir = d.cfg.RepoDir
+		workDir, err = d.resolveProjectRepoDir(ctx, t.ProjectID)
+		if err != nil {
+			return fmt.Errorf("dispatch: reviewer resolve repo: %w", err)
+		}
 	}
 
 	select {
@@ -1422,7 +1484,7 @@ func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, 
 		return fmt.Errorf("resolve repo for conflict resolver: %w", err)
 	}
 
-	workDir, err := d.worktrees.CreateFromRepo(t.ID, branch, repoDir)
+	workDir, err := d.worktrees.CreateFromRepo(t.ID, branch, repoDir, proj.DefaultBranch)
 	if err != nil {
 		return fmt.Errorf("create worktree: %w", err)
 	}

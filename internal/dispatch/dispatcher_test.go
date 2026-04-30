@@ -3,6 +3,10 @@ package dispatch
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -110,6 +114,28 @@ func (m *mockProjectGetter) GetProject(_ context.Context, id string) (*project.P
 		return nil, fmt.Errorf("project %q not found", id)
 	}
 	return p, nil
+}
+
+// seedTestClone pre-creates a git repo at the clone manager's expected path for a
+// project ID, so EnsureClone finds it and skips network cloning. Returns the repo dir.
+func seedTestClone(t *testing.T, d *Dispatcher, projectID string) string {
+	t.Helper()
+	safe := strings.ReplaceAll(projectID, "/", "-")
+	dir := filepath.Join(d.clones.BaseDir, safe)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"init", "--initial-branch=main"},
+		{"commit", "--allow-empty", "-m", "init"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %s: %v", args, out, err)
+		}
+	}
+	return dir
 }
 
 // mockWorker implements Worker for tests.
@@ -648,13 +674,14 @@ func TestTryDispatchDependenciesMet(t *testing.T) {
 	cfg := Config{
 		MaxWorkers:    5,
 		DockerEnabled: true, // use docker mode to avoid worktree creation
-		RepoDir:       "/tmp",
+		WorktreeDir:   t.TempDir(),
 		ServerURL:     "http://localhost",
 		AgentID:       "test-agent",
 	}
 
 	d := New(cfg, bus, tg, pg)
 	d.worker = worker // inject mock worker
+	seedTestClone(t, d, "p-1")
 
 	d.tryDispatch(context.Background(), tk)
 
@@ -782,12 +809,13 @@ func TestSpawnDuplicatePrevented(t *testing.T) {
 	cfg := Config{
 		MaxWorkers:    5,
 		DockerEnabled: true,
-		RepoDir:       "/tmp",
+		WorktreeDir:   t.TempDir(),
 		ServerURL:     "http://localhost",
 	}
 
 	d := New(cfg, bus, tg, pg)
 	d.worker = worker
+	seedTestClone(t, d, "p-1")
 
 	ctx := context.Background()
 
@@ -840,13 +868,14 @@ func TestRunWorkerDockerMode(t *testing.T) {
 	cfg := Config{
 		MaxWorkers:    5,
 		DockerEnabled: true,
-		RepoDir:       "/tmp",
+		WorktreeDir:   t.TempDir(),
 		ServerURL:     "http://localhost:8080",
 		AgentID:       "agent-test",
 	}
 
 	d := New(cfg, bus, tg, pg)
 	d.worker = worker
+	seedTestClone(t, d, "p-1")
 
 	err := d.runWorker(context.Background(), tk)
 	if err != nil {
@@ -864,8 +893,10 @@ func TestRunWorkerDockerMode(t *testing.T) {
 	if call.TicketID != "t-1" {
 		t.Errorf("expected ticketID 't-1', got %q", call.TicketID)
 	}
-	if call.WorkDir != "/tmp" {
-		t.Errorf("expected workDir '/tmp' in docker mode, got %q", call.WorkDir)
+	// In docker mode, workDir should be the isolated clone dir (not the server's RepoDir).
+	expectedCloneDir := filepath.Join(d.clones.BaseDir, "p-1")
+	if call.WorkDir != expectedCloneDir {
+		t.Errorf("expected workDir %q (isolated clone), got %q", expectedCloneDir, call.WorkDir)
 	}
 	if call.ServerURL != "http://localhost:8080" {
 		t.Errorf("expected serverURL, got %q", call.ServerURL)
@@ -1419,12 +1450,13 @@ func TestEventBusIntegration(t *testing.T) {
 		MaxWorkers:    5,
 		ProjectID:     "p-1",
 		DockerEnabled: true,
-		RepoDir:       "/tmp",
+		WorktreeDir:   t.TempDir(),
 		ServerURL:     "http://localhost",
 	}
 
 	d := New(cfg, bus, tg, pg)
 	d.worker = worker
+	seedTestClone(t, d, "p-1")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1513,12 +1545,13 @@ func TestDispatchEnabledAllowsTickets(t *testing.T) {
 		MaxWorkers:    5,
 		ProjectID:     "p-1",
 		DockerEnabled: true,
-		RepoDir:       "/tmp",
+		WorktreeDir:   t.TempDir(),
 		ServerURL:     "http://localhost",
 	}
 
 	d := New(cfg, bus, tg, pg)
 	d.worker = worker
+	seedTestClone(t, d, "p-1")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

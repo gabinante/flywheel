@@ -2,6 +2,7 @@ package dispatch
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -345,27 +346,30 @@ func TestRunTypedWorker(t *testing.T) {
 	pg := newMockProjectGetter(proj)
 	worker := &mockWorker{}
 
+	tmpDir := t.TempDir()
 	cfg := Config{
 		MaxWorkers:    5,
 		DockerEnabled: true,
-		RepoDir:       "/tmp",
+		WorktreeDir:   tmpDir,
 		ServerURL:     "http://localhost:8080",
 		AgentID:       "agent-test",
 	}
 
 	bus := events.NewInProcessBus()
+	clones := NewMultiRepoCloneManager(filepath.Join(tmpDir, ".clones"))
 	d := &Dispatcher{
 		cfg:      cfg,
 		bus:      bus,
 		tickets:  tg,
 		projects: pg,
 		worker:   worker,
+		clones:   clones,
 		worktrees: &WorktreeManager{
-			BaseDir: "/tmp/wt",
-			RepoDir: "/tmp",
+			BaseDir: tmpDir,
 		},
 		active: make(map[string]context.CancelFunc),
 	}
+	seedTestClone(t, d, "p-1")
 
 	// Run as planner.
 	err := d.runTypedWorker(t_ctx(), tk, WorkerTypePlanner)
