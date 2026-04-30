@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -72,6 +73,32 @@ type simpleBus struct{}
 
 func (b *simpleBus) Publish(_ context.Context, _ events.Event) error { return nil }
 func (b *simpleBus) Subscribe(_ string, _ events.HandlerFn)         {}
+
+// mockFailureSummarizer records AppendFailureSummary calls for assertions.
+type mockFailureSummarizer struct {
+	mu      sync.Mutex
+	entries []failureEntry
+}
+
+type failureEntry struct {
+	TicketID string
+	Reason   string
+}
+
+func (m *mockFailureSummarizer) AppendFailureSummary(_ context.Context, ticketID, reason string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.entries = append(m.entries, failureEntry{TicketID: ticketID, Reason: reason})
+	return nil
+}
+
+func (m *mockFailureSummarizer) getEntries() []failureEntry {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cp := make([]failureEntry, len(m.entries))
+	copy(cp, m.entries)
+	return cp
+}
 
 // --- Tests ---
 
@@ -362,3 +389,93 @@ func (f *failOnceTransitioner) getSuccessful() []string {
 	copy(cp, f.successful)
 	return cp
 }
+
+func TestSweepStaleTickets_InjectsFailureContext(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+	leaseStore := NewRedisStore(rdb, 5*time.Minute)
+
+	trans := &trackingTransitioner{}
+	mockList := &mockTicketLister{tickets: map[string]*ticket.Ticket{}}
+	fs := &mockFailureSummarizer{}
+
+	s := NewScheduler(leaseStore, trans, mockList, &simpleBus{}, 30*time.Second)
+
+	staleTicket := &ticket.Ticket{
+		ID:        "proj-zombie",
+		ProjectID: "project-id",
+		State:     ticket.StateExecuting,
+		UpdatedAt: time.Now().UTC().Add(-30 * time.Minute),
+	}
+	lister := &mockStaleLister{tickets: []*ticket.Ticket{staleTicket}}
+	s.EnableStalenessSweep(lister, 10*time.Minute)
+	s.SetFailureSummarizer(fs)
+
+	ctx := context.Background()
+	s.sweepStaleTickets(ctx)
+
+	// Verify transition still happened
+	transitions := trans.getTransitions()
+	if len(transitions) != 1 {
+		t.Fatalf("expected 1 transition, got %d", len(transitions))
+	}
+
+	// Verify failure context was injected
+	entries := fs.getEntries()
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 failure summary entry, got %d", len(entries))
+	}
+	if entries[0].TicketID != "proj-zombie" {
+		t.Errorf("expected ticket ID 'proj-zombie', got %q", entries[0].TicketID)
+	}
+	if entries[0].Reason == "" {
+		t.Error("expected non-empty failure reason")
+	}
+	// Verify reason contains key context
+	for _, substr := range []string{"Staleness sweep", "executing", "10m0s", "get_trace"} {
+		if !strings.Contains(entries[0].Reason, substr) {
+			t.Errorf("expected reason to contain %q, got %q", substr, entries[0].Reason)
+		}
+	}
+}
+
+func TestSweepStaleTickets_NoFailureContextWithoutSummarizer(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+	leaseStore := NewRedisStore(rdb, 5*time.Minute)
+
+	trans := &trackingTransitioner{}
+	mockList := &mockTicketLister{tickets: map[string]*ticket.Ticket{}}
+
+	s := NewScheduler(leaseStore, trans, mockList, &simpleBus{}, 30*time.Second)
+
+	staleTicket := &ticket.Ticket{
+		ID:        "proj-1",
+		ProjectID: "project-id",
+		State:     ticket.StateExecuting,
+		UpdatedAt: time.Now().UTC().Add(-30 * time.Minute),
+	}
+	lister := &mockStaleLister{tickets: []*ticket.Ticket{staleTicket}}
+	s.EnableStalenessSweep(lister, 10*time.Minute)
+	// Note: SetFailureSummarizer NOT called
+
+	ctx := context.Background()
+	// Should not panic; transition should still happen
+	s.sweepStaleTickets(ctx)
+
+	transitions := trans.getTransitions()
+	if len(transitions) != 1 {
+		t.Fatalf("expected 1 transition, got %d", len(transitions))
+	}
+}
+

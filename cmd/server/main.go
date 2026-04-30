@@ -155,6 +155,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	queueSvc := queue.NewService(ticketSvc, ticketSvc, queueRedis)
 	scheduler := queue.NewScheduler(queueRedis, ticketSvc, ticketSvc, bus, 30*time.Second)
 	scheduler.EnableStalenessSweep(ticketSvc, 0) // default: 2x lease TTL
+	scheduler.SetFailureSummarizer(ticketSvc)
 	go scheduler.Run(ctx)
 
 	// Lease validator for execution trace: validate token and return agent ID
@@ -468,6 +469,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			TraceSvc:             execSvc,
 		}, bus, ticketSvc, projectSvc)
 		dispatcher.SetLeaseReleaser(queueSvc)
+		dispatcher.SetFailureSummarizer(ticketSvc)
 		dispatcher.SetTicketTransitioner(ticketSvc)
 		dispatcher.SetWorkflowEngine(workflowEngine)
 		dispatcher.SetOutputPatcher(ticketStore)
@@ -607,6 +609,7 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 	queueSvc := queue.NewService(ticketSvc, ticketSvc, queueRedis)
 	scheduler := queue.NewScheduler(queueRedis, ticketSvc, ticketSvc, bus, 30*time.Second)
 	scheduler.EnableStalenessSweep(ticketSvc, 0) // default: 2x lease TTL
+	scheduler.SetFailureSummarizer(ticketSvc)
 	go scheduler.Run(ctx)
 
 	leaseValidator := &leaseValidatorAdapter{leases: queueRedis}

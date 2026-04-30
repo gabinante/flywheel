@@ -481,6 +481,22 @@ func (s *Service) AppendRejectionNotes(ctx context.Context, ticketID, reviewerID
 	return s.store.UpdateContext(ctx, ticketID, t.Context)
 }
 
+// AppendFailureSummary appends a failure context entry after a worker exits without completing.
+// This provides the next agent with context about why the previous attempt failed.
+func (s *Service) AppendFailureSummary(ctx context.Context, ticketID, reason string) error {
+	t, err := s.store.GetByID(ctx, ticketID)
+	if err != nil {
+		return err
+	}
+	t.Context.PriorAttempts = append(t.Context.PriorAttempts, AttemptSummary{
+		AgentID:   "system",
+		Outcome:   "worker_exit",
+		Summary:   reason,
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+	})
+	return s.store.UpdateContext(ctx, ticketID, t.Context)
+}
+
 // InjectEscalationAnswer appends the human's answer to context (after resolving an escalation).
 func (s *Service) InjectEscalationAnswer(ctx context.Context, ticketID, answer string) error {
 	t, err := s.store.GetByID(ctx, ticketID)

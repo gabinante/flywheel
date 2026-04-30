@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -13,6 +14,12 @@ import (
 // Implemented by ticket.Service (backed by Postgres or SQLite).
 type StaleTicketLister interface {
 	ListStaleTickets(ctx context.Context, states []ticket.State, threshold time.Duration) ([]*ticket.Ticket, error)
+}
+
+// FailureSummarizer injects failure context into a ticket's PriorAttempts so
+// the next agent knows what happened.
+type FailureSummarizer interface {
+	AppendFailureSummary(ctx context.Context, ticketID, reason string) error
 }
 
 // Scheduler runs background jobs: expire leases and react to ticket.done for unblocked.
@@ -27,6 +34,7 @@ type Scheduler struct {
 	batchSize          int64
 	staleLister        StaleTicketLister
 	stalenessThreshold time.Duration
+	failureSummarizer  FailureSummarizer // nil-safe: if nil, sweep does not inject failure context
 }
 
 // NewScheduler returns a new Scheduler. The leases parameter accepts any LeaseStore implementation.
@@ -66,6 +74,11 @@ func (s *Scheduler) EnableStalenessSweep(lister StaleTicketLister, stalenessThre
 	}
 	s.staleLister = lister
 	s.stalenessThreshold = stalenessThreshold
+}
+
+// SetFailureSummarizer configures failure context injection for the staleness sweep.
+func (s *Scheduler) SetFailureSummarizer(fs FailureSummarizer) {
+	s.failureSummarizer = fs
 }
 
 // Run starts the scheduler (blocking). Call in a goroutine.
@@ -126,6 +139,15 @@ func (s *Scheduler) sweepStaleTickets(ctx context.Context) {
 	actor := ticket.Actor{ID: "staleness-sweep", Type: ticket.ActorSystem}
 	for _, t := range stale {
 		slog.Warn("queue/scheduler: staleness sweep recovering zombie ticket", "ticket", t.ID, "state", string(t.State), "updated_at", t.UpdatedAt.Format(time.RFC3339), "threshold", s.stalenessThreshold.String())
+		if s.failureSummarizer != nil {
+			reason := fmt.Sprintf("Staleness sweep: ticket stuck in %s for >%s (last updated: %s). "+
+				"Previous worker may have crashed or completed work against the wrong target. "+
+				"Check get_trace for the previous execution log.",
+				t.State, s.stalenessThreshold, t.UpdatedAt.Format(time.RFC3339))
+			if err := s.failureSummarizer.AppendFailureSummary(ctx, t.ID, reason); err != nil {
+				slog.Error("queue/scheduler: staleness sweep inject failure context failed", "ticket", t.ID, "error", err)
+			}
+		}
 		if err := s.ticketSvc.TransitionTicket(ctx, t.ID, ticket.TriggerLeaseExpired, actor, nil); err != nil {
 			slog.Error("queue/scheduler: staleness sweep transition failed", "ticket", t.ID, "error", err)
 			continue
