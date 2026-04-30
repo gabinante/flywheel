@@ -1,6 +1,6 @@
 # CLAUDE.md — guidance for AI agents in this repo
 
-**Product:** **NoStripeTax** — NMI ISO referral partner platform. We board merchants onto NMI via the Partner Boarding API, process payments through Collect.js (SAQ-A PCI scope), and share residuals with referring agencies. Rebranding from GoHighPayment is in progress.
+**Product:** **Shamroq** — NMI ISO referral partner platform. We board merchants onto NMI via the Partner Boarding API, process payments through Collect.js (SAQ-A PCI scope), and share residuals with referring agencies. Rebranding from GoHighPayment is in progress.
 
 ## Project shape
 
@@ -85,13 +85,13 @@ We are an **NMI ISO referral partner**, NOT a payment facilitator or money trans
 
 ## Deployment
 
-- **Fly.io** hosts all services. Dev apps prefixed `ghp-dev-*`, production: `ghp-*` (to be renamed to `nst-*` after rebrand).
+- **Fly.io** hosts all services. Dev apps prefixed `ghp-dev-*`, production: `ghp-*` (to be renamed to `smq-*` after rebrand).
 - Fly configs in `deploy/dev/` and `deploy/prod/` — separate `fly.*.toml` per service.
 - `make deploy-dev` / `make deploy-prod` deploys all services. `make deploy-dev-api` for API only.
 - `deploy/setup-fly.sh` creates Fly apps + Postgres + Redis + secrets from scratch.
 - **Backend Dockerfile** (`deploy/Dockerfile.backend`): multi-stage, node:20-alpine, Prisma generate, compiles TS.
 - **Frontend Dockerfile** (`deploy/Dockerfile.frontend`): multi-stage, Vite build, nginx runner. ARGs for PACKAGE and PORT.
-- Production URLs: `*.gohighpayment.com` (will become `*.nostripetax.com`).
+- Production URLs: `*.gohighpayment.com` (will become `*.shamroq.com`).
 
 ## Env var naming
 
@@ -113,10 +113,14 @@ We are an **NMI ISO referral partner**, NOT a payment facilitator or money trans
 - **Test cards for NMI sandbox:** `4111111111111111` (Visa approve), `4000000000000002` (decline).
 - When `NMI_MOCK_MODE=true`, boarding service returns mock IDs that never resolve — useful for UI development but not integration testing.
 
+## Git workflow
+
+- **Pre-alpha stage:** All work happens directly on the `main` branch. No feature branches, no PRs. Commit and push directly to `main`.
+
 ## House rules
 
 - Prefer **absolute paths** in tool calls.
 - Do not commit secrets; use `.env` patterns from `.env.example`.
-- **Rebrand in progress:** Code still references `GoHighPayment` / `gohighpayment` in many places. The target brand is **NoStripeTax** / `nostripetax`. Update branding whenever touching affected files.
+- **Rebrand in progress:** Code still references `GoHighPayment` / `gohighpayment` in many places. The target brand is **Shamroq** / `shamroq`. Update branding whenever touching affected files.
 - **SAQ-A PCI compliance:** Card data must NEVER touch our servers. All card capture goes through Collect.js (NMI's hosted iframe). Never log, store, or transmit raw card numbers, CVVs, or full track data.
 - **Encryption:** Sensitive fields (NMI keys, Seamlesschex keys, SSN, bank account numbers) must be encrypted at rest using AES-256-GCM before storage. The `ENCRYPTION_KEY` env var provides the 32-byte key.
