@@ -161,7 +161,6 @@ func (s *Service) SubscribeToTicketEvents(projectIDLookup func(ticketID string) 
 	activityEvents := []string{
 		events.EventTicketCreated,
 		events.EventTicketUpdated,
-		events.EventTicketSpecced,
 		events.EventTicketPlanning,
 		events.EventTicketAwaitingInput,
 		events.EventTicketInputProvided,
@@ -179,8 +178,6 @@ func (s *Service) SubscribeToTicketEvents(projectIDLookup func(ticketID string) 
 		events.EventTicketApproved,
 		events.EventTicketCancelled,
 		events.EventTicketReopened,
-		events.EventTicketDeploying,
-		events.EventTicketObserving,
 		events.EventLeaseExpired,
 		events.EventTestsPassed,
 		events.EventTestsFailed,

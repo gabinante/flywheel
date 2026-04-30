@@ -372,7 +372,7 @@ func computeHistoryStats(tickets []*ticket.Ticket) historyStats {
 		case ticket.StateClosed:
 			stats.Closed++
 			terminal++
-		case ticket.StateExecuting, ticket.StatePlanning, ticket.StateSpecced:
+		case ticket.StateExecuting, ticket.StatePlanning:
 			stats.InProgress++
 		case ticket.StateAwaitingValidation:
 			stats.AwaitingReview++
@@ -432,9 +432,8 @@ func computeCalibration(tickets []*ticket.Ticket) calibrationMetrics {
 				m.FailedCount++
 				terminal++
 			}
-		case ticket.StateExecuting, ticket.StatePlanning, ticket.StateSpecced,
-			ticket.StateAwaitingValidation, ticket.StateValidated,
-			ticket.StateDeploying, ticket.StateObserving:
+		case ticket.StateExecuting, ticket.StatePlanning,
+			ticket.StateAwaitingValidation, ticket.StateValidated:
 			m.InProgressCount++
 		}
 

@@ -105,8 +105,17 @@ func (s *Scheduler) expireLeases(ctx context.Context) {
 	}
 	actor := ticket.Actor{ID: "system", Type: ticket.ActorSystem}
 	for _, id := range ids {
+		t, tErr := s.ticketList.GetTicket(ctx, id)
+		if tErr != nil || t == nil ||
+			(t.State != ticket.StatePlanning && t.State != ticket.StateExecuting) {
+			// Ticket missing or already advanced past lease-tracked states — clean up silently.
+			_ = s.leases.RemoveExpired(ctx, id)
+			continue
+		}
 		if err := s.ticketSvc.TransitionTicket(ctx, id, ticket.TriggerLeaseExpired, actor, nil); err != nil {
 			slog.Error("queue/scheduler: transition lease_expired failed", "ticket", id, "error", err)
+			// Still clean up the lease to avoid repeating this error every 30s.
+			_ = s.leases.RemoveExpired(ctx, id)
 			continue
 		}
 		if err := s.leases.RemoveExpired(ctx, id); err != nil {
@@ -179,7 +188,7 @@ func (s *Scheduler) subscribeTicketDone(ctx context.Context) {
 		if projectID == "" {
 			return
 		}
-		pending, err := s.ticketList.ListByState(ctx, projectID, ticket.StatePending)
+		pending, err := s.ticketList.ListByState(ctx, projectID, ticket.StateDraft)
 		if err != nil {
 			return
 		}

@@ -4,8 +4,8 @@ import { getPhaseTypeMeta } from './workflow-phase-config'
 
 /**
  * Ticket lifecycle states and their visual configuration.
- * The state machine flows: pending → claimed → executing → awaiting_review → done
- * With branch states: blocked, needs_human, failed
+ * The state machine flows: draft → planning → executing → awaiting_validation → validated → closed
+ * With branch states: awaiting_input
  *
  * When a workflow is present, renders dynamic workflow phases instead.
  */
@@ -22,15 +22,15 @@ type LifecycleState = {
 
 const MAIN_STATES: LifecycleState[] = [
   {
-    key: 'pending',
-    label: 'Pending',
+    key: 'draft',
+    label: 'Draft',
     dotColor: 'bg-zinc-500',
     activeColor: 'text-zinc-300',
     activeBg: 'bg-zinc-500/15 border-zinc-500/40',
   },
   {
-    key: 'claimed',
-    label: 'Claimed',
+    key: 'planning',
+    label: 'Planning',
     dotColor: 'bg-blue-500',
     activeColor: 'text-blue-300',
     activeBg: 'bg-blue-500/15 border-blue-500/40',
@@ -43,15 +43,22 @@ const MAIN_STATES: LifecycleState[] = [
     activeBg: 'bg-amber-500/15 border-amber-500/40',
   },
   {
-    key: 'awaiting_review',
-    label: 'Review',
+    key: 'awaiting_validation',
+    label: 'Validation',
     dotColor: 'bg-purple-500',
     activeColor: 'text-purple-300',
     activeBg: 'bg-purple-500/15 border-purple-500/40',
   },
   {
-    key: 'done',
-    label: 'Done',
+    key: 'validated',
+    label: 'Validated',
+    dotColor: 'bg-emerald-500',
+    activeColor: 'text-emerald-300',
+    activeBg: 'bg-emerald-500/15 border-emerald-500/40',
+  },
+  {
+    key: 'closed',
+    label: 'Closed',
     dotColor: 'bg-emerald-500',
     activeColor: 'text-emerald-300',
     activeBg: 'bg-emerald-500/15 border-emerald-500/40',
@@ -60,25 +67,11 @@ const MAIN_STATES: LifecycleState[] = [
 
 const BRANCH_STATES: LifecycleState[] = [
   {
-    key: 'blocked',
-    label: 'Blocked',
+    key: 'awaiting_input',
+    label: 'Awaiting Input',
     dotColor: 'bg-orange-500',
     activeColor: 'text-orange-300',
     activeBg: 'bg-orange-500/15 border-orange-500/40',
-  },
-  {
-    key: 'needs_human',
-    label: 'Needs Human',
-    dotColor: 'bg-yellow-500',
-    activeColor: 'text-yellow-300',
-    activeBg: 'bg-yellow-500/15 border-yellow-500/40',
-  },
-  {
-    key: 'failed',
-    label: 'Failed',
-    dotColor: 'bg-red-500',
-    activeColor: 'text-red-300',
-    activeBg: 'bg-red-500/15 border-red-500/40',
   },
 ]
 

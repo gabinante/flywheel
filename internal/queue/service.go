@@ -59,7 +59,7 @@ func (s *Service) ClaimTicket(ctx context.Context, agentID, projectID string, pr
 					}
 				}
 				// Ticket may be pending again (lease expired); try to claim this specific ticket
-				if t.State == ticket.StatePending {
+				if t.State == ticket.StateDraft {
 					deps, _ := s.ticketList.GetTicketsByIDs(ctx, t.DependsOn)
 					if ticket.IsUnblocked(t, deps) && (priority == nil || int(t.Priority) == *priority) {
 						t, lease, err := s.claimTicketByID(ctx, projectID, prevID, agentID)
@@ -86,7 +86,7 @@ func (s *Service) ClaimTicket(ctx context.Context, agentID, projectID string, pr
 // claimTicketByID claims a specific ticket if it is pending and unblocked. Caller must ensure project and priority match.
 func (s *Service) claimTicketByID(ctx context.Context, projectID, ticketID, agentID string) (*ticket.Ticket, *Lease, error) {
 	t, err := s.ticketList.GetTicket(ctx, ticketID)
-	if err != nil || t == nil || t.ProjectID != projectID || t.State != ticket.StatePending {
+	if err != nil || t == nil || t.ProjectID != projectID || t.State != ticket.StateDraft {
 		return nil, nil, ErrNoTicketAvailable
 	}
 	deps, err := s.ticketList.GetTicketsByIDs(ctx, t.DependsOn)
@@ -110,7 +110,7 @@ func (s *Service) claimTicketByID(ctx context.Context, projectID, ticketID, agen
 
 // claimNextTicket finds the next available pending ticket and claims it.
 func (s *Service) claimNextTicket(ctx context.Context, agentID, projectID string, priority *int) (*ticket.Ticket, *Lease, error) {
-	list, err := s.ticketList.ListByState(ctx, projectID, ticket.StatePending)
+	list, err := s.ticketList.ListByState(ctx, projectID, ticket.StateDraft)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -147,6 +147,12 @@ func (s *Service) ReleaseLease(ctx context.Context, ticketID, token string) erro
 	}
 	actor := ticket.Actor{ID: "system", Type: ticket.ActorSystem}
 	return s.ticketSvc.TransitionTicket(ctx, ticketID, ticket.TriggerLeaseExpired, actor, nil)
+}
+
+// CleanupLease removes a stale lease entry from Redis without transitioning the ticket.
+// Used after submit/escalate where the ticket has already advanced past lease-tracked states.
+func (s *Service) CleanupLease(ctx context.Context, ticketID string) error {
+	return s.leases.RemoveExpired(ctx, ticketID)
 }
 
 // ForceReleaseLease removes the lease from Redis and forces the ticket back to pending (system actor).

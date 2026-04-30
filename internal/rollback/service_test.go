@@ -111,12 +111,9 @@ func TestClassifyStage(t *testing.T) {
 		{ticket.StateExecuting, StageExecution, false},
 		{ticket.StateAwaitingValidation, StagePreDeploy, false},
 		{ticket.StateValidated, StagePreDeploy, false},
-		{ticket.StateDeploying, StagePostDeploy, false},
-		{ticket.StateObserving, StagePostDeploy, false},
 		{ticket.StateClosed, StagePostObserve, false},
 		{ticket.StateDraft, "", true},
 		{ticket.StatePlanning, "", true},
-		{ticket.StateSpecced, "", true},
 	}
 	for _, tt := range tests {
 		got, err := ClassifyStage(tt.state)
@@ -245,98 +242,6 @@ func TestRollback_PreDeploy_Validated(t *testing.T) {
 	}
 	if result.NewState != string(ticket.StateDraft) {
 		t.Errorf("new_state = %q, want %q", result.NewState, ticket.StateDraft)
-	}
-}
-
-func TestRollback_PostDeploy_DevStaging(t *testing.T) {
-	trans := &mockTransitioner{
-		tickets: map[string]*ticket.Ticket{
-			"proj-4": {
-				ID: "proj-4", ProjectID: "p1", Title: "Test",
-				State: ticket.StateDeploying, Environment: ticket.EnvStaging,
-			},
-		},
-	}
-	creator := &mockCreator{}
-	bus := &mockBus{}
-	leases := &mockLeaseRemover{}
-
-	svc := NewService(trans, creator, bus)
-	svc.SetLeaseRemover(leases)
-
-	actor := ticket.Actor{ID: "human1", Type: ticket.ActorHuman}
-	result, err := svc.Rollback(context.Background(), "proj-4", actor, "staging broke")
-	if err != nil {
-		t.Fatalf("Rollback: %v", err)
-	}
-
-	if result.Stage != StagePostDeploy {
-		t.Errorf("stage = %q, want %q", result.Stage, StagePostDeploy)
-	}
-	if result.NewState != string(ticket.StateDraft) {
-		t.Errorf("new_state = %q, want %q", result.NewState, ticket.StateDraft)
-	}
-	// No incident ticket for staging.
-	if result.IncidentTicketID != "" {
-		t.Errorf("unexpected incident ticket for staging: %s", result.IncidentTicketID)
-	}
-}
-
-func TestRollback_PostDeploy_Production_IncidentCreated(t *testing.T) {
-	trans := &mockTransitioner{
-		tickets: map[string]*ticket.Ticket{
-			"proj-5": {
-				ID: "proj-5", ProjectID: "p1", Title: "Deploy Feature X",
-				State:       ticket.StateObserving,
-				Environment: ticket.EnvProduction,
-				WorkStreamID: "ws-1",
-			},
-		},
-	}
-	creator := &mockCreator{nextID: "proj-99"}
-	bus := &mockBus{}
-	leases := &mockLeaseRemover{}
-
-	svc := NewService(trans, creator, bus)
-	svc.SetLeaseRemover(leases)
-
-	actor := ticket.Actor{ID: "human1", Type: ticket.ActorHuman}
-	result, err := svc.Rollback(context.Background(), "proj-5", actor, "prod regression")
-	if err != nil {
-		t.Fatalf("Rollback: %v", err)
-	}
-
-	if result.Stage != StagePostDeploy {
-		t.Errorf("stage = %q, want %q", result.Stage, StagePostDeploy)
-	}
-	if result.IncidentTicketID != "proj-99" {
-		t.Errorf("incident_ticket_id = %q, want %q", result.IncidentTicketID, "proj-99")
-	}
-
-	// Verify incident ticket was created with correct properties.
-	if len(creator.created) != 1 {
-		t.Fatalf("expected 1 ticket created, got %d", len(creator.created))
-	}
-	incident := creator.created[0]
-	if incident.Type != ticket.TypeBug {
-		t.Errorf("incident type = %q, want %q", incident.Type, ticket.TypeBug)
-	}
-	if incident.Priority != ticket.P0 {
-		t.Errorf("incident priority = %d, want %d", incident.Priority, ticket.P0)
-	}
-	if incident.WorkStreamID != "ws-1" {
-		t.Errorf("incident work_stream_id = %q, want %q", incident.WorkStreamID, "ws-1")
-	}
-
-	// Verify incident event was emitted.
-	foundIncidentEvent := false
-	for _, e := range bus.published {
-		if e.Type == events.EventRollbackIncident {
-			foundIncidentEvent = true
-		}
-	}
-	if !foundIncidentEvent {
-		t.Error("expected rollback_incident event to be published")
 	}
 }
 

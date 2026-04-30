@@ -137,10 +137,8 @@ export function TicketInspector({
   }
 
   const obj = ticket.objective
-  const isAwaitingReview =
-    ticket.state === 'awaiting_validation' || ticket.state === 'awaiting_review'
-  const isAwaitingInput =
-    ticket.state === 'awaiting_input' || ticket.state === 'needs_human'
+  const isAwaitingReview = ticket.state === 'awaiting_validation'
+  const isAwaitingInput = ticket.state === 'awaiting_input'
 
   return (
     <div className="flex flex-col gap-4 p-4 animate-in fade-in duration-200">

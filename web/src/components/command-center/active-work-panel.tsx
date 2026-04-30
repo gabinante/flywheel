@@ -27,10 +27,8 @@ function stateBadgeVariant(
     case 'executing':
       return 'default'
     case 'planning':
-    case 'claimed':
       return 'secondary'
     case 'awaiting_validation':
-    case 'awaiting_review':
     case 'validated':
       return 'outline'
     default:
@@ -229,7 +227,7 @@ export function ActiveWorkPanel({
                   </span>
                   <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                     <Badge variant="outline" className="text-[10px]">
-                      awaiting review
+                      awaiting validation
                     </Badge>
                     <span className="ml-auto shrink-0 tabular-nums">
                       {elapsed(t.updated_at)}

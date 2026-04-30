@@ -542,10 +542,6 @@ func (s *Service) recordTransition(ctx context.Context, ticketID string, from, t
 // triggerToEventType maps a trigger+state to the correct event type to emit.
 func triggerToEventType(trigger string, newState State) string {
 	switch trigger {
-	case TriggerSpec:
-		return events.EventTicketSpecced
-	case TriggerPlan:
-		return events.EventTicketPlanning
 	case TriggerClaim:
 		return events.EventTicketClaimed
 	case TriggerStart:
@@ -560,10 +556,6 @@ func triggerToEventType(trigger string, newState State) string {
 		}
 		// Resolving awaiting_input → executing
 		return events.EventTicketInputProvided
-	case TriggerDeploy:
-		return events.EventTicketDeploying
-	case TriggerObserve:
-		return events.EventTicketObserving
 	case TriggerClose:
 		return events.EventTicketClosed
 	case TriggerRequestInput:

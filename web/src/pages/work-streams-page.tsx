@@ -44,9 +44,9 @@ function computeStats(tickets: Ticket[]): TicketStats {
   let other = 0
   for (const t of tickets) {
     const s = t.state
-    if (s === 'done') done++
-    else if (s === 'executing' || s === 'claimed') executing++
-    else if (s === 'pending') pending++
+    if (s === 'closed') done++
+    else if (s === 'executing') executing++
+    else if (s === 'draft') pending++
     else other++
   }
   return { total: tickets.length, done, executing, pending, other }
@@ -147,7 +147,7 @@ function StreamCard({ ws, orgId, projectId, tickets, onToggleStatus, toggling }:
                 {stats.pending > 0 ? (
                   <span className="flex items-center gap-1">
                     <span className="h-1.5 w-1.5 rounded-full bg-white/30" />
-                    {stats.pending} pending
+                    {stats.pending} draft
                   </span>
                 ) : null}
                 {stats.other > 0 ? (

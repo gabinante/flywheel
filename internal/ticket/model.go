@@ -5,49 +5,31 @@ import "time"
 // State is the ticket lifecycle state (spec v0.2).
 type State string
 
-// Spec v0.2 lifecycle states (full SDLC lifecycle).
+// Canonical lifecycle states (7 states).
 const (
 	StateDraft              State = "draft"
-	StateSpecced            State = "specced"
 	StatePlanning           State = "planning"
 	StateAwaitingInput      State = "awaiting_input"
 	StateExecuting          State = "executing"
 	StateAwaitingValidation State = "awaiting_validation"
 	StateValidated          State = "validated"
-	StateDeploying          State = "deploying"
-	StateObserving          State = "observing"
 	StateClosed             State = "closed"
 )
 
-// Deprecated state aliases — kept so existing Go code referencing old constant
-// names continues to compile. Each maps to the v0.2 equivalent.
-const (
-	StatePending        = StateDraft              // pending → draft
-	StateClaimed        = StatePlanning           // claimed → planning
-	StateAwaitingReview = StateAwaitingValidation // awaiting_review → awaiting_validation
-	StateDone           = StateClosed             // done → closed
-	StateNeedsHuman     = StateAwaitingInput      // needs_human → awaiting_input
-	StateBlocked        = StateAwaitingInput      // blocked → awaiting_input
-	StateFailed         = StateDraft              // failed → draft (retry semantics)
-)
-
-// AllStates returns all 10 valid v0.2 states.
+// AllStates returns all 7 canonical states.
 func AllStates() []State {
 	return []State{
 		StateDraft,
-		StateSpecced,
 		StatePlanning,
 		StateAwaitingInput,
 		StateExecuting,
 		StateAwaitingValidation,
 		StateValidated,
-		StateDeploying,
-		StateObserving,
 		StateClosed,
 	}
 }
 
-// IsValidState checks whether a state is one of the 10 valid v0.2 states.
+// IsValidState checks whether a state is one of the 7 canonical states.
 func IsValidState(s State) bool {
 	for _, valid := range AllStates() {
 		if s == valid {
@@ -55,29 +37,6 @@ func IsValidState(s State) bool {
 		}
 	}
 	return false
-}
-
-// MapLegacyState converts legacy (pre-v0.2) state strings stored in the database
-// to their v0.2 equivalents. Returns the input unchanged if already a valid v0.2 state.
-func MapLegacyState(s State) State {
-	switch s {
-	case "pending":
-		return StateDraft
-	case "claimed":
-		return StatePlanning
-	case "awaiting_review":
-		return StateAwaitingValidation
-	case "done":
-		return StateClosed
-	case "needs_human":
-		return StateAwaitingInput
-	case "blocked":
-		return StateAwaitingInput
-	case "failed":
-		return StateDraft
-	default:
-		return s
-	}
 }
 
 // Environment represents the deployment environment scope for state transitions (spec 4.1).

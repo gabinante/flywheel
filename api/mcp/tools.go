@@ -276,7 +276,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"properties": map[string]any{
 			"project_id":     map[string]any{"type": "string", "description": "Project ID"},
 			"work_stream_id": map[string]any{"type": "string", "description": "Filter by work stream ID (optional)"},
-			"state":          map[string]any{"type": "string", "description": "Filter by state: pending, claimed, executing, awaiting_review, done, needs_human (optional)", "enum": []string{"pending", "claimed", "executing", "awaiting_review", "done", "needs_human"}},
+			"state":          map[string]any{"type": "string", "description": "Filter by state (optional)", "enum": []string{"draft", "planning", "executing", "awaiting_input", "awaiting_validation", "validated", "closed"}},
 			"priority":       map[string]any{"type": "integer", "description": "Filter by priority 0-3 (optional)", "minimum": 0, "maximum": 3},
 		},
 		"required":             []string{"project_id"},
@@ -711,7 +711,7 @@ func getAgentIDFromArgs(ctx context.Context, args map[string]any) (string, error
 
 // stuckTicketIDs returns ticket IDs in state claimed or executing for the project (so the user can direct force-release).
 func stuckTicketIDs(ctx context.Context, b *Backend, projectID string) []string {
-	claimed, _ := b.Ticket.ListByState(ctx, projectID, ticket.StateClaimed)
+	claimed, _ := b.Ticket.ListByState(ctx, projectID, ticket.StatePlanning)
 	executing, _ := b.Ticket.ListByState(ctx, projectID, ticket.StateExecuting)
 	seen := make(map[string]bool)
 	var ids []string
@@ -1399,7 +1399,7 @@ func listTicketsHandler(b *Backend, ctx context.Context, args map[string]any) (*
 			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
 		}
 		workStreamID := getString(args, "work_stream_id", "")
-		state := ticket.MapLegacyState(ticket.State(getString(args, "state", "")))
+		state := ticket.State(getString(args, "state", ""))
 		list, err := b.Ticket.ListTickets(ctx, projectID, workStreamID, state)
 		if err != nil {
 			return toolErrTriple(apierrors.MapError(err))
@@ -1443,7 +1443,7 @@ func listTicketsHandler(b *Backend, ctx context.Context, args map[string]any) (*
 		}
 		stateStr := getString(args, "state", "")
 		out := map[string]any{"tickets": summaries, "count": len(summaries)}
-		if stateStr == "" || ticket.State(stateStr) == ticket.StatePending {
+		if stateStr == "" || ticket.State(stateStr) == ticket.StateDraft {
 			out["workflow"] = workflowAfterListTicketsPending()
 		}
 		return jsonResult(out)
@@ -1723,6 +1723,8 @@ func submitTicketHandler(b *Backend, ctx context.Context, args map[string]any) (
 		if err := b.Ticket.SubmitTicket(ctx, ticketID, leaseToken, outputs); err != nil {
 			return toolErrTriple(apierrors.MapError(err))
 		}
+		// Clean up lease since ticket has moved past lease-tracked states.
+		_ = b.Queue.CleanupLease(ctx, ticketID)
 		return jsonResult(map[string]any{"ok": true})
 }
 
@@ -1740,6 +1742,8 @@ func escalateTicketHandler(b *Backend, ctx context.Context, args map[string]any)
 		if err := b.Ticket.EscalateTicket(ctx, ticketID, leaseToken, reason, question); err != nil {
 			return toolErrTriple(apierrors.MapError(err))
 		}
+		// Clean up lease since ticket has moved past lease-tracked states.
+		_ = b.Queue.CleanupLease(ctx, ticketID)
 		return jsonResult(map[string]any{"ok": true})
 }
 

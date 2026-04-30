@@ -117,7 +117,7 @@ func TestDetermineWorkerType(t *testing.T) {
 	}{
 		{
 			name: "default pending ticket is executor",
-			t:    &ticket.Ticket{State: ticket.StatePending},
+			t:    &ticket.Ticket{State: ticket.StateDraft},
 			want: WorkerTypeExecutor,
 		},
 		{
@@ -128,7 +128,7 @@ func TestDetermineWorkerType(t *testing.T) {
 		{
 			name: "explicit worker_type in inputs overrides",
 			t: &ticket.Ticket{
-				State:  ticket.StatePending,
+				State:  ticket.StateDraft,
 				Inputs: map[string]any{"worker_type": "planner"},
 			},
 			want: WorkerTypePlanner,
@@ -136,7 +136,7 @@ func TestDetermineWorkerType(t *testing.T) {
 		{
 			name: "invalid explicit worker_type falls back",
 			t: &ticket.Ticket{
-				State:  ticket.StatePending,
+				State:  ticket.StateDraft,
 				Inputs: map[string]any{"worker_type": "invalid"},
 			},
 			want: WorkerTypeExecutor,
@@ -144,7 +144,7 @@ func TestDetermineWorkerType(t *testing.T) {
 		{
 			name: "deployer from inputs",
 			t: &ticket.Ticket{
-				State:  ticket.StatePending,
+				State:  ticket.StateDraft,
 				Inputs: map[string]any{"worker_type": "deployer"},
 			},
 			want: WorkerTypeDeployer,
@@ -152,7 +152,7 @@ func TestDetermineWorkerType(t *testing.T) {
 		{
 			name: "investigator from inputs",
 			t: &ticket.Ticket{
-				State:  ticket.StatePending,
+				State:  ticket.StateDraft,
 				Inputs: map[string]any{"worker_type": "investigator"},
 			},
 			want: WorkerTypeInvestigator,
@@ -183,7 +183,7 @@ func TestResolveTicketWorkerRoleCustomRole(t *testing.T) {
 		},
 	}
 	tk := &ticket.Ticket{
-		State:  ticket.StatePending,
+		State:  ticket.StateDraft,
 		Inputs: map[string]any{"worker_role": "security-review"},
 	}
 
@@ -336,7 +336,7 @@ func TestRunTypedWorker(t *testing.T) {
 	tk := &ticket.Ticket{
 		ID:        "t-typed",
 		ProjectID: "p-1",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		Title:     "typed worker test",
 		Type:      ticket.TypeTask,
 		Objective: ticket.Objective{Description: "test"},

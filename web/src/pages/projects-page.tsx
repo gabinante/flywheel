@@ -220,12 +220,11 @@ export function ProjectsPage() {
           const tickets = (ticketsRes.response.ok ? ticketsRes.data : []) as Ticket[]
           const streams = (streamsRes.response.ok ? streamsRes.data : []) as WorkStream[]
           const activeStates = new Set([
-            'pending',
-            'claimed',
+            'draft',
+            'planning',
             'executing',
-            'awaiting_review',
-            'blocked',
-            'needs_human',
+            'awaiting_validation',
+            'awaiting_input',
           ])
           result[p.id] = {
             totalTickets: tickets.length,

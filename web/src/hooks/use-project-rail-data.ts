@@ -42,7 +42,7 @@ export function useProjectRailData(projectId: string | undefined) {
         return { activeTickets: [], pendingReviews: [], escalations: [], activityItems: [] }
       }
 
-      const [statusRes, reviewsRes, escalationsRes, changeStreamRes] = await Promise.all([
+      const [statusRes, reviewsRes, escalationsRes, awaitingInputRes, changeStreamRes] = await Promise.all([
         fetch('/api/dispatch/status', {
           headers: { Authorization: `Bearer ${token}` },
         }),
@@ -51,6 +51,9 @@ export function useProjectRailData(projectId: string | undefined) {
         }),
         client.GET('/projects/{projectID}/escalations', {
           params: { path: { projectID: projectId } },
+        }),
+        client.GET('/projects/{projectID}/tickets', {
+          params: { path: { projectID: projectId }, query: { state: 'awaiting_input' } },
         }),
         fetch(
           `/api/v1/streams/change?project_id=${encodeURIComponent(projectId)}&limit=40`,
@@ -87,6 +90,9 @@ export function useProjectRailData(projectId: string | undefined) {
       const rawEscalations: Escalation[] = escalationsRes.response.ok
         ? ((escalationsRes.data ?? []) as Escalation[])
         : []
+      const awaitingInputTickets: Ticket[] = awaitingInputRes.response.ok
+        ? ((awaitingInputRes.data ?? []) as Ticket[])
+        : []
 
       const changeEvents: ChangeStreamEvent[] = changeStreamRes.ok
         ? (((await changeStreamRes.json()) as ChangeStreamResponse).events ?? [])
@@ -95,6 +101,28 @@ export function useProjectRailData(projectId: string | undefined) {
       const ticketsById = new Map<string, Ticket>()
       for (const ticket of [...active, ...reviews]) {
         if (ticket.id) ticketsById.set(ticket.id, ticket)
+      }
+
+      // Ensure all escalation tickets are in the map before trace slicing
+      const escalationTicketIds = rawEscalations
+        .map((e) => e.ticket_id)
+        .filter((id): id is string => Boolean(id))
+        .filter((id) => !ticketsById.has(id))
+      if (escalationTicketIds.length > 0) {
+        const escResults = await Promise.all(
+          escalationTicketIds.map(async (ticketId) => {
+            const { data, response } = await client.GET('/tickets/{ticketID}', {
+              params: { path: { ticketID: ticketId } },
+            })
+            if (!response.ok) return null
+            const ticket = data as Ticket
+            if (ticket.project_id && ticket.project_id !== projectId) return null
+            return ticket
+          }),
+        )
+        for (const ticket of escResults) {
+          if (ticket?.id) ticketsById.set(ticket.id, ticket)
+        }
       }
 
       const candidateTicketIds = [
@@ -150,6 +178,26 @@ export function useProjectRailData(projectId: string | undefined) {
           return { escalation, ticket }
         })
         .filter((item): item is RailEscalation => item !== null)
+
+      // Include awaiting_input tickets that don't have a matching escalation.
+      const escalationTicketIdSetRaw = new Set(
+        escalationTicketItems
+          .map((item) => item.ticket.id)
+          .filter((ticketId): ticketId is string => Boolean(ticketId)),
+      )
+      for (const ticket of awaitingInputTickets) {
+        if (ticket.id && !escalationTicketIdSetRaw.has(ticket.id)) {
+          ticketsById.set(ticket.id, ticket)
+          escalationTicketItems.push({
+            escalation: {
+              ticket_id: ticket.id,
+              reason: 'Ticket is awaiting human input.',
+            } as Escalation,
+            ticket,
+          })
+        }
+      }
+
       const escalationTicketIdSet = new Set(
         escalationTicketItems
           .map((item) => item.ticket.id)

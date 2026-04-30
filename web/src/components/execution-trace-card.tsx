@@ -53,7 +53,7 @@ const STEP_TYPE_CONFIG: Record<
 }
 
 /** States where the ticket is still being worked on and trace may grow. */
-const IN_PROGRESS_STATES = new Set(['claimed', 'executing'])
+const IN_PROGRESS_STATES = new Set(['planning', 'executing'])
 const LIVE_POLL_INTERVAL_MS = 1500
 const WORKER_OUTPUT_KIND = 'worker_output'
 

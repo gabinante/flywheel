@@ -93,16 +93,8 @@ function summarizeChangeEvent(
           title: `Updated ${ticketLabel}`,
           detail: changedFields.length > 0 ? `Changed ${changedFields.join(', ')}` : undefined,
         }
-      case 'ticket_specced':
-        return { kind: 'ticket', title: `Scoped ${ticketLabel}` }
       case 'ticket_planning':
         return { kind: 'ticket', title: `Planned ${ticketLabel}` }
-      case 'ticket_claimed':
-        return {
-          kind: 'ticket',
-          title: `Picked up ${ticketLabel}`,
-          detail: actor ? `by ${actor}` : undefined,
-        }
       case 'ticket_started':
         return {
           kind: 'ticket',
@@ -116,16 +108,10 @@ function summarizeChangeEvent(
         return { kind: 'review', title: `Approved ${ticketLabel}` }
       case 'ticket_rejected':
         return { kind: 'review', title: `Rejected ${ticketLabel}` }
-      case 'ticket_deploying':
-        return { kind: 'deploy', title: `Started deploy for ${ticketLabel}` }
-      case 'ticket_observing':
-        return { kind: 'deploy', title: `Started observation for ${ticketLabel}` }
       case 'ticket_closed':
         return { kind: 'ticket', title: `Closed ${ticketLabel}` }
       case 'ticket_cancelled':
         return { kind: 'ticket', title: `Cancelled ${ticketLabel}` }
-      case 'ticket_failed':
-        return { kind: 'ticket', title: `Marked ${ticketLabel} as failed` }
       case 'ticket_reopened':
         return { kind: 'ticket', title: `Reopened ${ticketLabel}` }
       case 'ticket_awaiting_input':

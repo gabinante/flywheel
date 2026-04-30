@@ -13,7 +13,6 @@ import {
   Play,
   Eye,
   CheckCircle2,
-  XCircle,
   AlertTriangle,
   PauseCircle,
   Inbox,
@@ -39,28 +38,15 @@ type WorkStream = components['schemas']['WorkStream']
 // Constants & helpers
 // ---------------------------------------------------------------------------
 
-/** All v0.2 lifecycle states the backend actually returns, plus legacy aliases
- *  so tickets stored under old names still match filters. */
+/** The 7 canonical ticket lifecycle states. */
 const ALL_STATES: readonly TicketState[] = [
-  // v0.2 canonical states
   'draft',
-  'specced',
   'planning',
   'awaiting_input',
   'executing',
   'awaiting_validation',
   'validated',
-  'deploying',
-  'observing',
   'closed',
-  // Legacy aliases (backend may still return these from older data)
-  'pending',
-  'claimed',
-  'awaiting_review',
-  'done',
-  'blocked',
-  'needs_human',
-  'failed',
 ] as const
 
 type CategoryId =
@@ -68,21 +54,21 @@ type CategoryId =
   | 'all'
   | 'backlog'
   | 'in_progress'
-  | 'awaiting_review'
+  | 'awaiting_validation'
   | 'done'
-  | 'blocked'
+  | 'awaiting_input'
 
 const CATEGORY_OPTIONS: { id: CategoryId; label: string }[] = [
   { id: 'open', label: 'Open' },
   { id: 'all', label: 'All tickets' },
   { id: 'backlog', label: 'Backlog' },
   { id: 'in_progress', label: 'In progress' },
-  { id: 'awaiting_review', label: 'Awaiting review' },
+  { id: 'awaiting_validation', label: 'Awaiting validation' },
   { id: 'done', label: 'Done' },
-  { id: 'blocked', label: 'Blocked / needs input' },
+  { id: 'awaiting_input', label: 'Awaiting input' },
 ]
 
-const DONE_STATES: TicketState[] = ['closed', 'done']
+const DONE_STATES: TicketState[] = ['closed']
 
 /** Everything except done states — default "open work" view. */
 const OPEN_STATES = ALL_STATES.filter((s) => !DONE_STATES.includes(s))
@@ -96,15 +82,15 @@ function statesInCategory(cat: CategoryId): readonly TicketState[] | null {
     case 'all':
       return null
     case 'backlog':
-      return ['draft', 'specced', 'pending']
+      return ['draft']
     case 'in_progress':
-      return ['planning', 'executing', 'claimed']
-    case 'awaiting_review':
-      return ['awaiting_validation', 'awaiting_review']
+      return ['planning', 'executing']
+    case 'awaiting_validation':
+      return ['awaiting_validation']
     case 'done':
-      return ['closed', 'done']
-    case 'blocked':
-      return ['awaiting_input', 'blocked', 'needs_human', 'failed']
+      return ['closed']
+    case 'awaiting_input':
+      return ['awaiting_input']
     default:
       return null
   }
@@ -146,27 +132,17 @@ function stateColorKey(state: string | undefined): StateColorKey {
   if (!state) return 'gray'
   switch (state) {
     case 'closed':
-    case 'done':
     case 'validated':
       return 'green'
     case 'awaiting_validation':
-    case 'awaiting_review':
-    case 'deploying':
-    case 'observing':
       return 'amber'
     case 'awaiting_input':
-    case 'blocked':
-    case 'needs_human':
-    case 'failed':
       return 'red'
     case 'executing':
-    case 'claimed':
       return 'blue'
     case 'planning':
-    case 'specced':
       return 'purple'
     case 'draft':
-    case 'pending':
     default:
       return 'gray'
   }
@@ -198,27 +174,16 @@ function StateIcon({ state, className }: { state: string | undefined; className?
   const cls = cn('size-4', className)
   switch (state) {
     case 'draft':
-    case 'pending':
-    case 'specced':
       return <Clock className={cls} />
     case 'planning':
     case 'executing':
-    case 'claimed':
       return <Play className={cls} />
     case 'awaiting_validation':
-    case 'awaiting_review':
       return <Eye className={cls} />
     case 'validated':
-    case 'deploying':
-    case 'observing':
     case 'closed':
-    case 'done':
       return <CheckCircle2 className={cls} />
-    case 'blocked':
-    case 'failed':
-      return <XCircle className={cls} />
     case 'awaiting_input':
-    case 'needs_human':
       return <AlertTriangle className={cls} />
     default:
       return <PauseCircle className={cls} />

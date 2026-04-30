@@ -12,10 +12,10 @@ func TestIsUnblocked(t *testing.T) {
 		want   bool
 	}{
 		{"no deps", &Ticket{DependsOn: []string{}}, nil, true},
-		{"one dep done", &Ticket{DependsOn: []string{"a"}}, []*Ticket{{ID: "a", State: StateDone}}, true},
+		{"one dep done", &Ticket{DependsOn: []string{"a"}}, []*Ticket{{ID: "a", State: StateClosed}}, true},
 		{"one dep not done", &Ticket{DependsOn: []string{"a"}}, []*Ticket{{ID: "a", State: StateExecuting}}, false},
-		{"two deps both done", &Ticket{DependsOn: []string{"a", "b"}}, []*Ticket{{ID: "a", State: StateDone}, {ID: "b", State: StateDone}}, true},
-		{"two deps one not done", &Ticket{DependsOn: []string{"a", "b"}}, []*Ticket{{ID: "a", State: StateDone}, {ID: "b", State: StatePending}}, false},
+		{"two deps both done", &Ticket{DependsOn: []string{"a", "b"}}, []*Ticket{{ID: "a", State: StateClosed}, {ID: "b", State: StateClosed}}, true},
+		{"two deps one not done", &Ticket{DependsOn: []string{"a", "b"}}, []*Ticket{{ID: "a", State: StateClosed}, {ID: "b", State: StateDraft}}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -29,8 +29,8 @@ func TestIsUnblocked(t *testing.T) {
 func TestGetDependencyOutputs(t *testing.T) {
 	ticket := &Ticket{DependsOn: []string{"a", "b"}}
 	deps := []*Ticket{
-		{ID: "a", State: StateDone, Outputs: map[string]any{"result": "x"}},
-		{ID: "b", State: StatePending, Outputs: map[string]any{"y": 1}},
+		{ID: "a", State: StateClosed, Outputs: map[string]any{"result": "x"}},
+		{ID: "b", State: StateDraft, Outputs: map[string]any{"y": 1}},
 	}
 	got := GetDependencyOutputs(ticket, deps)
 	if len(got) != 1 {

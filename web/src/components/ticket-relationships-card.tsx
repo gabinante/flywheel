@@ -18,37 +18,33 @@ function ticketMap(tickets: Ticket[]): Map<string, Ticket> {
 }
 
 const STATE_STYLES: Record<string, { className: string; label: string }> = {
-  pending: {
+  draft: {
     className: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30',
-    label: 'Pending',
+    label: 'Draft',
   },
-  claimed: {
+  planning: {
     className: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
-    label: 'Claimed',
+    label: 'Planning',
   },
   executing: {
     className: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
     label: 'Executing',
   },
-  awaiting_review: {
-    className: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
-    label: 'Review',
-  },
-  done: {
-    className: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-    label: 'Done',
-  },
-  blocked: {
+  awaiting_input: {
     className: 'bg-orange-500/15 text-orange-300 border-orange-500/30',
-    label: 'Blocked',
+    label: 'Awaiting Input',
   },
-  needs_human: {
-    className: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30',
-    label: 'Needs Human',
+  awaiting_validation: {
+    className: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
+    label: 'Validation',
   },
-  failed: {
-    className: 'bg-red-500/15 text-red-300 border-red-500/30',
-    label: 'Failed',
+  validated: {
+    className: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+    label: 'Validated',
+  },
+  closed: {
+    className: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+    label: 'Closed',
   },
 }
 
@@ -63,8 +59,8 @@ function RelationshipCard({
   ticket: Ticket
   direction: 'depends_on' | 'blocks'
 }) {
-  const state = ticket.state ?? 'pending'
-  const stateStyle = STATE_STYLES[state] ?? STATE_STYLES.pending
+  const state = ticket.state ?? 'draft'
+  const stateStyle = STATE_STYLES[state] ?? STATE_STYLES.draft
 
   return (
     <Link

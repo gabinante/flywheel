@@ -126,7 +126,7 @@ func TestServiceHandleTicketCreated(t *testing.T) {
 			Slug: "proj",
 			ContextPack: project.ContextPack{
 				Extra: map[string]string{
-					"mirror_config": `{"enabled":true,"provider":"linear","state_mapping":{"executing":"In Progress","observing":"In Review"},"linear":{"team_id":"team-1","api_key_secret":"linear_key"},"context_base_url":"https://warrant.example.com"}`,
+					"mirror_config": `{"enabled":true,"provider":"linear","state_mapping":{"executing":"In Progress","awaiting_validation":"In Review"},"linear":{"team_id":"team-1","api_key_secret":"linear_key"},"context_base_url":"https://warrant.example.com"}`,
 				},
 			},
 		},
@@ -193,7 +193,7 @@ func TestServiceHandleStateTransition(t *testing.T) {
 			Slug: "proj",
 			ContextPack: project.ContextPack{
 				Extra: map[string]string{
-					"mirror_config": `{"enabled":true,"provider":"linear","state_mapping":{"executing":"In Progress","observing":"In Review","closed":"Done"},"linear":{"team_id":"team-1","api_key_secret":"linear_key"},"context_base_url":"https://warrant.example.com"}`,
+					"mirror_config": `{"enabled":true,"provider":"linear","state_mapping":{"executing":"In Progress","awaiting_validation":"In Review","closed":"Done"},"linear":{"team_id":"team-1","api_key_secret":"linear_key"},"context_base_url":"https://warrant.example.com"}`,
 				},
 			},
 		},
@@ -345,7 +345,7 @@ func TestServiceUnmappedStateSkipped(t *testing.T) {
 			ProjectID: "project-uuid",
 			Title:     "Unmapped state",
 			Type:      ticket.TypeTask,
-			State:     ticket.StateSpecced,
+			State:     ticket.StatePlanning,
 			Objective: ticket.Objective{Description: "Not mapped"},
 			Inputs:    map[string]any{},
 			Outputs:   map[string]any{},
@@ -358,7 +358,7 @@ func TestServiceUnmappedStateSkipped(t *testing.T) {
 			Slug: "proj",
 			ContextPack: project.ContextPack{
 				Extra: map[string]string{
-					// Only "executing" and "closed" are mapped; "specced" is not.
+					// Only "executing" and "closed" are mapped; "planning" is not.
 					"mirror_config": `{"enabled":true,"provider":"linear","state_mapping":{"executing":"In Progress","closed":"Done"},"linear":{"team_id":"team-1","api_key_secret":"linear_key"}}`,
 				},
 			},
@@ -371,8 +371,8 @@ func TestServiceUnmappedStateSkipped(t *testing.T) {
 
 	// Publish event for unmapped state.
 	_ = bus.Publish(context.Background(), events.Event{
-		Type:    events.EventTicketSpecced,
-		Payload: map[string]any{"ticket_id": "proj-5", "state": "specced"},
+		Type:    events.EventTicketPlanning,
+		Payload: map[string]any{"ticket_id": "proj-5", "state": "planning"},
 	})
 
 	adapter.mu.Lock()

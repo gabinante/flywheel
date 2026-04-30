@@ -151,9 +151,9 @@ func TestConfigValidate(t *testing.T) {
 func TestConfigMapState(t *testing.T) {
 	cfg := &Config{
 		StateMapping: map[string]string{
-			"executing": "In Progress",
-			"observing": "In Review",
-			"closed":    "Done",
+			"executing":          "In Progress",
+			"awaiting_validation": "In Review",
+			"closed":             "Done",
 		},
 	}
 
@@ -162,10 +162,10 @@ func TestConfigMapState(t *testing.T) {
 		want  string
 	}{
 		{"executing", "In Progress"},
-		{"observing", "In Review"},
+		{"awaiting_validation", "In Review"},
 		{"closed", "Done"},
 		{"draft", ""},       // not mapped
-		{"specced", ""},     // not mapped
+		{"planning", ""},    // not mapped
 		{"nonexistent", ""}, // not mapped
 	}
 

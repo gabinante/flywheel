@@ -23,7 +23,7 @@ func TestClaimTicket_IdempotencyKey_ReuseLease(t *testing.T) {
 	t1 := &ticket.Ticket{
 		ID:        "proj-1",
 		ProjectID: "project-id",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		Priority:  ticket.P2,
 		DependsOn: nil,
 	}
@@ -67,7 +67,7 @@ type mockTicketLister struct {
 }
 
 func (m *mockTicketLister) ListByState(ctx context.Context, projectID string, state ticket.State) ([]*ticket.Ticket, error) {
-	if state != ticket.StatePending {
+	if state != ticket.StateDraft {
 		return nil, nil
 	}
 	return m.listByState, nil

@@ -80,7 +80,6 @@ func NewGapDetector(bus events.Bus, client *Client, opts ...GapOption) *GapDetec
 		sweepInterval: 1 * time.Minute,
 		stateEventTypes: []string{
 			// Default: ticket state transitions that imply real-world changes.
-			events.EventTicketDeploying,
 			events.EventTicketValidated,
 			events.EventTicketClosed,
 		},

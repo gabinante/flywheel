@@ -13,10 +13,9 @@ import (
 type Stage string
 
 const (
-	StageExecution    Stage = "execution"     // executing
-	StagePreDeploy    Stage = "pre_deploy"    // awaiting_validation, validated
-	StagePostDeploy   Stage = "post_deploy"   // deploying, observing
-	StagePostObserve  Stage = "post_observe"  // closed (creates new ticket, not a transition)
+	StageExecution   Stage = "execution"    // executing
+	StagePreDeploy   Stage = "pre_deploy"   // awaiting_validation, validated
+	StagePostObserve Stage = "post_observe" // closed (creates new ticket, not a transition)
 )
 
 // ClassifyStage maps a ticket state to a rollback stage.
@@ -26,8 +25,6 @@ func ClassifyStage(state ticket.State) (Stage, error) {
 		return StageExecution, nil
 	case ticket.StateAwaitingValidation, ticket.StateValidated:
 		return StagePreDeploy, nil
-	case ticket.StateDeploying, ticket.StateObserving:
-		return StagePostDeploy, nil
 	case ticket.StateClosed:
 		return StagePostObserve, nil
 	default:
@@ -123,8 +120,6 @@ func (s *Service) Rollback(ctx context.Context, ticketID string, actor ticket.Ac
 		return s.rollbackExecution(ctx, t, actor, reason, result)
 	case StagePreDeploy:
 		return s.rollbackPreDeploy(ctx, t, actor, reason, result)
-	case StagePostDeploy:
-		return s.rollbackPostDeploy(ctx, t, actor, reason, result)
 	case StagePostObserve:
 		return s.rollbackPostObserve(ctx, t, actor, reason, result)
 	default:
@@ -184,36 +179,6 @@ func (s *Service) rollbackPreDeploy(ctx context.Context, t *ticket.Ticket, actor
 				result.Actions = append(result.Actions, "worktree cleaned up")
 			}
 		}
-	}
-
-	// Release lease in queue.
-	s.releaseLease(ctx, t.ID, result)
-
-	return result, nil
-}
-
-// rollbackPostDeploy handles rollback after deployment:
-// - Redeploy previous version (recorded as action; actual redeploy is infrastructure concern)
-// - For production: auto-create incident ticket, carry forward observation
-// - Return ticket to draft
-func (s *Service) rollbackPostDeploy(ctx context.Context, t *ticket.Ticket, actor ticket.Actor, reason string, result *Result) (*Result, error) {
-	// Transition to draft.
-	payload := map[string]any{"reason": reason, "stage": string(StagePostDeploy), "environment": string(t.Environment)}
-	if err := s.tickets.TransitionTicket(ctx, t.ID, ticket.TriggerRollback, actor, payload); err != nil {
-		return nil, fmt.Errorf("transition: %w", err)
-	}
-	result.NewState = string(ticket.StateDraft)
-	result.ClaimsReleased = true
-	result.Actions = append(result.Actions, "previous version redeploy requested", "claims released", "returned to draft")
-
-	// For production deployments: create incident ticket.
-	if t.Environment == ticket.EnvProduction {
-		incidentID, err := s.createIncidentTicket(ctx, t, reason, actor)
-		if err == nil && incidentID != "" {
-			result.IncidentTicketID = incidentID
-			result.Actions = append(result.Actions, fmt.Sprintf("incident ticket created: %s", incidentID))
-		}
-		result.Actions = append(result.Actions, "observation carried forward to incident")
 	}
 
 	// Release lease in queue.

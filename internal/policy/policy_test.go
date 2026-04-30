@@ -149,7 +149,7 @@ func TestEngineEvaluate_MultiPredicateAND(t *testing.T) {
 			Name: "prod-deploy-confirm",
 			Predicates: []Predicate{
 				{Field: FieldEnvironment, Operator: OpEquals, Values: []string{"production"}},
-				{Field: FieldTransition, Operator: OpEquals, Values: []string{"deploy"}},
+				{Field: FieldTransition, Operator: OpEquals, Values: []string{"close"}},
 			},
 			Action:  ActionTypedConfirm,
 			Enabled: true,
@@ -168,7 +168,7 @@ func TestEngineEvaluate_MultiPredicateAND(t *testing.T) {
 	// Both match.
 	decision = engine.Evaluate(rules, TransitionContext{
 		Environment: "production",
-		Transition:  "deploy",
+		Transition:  "close",
 	})
 	if decision.Action != ActionTypedConfirm {
 		t.Errorf("got %s, want %s", decision.Action, ActionTypedConfirm)
@@ -340,7 +340,7 @@ func TestEngineEvaluateGates(t *testing.T) {
 			ID:   "r2",
 			Name: "deploy-approve",
 			Predicates: []Predicate{
-				{Field: FieldTransition, Operator: OpEquals, Values: []string{"deploy"}},
+				{Field: FieldTransition, Operator: OpEquals, Values: []string{"close"}},
 			},
 			Action:  ActionApprove,
 			Enabled: true,
@@ -351,7 +351,7 @@ func TestEngineEvaluateGates(t *testing.T) {
 	path := []PathStep{
 		{Trigger: "submit", FromState: "executing", ToState: "awaiting_validation"},
 		{Trigger: "approve", FromState: "awaiting_validation", ToState: "validated"},
-		{Trigger: "deploy", FromState: "validated", ToState: "deploying"},
+		{Trigger: "close", FromState: "validated", ToState: "closed"},
 	}
 
 	gates := engine.EvaluateGates(rules, baseCtx, path)
@@ -389,14 +389,14 @@ func TestRemainingHappyPath(t *testing.T) {
 
 func TestFullHappyPath(t *testing.T) {
 	path := FullHappyPath()
-	if len(path) != 8 {
-		t.Errorf("expected 8 steps, got %d", len(path))
+	if len(path) != 5 {
+		t.Errorf("expected 5 steps, got %d", len(path))
 	}
-	if path[0].Trigger != "spec" || path[0].FromState != "draft" {
+	if path[0].Trigger != "claim" || path[0].FromState != "draft" {
 		t.Errorf("first step: %+v", path[0])
 	}
-	if path[7].Trigger != "close" || path[7].ToState != "closed" {
-		t.Errorf("last step: %+v", path[7])
+	if path[4].Trigger != "close" || path[4].ToState != "closed" {
+		t.Errorf("last step: %+v", path[4])
 	}
 }
 
@@ -483,7 +483,7 @@ func TestPostureProdGate_DevAutomatic(t *testing.T) {
 
 	decision := engine.Evaluate(posture.Rules, TransitionContext{
 		Environment: "development",
-		Transition:  "deploy",
+		Transition:  "close",
 	})
 	if decision.Action != ActionAuto {
 		t.Errorf("prod-gate dev deploy: got %s, want %s", decision.Action, ActionAuto)
@@ -509,7 +509,7 @@ func TestPostureProdGate_ProdDeployTypedConfirm(t *testing.T) {
 
 	decision := engine.Evaluate(posture.Rules, TransitionContext{
 		Environment: "production",
-		Transition:  "deploy",
+		Transition:  "close",
 	})
 	// Both prod-approve and prod-deploy-typed-confirm match.
 	// typed-confirm is more restrictive than approve.
@@ -518,13 +518,13 @@ func TestPostureProdGate_ProdDeployTypedConfirm(t *testing.T) {
 	}
 }
 
-func TestPostureSandbox_DeployOpenPR(t *testing.T) {
+func TestPostureSandbox_CloseApprove(t *testing.T) {
 	engine := NewEngine()
 	posture := PostureSandbox()
 
-	decision := engine.Evaluate(posture.Rules, TransitionContext{Transition: "deploy"})
-	if decision.Action != ActionOpenPRStop {
-		t.Errorf("sandbox deploy: got %s, want %s", decision.Action, ActionOpenPRStop)
+	decision := engine.Evaluate(posture.Rules, TransitionContext{Transition: "close"})
+	if decision.Action != ActionApprove {
+		t.Errorf("sandbox close: got %s, want %s", decision.Action, ActionApprove)
 	}
 }
 
@@ -768,12 +768,12 @@ func TestServiceEvaluateTransition_WithPolicy(t *testing.T) {
 
 	_, _ = svc.ApplyPosture(ctx, "proj-1", "sandbox", "user-1")
 
-	decision, err := svc.EvaluateTransition(ctx, "proj-1", TransitionContext{Transition: "deploy"})
+	decision, err := svc.EvaluateTransition(ctx, "proj-1", TransitionContext{Transition: "close"})
 	if err != nil {
 		t.Fatalf("EvaluateTransition: %v", err)
 	}
-	if decision.Action != ActionOpenPRStop {
-		t.Errorf("got %s, want %s", decision.Action, ActionOpenPRStop)
+	if decision.Action != ActionApprove {
+		t.Errorf("got %s, want %s", decision.Action, ActionApprove)
 	}
 }
 

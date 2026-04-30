@@ -555,7 +555,7 @@ paths:
           description: Filter by ticket state.
           schema:
             type: string
-            enum: [draft, specced, planning, awaiting_input, executing, awaiting_validation, validated, deploying, observing, closed, pending, claimed, awaiting_review, done, blocked, needs_human, failed]
+            enum: [draft, planning, awaiting_input, executing, awaiting_validation, validated, closed]
       responses:
         "200":
           description: OK
@@ -2049,7 +2049,7 @@ components:
           maximum: 3
         state:
           type: string
-          enum: [draft, specced, planning, awaiting_input, executing, awaiting_validation, validated, deploying, observing, closed, pending, claimed, awaiting_review, done, blocked, needs_human, failed]
+          enum: [draft, planning, awaiting_input, executing, awaiting_validation, validated, closed]
         version:
           type: integer
         objective:

@@ -5,17 +5,13 @@ import (
 	"fmt"
 )
 
-// Trigger constants for state transitions (spec v0.2).
+// Trigger constants for state transitions.
 const (
 	// --- Core lifecycle triggers ---
-	TriggerSpec     = "spec"     // draft → specced
-	TriggerPlan     = "plan"     // specced → planning
 	TriggerStart    = "start"    // planning → executing
 	TriggerSubmit   = "submit"   // executing → awaiting_validation
 	TriggerValidate = "validate" // awaiting_validation → validated
-	TriggerDeploy   = "deploy"   // validated → deploying
-	TriggerObserve  = "observe"  // deploying → observing
-	TriggerClose    = "close"    // observing → closed
+	TriggerClose    = "close"    // validated → closed
 
 	// --- Input / escalation triggers ---
 	TriggerRequestInput = "request_input" // planning|executing → awaiting_input
@@ -31,7 +27,7 @@ const (
 	TriggerReject  = "reject"  // awaiting_validation → executing
 
 	// --- Rollback trigger ---
-	TriggerRollback = "rollback" // executing|awaiting_validation|validated|deploying|observing → draft
+	TriggerRollback = "rollback" // executing|awaiting_validation|validated → draft
 
 	// --- Operational triggers ---
 	TriggerClaim        = "claim"         // draft → planning (agent claims work)
@@ -79,20 +75,14 @@ type StateMachine struct {
 func NewStateMachine() *StateMachine {
 	sm := &StateMachine{}
 	sm.transitions = []Transition{
-		// === Happy path (full SDLC lifecycle) ===
-		{StateDraft, StateSpecced, TriggerSpec, []GuardFn{}},
-		{StateSpecced, StatePlanning, TriggerPlan, []GuardFn{}},
+		// === Happy path ===
 		{StatePlanning, StateExecuting, TriggerStart, []GuardFn{guardIsLeaseholder}},
 		{StateExecuting, StateAwaitingValidation, TriggerSubmit, []GuardFn{guardIsLeaseholder, guardOutputsPresent}},
 		{StateAwaitingValidation, StateValidated, TriggerValidate, []GuardFn{guardIsHuman}},
-		{StateValidated, StateDeploying, TriggerDeploy, []GuardFn{}},
-		{StateDeploying, StateObserving, TriggerObserve, []GuardFn{}},
-		{StateObserving, StateClosed, TriggerClose, []GuardFn{}},
+		{StateValidated, StateClosed, TriggerClose, []GuardFn{}},
 
-		// === Claim shortcut (draft → planning, skipping specced for pre-specced tickets) ===
+		// === Claim (draft → planning) ===
 		{StateDraft, StatePlanning, TriggerClaim, []GuardFn{guardDependenciesMet, guardNoActiveLease}},
-		// Also allow claim from specced → planning.
-		{StateSpecced, StatePlanning, TriggerClaim, []GuardFn{guardDependenciesMet, guardNoActiveLease}},
 
 		// === Input / escalation ===
 		{StatePlanning, StateAwaitingInput, TriggerRequestInput, []GuardFn{guardIsLeaseholder}},
@@ -118,12 +108,9 @@ func NewStateMachine() *StateMachine {
 		{StateExecuting, StateDraft, TriggerRollback, []GuardFn{}},
 		{StateAwaitingValidation, StateDraft, TriggerRollback, []GuardFn{}},
 		{StateValidated, StateDraft, TriggerRollback, []GuardFn{}},
-		{StateDeploying, StateDraft, TriggerRollback, []GuardFn{}},
-		{StateObserving, StateDraft, TriggerRollback, []GuardFn{}},
 
 		// === Cancel (can cancel from early states) ===
 		{StateDraft, StateClosed, TriggerCancel, []GuardFn{}},
-		{StateSpecced, StateClosed, TriggerCancel, []GuardFn{}},
 		{StatePlanning, StateClosed, TriggerCancel, []GuardFn{}},
 		{StateExecuting, StateClosed, TriggerCancel, []GuardFn{}},
 

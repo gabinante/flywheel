@@ -428,7 +428,7 @@ func TestHandleTicketReadyProjectFilter(t *testing.T) {
 	tk := &ticket.Ticket{
 		ID:        "t-1",
 		ProjectID: "other-project",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		Title:     "t",
 		Type:      ticket.TypeTask,
 		Objective: ticket.Objective{Description: "d"},
@@ -474,7 +474,7 @@ func TestTryDispatchAtCapacity(t *testing.T) {
 	tk := &ticket.Ticket{
 		ID:        "t-1",
 		ProjectID: "p-1",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		Title:     "t",
 		Type:      ticket.TypeTask,
 		Objective: ticket.Objective{Description: "d"},
@@ -603,7 +603,7 @@ func TestTryDispatchAlreadyRunning(t *testing.T) {
 	tk := &ticket.Ticket{
 		ID:        "t-1",
 		ProjectID: "p-1",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		Title:     "t",
 		Type:      ticket.TypeTask,
 		Objective: ticket.Objective{Description: "d"},
@@ -637,7 +637,7 @@ func TestTryDispatchBlockedByDependency(t *testing.T) {
 	tk := &ticket.Ticket{
 		ID:        "t-1",
 		ProjectID: "p-1",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		DependsOn: []string{"dep-1"},
 		Title:     "t",
 		Type:      ticket.TypeTask,
@@ -659,14 +659,14 @@ func TestTryDispatchBlockedByDependency(t *testing.T) {
 func TestTryDispatchDependenciesMet(t *testing.T) {
 	dep := &ticket.Ticket{
 		ID:      "dep-1",
-		State:   ticket.StateDone,
+		State:   ticket.StateClosed,
 		Outputs: map[string]any{"summary": "done"},
 	}
 	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git"}
 	tk := &ticket.Ticket{
 		ID:        "t-1",
 		ProjectID: "p-1",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		DependsOn: []string{"dep-1"},
 		Title:     "t",
 		Type:      ticket.TypeTask,
@@ -795,7 +795,7 @@ func TestSpawnDuplicatePrevented(t *testing.T) {
 	tk := &ticket.Ticket{
 		ID:        "t-dup",
 		ProjectID: "p-1",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		Title:     "t",
 		Type:      ticket.TypeTask,
 		Objective: ticket.Objective{Description: "d"},
@@ -853,13 +853,13 @@ func TestRunWorkerDockerMode(t *testing.T) {
 	}
 	dep := &ticket.Ticket{
 		ID:      "dep-1",
-		State:   ticket.StateDone,
+		State:   ticket.StateClosed,
 		Outputs: map[string]any{"key": "value"},
 	}
 	tk := &ticket.Ticket{
 		ID:        "t-1",
 		ProjectID: "p-1",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		Title:     "test ticket",
 		Type:      ticket.TypeTask,
 		Objective: ticket.Objective{Description: "do work"},
@@ -918,7 +918,7 @@ func TestRunWorkerContextCancelled(t *testing.T) {
 	tk := &ticket.Ticket{
 		ID:        "t-1",
 		ProjectID: "p-1",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		Title:     "t",
 		Type:      ticket.TypeTask,
 		Objective: ticket.Objective{Description: "d"},
@@ -953,7 +953,7 @@ func TestRunWorkerProjectNotFound(t *testing.T) {
 	tk := &ticket.Ticket{
 		ID:        "t-1",
 		ProjectID: "missing-project",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		Title:     "t",
 		Type:      ticket.TypeTask,
 		Objective: ticket.Objective{Description: "d"},
@@ -1018,7 +1018,7 @@ func TestHandleWorkerExit_WorkerCrash_ReleasesLease(t *testing.T) {
 	tk := &ticket.Ticket{
 		ID:        "t-crash",
 		ProjectID: "p-1",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		Title:     "crash test",
 		Type:      ticket.TypeTask,
 		Objective: ticket.Objective{Description: "d"},
@@ -1073,7 +1073,7 @@ func TestHandleWorkerExit_SuccessfulSubmit_NoRelease(t *testing.T) {
 	tk := &ticket.Ticket{
 		ID:        "t-submit",
 		ProjectID: "p-1",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		Title:     "submit test",
 		Type:      ticket.TypeTask,
 		Objective: ticket.Objective{Description: "d"},
@@ -1119,7 +1119,7 @@ func TestHandleWorkerExit_PlanningState_ReleasesLease(t *testing.T) {
 	tk := &ticket.Ticket{
 		ID:        "t-planning",
 		ProjectID: "p-1",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		Title:     "planning crash",
 		Type:      ticket.TypeTask,
 		Objective: ticket.Objective{Description: "d"},
@@ -1165,7 +1165,7 @@ func TestHandleWorkerExit_PreSpawnFailure_NoRelease(t *testing.T) {
 	tk := &ticket.Ticket{
 		ID:        "t-prespawn",
 		ProjectID: "missing-project",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		Title:     "pre-spawn fail",
 		Type:      ticket.TypeTask,
 		Objective: ticket.Objective{Description: "d"},
@@ -1204,7 +1204,7 @@ func TestHandleWorkerExit_NilReleaser_NoOp(t *testing.T) {
 	tk := &ticket.Ticket{
 		ID:        "t-nil",
 		ProjectID: "p-1",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		Title:     "nil releaser",
 		Type:      ticket.TypeTask,
 		Objective: ticket.Objective{Description: "d"},
@@ -1246,7 +1246,7 @@ func TestHandleWorkerExit_Escalation_NoRelease(t *testing.T) {
 	tk := &ticket.Ticket{
 		ID:        "t-escalate",
 		ProjectID: "p-1",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		Title:     "escalation test",
 		Type:      ticket.TypeTask,
 		Objective: ticket.Objective{Description: "d"},
@@ -1291,7 +1291,7 @@ func TestHandleWorkerExit_ActiveMapCleanup(t *testing.T) {
 	tk := &ticket.Ticket{
 		ID:        "t-cleanup",
 		ProjectID: "p-1",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		Title:     "cleanup test",
 		Type:      ticket.TypeTask,
 		Objective: ticket.Objective{Description: "d"},
@@ -1338,7 +1338,7 @@ func TestHandleWorkerExit_ReleaserError_Logged(t *testing.T) {
 	tk := &ticket.Ticket{
 		ID:        "t-err",
 		ProjectID: "p-1",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		Title:     "release error",
 		Type:      ticket.TypeTask,
 		Objective: ticket.Objective{Description: "d"},
@@ -1441,7 +1441,7 @@ func TestEventBusIntegration(t *testing.T) {
 	tk := &ticket.Ticket{
 		ID:        "t-evt",
 		ProjectID: "p-1",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		Title:     "event test",
 		Type:      ticket.TypeTask,
 		Objective: ticket.Objective{Description: "d"},
@@ -1489,7 +1489,7 @@ func TestDispatchDisabledSkipsTickets(t *testing.T) {
 	tk := &ticket.Ticket{
 		ID:        "t-disabled",
 		ProjectID: "p-1",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		Title:     "disabled dispatch test",
 		Type:      ticket.TypeTask,
 		Objective: ticket.Objective{Description: "d"},
@@ -1536,7 +1536,7 @@ func TestDispatchEnabledAllowsTickets(t *testing.T) {
 	tk := &ticket.Ticket{
 		ID:        "t-enabled",
 		ProjectID: "p-1",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		Title:     "enabled dispatch test",
 		Type:      ticket.TypeTask,
 		Objective: ticket.Objective{Description: "d"},
@@ -1585,7 +1585,7 @@ func TestDispatchBlockedWhenNoRepoURL(t *testing.T) {
 	tk := &ticket.Ticket{
 		ID:        "t-norepo",
 		ProjectID: "p-no-repo",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 		Title:     "should not dispatch",
 		Type:      ticket.TypeTask,
 		Objective: ticket.Objective{Description: "test"},
@@ -1668,15 +1668,12 @@ func TestCloseMergedTicket_HappyPath(t *testing.T) {
 	tk := &ticket.Ticket{ID: "t-1", ProjectID: "p-1", State: ticket.StateValidated}
 	d.closeMergedTicket(context.Background(), tk)
 
-	if trans.transitionCount() != 3 {
-		t.Fatalf("expected 3 transitions, got %d", trans.transitionCount())
+	if trans.transitionCount() != 1 {
+		t.Fatalf("expected 1 transition, got %d", trans.transitionCount())
 	}
 	triggers := trans.triggers()
-	expected := []string{ticket.TriggerDeploy, ticket.TriggerObserve, ticket.TriggerClose}
-	for i, exp := range expected {
-		if triggers[i] != exp {
-			t.Errorf("transition %d: expected %q, got %q", i, exp, triggers[i])
-		}
+	if triggers[0] != ticket.TriggerClose {
+		t.Errorf("expected close trigger, got %q", triggers[0])
 	}
 }
 
@@ -1703,7 +1700,7 @@ func TestCloseMergedTicket_TransitionError(t *testing.T) {
 
 	d := New(cfg, bus, tg, pg)
 	trans := &mockTicketTransitioner{
-		failOn: ticket.TriggerObserve,
+		failOn: ticket.TriggerClose,
 		err:    fmt.Errorf("transition failed"),
 	}
 	d.SetTicketTransitioner(trans)
@@ -1711,9 +1708,9 @@ func TestCloseMergedTicket_TransitionError(t *testing.T) {
 	tk := &ticket.Ticket{ID: "t-1", ProjectID: "p-1", State: ticket.StateValidated}
 	d.closeMergedTicket(context.Background(), tk)
 
-	// Should have attempted deploy (success) and observe (failure), then stopped.
-	if trans.transitionCount() != 2 {
-		t.Errorf("expected 2 transitions (stopped at observe), got %d", trans.transitionCount())
+	// Should have attempted close (failure), then stopped.
+	if trans.transitionCount() != 1 {
+		t.Errorf("expected 1 transition (failed at close), got %d", trans.transitionCount())
 	}
 }
 
@@ -2059,7 +2056,7 @@ func TestHasHigherPriorityWork_ReviewWaiting(t *testing.T) {
 	reviewTicket := &ticket.Ticket{
 		ID:        "t-review",
 		ProjectID: "p-1",
-		State:     ticket.StateAwaitingReview,
+		State:     ticket.StateAwaitingValidation,
 	}
 	bus := events.NewInProcessBus()
 	tg := newMockTicketGetter(reviewTicket)
@@ -2118,7 +2115,7 @@ func TestHasHigherPriorityWork_NoPriorityWork(t *testing.T) {
 	pendingTicket := &ticket.Ticket{
 		ID:        "t-pending",
 		ProjectID: "p-1",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 	}
 	bus := events.NewInProcessBus()
 	tg := newMockTicketGetter(pendingTicket)
@@ -2135,12 +2132,12 @@ func TestTryDispatchDefersWhenHigherPriorityWork(t *testing.T) {
 	reviewTicket := &ticket.Ticket{
 		ID:        "t-review",
 		ProjectID: "p-1",
-		State:     ticket.StateAwaitingReview,
+		State:     ticket.StateAwaitingValidation,
 	}
 	pendingTicket := &ticket.Ticket{
 		ID:        "t-pending",
 		ProjectID: "p-1",
-		State:     ticket.StatePending,
+		State:     ticket.StateDraft,
 	}
 	bus := events.NewInProcessBus()
 	tg := newMockTicketGetter(reviewTicket, pendingTicket)
@@ -2154,7 +2151,12 @@ func TestTryDispatchDefersWhenHigherPriorityWork(t *testing.T) {
 	// tryDispatch should skip the pending ticket because review work is waiting.
 	d.tryDispatch(context.Background(), pendingTicket)
 
-	if d.activeCount() != 0 {
+	// activeCount may be 1 because hasHigherPriorityWork spawns a reviewer.
+	// The key assertion is that the pending ticket was NOT dispatched.
+	d.mu.Lock()
+	_, pendingActive := d.active[pendingTicket.ID]
+	d.mu.Unlock()
+	if pendingActive {
 		t.Error("should not dispatch pending ticket when review work is waiting")
 	}
 }

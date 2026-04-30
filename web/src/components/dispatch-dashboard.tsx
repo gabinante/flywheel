@@ -209,23 +209,23 @@ export function DispatchDashboard({
     if (!projectId || !token) return
 
     try {
-      // Fetch claimed and executing tickets for this project
-      const [claimedRes, executingRes] = await Promise.all([
+      // Fetch planning and executing tickets for this project
+      const [planningRes, executingRes] = await Promise.all([
         client.GET('/projects/{projectID}/tickets', {
-          params: { path: { projectID: projectId }, query: { state: 'claimed' } },
+          params: { path: { projectID: projectId }, query: { state: 'planning' } },
         }),
         client.GET('/projects/{projectID}/tickets', {
           params: { path: { projectID: projectId }, query: { state: 'executing' } },
         }),
       ])
 
-      const claimed: Ticket[] = claimedRes.response.ok
-        ? ((claimedRes.data ?? []) as Ticket[])
+      const planning: Ticket[] = planningRes.response.ok
+        ? ((planningRes.data ?? []) as Ticket[])
         : []
       const executing: Ticket[] = executingRes.response.ok
         ? ((executingRes.data ?? []) as Ticket[])
         : []
-      const activeTickets = [...executing, ...claimed]
+      const activeTickets = [...executing, ...planning]
 
       if (activeTickets.length === 0) {
         setWorkers([])

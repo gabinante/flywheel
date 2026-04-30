@@ -220,6 +220,96 @@ func (e DeployPlanDeployStrategy) Valid() bool {
 	}
 }
 
+// Defines values for DispatchRolePolicySelectionMode.
+const (
+	Any     DispatchRolePolicySelectionMode = "any"
+	Ordered DispatchRolePolicySelectionMode = "ordered"
+)
+
+// Valid indicates whether the value is a known member of the DispatchRolePolicySelectionMode enum.
+func (e DispatchRolePolicySelectionMode) Valid() bool {
+	switch e {
+	case Any:
+		return true
+	case Ordered:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DispatchWorkerProfileDriver.
+const (
+	Claude  DispatchWorkerProfileDriver = "claude"
+	Codex   DispatchWorkerProfileDriver = "codex"
+	Generic DispatchWorkerProfileDriver = "generic"
+)
+
+// Valid indicates whether the value is a known member of the DispatchWorkerProfileDriver enum.
+func (e DispatchWorkerProfileDriver) Valid() bool {
+	switch e {
+	case Claude:
+		return true
+	case Codex:
+		return true
+	case Generic:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DispatchWorkerProfileRunner.
+const (
+	Cli              DispatchWorkerProfileRunner = "cli"
+	Docker           DispatchWorkerProfileRunner = "docker"
+	OpenaiCompatible DispatchWorkerProfileRunner = "openai-compatible"
+	OpenaiResponses  DispatchWorkerProfileRunner = "openai-responses"
+)
+
+// Valid indicates whether the value is a known member of the DispatchWorkerProfileRunner enum.
+func (e DispatchWorkerProfileRunner) Valid() bool {
+	switch e {
+	case Cli:
+		return true
+	case Docker:
+		return true
+	case OpenaiCompatible:
+		return true
+	case OpenaiResponses:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DispatchWorkerRoleBaseType.
+const (
+	Deployer     DispatchWorkerRoleBaseType = "deployer"
+	Executor     DispatchWorkerRoleBaseType = "executor"
+	Investigator DispatchWorkerRoleBaseType = "investigator"
+	Planner      DispatchWorkerRoleBaseType = "planner"
+	Validator    DispatchWorkerRoleBaseType = "validator"
+)
+
+// Valid indicates whether the value is a known member of the DispatchWorkerRoleBaseType enum.
+func (e DispatchWorkerRoleBaseType) Valid() bool {
+	switch e {
+	case Deployer:
+		return true
+	case Executor:
+		return true
+	case Investigator:
+		return true
+	case Planner:
+		return true
+	case Validator:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for EnvironmentDataTenancy.
 const (
 	EnvironmentDataTenancyAnonymized EnvironmentDataTenancy = "anonymized"
@@ -703,21 +793,11 @@ func (e TerraformPlanResourceChangesChangeAction) Valid() bool {
 // Defines values for TicketState.
 const (
 	TicketStateAwaitingInput      TicketState = "awaiting_input"
-	TicketStateAwaitingReview     TicketState = "awaiting_review"
 	TicketStateAwaitingValidation TicketState = "awaiting_validation"
-	TicketStateBlocked            TicketState = "blocked"
-	TicketStateClaimed            TicketState = "claimed"
 	TicketStateClosed             TicketState = "closed"
-	TicketStateDeploying          TicketState = "deploying"
-	TicketStateDone               TicketState = "done"
 	TicketStateDraft              TicketState = "draft"
 	TicketStateExecuting          TicketState = "executing"
-	TicketStateFailed             TicketState = "failed"
-	TicketStateNeedsHuman         TicketState = "needs_human"
-	TicketStateObserving          TicketState = "observing"
-	TicketStatePending            TicketState = "pending"
 	TicketStatePlanning           TicketState = "planning"
-	TicketStateSpecced            TicketState = "specced"
 	TicketStateValidated          TicketState = "validated"
 )
 
@@ -726,35 +806,15 @@ func (e TicketState) Valid() bool {
 	switch e {
 	case TicketStateAwaitingInput:
 		return true
-	case TicketStateAwaitingReview:
-		return true
 	case TicketStateAwaitingValidation:
 		return true
-	case TicketStateBlocked:
-		return true
-	case TicketStateClaimed:
-		return true
 	case TicketStateClosed:
-		return true
-	case TicketStateDeploying:
-		return true
-	case TicketStateDone:
 		return true
 	case TicketStateDraft:
 		return true
 	case TicketStateExecuting:
 		return true
-	case TicketStateFailed:
-		return true
-	case TicketStateNeedsHuman:
-		return true
-	case TicketStateObserving:
-		return true
-	case TicketStatePending:
-		return true
 	case TicketStatePlanning:
-		return true
-	case TicketStateSpecced:
 		return true
 	case TicketStateValidated:
 		return true
@@ -1084,21 +1144,11 @@ func (e ListPoliciesParamsEnabled) Valid() bool {
 // Defines values for ListTicketsParamsState.
 const (
 	ListTicketsParamsStateAwaitingInput      ListTicketsParamsState = "awaiting_input"
-	ListTicketsParamsStateAwaitingReview     ListTicketsParamsState = "awaiting_review"
 	ListTicketsParamsStateAwaitingValidation ListTicketsParamsState = "awaiting_validation"
-	ListTicketsParamsStateBlocked            ListTicketsParamsState = "blocked"
-	ListTicketsParamsStateClaimed            ListTicketsParamsState = "claimed"
 	ListTicketsParamsStateClosed             ListTicketsParamsState = "closed"
-	ListTicketsParamsStateDeploying          ListTicketsParamsState = "deploying"
-	ListTicketsParamsStateDone               ListTicketsParamsState = "done"
 	ListTicketsParamsStateDraft              ListTicketsParamsState = "draft"
 	ListTicketsParamsStateExecuting          ListTicketsParamsState = "executing"
-	ListTicketsParamsStateFailed             ListTicketsParamsState = "failed"
-	ListTicketsParamsStateNeedsHuman         ListTicketsParamsState = "needs_human"
-	ListTicketsParamsStateObserving          ListTicketsParamsState = "observing"
-	ListTicketsParamsStatePending            ListTicketsParamsState = "pending"
 	ListTicketsParamsStatePlanning           ListTicketsParamsState = "planning"
-	ListTicketsParamsStateSpecced            ListTicketsParamsState = "specced"
 	ListTicketsParamsStateValidated          ListTicketsParamsState = "validated"
 )
 
@@ -1107,35 +1157,15 @@ func (e ListTicketsParamsState) Valid() bool {
 	switch e {
 	case ListTicketsParamsStateAwaitingInput:
 		return true
-	case ListTicketsParamsStateAwaitingReview:
-		return true
 	case ListTicketsParamsStateAwaitingValidation:
 		return true
-	case ListTicketsParamsStateBlocked:
-		return true
-	case ListTicketsParamsStateClaimed:
-		return true
 	case ListTicketsParamsStateClosed:
-		return true
-	case ListTicketsParamsStateDeploying:
-		return true
-	case ListTicketsParamsStateDone:
 		return true
 	case ListTicketsParamsStateDraft:
 		return true
 	case ListTicketsParamsStateExecuting:
 		return true
-	case ListTicketsParamsStateFailed:
-		return true
-	case ListTicketsParamsStateNeedsHuman:
-		return true
-	case ListTicketsParamsStateObserving:
-		return true
-	case ListTicketsParamsStatePending:
-		return true
 	case ListTicketsParamsStatePlanning:
-		return true
-	case ListTicketsParamsStateSpecced:
 		return true
 	case ListTicketsParamsStateValidated:
 		return true
@@ -1364,6 +1394,75 @@ type DeployPlan struct {
 
 // DeployPlanDeployStrategy defines model for DeployPlan.DeployStrategy.
 type DeployPlanDeployStrategy string
+
+// DispatchConfig defines model for DispatchConfig.
+type DispatchConfig struct {
+	// MaxActiveWorkers Maximum concurrent active workers for this project. Set 0 or omit to inherit the server DISPATCH_MAX_WORKERS default.
+	MaxActiveWorkers *int                           `json:"max_active_workers,omitempty"`
+	Policies         *map[string]DispatchRolePolicy `json:"policies,omitempty"`
+
+	// Roles Custom dispatch roles. Each role has its own routing policy and inherits prompt/tool behavior from a built-in worker type.
+	Roles   *[]DispatchWorkerRole    `json:"roles,omitempty"`
+	Workers *[]DispatchWorkerProfile `json:"workers,omitempty"`
+}
+
+// DispatchRolePolicy defines model for DispatchRolePolicy.
+type DispatchRolePolicy struct {
+	// SelectionMode ordered tries workers in the configured order; any rotates across the configured workers.
+	SelectionMode *DispatchRolePolicySelectionMode `json:"selection_mode,omitempty"`
+
+	// WorkerIds Worker profile IDs to use for this role. Leave empty to use all enabled workers.
+	WorkerIds *[]string `json:"worker_ids,omitempty"`
+}
+
+// DispatchRolePolicySelectionMode ordered tries workers in the configured order; any rotates across the configured workers.
+type DispatchRolePolicySelectionMode string
+
+// DispatchWorkerProfile defines model for DispatchWorkerProfile.
+type DispatchWorkerProfile struct {
+	// ApiBaseUrl Base URL override for API-native workers.
+	ApiBaseUrl *string   `json:"api_base_url,omitempty"`
+	Args       *[]string `json:"args,omitempty"`
+
+	// CliPath Override binary path when using a CLI or Docker-backed worker.
+	CliPath *string `json:"cli_path,omitempty"`
+
+	// CredentialEnvVar Environment variable that holds the provider credential for this worker profile.
+	CredentialEnvVar *string                      `json:"credential_env_var,omitempty"`
+	Driver           *DispatchWorkerProfileDriver `json:"driver,omitempty"`
+	Enabled          *bool                        `json:"enabled,omitempty"`
+	Id               *string                      `json:"id,omitempty"`
+
+	// Model Model override for API-native workers.
+	Model *string `json:"model,omitempty"`
+	Name  *string `json:"name,omitempty"`
+
+	// ReasoningEffort Reasoning effort override for API-native workers.
+	ReasoningEffort *string                      `json:"reasoning_effort,omitempty"`
+	Runner          *DispatchWorkerProfileRunner `json:"runner,omitempty"`
+}
+
+// DispatchWorkerProfileDriver defines model for DispatchWorkerProfile.Driver.
+type DispatchWorkerProfileDriver string
+
+// DispatchWorkerProfileRunner defines model for DispatchWorkerProfile.Runner.
+type DispatchWorkerProfileRunner string
+
+// DispatchWorkerRole defines model for DispatchWorkerRole.
+type DispatchWorkerRole struct {
+	// BaseType Built-in worker behavior this custom role inherits for prompts and tool access.
+	BaseType *DispatchWorkerRoleBaseType `json:"base_type,omitempty"`
+
+	// Description Additional instructions appended to workers launched for this custom role.
+	Description *string `json:"description,omitempty"`
+
+	// Id Stable custom role key used in dispatch policies and ticket inputs.
+	Id   *string `json:"id,omitempty"`
+	Name *string `json:"name,omitempty"`
+}
+
+// DispatchWorkerRoleBaseType Built-in worker behavior this custom role inherits for prompts and tool access.
+type DispatchWorkerRoleBaseType string
 
 // Environment Compound environment tuple per spec v0.2 section 4.1. Each environment has three dimensions: infrastructure (dev/staging/prod), data tenancy (synthetic/anonymized/real), and integration mode (sandbox/test/live). Ticket states become environment-qualified (e.g. executing-dev).
 type Environment struct {
@@ -1672,8 +1771,7 @@ type Project struct {
 	CreatedAt   *time.Time              `json:"created_at,omitempty"`
 
 	// DefaultBranch Branch to checkout when closing a work stream; default "main".
-	DefaultBranch *string `json:"default_branch,omitempty"`
-
+	DefaultBranch  *string         `json:"default_branch,omitempty"`
 	DispatchConfig *DispatchConfig `json:"dispatch_config,omitempty"`
 
 	// DispatchEnabled Whether the dispatcher picks up tickets for this project (default true).
@@ -1688,78 +1786,6 @@ type Project struct {
 	Status    *ProjectStatus `json:"status,omitempty"`
 	TechStack *[]string      `json:"tech_stack,omitempty"`
 }
-
-// DispatchConfig defines model for DispatchConfig.
-type DispatchConfig struct {
-	// MaxActiveWorkers Maximum concurrent active workers for this project. Set 0 or omit to inherit the server DISPATCH_MAX_WORKERS default.
-	MaxActiveWorkers *int                           `json:"max_active_workers,omitempty"`
-	Policies         *map[string]DispatchRolePolicy `json:"policies,omitempty"`
-	Roles            *[]DispatchWorkerRole          `json:"roles,omitempty"`
-	Workers          *[]DispatchWorkerProfile       `json:"workers,omitempty"`
-}
-
-// DispatchWorkerRole defines model for DispatchWorkerRole.
-type DispatchWorkerRole struct {
-	// BaseType Built-in worker behavior this custom role inherits for prompts and tool access.
-	BaseType *DispatchWorkerRoleBaseType `json:"base_type,omitempty"`
-
-	// Description Additional instructions appended to workers launched for this custom role.
-	Description *string `json:"description,omitempty"`
-
-	// Id Stable custom role key used in dispatch policies and ticket inputs.
-	Id   *string `json:"id,omitempty"`
-	Name *string `json:"name,omitempty"`
-}
-
-// DispatchWorkerRoleBaseType defines model for DispatchWorkerRole.BaseType.
-type DispatchWorkerRoleBaseType string
-
-// DispatchRolePolicy defines model for DispatchRolePolicy.
-type DispatchRolePolicy struct {
-	// SelectionMode ordered tries workers in the configured order; any rotates across the configured workers.
-	SelectionMode *DispatchRolePolicySelectionMode `json:"selection_mode,omitempty"`
-
-	// WorkerIds Worker profile IDs to use for this role. Leave empty to use all enabled workers.
-	WorkerIds *[]string `json:"worker_ids,omitempty"`
-}
-
-// DispatchRolePolicySelectionMode defines model for DispatchRolePolicy.SelectionMode.
-type DispatchRolePolicySelectionMode string
-
-// DispatchWorkerProfile defines model for DispatchWorkerProfile.
-type DispatchWorkerProfile struct {
-	Args *[]string `json:"args,omitempty"`
-
-	// ApiBaseUrl Base URL override for API-native workers.
-	ApiBaseUrl *string `json:"api_base_url,omitempty"`
-
-	// CliPath Override binary path when using a CLI or Docker-backed worker.
-	CliPath *string `json:"cli_path,omitempty"`
-
-	// CredentialEnvVar Environment variable that holds the provider credential for this worker profile.
-	CredentialEnvVar *string `json:"credential_env_var,omitempty"`
-
-	// Driver
-	Driver  *DispatchWorkerProfileDriver `json:"driver,omitempty"`
-	Enabled *bool                        `json:"enabled,omitempty"`
-	Id      *string                      `json:"id,omitempty"`
-
-	// Model Model override for API-native workers.
-	Model *string `json:"model,omitempty"`
-	Name  *string `json:"name,omitempty"`
-
-	// ReasoningEffort Reasoning effort override for API-native workers.
-	ReasoningEffort *string `json:"reasoning_effort,omitempty"`
-
-	// Runner
-	Runner *DispatchWorkerProfileRunner `json:"runner,omitempty"`
-}
-
-// DispatchWorkerProfileDriver defines model for DispatchWorkerProfile.Driver.
-type DispatchWorkerProfileDriver string
-
-// DispatchWorkerProfileRunner defines model for DispatchWorkerProfile.Runner.
-type DispatchWorkerProfileRunner string
 
 // ProjectStatus active (default) or closed; list endpoints default to active only.
 type ProjectStatus string
@@ -1976,6 +2002,12 @@ type Ticket struct {
 	UpdatedAt     *time.Time     `json:"updated_at,omitempty"`
 	Version       *int           `json:"version,omitempty"`
 	WorkStreamId  *string        `json:"work_stream_id,omitempty"`
+
+	// WorkflowId Active workflow definition ID. Empty means legacy state machine.
+	WorkflowId *string `json:"workflow_id,omitempty"`
+
+	// WorkflowPhase Current phase ID within the workflow. Empty means no active phase.
+	WorkflowPhase *string `json:"workflow_phase,omitempty"`
 }
 
 // TicketState defines model for Ticket.State.
@@ -2068,8 +2100,7 @@ type UpdatePolicyRequest struct {
 // UpdateProjectRequest defines model for UpdateProjectRequest.
 type UpdateProjectRequest struct {
 	// DefaultBranch Branch to checkout when closing a work stream; default "main".
-	DefaultBranch *string `json:"default_branch,omitempty"`
-
+	DefaultBranch  *string         `json:"default_branch,omitempty"`
 	DispatchConfig *DispatchConfig `json:"dispatch_config,omitempty"`
 
 	// DispatchEnabled Whether the dispatcher picks up tickets for this project (default true). Takes effect immediately.

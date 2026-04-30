@@ -10,7 +10,7 @@ func TestEnvironmentQualifiedState(t *testing.T) {
 	}{
 		{StateExecuting, "dev", "executing-dev"},
 		{StateValidated, "staging", "validated-staging"},
-		{StateDeploying, "prod", "deploying-prod"},
+		{StateClosed, "prod", "closed-prod"},
 		{StatePlanning, "custom-env", "planning-custom-env"},
 		{StateExecuting, "", "executing"},
 	}
@@ -30,7 +30,7 @@ func TestParseQualifiedState(t *testing.T) {
 	}{
 		{"executing-dev", StateExecuting, "dev"},
 		{"validated-staging", StateValidated, "staging"},
-		{"deploying-prod", StateDeploying, "prod"},
+		{"closed-prod", StateClosed, "prod"},
 		{"planning-custom-env", StatePlanning, "custom-env"},
 		{"awaiting_validation-staging", StateAwaitingValidation, "staging"},
 		{"awaiting_input-dev", StateAwaitingInput, "dev"},

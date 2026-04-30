@@ -15,6 +15,7 @@ import { TicketLifecycle } from '@/components/ticket-lifecycle'
 import { TicketOutputsCard } from '@/components/ticket-outputs'
 import { TicketRelationshipsCard } from '@/components/ticket-relationships-card'
 import { TicketReopenPanel } from '@/components/ticket-reopen-panel'
+import { TicketEscalationPanel } from '@/components/ticket-escalation-panel'
 import { TicketReviewPanel } from '@/components/ticket-review-panel'
 import { TicketTimeline } from '@/components/ticket-timeline'
 import { WorkStreamSummaryCard } from '@/components/work-stream-card'
@@ -513,8 +514,17 @@ export function TicketDetailPage() {
         </Card>
       ) : null}
 
-      {/* ── Review panel (awaiting_review state) ───────── */}
-      {ticket.state === 'awaiting_review' && ticketId ? (
+      {/* ── Escalation panel (awaiting_input state) ──────── */}
+      {ticket.state === 'awaiting_input' && ticketId && projectId ? (
+        <TicketEscalationPanel
+          ticketId={ticketId}
+          projectId={projectId}
+          onResolved={() => void reloadTicket()}
+        />
+      ) : null}
+
+      {/* ── Review panel (awaiting_validation state) ───── */}
+      {ticket.state === 'awaiting_validation' && ticketId ? (
         <TicketReviewPanel ticketId={ticketId} onReviewed={handleAfterReview} />
       ) : null}
 
@@ -571,8 +581,8 @@ export function TicketDetailPage() {
       {/* ── Execution trace ────────────────────────────── */}
       <ExecutionTraceCard ticketId={ticketId} ticketState={ticket.state} />
 
-      {/* ── Reopen panel (done state) ──────────────────── */}
-      {ticket.state === 'done' && ticketId ? (
+      {/* ── Reopen panel (closed state) ─────────────────── */}
+      {ticket.state === 'closed' && ticketId ? (
         <TicketReopenPanel ticketId={ticketId} onReopened={handleAfterReopen} />
       ) : null}
     </div>

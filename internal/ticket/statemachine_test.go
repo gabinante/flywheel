@@ -18,21 +18,16 @@ func TestStateMachine_Transition(t *testing.T) {
 		wantState  State
 		wantErr    bool
 	}{
-		// === Happy path (full SDLC) ===
-		{"draft->specced", StateDraft, TriggerSpec, Actor{ID: "human1", Type: ActorHuman}, "", nil, nil, StateSpecced, false},
-		{"specced->planning", StateSpecced, TriggerPlan, Actor{ID: "human1", Type: ActorHuman}, "", nil, nil, StatePlanning, false},
+		// === Happy path ===
 		{"planning->executing", StatePlanning, TriggerStart, Actor{ID: "agent1", Type: ActorAgent}, "agent1", nil, nil, StateExecuting, false},
 		{"executing->awaiting_validation", StateExecuting, TriggerSubmit, Actor{ID: "agent1", Type: ActorAgent}, "agent1", map[string]any{"outputs": map[string]any{"x": 1}}, nil, StateAwaitingValidation, false},
 		{"awaiting_validation->validated (validate)", StateAwaitingValidation, TriggerValidate, Actor{ID: "human1", Type: ActorHuman}, "agent1", nil, nil, StateValidated, false},
-		{"validated->deploying", StateValidated, TriggerDeploy, Actor{ID: "system", Type: ActorSystem}, "agent1", nil, nil, StateDeploying, false},
-		{"deploying->observing", StateDeploying, TriggerObserve, Actor{ID: "system", Type: ActorSystem}, "agent1", nil, nil, StateObserving, false},
-		{"observing->closed", StateObserving, TriggerClose, Actor{ID: "system", Type: ActorSystem}, "agent1", nil, nil, StateClosed, false},
+		{"validated->closed (close)", StateValidated, TriggerClose, Actor{ID: "system", Type: ActorSystem}, "agent1", nil, nil, StateClosed, false},
 
-		// === Claim shortcut ===
+		// === Claim ===
 		{"draft->planning (claim)", StateDraft, TriggerClaim, Actor{ID: "agent1", Type: ActorAgent}, "", nil, nil, StatePlanning, false},
 		{"draft->planning (claim) with deps done", StateDraft, TriggerClaim, Actor{ID: "a", Type: ActorAgent}, "", map[string]any{"agent_id": "a"}, []*Ticket{{ID: "x", State: StateClosed}}, StatePlanning, false},
 		{"draft->planning (claim) dep not done", StateDraft, TriggerClaim, Actor{ID: "a", Type: ActorAgent}, "", nil, []*Ticket{{ID: "x", State: StateExecuting}}, "", true},
-		{"specced->planning (claim)", StateSpecced, TriggerClaim, Actor{ID: "agent1", Type: ActorAgent}, "", nil, nil, StatePlanning, false},
 
 		// === Leaseholder guards ===
 		{"planning->executing wrong agent", StatePlanning, TriggerStart, Actor{ID: "other", Type: ActorAgent}, "agent1", nil, nil, "", true},
@@ -57,7 +52,6 @@ func TestStateMachine_Transition(t *testing.T) {
 
 		// === Cancel ===
 		{"draft->closed (cancel)", StateDraft, TriggerCancel, Actor{ID: "human1", Type: ActorHuman}, "", nil, nil, StateClosed, false},
-		{"specced->closed (cancel)", StateSpecced, TriggerCancel, Actor{ID: "human1", Type: ActorHuman}, "", nil, nil, StateClosed, false},
 		{"planning->closed (cancel)", StatePlanning, TriggerCancel, Actor{ID: "human1", Type: ActorHuman}, "agent1", nil, nil, StateClosed, false},
 		{"executing->closed (cancel)", StateExecuting, TriggerCancel, Actor{ID: "agent1", Type: ActorAgent}, "agent1", nil, nil, StateClosed, false},
 
@@ -76,8 +70,6 @@ func TestStateMachine_Transition(t *testing.T) {
 		{"executing->draft (rollback)", StateExecuting, TriggerRollback, Actor{ID: "human1", Type: ActorHuman}, "agent1", nil, nil, StateDraft, false},
 		{"awaiting_validation->draft (rollback)", StateAwaitingValidation, TriggerRollback, Actor{ID: "human1", Type: ActorHuman}, "agent1", nil, nil, StateDraft, false},
 		{"validated->draft (rollback)", StateValidated, TriggerRollback, Actor{ID: "human1", Type: ActorHuman}, "agent1", nil, nil, StateDraft, false},
-		{"deploying->draft (rollback)", StateDeploying, TriggerRollback, Actor{ID: "system", Type: ActorSystem}, "agent1", nil, nil, StateDraft, false},
-		{"observing->draft (rollback)", StateObserving, TriggerRollback, Actor{ID: "human1", Type: ActorHuman}, "agent1", nil, nil, StateDraft, false},
 		{"draft rollback invalid", StateDraft, TriggerRollback, Actor{ID: "human1", Type: ActorHuman}, "", nil, nil, "", true},
 		{"planning rollback invalid", StatePlanning, TriggerRollback, Actor{ID: "agent1", Type: ActorAgent}, "agent1", nil, nil, "", true},
 
@@ -109,7 +101,7 @@ func TestStateMachine_Transition(t *testing.T) {
 func TestStateMachine_ValidTransitions(t *testing.T) {
 	sm := NewStateMachine()
 
-	// Draft should have spec, claim, cancel transitions
+	// Draft should have claim and cancel transitions
 	triggers := sm.ValidTransitions(StateDraft)
 	if len(triggers) == 0 {
 		t.Fatal("expected valid transitions from draft")
@@ -118,7 +110,7 @@ func TestStateMachine_ValidTransitions(t *testing.T) {
 	for _, tr := range triggers {
 		found[tr] = true
 	}
-	for _, want := range []string{TriggerSpec, TriggerClaim, TriggerCancel} {
+	for _, want := range []string{TriggerClaim, TriggerCancel} {
 		if !found[want] {
 			t.Errorf("expected trigger %q from draft, got triggers: %v", want, triggers)
 		}
@@ -127,8 +119,8 @@ func TestStateMachine_ValidTransitions(t *testing.T) {
 
 func TestAllStates(t *testing.T) {
 	states := AllStates()
-	if len(states) != 10 {
-		t.Errorf("expected 10 states, got %d: %v", len(states), states)
+	if len(states) != 7 {
+		t.Errorf("expected 7 states, got %d: %v", len(states), states)
 	}
 }
 
@@ -143,31 +135,6 @@ func TestIsValidState(t *testing.T) {
 	}
 }
 
-func TestMapLegacyState(t *testing.T) {
-	tests := []struct {
-		input State
-		want  State
-	}{
-		{"pending", StateDraft},
-		{"claimed", StatePlanning},
-		{"awaiting_review", StateAwaitingValidation},
-		{"done", StateClosed},
-		{"needs_human", StateAwaitingInput},
-		{"blocked", StateAwaitingInput},
-		{"failed", StateDraft},
-		// Already valid v0.2 states pass through
-		{StateDraft, StateDraft},
-		{StateExecuting, StateExecuting},
-		{StateClosed, StateClosed},
-	}
-	for _, tt := range tests {
-		got := MapLegacyState(tt.input)
-		if got != tt.want {
-			t.Errorf("MapLegacyState(%q) = %q, want %q", tt.input, got, tt.want)
-		}
-	}
-}
-
 func TestRollbackAvailableAtEachStage(t *testing.T) {
 	sm := NewStateMachine()
 
@@ -176,8 +143,6 @@ func TestRollbackAvailableAtEachStage(t *testing.T) {
 		StateExecuting,
 		StateAwaitingValidation,
 		StateValidated,
-		StateDeploying,
-		StateObserving,
 	}
 	for _, state := range rollbackStates {
 		triggers := sm.ValidTransitions(state)
@@ -196,7 +161,6 @@ func TestRollbackAvailableAtEachStage(t *testing.T) {
 	// Rollback should NOT be available from these states.
 	noRollbackStates := []State{
 		StateDraft,
-		StateSpecced,
 		StatePlanning,
 		StateAwaitingInput,
 		StateClosed,

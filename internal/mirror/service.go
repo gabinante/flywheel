@@ -76,14 +76,11 @@ func (s *Service) subscribeToEvents() {
 
 	// State transition events - update mirror state
 	stateEvents := []string{
-		events.EventTicketSpecced,
 		events.EventTicketPlanning,
 		events.EventTicketClaimed,
 		events.EventTicketStarted,
 		events.EventTicketSubmitted,
 		events.EventTicketValidated,
-		events.EventTicketDeploying,
-		events.EventTicketObserving,
 		events.EventTicketApproved,
 		events.EventTicketRejected,
 		events.EventTicketEscalated,

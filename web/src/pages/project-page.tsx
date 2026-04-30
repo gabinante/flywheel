@@ -46,19 +46,16 @@ function computeStats(tickets: TicketT[]) {
   for (const t of tickets) {
     total++
     switch (t.state) {
-      case 'done':
+      case 'closed':
         done++
         break
-      case 'awaiting_review':
+      case 'awaiting_validation':
         inReview++
         break
       case 'executing':
-      case 'claimed':
         executing++
         break
-      case 'blocked':
-      case 'needs_human':
-      case 'failed':
+      case 'awaiting_input':
         blocked++
         break
       default:
@@ -77,7 +74,7 @@ function streamTicketCounts(tickets: TicketT[]) {
     if (!workStreamID) continue
     const entry = counts.get(workStreamID) ?? { total: 0, done: 0 }
     entry.total++
-    if (t.state === 'done') entry.done++
+    if (t.state === 'closed') entry.done++
     counts.set(workStreamID, entry)
   }
   return counts

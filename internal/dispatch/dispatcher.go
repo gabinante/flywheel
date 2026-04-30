@@ -327,7 +327,7 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 	// Reviewers first — finish in-progress work before starting new work.
 	// This handles tickets stuck in awaiting_review when the reviewer was
 	// deferred due to capacity (worker still occupied the slot at submit time).
-	reviewing, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, ticket.StateAwaitingReview)
+	reviewing, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, ticket.StateAwaitingValidation)
 	if err != nil {
 		slog.Error("dispatch: scan awaiting_review failed", "error", err)
 	} else {
@@ -362,7 +362,7 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 		}
 	}
 
-	pending, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, ticket.StatePending)
+	pending, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, ticket.StateDraft)
 	if err != nil {
 		slog.Error("dispatch: scan pending failed", "error", err)
 		return
@@ -560,7 +560,7 @@ func (d *Dispatcher) handleTicketCancelled(ctx context.Context, e events.Event) 
 }
 
 func (d *Dispatcher) tryDispatch(ctx context.Context, t *ticket.Ticket) {
-	if t.State != ticket.StatePending {
+	if t.State != ticket.StateDraft {
 		return
 	}
 
@@ -597,7 +597,7 @@ func (d *Dispatcher) tryDispatch(ctx context.Context, t *ticket.Ticket) {
 			return
 		}
 		for _, dep := range deps {
-			if dep.State != ticket.StateDone && dep.State != ticket.StateValidated {
+			if dep.State != ticket.StateClosed && dep.State != ticket.StateValidated {
 				return
 			}
 		}
@@ -624,7 +624,7 @@ func (d *Dispatcher) handleTicketSubmitted(ctx context.Context, e events.Event) 
 	if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
 		return
 	}
-	if t.State != ticket.StateAwaitingReview {
+	if t.State != ticket.StateAwaitingValidation {
 		return
 	}
 	d.spawnReviewer(ctx, t)
@@ -743,7 +743,7 @@ func DetermineWorkerType(t *ticket.Ticket) WorkerType {
 
 	// Route based on ticket state and type.
 	switch t.State {
-	case ticket.StateAwaitingValidation: // also matches StateAwaitingReview (alias)
+	case ticket.StateAwaitingValidation:
 		return WorkerTypeValidator
 	default:
 		// Default to executor for implementation work.
@@ -1078,18 +1078,22 @@ func (d *Dispatcher) startActive(ctx context.Context, key, projectID string) (co
 
 // hasHigherPriorityWork returns true if there are awaiting_review or validated
 // tickets for the project that need attention but don't have an active worker.
-// Used by tryDispatch to avoid starting new pending work when in-flight work
-// should be prioritized (review/merge before new execution).
+// It actively tries to resolve blockers: spawns reviewers for unreviewed tickets
+// and triggers autoMergePR for validated tickets with PRs. Only blocks if work
+// remains that genuinely needs attention.
 func (d *Dispatcher) hasHigherPriorityWork(ctx context.Context, projectID string) bool {
+	blocked := false
+
 	// Check for awaiting_review tickets that need a reviewer.
-	reviewing, err := d.tickets.ListByState(ctx, projectID, ticket.StateAwaitingReview)
+	reviewing, err := d.tickets.ListByState(ctx, projectID, ticket.StateAwaitingValidation)
 	if err == nil {
 		for _, t := range reviewing {
 			d.mu.Lock()
 			_, active := d.active["review:"+t.ID]
 			d.mu.Unlock()
 			if !active {
-				return true
+				d.spawnReviewer(ctx, t)
+				blocked = true
 			}
 		}
 	}
@@ -1098,24 +1102,36 @@ func (d *Dispatcher) hasHigherPriorityWork(ctx context.Context, projectID string
 	validated, err := d.tickets.ListByState(ctx, projectID, ticket.StateValidated)
 	if err == nil {
 		for _, t := range validated {
-			if prURL, ok := t.Outputs["pr_url"].(string); ok && prURL != "" {
-				d.mu.Lock()
-				_, resolving := d.active["resolve:"+t.ID]
-				d.mu.Unlock()
-				if !resolving {
-					return true
+			prURL, ok := t.Outputs["pr_url"].(string)
+			if !ok || prURL == "" {
+				continue
+			}
+			// Skip placeholder/sentinel PR URLs.
+			if prURL == "N/A" || prURL == "n/a" || prURL == "none" {
+				continue
+			}
+			d.mu.Lock()
+			_, resolving := d.active["resolve:"+t.ID]
+			d.mu.Unlock()
+			if !resolving {
+				// Try to merge/close — autoMergePR handles already-merged PRs.
+				d.autoMergePR(ctx, t, prURL)
+				// Re-check: if autoMergePR closed the ticket, it's no longer blocking.
+				fresh, ferr := d.tickets.GetTicket(ctx, t.ID)
+				if ferr == nil && fresh != nil && fresh.State == ticket.StateValidated {
+					blocked = true
 				}
 			}
 		}
 	}
-	return false
+	return blocked
 }
 
 // spawnWaitingReviewers spawns reviewers for any awaiting_review tickets in the
 // project. Called synchronously from the worker exit defer to ensure review work
 // gets the freed slot before async reconcile picks up new pending tickets.
 func (d *Dispatcher) spawnWaitingReviewers(ctx context.Context, projectID string) {
-	reviewing, err := d.tickets.ListByState(ctx, projectID, ticket.StateAwaitingReview)
+	reviewing, err := d.tickets.ListByState(ctx, projectID, ticket.StateAwaitingValidation)
 	if err != nil {
 		return
 	}
@@ -1227,6 +1243,25 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 	if attempts >= maxMergeAttempts {
 		d.escalateMergeFailure(ctx, t, fmt.Sprintf("merge failed %d times", attempts))
 		return
+	}
+
+	// Check if the PR is already merged before attempting any work.
+	// gh pr view works with just a URL — no local clone needed.
+	checkCmd := exec.Command("gh", "pr", "view", prURL, "--json", "state", "--jq", ".state")
+	if stateOut, checkErr := checkCmd.Output(); checkErr == nil {
+		prState := strings.TrimSpace(string(stateOut))
+		if prState == "MERGED" {
+			slog.Info("dispatch: PR already merged, closing ticket", "ticket", t.ID)
+			d.persistMergeState(ctx, t.ID, attempts, "merged", "")
+			d.cleanupTicketBranch(ctx, t.ID, t.ProjectID)
+			d.closeMergedTicket(ctx, t)
+			return
+		}
+		if prState == "CLOSED" {
+			slog.Warn("dispatch: PR closed without merge, skipping", "ticket", t.ID)
+			d.persistMergeState(ctx, t.ID, attempts, "pr_closed", "PR was closed without merging")
+			return
+		}
 	}
 
 	d.persistMergeState(ctx, t.ID, attempts, "merging", "")
@@ -1365,9 +1400,9 @@ func (d *Dispatcher) closeMergedTicket(ctx context.Context, t *ticket.Ticket) {
 				continue
 
 			case workflow.PhaseDeploy:
-				_ = d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerDeploy, actor, nil)
+				continue // no-op: deploy phase auto-advances
 			case workflow.PhaseObserve:
-				_ = d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerObserve, actor, nil)
+				continue // no-op: observe phase auto-advances
 			default:
 				continue
 			}
@@ -1377,12 +1412,10 @@ func (d *Dispatcher) closeMergedTicket(ctx context.Context, t *ticket.Ticket) {
 		return
 	}
 
-	// Legacy path: hardcoded post-merge transitions.
-	for _, trigger := range []string{ticket.TriggerDeploy, ticket.TriggerObserve, ticket.TriggerClose} {
-		if err := d.ticketTransitioner.TransitionTicket(ctx, t.ID, trigger, actor, nil); err != nil {
-			slog.Error("dispatch: post-merge transition failed", "trigger", trigger, "ticket", t.ID, "error", err)
-			return
-		}
+	// Legacy path: close validated ticket after merge.
+	if err := d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerClose, actor, nil); err != nil {
+		slog.Error("dispatch: post-merge close failed", "ticket", t.ID, "error", err)
+		return
 	}
 
 	slog.Info("dispatch: ticket closed after merge", "ticket", t.ID)

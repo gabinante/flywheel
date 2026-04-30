@@ -389,14 +389,11 @@ func RemainingHappyPath(currentState string) []PathStep {
 // FullHappyPath returns the complete happy-path transitions from draft to closed.
 func FullHappyPath() []PathStep {
 	return []PathStep{
-		{Trigger: "spec", FromState: "draft", ToState: "specced"},
-		{Trigger: "plan", FromState: "specced", ToState: "planning"},
+		{Trigger: "claim", FromState: "draft", ToState: "planning"},
 		{Trigger: "start", FromState: "planning", ToState: "executing"},
 		{Trigger: "submit", FromState: "executing", ToState: "awaiting_validation"},
 		{Trigger: "approve", FromState: "awaiting_validation", ToState: "validated"},
-		{Trigger: "deploy", FromState: "validated", ToState: "deploying"},
-		{Trigger: "observe", FromState: "deploying", ToState: "observing"},
-		{Trigger: "close", FromState: "observing", ToState: "closed"},
+		{Trigger: "close", FromState: "validated", ToState: "closed"},
 	}
 }
 

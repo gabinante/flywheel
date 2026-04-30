@@ -8,14 +8,11 @@ const (
 	// --- Lifecycle events (happy path) ---
 	EventTicketCreated   = "ticket.created"
 	EventTicketUpdated   = "ticket.updated"
-	EventTicketSpecced   = "ticket.specced"   // draft → specced
-	EventTicketPlanning  = "ticket.planning"  // specced/claim → planning
+	EventTicketPlanning  = "ticket.planning"  // claim → planning
 	EventTicketStarted   = "ticket.started"   // planning → executing
 	EventTicketSubmitted = "ticket.submitted" // executing → awaiting_validation
 	EventTicketValidated = "ticket.validated" // awaiting_validation → validated
-	EventTicketDeploying = "ticket.deploying" // validated → deploying
-	EventTicketObserving = "ticket.observing" // deploying → observing
-	EventTicketClosed    = "ticket.closed"    // observing → closed (or cancel)
+	EventTicketClosed    = "ticket.closed"    // validated → closed (or cancel)
 
 	// --- Input / escalation events ---
 	EventTicketAwaitingInput = "ticket.awaiting_input" // → awaiting_input

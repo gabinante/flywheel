@@ -995,7 +995,7 @@ export interface components {
             type?: "task" | "bug" | "spike" | "review";
             priority?: number;
             /** @enum {string} */
-            state?: "draft" | "specced" | "planning" | "awaiting_input" | "executing" | "awaiting_validation" | "validated" | "deploying" | "observing" | "closed" | "pending" | "claimed" | "awaiting_review" | "done" | "blocked" | "needs_human" | "failed";
+            state?: "draft" | "planning" | "awaiting_input" | "executing" | "awaiting_validation" | "validated" | "closed";
             version?: number;
             objective?: components["schemas"]["Objective"];
             ticket_context?: components["schemas"]["TicketContext"];
@@ -2218,7 +2218,7 @@ export interface operations {
                 /** @description Filter by work stream. */
                 work_stream_id?: string;
                 /** @description Filter by ticket state. */
-                state?: "draft" | "specced" | "planning" | "awaiting_input" | "executing" | "awaiting_validation" | "validated" | "deploying" | "observing" | "closed" | "pending" | "claimed" | "awaiting_review" | "done" | "blocked" | "needs_human" | "failed";
+                state?: "draft" | "planning" | "awaiting_input" | "executing" | "awaiting_validation" | "validated" | "closed";
             };
             header?: never;
             path: {
