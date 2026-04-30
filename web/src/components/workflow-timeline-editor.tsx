@@ -56,6 +56,21 @@ import {
 type WorkflowDefinition = components['schemas']['WorkflowDefinition']
 type WorkflowPhase = components['schemas']['WorkflowPhase']
 
+const STANDARD_SDLC_PHASES: WorkflowPhase[] = [
+  { id: 'execute', name: 'Execution', type: 'agent',
+    description: 'Agent claims, codes, and submits work.',
+    config: { role: 'executor' } },
+  { id: 'review', name: 'Review', type: 'gate',
+    description: 'Human reviews and approves the work.',
+    config: { prompt: 'Review the submitted code and approve or reject.' } },
+  { id: 'deploy', name: 'Deploy', type: 'external',
+    description: 'Deploy the validated changes.',
+    config: { mode: 'async' } },
+  { id: 'observe', name: 'Observe', type: 'external',
+    description: 'Post-deploy monitoring window.',
+    config: { mode: 'poll', poll_interval: '30s', poll_timeout: '5m' } },
+]
+
 const PRIMARY_TYPES: PhaseType[] = ['agent', 'external', 'gate']
 
 function newPhaseID(phases: WorkflowPhase[]): string {
@@ -306,6 +321,13 @@ export function WorkflowTimelineEditor({
         setPhases((suggested.phases ?? []) as WorkflowPhase[])
         setName(suggested.name ?? 'Delivery Pipeline')
         setDescription(suggested.description ?? '')
+        setIsSuggested(true)
+        setSource(null)
+      } else {
+        // Fallback: API unavailable or returned no data — show Standard SDLC
+        setPhases(STANDARD_SDLC_PHASES)
+        setName('Standard SDLC')
+        setDescription('Default workflow: agent executes, human reviews, deploy, observe.')
         setIsSuggested(true)
         setSource(null)
       }

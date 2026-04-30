@@ -388,6 +388,23 @@ func (s *Service) recordUsage(ctx context.Context, workerCfg dispatch.Config, pr
 	})
 }
 
+// InjectSystemEvent creates a system-role message in the command center thread.
+// This surfaces lifecycle events (escalations, failures, gate blocks, completions)
+// so the orchestrator agent sees them as context on its next invocation.
+func (s *Service) InjectSystemEvent(ctx context.Context, projectID, category, summary string) error {
+	if projectID == "" || summary == "" {
+		return nil
+	}
+	msg := Message{
+		ID:        uuid.Must(uuid.NewV7()).String(),
+		ProjectID: projectID,
+		Role:      RoleSystem,
+		Content:   fmt.Sprintf("[%s] %s", category, summary),
+		CreatedAt: time.Now().UTC(),
+	}
+	return s.store.CreateMessage(ctx, &msg)
+}
+
 func buildConversationTask(proj *project.Project, messages []Message) string {
 	var b strings.Builder
 	b.WriteString("You are operating inside the Flywheel command center.\n\n")
@@ -398,9 +415,14 @@ func buildConversationTask(proj *project.Project, messages []Message) string {
 	b.WriteString(fmt.Sprintf("Project: %s (%s)\n\n", proj.Name, proj.ID))
 	b.WriteString("Conversation so far (oldest first):\n\n")
 	for _, msg := range messages {
-		role := "User"
-		if msg.Role == RoleAssistant {
+		var role string
+		switch msg.Role {
+		case RoleAssistant:
 			role = "Assistant"
+		case RoleSystem:
+			role = "System"
+		default:
+			role = "User"
 		}
 		b.WriteString(role + ": " + msg.Content + "\n\n")
 	}

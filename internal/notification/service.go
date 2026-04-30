@@ -2,13 +2,20 @@ package notification
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/gabinante/flywheel/events"
+	"github.com/gabinante/flywheel/internal/ticket"
 	"github.com/google/uuid"
 )
+
+// TicketGetter retrieves tickets for threshold-based notification decisions.
+type TicketGetter interface {
+	GetTicket(ctx context.Context, id string) (*ticket.Ticket, error)
+}
 
 // Service orchestrates notification delivery with policy-driven routing.
 // It subscribes to events, determines urgency/channel/routing, and dispatches
@@ -16,6 +23,7 @@ import (
 type Service struct {
 	store    Store
 	bus      events.Bus
+	tickets  TicketGetter // nil-safe: if nil, threshold checks are skipped
 	adapters map[Channel]ChannelAdapter
 	mu       sync.RWMutex
 }
@@ -29,6 +37,12 @@ func NewService(store Store, bus events.Bus) *Service {
 	}
 	s.subscribeToEvents()
 	return s
+}
+
+// SetTicketGetter configures the ticket getter for threshold-based notification decisions.
+// Call after construction to avoid circular imports.
+func (s *Service) SetTicketGetter(tg TicketGetter) {
+	s.tickets = tg
 }
 
 // RegisterAdapter registers a channel adapter for the given channel type.
@@ -247,6 +261,19 @@ func (s *Service) subscribeToEvents() {
 	// Policy calibration events → calibration review notification.
 	s.bus.Subscribe(events.EventPlanApproved, s.handlePlanApproved)
 	s.bus.Subscribe(events.EventPlanRejected, s.handlePlanRejected)
+
+	// Failure/operational events with threshold-based notification.
+	s.bus.Subscribe(events.EventTicketFailed, s.handleTicketFailed)
+	s.bus.Subscribe(events.EventLeaseExpired, s.handleLeaseExpired)
+	s.bus.Subscribe(events.EventTicketInvalidated, s.handleTicketInvalidated)
+	s.bus.Subscribe(events.EventTicketReplanned, s.handleTicketReplanned)
+	s.bus.Subscribe(events.EventTicketRolledBack, s.handleTicketRolledBack)
+
+	// Work stream completion → low-urgency autonomous action.
+	s.bus.Subscribe(events.EventWorkStreamCompleted, s.handleWorkStreamCompleted)
+
+	// Workflow gate reached → urgent decision (human approval needed).
+	s.bus.Subscribe(events.EventWorkflowGateReached, s.handleWorkflowGateReached)
 }
 
 func (s *Service) handleEscalation(ctx context.Context, event events.Event) {
@@ -350,5 +377,155 @@ func (s *Service) handlePlanRejected(ctx context.Context, event events.Event) {
 		Title:      "Plan rejected",
 		Body:       "Plan " + planID + " was rejected. Review the feedback and resubmit.",
 		Classifier: "plan_lifecycle",
+	})
+}
+
+// priorAttemptCount returns the number of prior attempts for a ticket, or 0 if
+// the ticket cannot be loaded (nil-safe on s.tickets).
+func (s *Service) priorAttemptCount(ctx context.Context, ticketID string) int {
+	if s.tickets == nil || ticketID == "" {
+		return 0
+	}
+	t, err := s.tickets.GetTicket(ctx, ticketID)
+	if err != nil || t == nil {
+		return 0
+	}
+	return len(t.Context.PriorAttempts)
+}
+
+func (s *Service) handleTicketFailed(ctx context.Context, event events.Event) {
+	ticketID, _ := event.Payload["ticket_id"].(string)
+	projectID, _ := event.Payload["project_id"].(string)
+	if projectID == "" || ticketID == "" {
+		return
+	}
+	// Only notify on 2nd+ failure to avoid noise on transient issues.
+	attempts := s.priorAttemptCount(ctx, ticketID)
+	if attempts < 2 {
+		return
+	}
+	_ = s.Notify(ctx, &Notification{
+		ProjectID:  projectID,
+		TicketID:   ticketID,
+		Category:   CategoryAnomalyAlert,
+		Urgency:    UrgencyHigh,
+		Title:      "Ticket failed repeatedly",
+		Body:       fmt.Sprintf("Ticket %s has failed %d times. May need respec or human intervention.", ticketID, attempts),
+		Classifier: "ticket_failure",
+	})
+}
+
+func (s *Service) handleLeaseExpired(ctx context.Context, event events.Event) {
+	ticketID, _ := event.Payload["ticket_id"].(string)
+	projectID, _ := event.Payload["project_id"].(string)
+	if projectID == "" || ticketID == "" {
+		return
+	}
+	attempts := s.priorAttemptCount(ctx, ticketID)
+	if attempts < 2 {
+		return
+	}
+	_ = s.Notify(ctx, &Notification{
+		ProjectID:  projectID,
+		TicketID:   ticketID,
+		Category:   CategoryAnomalyAlert,
+		Urgency:    UrgencyHigh,
+		Title:      "Worker crashed repeatedly",
+		Body:       fmt.Sprintf("Ticket %s: worker lease expired %d times.", ticketID, attempts),
+		Classifier: "lease_expired",
+	})
+}
+
+func (s *Service) handleTicketInvalidated(ctx context.Context, event events.Event) {
+	ticketID, _ := event.Payload["ticket_id"].(string)
+	projectID, _ := event.Payload["project_id"].(string)
+	if projectID == "" || ticketID == "" {
+		return
+	}
+	_ = s.Notify(ctx, &Notification{
+		ProjectID:  projectID,
+		TicketID:   ticketID,
+		Category:   CategoryCalibrationReview,
+		Urgency:    UrgencyHigh,
+		Title:      "Ticket invalidated",
+		Body:       fmt.Sprintf("Ticket %s was sent back from validated to planning.", ticketID),
+		Classifier: "ticket_invalidated",
+	})
+}
+
+func (s *Service) handleTicketReplanned(ctx context.Context, event events.Event) {
+	ticketID, _ := event.Payload["ticket_id"].(string)
+	projectID, _ := event.Payload["project_id"].(string)
+	if projectID == "" || ticketID == "" {
+		return
+	}
+	attempts := s.priorAttemptCount(ctx, ticketID)
+	if attempts < 2 {
+		return
+	}
+	_ = s.Notify(ctx, &Notification{
+		ProjectID:  projectID,
+		TicketID:   ticketID,
+		Category:   CategoryCalibrationReview,
+		Urgency:    UrgencyMedium,
+		Title:      "Ticket replanned repeatedly",
+		Body:       fmt.Sprintf("Ticket %s has been replanned %d times.", ticketID, attempts),
+		Classifier: "ticket_replanned",
+	})
+}
+
+func (s *Service) handleTicketRolledBack(ctx context.Context, event events.Event) {
+	ticketID, _ := event.Payload["ticket_id"].(string)
+	projectID, _ := event.Payload["project_id"].(string)
+	if projectID == "" || ticketID == "" {
+		return
+	}
+	_ = s.Notify(ctx, &Notification{
+		ProjectID:  projectID,
+		TicketID:   ticketID,
+		Category:   CategoryCalibrationReview,
+		Urgency:    UrgencyMedium,
+		Title:      "Ticket rolled back",
+		Body:       fmt.Sprintf("Ticket %s was rolled back.", ticketID),
+		Classifier: "ticket_rollback",
+	})
+}
+
+func (s *Service) handleWorkStreamCompleted(ctx context.Context, event events.Event) {
+	projectID, _ := event.Payload["project_id"].(string)
+	streamID, _ := event.Payload["work_stream_id"].(string)
+	if projectID == "" {
+		return
+	}
+	body := "A work stream has completed."
+	if streamID != "" {
+		body = fmt.Sprintf("Work stream %s completed — all tickets closed.", streamID)
+	}
+	_ = s.Notify(ctx, &Notification{
+		ProjectID:  projectID,
+		Category:   CategoryAutonomousAction,
+		Urgency:    UrgencyLow,
+		Title:      "Work stream completed",
+		Body:       body,
+		Classifier: "work_stream_completed",
+	})
+}
+
+func (s *Service) handleWorkflowGateReached(ctx context.Context, event events.Event) {
+	ticketID, _ := event.Payload["ticket_id"].(string)
+	projectID, _ := event.Payload["project_id"].(string)
+	phaseName, _ := event.Payload["phase_name"].(string)
+	if projectID == "" || ticketID == "" {
+		return
+	}
+	body := fmt.Sprintf("Ticket %s reached workflow gate phase '%s' and requires human approval.", ticketID, phaseName)
+	_ = s.Notify(ctx, &Notification{
+		ProjectID:  projectID,
+		TicketID:   ticketID,
+		Category:   CategoryUrgentDecision,
+		Urgency:    UrgencyMedium,
+		Title:      "Workflow gate requires approval",
+		Body:       body,
+		Classifier: "workflow_gate",
 	})
 }

@@ -117,9 +117,10 @@ type Dispatcher struct {
 	repoResolver       RepoResolver           // nil-safe: only used for multi-repo projects
 	leaseReleaser      LeaseReleaser          // nil-safe: if nil, worker exit does not release lease (Layer 2 TTL handles it)
 	failureSummarizer  FailureSummarizer      // nil-safe: if nil, worker exit does not inject failure context
-	ticketTransitioner TicketTransitioner     // nil-safe: if nil, merged tickets are not auto-closed
-	workflowEngine     *workflow.Engine       // nil-safe: if nil, workflow-aware dispatching is disabled
-	outputPatcher      TicketOutputPatcher    // nil-safe: if nil, merge state is not persisted
+	ticketTransitioner TicketTransitioner        // nil-safe: if nil, merged tickets are not auto-closed
+	workflowEngine     *workflow.Engine          // nil-safe: if nil, workflow-aware dispatching is disabled
+	externalExecutor   *workflow.ExternalExecutor // nil-safe: if nil, external phases auto-advance
+	outputPatcher      TicketOutputPatcher       // nil-safe: if nil, merge state is not persisted
 
 	mu             sync.Mutex
 	active         map[string]context.CancelFunc // ticketID/role-prefixed key → cancel
@@ -289,6 +290,11 @@ func (d *Dispatcher) SetTicketTransitioner(tt TicketTransitioner) {
 // SetWorkflowEngine sets the optional workflow engine for workflow-aware dispatching.
 func (d *Dispatcher) SetWorkflowEngine(we *workflow.Engine) {
 	d.workflowEngine = we
+}
+
+// SetExternalExecutor sets the optional external executor for workflow external phases.
+func (d *Dispatcher) SetExternalExecutor(ee *workflow.ExternalExecutor) {
+	d.externalExecutor = ee
 }
 
 func (d *Dispatcher) SetRepoResolver(rr RepoResolver) {
@@ -1292,18 +1298,81 @@ func (d *Dispatcher) closeMergedTicket(ctx context.Context, t *ticket.Ticket) {
 				break
 			}
 			t.WorkflowPhase = next.ID
-			// For phases that need external action (agent, manual), stop advancing.
-			if next.Type == workflow.PhaseAgent || next.Type == workflow.PhaseManual {
-				break
-			}
-			// For deploy/observe/automated, fire the corresponding state triggers.
+
 			switch next.Type {
+			case workflow.PhaseAgent, workflow.PhaseManual:
+				// Phases that need external action — stop advancing.
+				break
+
+			case workflow.PhaseGate:
+				// Emit gate event so monitor + notification can surface it.
+				prompt, _ := next.Config["prompt"].(string)
+				_ = d.bus.Publish(ctx, events.Event{
+					Type: events.EventWorkflowGateReached,
+					Payload: map[string]any{
+						"ticket_id":  t.ID,
+						"project_id": t.ProjectID,
+						"phase_id":   next.ID,
+						"phase_name": next.Name,
+						"prompt":     prompt,
+					},
+				})
+				slog.Info("dispatch: workflow gate reached, waiting for approval", "ticket", t.ID, "phase", next.Name)
+				goto done
+
+			case workflow.PhaseExternal:
+				if d.externalExecutor != nil {
+					cfg, parseErr := workflow.ParseExternalConfig(next.Config)
+					if parseErr == nil && cfg.URL != "" {
+						switch cfg.Mode {
+						case "sync":
+							outcome, meta, execErr := d.externalExecutor.ExecuteSync(ctx, cfg, t.ID, t.WorkflowID, next.ID)
+							if execErr != nil {
+								slog.Error("dispatch: external phase sync failed", "ticket", t.ID, "phase", next.ID, "error", execErr)
+							}
+							_, _ = d.workflowEngine.AdvancePhase(ctx, t.ID, t.WorkflowID, next.ID, outcome, meta)
+							_ = d.bus.Publish(ctx, events.Event{
+								Type: events.EventWorkflowExternalResult,
+								Payload: map[string]any{
+									"ticket_id":  t.ID,
+									"project_id": t.ProjectID,
+									"phase_id":   next.ID,
+									"outcome":    outcome,
+								},
+							})
+							continue
+						case "async":
+							_, asyncErr := d.externalExecutor.InitiateAsync(ctx, cfg, t.ID, t.WorkflowID, next.ID)
+							if asyncErr != nil {
+								slog.Error("dispatch: external phase async initiate failed", "ticket", t.ID, "phase", next.ID, "error", asyncErr)
+							}
+							_ = d.bus.Publish(ctx, events.Event{
+								Type: events.EventWorkflowExternalFired,
+								Payload: map[string]any{
+									"ticket_id":  t.ID,
+									"project_id": t.ProjectID,
+									"phase_id":   next.ID,
+									"mode":       "async",
+								},
+							})
+							goto done // stop advancing, wait for callback
+						default: // poll or unknown
+							goto done
+						}
+					}
+				}
+				// No executor or no URL configured — auto-advance (backward compat).
+				continue
+
 			case workflow.PhaseDeploy:
 				_ = d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerDeploy, actor, nil)
 			case workflow.PhaseObserve:
 				_ = d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerObserve, actor, nil)
+			default:
+				continue
 			}
 		}
+	done:
 		slog.Info("dispatch: ticket advanced through workflow after merge", "ticket", t.ID)
 		return
 	}

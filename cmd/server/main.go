@@ -39,6 +39,7 @@ import (
 	notifysms "github.com/gabinante/flywheel/internal/notification/sms"
 	"github.com/gabinante/flywheel/internal/observation"
 	"github.com/gabinante/flywheel/internal/orchestrator"
+	"github.com/gabinante/flywheel/internal/progress"
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/pillar"
 	"github.com/gabinante/flywheel/internal/stateindex"
@@ -158,6 +159,15 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	scheduler.SetFailureSummarizer(ticketSvc)
 	go scheduler.Run(ctx)
 
+	// Workflow callback + external executor: async phase support.
+	callbackSecret := []byte(cfg.Auth.JWTSecret) // reuse JWT secret for callback HMAC
+	if len(callbackSecret) == 0 {
+		callbackSecret = []byte(autoGenerateSecret())
+	}
+	callbackStore := workflow.NewRedisCallbackStore(redisClient)
+	callbackHandler := workflow.NewCallbackHandler(callbackSecret, callbackStore, workflowEngine)
+	externalExecutor := workflow.NewExternalExecutor(callbackHandler, cfg.Auth.BaseURL)
+
 	// Lease validator for execution trace: validate token and return agent ID
 	leaseValidator := &leaseValidatorAdapter{leases: queueRedis}
 	agentStore := agent.NewStore(pool)
@@ -208,6 +218,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	if cfg.Notification.Enabled {
 		notifyStore := notification.NewPostgresStore(pool)
 		notifySvc = notification.NewService(notifyStore, bus)
+		notifySvc.SetTicketGetter(ticketSvc)
 		notifySvc.RegisterAdapter(notification.ChannelSlack, notifyslack.NewAdapter())
 		notifySvc.RegisterAdapter(notification.ChannelEmail, notifyemail.NewAdapter())
 		notifySvc.RegisterAdapter(notification.ChannelSMS, notifysms.NewAdapter())
@@ -372,6 +383,10 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		},
 	})
 
+	// Progress monitor: bridges ticket lifecycle events → command center system messages.
+	_ = progress.NewMonitor(bus, orchestratorSvc, ticketSvc)
+	slog.Info("progress: monitor started")
+
 	var authMiddleware func(http.Handler) http.Handler
 	var authHandler *rest.AuthHandler
 	var oauthHandler *rest.OAuthHandler
@@ -472,6 +487,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		dispatcher.SetFailureSummarizer(ticketSvc)
 		dispatcher.SetTicketTransitioner(ticketSvc)
 		dispatcher.SetWorkflowEngine(workflowEngine)
+		dispatcher.SetExternalExecutor(externalExecutor)
 		dispatcher.SetOutputPatcher(ticketStore)
 		// Wire worktree cleanup for rollback when dispatcher manages worktrees.
 		rollbackSvc.SetWorktreeRemover(&dispatch.WorktreeManager{
@@ -536,12 +552,13 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			AgentStore:  agentStore,
 		},
 		WorkflowHandler: &rest.WorkflowHandler{
-			Engine:     workflowEngine,
-			Store:      workflowStore,
-			TicketSvc:  ticketSvc,
-			ProjectSvc: projectSvc,
-			OrgSvc:     orgSvc,
-			AgentStore: agentStore,
+			Engine:          workflowEngine,
+			Store:           workflowStore,
+			TicketSvc:       ticketSvc,
+			ProjectSvc:      projectSvc,
+			OrgSvc:          orgSvc,
+			AgentStore:      agentStore,
+			CallbackHandler: callbackHandler,
 		},
 		InvitesHandler: &rest.InvitesHandler{
 			OrgSvc:     orgSvc,
@@ -794,6 +811,10 @@ func runEmbedded(ctx context.Context, cfg *config.Config) {
 			CostSvc:              costSvc,
 		},
 	})
+
+	// Progress monitor for embedded mode.
+	_ = progress.NewMonitor(bus, orchestratorSvc, ticketSvc)
+	slog.Info("progress: monitor started (embedded)")
 
 	router := rest.NewRouter(rest.RouterConfig{
 		StrictServer:   strictServer,

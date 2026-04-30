@@ -180,10 +180,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	if cfg.DeliveryHandler != nil {
 		cfg.DeliveryHandler.RegisterRoutes(mux)
-
-		if cfg.WorkflowHandler != nil {
-			cfg.WorkflowHandler.RegisterRoutes(mux)
-		}
+	}
+	if cfg.WorkflowHandler != nil {
+		cfg.WorkflowHandler.RegisterRoutes(mux)
 	}
 	if cfg.InvitesHandler != nil {
 		cfg.InvitesHandler.RegisterRoutes(mux)

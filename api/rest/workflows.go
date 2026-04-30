@@ -48,6 +48,20 @@ func (h *WorkflowHandler) RegisterRoutes(mux *http.ServeMux) {
 
 	// Workflow callback (external async phases)
 	mux.HandleFunc("POST /api/v1/workflow/callback/{token}", h.handleCallback)
+
+	// Prefix-free aliases for the frontend openapi-fetch client
+	mux.HandleFunc("GET /projects/{projectID}/workflow", h.getProjectWorkflow)
+	mux.HandleFunc("GET /projects/{projectID}/workflow/layers", h.getWorkflowLayers)
+	mux.HandleFunc("PUT /projects/{projectID}/workflow", h.upsertProjectWorkflow)
+	mux.HandleFunc("DELETE /projects/{projectID}/workflow", h.deleteProjectWorkflow)
+	mux.HandleFunc("GET /orgs/{orgID}/workflow", h.getOrgWorkflow)
+	mux.HandleFunc("PUT /orgs/{orgID}/workflow", h.upsertOrgWorkflow)
+	mux.HandleFunc("DELETE /orgs/{orgID}/workflow", h.deleteOrgWorkflow)
+	mux.HandleFunc("GET /workflow/system", h.getSystemWorkflow)
+	mux.HandleFunc("PUT /workflow/system", h.upsertSystemWorkflow)
+	mux.HandleFunc("GET /workflow/templates", h.listTemplates)
+	mux.HandleFunc("GET /tickets/{ticketID}/workflow", h.getTicketWorkflow)
+	mux.HandleFunc("POST /workflow/callback/{token}", h.handleCallback)
 }
 
 func (h *WorkflowHandler) getProjectWorkflow(w http.ResponseWriter, r *http.Request) {

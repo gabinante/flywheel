@@ -63,6 +63,11 @@ const (
 	// --- Work stream events ---
 	EventWorkStreamCompleted = "work_stream.completed" // all tickets in stream are closed
 
+	// --- Workflow phase events ---
+	EventWorkflowGateReached    = "workflow.gate_reached"    // workflow advance hit a gate phase requiring human approval
+	EventWorkflowExternalFired  = "workflow.external_fired"  // external phase HTTP request initiated
+	EventWorkflowExternalResult = "workflow.external_result" // external phase completed (via sync or callback)
+
 	// --- Catalog (Layer 14) events ---
 	EventCatalogEntityCreated = "catalog.entity_created"
 	EventCatalogEntityUpdated = "catalog.entity_updated"
