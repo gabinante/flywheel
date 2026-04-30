@@ -131,6 +131,12 @@ func seedTestClone(t *testing.T, d *Dispatcher, projectID string) string {
 	} {
 		cmd := exec.Command("git", args...)
 		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Test",
+			"GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=Test",
+			"GIT_COMMITTER_EMAIL=test@test.com",
+		)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %s: %v", args, out, err)
 		}
