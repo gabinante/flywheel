@@ -1413,8 +1413,36 @@ func listTicketsHandler(b *Backend, ctx context.Context, args map[string]any) (*
 			}
 			list = filtered
 		}
+		// Return slim ticket summaries to keep response size manageable.
+		// Full ticket details (outputs, inputs, context) are available via get_ticket.
+		summaries := make([]map[string]any, 0, len(list))
+		for _, t := range list {
+			s := map[string]any{
+				"id":         t.ID,
+				"title":      t.Title,
+				"type":       t.Type,
+				"state":      t.State,
+				"priority":   t.Priority,
+				"project_id": t.ProjectID,
+				"created_at": t.CreatedAt,
+				"updated_at": t.UpdatedAt,
+			}
+			if t.WorkStreamID != "" {
+				s["work_stream_id"] = t.WorkStreamID
+			}
+			if t.AssignedTo != "" {
+				s["assigned_to"] = t.AssignedTo
+			}
+			if len(t.DependsOn) > 0 {
+				s["depends_on"] = t.DependsOn
+			}
+			if t.Objective.Description != "" {
+				s["objective"] = t.Objective.Description
+			}
+			summaries = append(summaries, s)
+		}
 		stateStr := getString(args, "state", "")
-		out := map[string]any{"tickets": list}
+		out := map[string]any{"tickets": summaries, "count": len(summaries)}
 		if stateStr == "" || ticket.State(stateStr) == ticket.StatePending {
 			out["workflow"] = workflowAfterListTicketsPending()
 		}
