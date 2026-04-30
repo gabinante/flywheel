@@ -1,8 +1,8 @@
 {
-  "name": "gohighpayment-prisma",
+  "name": "shamroq-prisma",
   "version": "0.1.0",
   "private": true,
-  "description": "GoHighPayment Prisma schema, migrations, and seed scripts",
+  "description": "Shamroq Prisma schema, migrations, and seed scripts",
   "scripts": {
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",

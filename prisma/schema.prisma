@@ -1,4 +1,4 @@
-// GoHighPayment Prisma Schema
+// Shamroq Prisma Schema
 // Agency, Merchant, ResidualEntry, ResidualPayout models
 
 generator client {

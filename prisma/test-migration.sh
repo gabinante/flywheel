@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "=== GoHighPayment Migration Acceptance Tests ==="
+echo "=== Shamroq Migration Acceptance Tests ==="
 
 # Start a temporary PostgreSQL container
 CONTAINER_NAME="gohighpayment-test-$$"
