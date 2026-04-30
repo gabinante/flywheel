@@ -15,39 +15,54 @@ import type { PrismaClient } from "@prisma/client";
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
+/**
+ * Lightweight HTTP test helper.
+ * Creates a one-shot Express server on a random port, makes the request,
+ * then tears the server down.  Retries once on transient socket errors
+ * (e.g. "other side closed") which can occur under heavy test parallelism.
+ */
 async function request(
   app: express.Express,
   method: string,
   path: string,
   body?: unknown
-) {
-  return new Promise<{
-    status: number;
-    body: Record<string, unknown>;
-  }>((resolve, reject) => {
-    const server = app.listen(0, () => {
-      const addr = server.address();
-      if (!addr || typeof addr === "string") {
-        server.close();
-        return reject(new Error("Failed to get server address"));
-      }
-      const url = `http://127.0.0.1:${addr.port}${path}`;
-      fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: body ? JSON.stringify(body) : undefined,
-      })
-        .then(async (res) => {
-          const json = (await res.json()) as Record<string, unknown>;
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const attempt = (): Promise<{ status: number; body: Record<string, unknown> }> =>
+    new Promise((resolve, reject) => {
+      const server = app.listen(0, "127.0.0.1", () => {
+        const addr = server.address();
+        if (!addr || typeof addr === "string") {
           server.close();
-          resolve({ status: res.status, body: json });
+          return reject(new Error("Failed to get server address"));
+        }
+        const url = `http://127.0.0.1:${addr.port}${path}`;
+        fetch(url, {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: body ? JSON.stringify(body) : undefined,
         })
-        .catch((err) => {
-          server.close();
-          reject(err);
-        });
+          .then(async (res) => {
+            const json = (await res.json()) as Record<string, unknown>;
+            server.close();
+            resolve({ status: res.status, body: json });
+          })
+          .catch((err) => {
+            server.close();
+            reject(err);
+          });
+      });
     });
-  });
+
+  try {
+    return await attempt();
+  } catch (err: unknown) {
+    // Retry once on transient socket/network errors
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("closed") || msg.includes("ECONNRESET") || msg.includes("socket")) {
+      return attempt();
+    }
+    throw err;
+  }
 }
 
 // ─── Mock data ────────────────────────────────────────────────────────
