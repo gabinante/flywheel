@@ -158,6 +158,7 @@ model Merchant {
   ghlTokenExpiresAt DateTime? @map("ghl_token_expires_at")
 
   // Merchant's own NMI credentials (they get their own MID from NMI)
+  nmiMerchantId      String? @map("nmi_merchant_id")      // NMI merchant ID (MID)
   nmiSecurityKey     String? @map("nmi_security_key")     // encrypted, for server-side charges
   nmiTokenizationKey String? @map("nmi_tokenization_key") // public key for Collect.js
   nmiCustomerVaultId String? @map("nmi_customer_vault_id")

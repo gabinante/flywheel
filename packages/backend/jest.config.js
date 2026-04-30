@@ -15,4 +15,6 @@ export default {
     ],
   },
   testMatch: ['**/__tests__/**/*.test.ts'],
+  // Set minimum env vars required for module-level evaluation (Prisma init, Zod parse)
+  setupFiles: ['./src/__tests__/setup.ts'],
 };
