@@ -7,7 +7,11 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest",
+    "test:coverage": "node --experimental-vm-modules node_modules/.bin/jest --coverage",
+    "encrypt:migrate": "tsx src/scripts/encrypt-existing-data.ts",
+    "encrypt:rotate": "tsx src/scripts/rotate-encryption-key.ts"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
@@ -25,7 +29,10 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
+    "@types/jest": "^29.5.0",
     "@types/node": "^20.14.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.0",
     "tsx": "^4.15.0",
     "typescript": "^5.4.0"
   }
