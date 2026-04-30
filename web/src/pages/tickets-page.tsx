@@ -39,11 +39,23 @@ type WorkStream = components['schemas']['WorkStream']
 // Constants & helpers
 // ---------------------------------------------------------------------------
 
-/** All states from the generated OpenAPI TicketState type. */
+/** All v0.2 lifecycle states the backend actually returns, plus legacy aliases
+ *  so tickets stored under old names still match filters. */
 const ALL_STATES: readonly TicketState[] = [
+  // v0.2 canonical states
+  'draft',
+  'specced',
+  'planning',
+  'awaiting_input',
+  'executing',
+  'awaiting_validation',
+  'validated',
+  'deploying',
+  'observing',
+  'closed',
+  // Legacy aliases (backend may still return these from older data)
   'pending',
   'claimed',
-  'executing',
   'awaiting_review',
   'done',
   'blocked',
@@ -70,7 +82,7 @@ const CATEGORY_OPTIONS: { id: CategoryId; label: string }[] = [
   { id: 'blocked', label: 'Blocked / needs input' },
 ]
 
-const DONE_STATES: TicketState[] = ['done']
+const DONE_STATES: TicketState[] = ['closed', 'done']
 
 /** Everything except done states — default "open work" view. */
 const OPEN_STATES = ALL_STATES.filter((s) => !DONE_STATES.includes(s))
@@ -84,15 +96,15 @@ function statesInCategory(cat: CategoryId): readonly TicketState[] | null {
     case 'all':
       return null
     case 'backlog':
-      return ['pending']
+      return ['draft', 'specced', 'pending']
     case 'in_progress':
-      return ['claimed', 'executing']
+      return ['planning', 'executing', 'claimed']
     case 'awaiting_review':
-      return ['awaiting_review']
+      return ['awaiting_validation', 'awaiting_review']
     case 'done':
-      return ['done']
+      return ['closed', 'done']
     case 'blocked':
-      return ['blocked', 'needs_human', 'failed']
+      return ['awaiting_input', 'blocked', 'needs_human', 'failed']
     default:
       return null
   }
@@ -133,10 +145,16 @@ type StateColorKey =
 function stateColorKey(state: string | undefined): StateColorKey {
   if (!state) return 'gray'
   switch (state) {
+    case 'closed':
     case 'done':
+    case 'validated':
       return 'green'
+    case 'awaiting_validation':
     case 'awaiting_review':
+    case 'deploying':
+    case 'observing':
       return 'amber'
+    case 'awaiting_input':
     case 'blocked':
     case 'needs_human':
     case 'failed':
@@ -144,6 +162,10 @@ function stateColorKey(state: string | undefined): StateColorKey {
     case 'executing':
     case 'claimed':
       return 'blue'
+    case 'planning':
+    case 'specced':
+      return 'purple'
+    case 'draft':
     case 'pending':
     default:
       return 'gray'
@@ -175,18 +197,27 @@ const STATE_BADGE_CLASSES: Record<StateColorKey, string> = {
 function StateIcon({ state, className }: { state: string | undefined; className?: string }) {
   const cls = cn('size-4', className)
   switch (state) {
+    case 'draft':
     case 'pending':
+    case 'specced':
       return <Clock className={cls} />
+    case 'planning':
     case 'executing':
     case 'claimed':
       return <Play className={cls} />
+    case 'awaiting_validation':
     case 'awaiting_review':
       return <Eye className={cls} />
+    case 'validated':
+    case 'deploying':
+    case 'observing':
+    case 'closed':
     case 'done':
       return <CheckCircle2 className={cls} />
     case 'blocked':
     case 'failed':
       return <XCircle className={cls} />
+    case 'awaiting_input':
     case 'needs_human':
       return <AlertTriangle className={cls} />
     default:
