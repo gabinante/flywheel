@@ -165,6 +165,87 @@ export function TicketInspector({
         </div>
       </div>
 
+      {/* Human Unblock — shown before objective for prominence */}
+      {isAwaitingInput ? (
+        escalation?.id ? (
+          <Card className="border-red-500/30 bg-red-500/5">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-3">
+                <span className="relative flex size-3 shrink-0">
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-red-400 opacity-75" />
+                  <span className="relative inline-flex size-3 rounded-full bg-red-500" />
+                </span>
+                <CardTitle className="text-sm font-semibold text-red-400">
+                  BLOCKED — Awaiting Your Input
+                </CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              {escalation.question ? (
+                <p className="text-base font-semibold leading-snug text-foreground">
+                  {escalation.question}
+                </p>
+              ) : null}
+
+              {escalation.reason ? (
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  <span className="font-medium text-muted-foreground/80">Context: </span>
+                  {escalation.reason}
+                </p>
+              ) : null}
+
+              {escalationError ? (
+                <p className="text-sm text-destructive">{escalationError}</p>
+              ) : null}
+
+              <textarea
+                className="border-input bg-background min-h-[110px] rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+                value={escalationAnswer}
+                onChange={(e) => setEscalationAnswer(e.target.value)}
+                disabled={escalationBusy}
+                placeholder="Type your answer..."
+              />
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-muted-foreground">
+                  Your answer resumes execution.
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={escalationBusy || !escalationAnswer.trim()}
+                  onClick={() => void resolveEscalation()}
+                >
+                  {escalationBusy ? 'Sending...' : 'Send Answer'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-red-500/30 bg-red-500/5">
+            <CardContent className="flex items-start gap-3 py-4">
+              <span className="relative mt-1 flex size-3 shrink-0">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-red-400 opacity-75" />
+                <span className="relative inline-flex size-3 rounded-full bg-red-500" />
+              </span>
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-semibold text-red-400">
+                  BLOCKED — Awaiting Your Input
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  This ticket is waiting for human input.
+                </p>
+                <Link
+                  to={`/orgs/${orgId}/projects/${projectId}/tickets/${ticketId}`}
+                  className="text-sm text-primary hover:underline mt-1"
+                >
+                  Open full detail
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        )
+      ) : null}
+
       {/* Objective */}
       {obj?.description && (
         <Card>
@@ -185,68 +266,6 @@ export function TicketInspector({
           </CardContent>
         </Card>
       )}
-
-      {/* Human Unblock */}
-      {isAwaitingInput && escalation?.id ? (
-        <Card className="border-red-500/20 bg-red-500/5">
-          <CardHeader>
-            <div className="flex items-center justify-between gap-3">
-              <CardTitle className="text-xs">Human Unblock</CardTitle>
-              <Badge className="border-red-500/30 bg-red-500/15 text-red-400">
-                awaiting input
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {escalation.reason ? (
-              <div className="space-y-1">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-red-400/90">
-                  Reason
-                </p>
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  {escalation.reason}
-                </p>
-              </div>
-            ) : null}
-
-            {escalation.question ? (
-              <div className="space-y-1">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-red-400/90">
-                  Question
-                </p>
-                <p className="text-sm leading-relaxed text-foreground">
-                  {escalation.question}
-                </p>
-              </div>
-            ) : null}
-
-            {escalationError ? (
-              <p className="text-sm text-destructive">{escalationError}</p>
-            ) : null}
-
-            <textarea
-              className="border-input bg-background min-h-[110px] rounded-md border px-3 py-2 text-sm disabled:opacity-50"
-              value={escalationAnswer}
-              onChange={(e) => setEscalationAnswer(e.target.value)}
-              disabled={escalationBusy}
-              placeholder="Provide the missing context, decision, or implementation direction to unblock the worker."
-            />
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
-                Your answer is appended to the ticket context and the worker resumes execution.
-              </p>
-              <Button
-                type="button"
-                size="sm"
-                disabled={escalationBusy || !escalationAnswer.trim()}
-                onClick={() => void resolveEscalation()}
-              >
-                {escalationBusy ? 'Unblocking...' : 'Send unblock answer'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
 
       {/* Inline Review */}
       {isAwaitingReview && (

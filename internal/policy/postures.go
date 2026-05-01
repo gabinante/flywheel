@@ -169,6 +169,18 @@ func PostureProdGate() PostureBundle {
 				Enabled: true,
 			},
 			{
+				ID:          "prodgate-approve-ci",
+				Name:        "prod-approve-with-ci",
+				Description: "Production approval requires CI checks to pass",
+				Predicates: []Predicate{
+					{Field: FieldTransition, Operator: OpIn, Values: []string{"approve"}},
+					{Field: FieldEnvironment, Operator: OpEquals, Values: []string{"production"}},
+				},
+				Action:       ActionApprove,
+				Requirements: []GateRequirement{{Type: RequireGitHubChecks}},
+				Enabled:      true,
+			},
+			{
 				ID:          "prodgate-prod-close-confirm",
 				Name:        "prod-close-typed-confirm",
 				Description: "Production close requires typed confirmation",

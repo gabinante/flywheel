@@ -31,6 +31,12 @@ import type { components } from '@/lib/api/v1'
 
 type Ticket = components['schemas']['Ticket']
 type WorkStream = components['schemas']['WorkStream']
+type WorkflowPhase = components['schemas']['WorkflowPhase']
+
+type WorkflowPositionData = {
+  phases: WorkflowPhase[]
+  currentPhaseId?: string
+}
 type ProjectTicketsState = {
   projectId: string | null
   tickets: Ticket[] | null
@@ -79,8 +85,9 @@ export function TicketDetailPage() {
     projectId: string
     ticketId: string
   }>()
-  const { client } = useAuth()
+  const { client, token } = useAuth()
   const [ticket, setTicket] = useState<Ticket | null | undefined>(undefined)
+  const [workflowPos, setWorkflowPos] = useState<WorkflowPositionData | null>(null)
   const [workStream, setWorkStream] = useState<
     WorkStream | null | undefined
   >(undefined)
@@ -135,6 +142,29 @@ export function TicketDetailPage() {
       cancelled = true
     }
   }, [client, ticketId])
+
+  // Fetch workflow position when ticket has a workflow
+  useEffect(() => {
+    if (!ticket?.workflow_id || !ticketId) {
+      setWorkflowPos(null)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (token) headers['Authorization'] = `Bearer ${token}`
+      const resp = await fetch(`/api/v1/tickets/${ticketId}/workflow`, { headers })
+      if (cancelled || !resp.ok) return
+      const data = await resp.json().catch(() => null)
+      if (cancelled || !data?.position) return
+      const pos = data.position
+      setWorkflowPos({
+        phases: pos.phases ?? [],
+        currentPhaseId: pos.current_phase?.id,
+      })
+    })()
+    return () => { cancelled = true }
+  }, [ticket?.workflow_id, ticket?.workflow_phase, ticketId, token])
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -351,8 +381,21 @@ export function TicketDetailPage() {
         </div>
 
         {/* Lifecycle state visualization */}
-        <TicketLifecycle currentState={ticket.state} />
+        <TicketLifecycle
+          currentState={ticket.state}
+          workflowPhases={workflowPos?.phases}
+          currentPhaseId={workflowPos?.currentPhaseId}
+        />
       </div>
+
+      {/* ── Escalation panel (awaiting_input state) ──────── */}
+      {ticket.state === 'awaiting_input' && ticketId && projectId ? (
+        <TicketEscalationPanel
+          ticketId={ticketId}
+          projectId={projectId}
+          onResolved={() => void reloadTicket()}
+        />
+      ) : null}
 
       {/* ── Objective section ──────────────────────────── */}
       {obj?.description ? (
@@ -512,15 +555,6 @@ export function TicketDetailPage() {
             ) : null}
           </CardContent>
         </Card>
-      ) : null}
-
-      {/* ── Escalation panel (awaiting_input state) ──────── */}
-      {ticket.state === 'awaiting_input' && ticketId && projectId ? (
-        <TicketEscalationPanel
-          ticketId={ticketId}
-          projectId={projectId}
-          onResolved={() => void reloadTicket()}
-        />
       ) : null}
 
       {/* ── Review panel (awaiting_validation state) ───── */}

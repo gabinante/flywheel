@@ -253,3 +253,131 @@ func TestValidPhaseType(t *testing.T) {
 		t.Fatal("expected 'invalid' to be invalid")
 	}
 }
+
+func TestStandardSDLC_HasSixPhases(t *testing.T) {
+	sdlc := StandardSDLC()
+	if len(sdlc.Phases) != 6 {
+		t.Fatalf("expected 6 phases, got %d", len(sdlc.Phases))
+	}
+	expectedIDs := []string{"decompose", "execute", "agentic-review", "quality-gate", "merge", "deploy-dev"}
+	for i, id := range expectedIDs {
+		if sdlc.Phases[i].ID != id {
+			t.Fatalf("phase %d: expected %s, got %s", i, id, sdlc.Phases[i].ID)
+		}
+	}
+	if sdlc.Phases[2].OnFailure != "execute" {
+		t.Fatalf("agentic-review on_failure: expected 'execute', got %q", sdlc.Phases[2].OnFailure)
+	}
+}
+
+func TestAdvancePhase_MaxIterationsExhausted(t *testing.T) {
+	def := &Definition{
+		ID:   "wf-1",
+		Name: "Test",
+		Phases: []Phase{
+			{ID: "execute", Name: "Execute", Type: PhaseAgent},
+			{ID: "review", Name: "Review", Type: PhaseAgent,
+				Config:    map[string]any{"role": "validator", "max_iterations": 3},
+				OnFailure: "execute",
+			},
+			{ID: "gate", Name: "Gate", Type: PhaseGate},
+		},
+	}
+	engine, updater := newTestEngine(def)
+
+	// First failure — count=1, under max=3 → jump to execute
+	next, err := engine.AdvancePhase(context.Background(), "t-1", "wf-1", "review", "failed", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next == nil || next.ID != "execute" {
+		t.Fatalf("first failure: expected jump to execute, got %+v", next)
+	}
+
+	// Second failure — count=2, still under max=3 → jump to execute
+	next, err = engine.AdvancePhase(context.Background(), "t-1", "wf-1", "review", "failed", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next == nil || next.ID != "execute" {
+		t.Fatalf("second failure: expected jump to execute, got %+v", next)
+	}
+
+	// Third failure — count=3 >= max=3, should auto-succeed to gate
+	next, err = engine.AdvancePhase(context.Background(), "t-1", "wf-1", "review", "failed", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next == nil || next.ID != "gate" {
+		t.Fatalf("third failure: expected auto-advance to gate, got %+v", next)
+	}
+	if updater.phases["t-1"] != "gate" {
+		t.Fatalf("expected phase updated to gate, got %s", updater.phases["t-1"])
+	}
+}
+
+func TestAdvancePhase_OnFailureLoop(t *testing.T) {
+	def := &Definition{
+		ID:   "wf-1",
+		Name: "Test",
+		Phases: []Phase{
+			{ID: "execute", Name: "Execute", Type: PhaseAgent},
+			{ID: "review", Name: "Review", Type: PhaseAgent, OnFailure: "execute"},
+			{ID: "deploy", Name: "Deploy", Type: PhaseExternal},
+		},
+	}
+	engine, updater := newTestEngine(def)
+
+	// Fail review → should jump to execute
+	next, err := engine.AdvancePhase(context.Background(), "t-1", "wf-1", "review", "failed", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next == nil || next.ID != "execute" {
+		t.Fatalf("expected jump to execute, got %+v", next)
+	}
+	if updater.phases["t-1"] != "execute" {
+		t.Fatalf("expected phase execute, got %s", updater.phases["t-1"])
+	}
+
+	// Success from execute → should advance to review
+	next, err = engine.AdvancePhase(context.Background(), "t-1", "wf-1", "execute", "success", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next == nil || next.ID != "review" {
+		t.Fatalf("expected advance to review, got %+v", next)
+	}
+}
+
+func TestParseAgentConfig_MaxIterations(t *testing.T) {
+	cfg, err := ParseAgentConfig(map[string]any{
+		"role":           "validator",
+		"max_iterations": 5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Role != "validator" {
+		t.Fatalf("expected role validator, got %s", cfg.Role)
+	}
+	if cfg.MaxIterations != 5 {
+		t.Fatalf("expected max_iterations 5, got %d", cfg.MaxIterations)
+	}
+}
+
+func TestParseGateConfig_Requirements(t *testing.T) {
+	cfg, err := ParseGateConfig(map[string]any{
+		"prompt":       "Check CI",
+		"requirements": []any{"github_checks"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Prompt != "Check CI" {
+		t.Fatalf("expected prompt 'Check CI', got %s", cfg.Prompt)
+	}
+	if len(cfg.Requirements) != 1 || cfg.Requirements[0] != "github_checks" {
+		t.Fatalf("expected requirements [github_checks], got %v", cfg.Requirements)
+	}
+}

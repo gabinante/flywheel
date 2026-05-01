@@ -272,7 +272,7 @@ func (s *Service) subscribeToEvents() {
 	// Work stream completion → low-urgency autonomous action.
 	s.bus.Subscribe(events.EventWorkStreamCompleted, s.handleWorkStreamCompleted)
 
-	// Workflow gate reached → urgent decision (human approval needed).
+	// Workflow gate reached → conditions must be satisfied (CI checks, PR approval, etc.).
 	s.bus.Subscribe(events.EventWorkflowGateReached, s.handleWorkflowGateReached)
 }
 
@@ -518,13 +518,13 @@ func (s *Service) handleWorkflowGateReached(ctx context.Context, event events.Ev
 	if projectID == "" || ticketID == "" {
 		return
 	}
-	body := fmt.Sprintf("Ticket %s reached workflow gate phase '%s' and requires human approval.", ticketID, phaseName)
+	body := fmt.Sprintf("Ticket %s reached workflow gate '%s' — waiting for conditions to be satisfied.", ticketID, phaseName)
 	_ = s.Notify(ctx, &Notification{
 		ProjectID:  projectID,
 		TicketID:   ticketID,
 		Category:   CategoryUrgentDecision,
 		Urgency:    UrgencyMedium,
-		Title:      "Workflow gate requires approval",
+		Title:      "Workflow gate waiting",
 		Body:       body,
 		Classifier: "workflow_gate",
 	})

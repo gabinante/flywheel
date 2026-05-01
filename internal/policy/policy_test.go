@@ -325,6 +325,130 @@ func TestEngineEvaluate_TicketPriority(t *testing.T) {
 	}
 }
 
+// --- Engine Requirements Union Tests ---
+
+func TestEngineEvaluate_RequirementsUnioned(t *testing.T) {
+	engine := NewEngine()
+	rules := []Rule{
+		{
+			ID:           "r1",
+			Name:         "auto-with-ci",
+			Action:       ActionAuto,
+			Requirements: []GateRequirement{{Type: RequireGitHubChecks}},
+			Enabled:      true,
+		},
+		{
+			ID:           "r2",
+			Name:         "auto-with-human",
+			Action:       ActionAuto,
+			Requirements: []GateRequirement{{Type: RequireHumanApproval}},
+			Enabled:      true,
+		},
+	}
+
+	decision := engine.Evaluate(rules, TransitionContext{})
+	if len(decision.Requirements) != 2 {
+		t.Fatalf("expected 2 requirements, got %d", len(decision.Requirements))
+	}
+	types := map[GateRequirementType]bool{}
+	for _, r := range decision.Requirements {
+		types[r.Type] = true
+	}
+	if !types[RequireGitHubChecks] || !types[RequireHumanApproval] {
+		t.Errorf("expected both github_checks and human_approval, got %v", decision.Requirements)
+	}
+}
+
+func TestEngineEvaluate_RequirementsDeduplication(t *testing.T) {
+	engine := NewEngine()
+	rules := []Rule{
+		{
+			ID:           "r1",
+			Name:         "rule-a",
+			Action:       ActionAuto,
+			Requirements: []GateRequirement{{Type: RequireGitHubChecks}},
+			Enabled:      true,
+		},
+		{
+			ID:           "r2",
+			Name:         "rule-b",
+			Action:       ActionNotify,
+			Requirements: []GateRequirement{{Type: RequireGitHubChecks}},
+			Enabled:      true,
+		},
+	}
+
+	decision := engine.Evaluate(rules, TransitionContext{})
+	if len(decision.Requirements) != 1 {
+		t.Fatalf("expected 1 deduplicated requirement, got %d", len(decision.Requirements))
+	}
+	if decision.Requirements[0].Type != RequireGitHubChecks {
+		t.Errorf("expected github_checks, got %s", decision.Requirements[0].Type)
+	}
+}
+
+func TestEngineEvaluate_NoRequirements(t *testing.T) {
+	engine := NewEngine()
+	rules := []Rule{
+		{
+			ID:      "r1",
+			Name:    "auto-all",
+			Action:  ActionAuto,
+			Enabled: true,
+		},
+	}
+
+	decision := engine.Evaluate(rules, TransitionContext{})
+	if len(decision.Requirements) != 0 {
+		t.Errorf("expected no requirements, got %d", len(decision.Requirements))
+	}
+}
+
+func TestEngineEvaluateGates_RequirementsPropagated(t *testing.T) {
+	engine := NewEngine()
+	rules := []Rule{
+		{
+			ID:      "r1",
+			Name:    "auto-all",
+			Action:  ActionAuto,
+			Enabled: true,
+		},
+		{
+			ID:   "r2",
+			Name: "approve-with-ci",
+			Predicates: []Predicate{
+				{Field: FieldTransition, Operator: OpEquals, Values: []string{"approve"}},
+			},
+			Action:       ActionApprove,
+			Requirements: []GateRequirement{{Type: RequireGitHubChecks}},
+			Enabled:      true,
+		},
+	}
+
+	path := []PathStep{
+		{Trigger: "submit", FromState: "executing", ToState: "awaiting_validation"},
+		{Trigger: "approve", FromState: "awaiting_validation", ToState: "validated"},
+	}
+
+	gates := engine.EvaluateGates(rules, TransitionContext{}, path)
+	if len(gates) != 2 {
+		t.Fatalf("expected 2 gates, got %d", len(gates))
+	}
+
+	// submit gate: no requirements (r2 doesn't match)
+	if len(gates[0].Requirements) != 0 {
+		t.Errorf("submit gate: expected 0 requirements, got %d", len(gates[0].Requirements))
+	}
+
+	// approve gate: should have github_checks requirement
+	if len(gates[1].Requirements) != 1 {
+		t.Fatalf("approve gate: expected 1 requirement, got %d", len(gates[1].Requirements))
+	}
+	if gates[1].Requirements[0].Type != RequireGitHubChecks {
+		t.Errorf("approve gate: expected github_checks, got %s", gates[1].Requirements[0].Type)
+	}
+}
+
 // --- EvaluateGates Tests ---
 
 func TestEngineEvaluateGates(t *testing.T) {
@@ -503,6 +627,29 @@ func TestPostureProdGate_ProdApproval(t *testing.T) {
 	}
 }
 
+func TestPostureProdGate_ProdApproveWithCI(t *testing.T) {
+	engine := NewEngine()
+	posture := PostureProdGate()
+
+	decision := engine.Evaluate(posture.Rules, TransitionContext{
+		Environment: "production",
+		Transition:  "approve",
+	})
+	if decision.Action != ActionApprove {
+		t.Errorf("prod-gate prod approve: got %s, want %s", decision.Action, ActionApprove)
+	}
+	// The prod-approve-with-ci rule should add a github_checks requirement.
+	hasCI := false
+	for _, r := range decision.Requirements {
+		if r.Type == RequireGitHubChecks {
+			hasCI = true
+		}
+	}
+	if !hasCI {
+		t.Error("prod-gate prod approve: expected github_checks requirement")
+	}
+}
+
 func TestPostureProdGate_ProdDeployTypedConfirm(t *testing.T) {
 	engine := NewEngine()
 	posture := PostureProdGate()
@@ -642,6 +789,26 @@ func TestRuleValidation(t *testing.T) {
 	bad = Rule{Name: "test", Action: "unknown"}
 	if err := bad.Validate(); err == nil {
 		t.Error("expected error for unknown action")
+	}
+
+	// Valid requirements.
+	withReqs := Rule{
+		Name:         "with-reqs",
+		Action:       ActionAuto,
+		Requirements: []GateRequirement{{Type: RequireGitHubChecks}},
+	}
+	if err := withReqs.Validate(); err != nil {
+		t.Errorf("valid rule with requirements failed: %v", err)
+	}
+
+	// Bad requirement type.
+	badReq := Rule{
+		Name:         "bad-req",
+		Action:       ActionAuto,
+		Requirements: []GateRequirement{{Type: "nonexistent"}},
+	}
+	if err := badReq.Validate(); err == nil {
+		t.Error("expected error for unknown requirement type")
 	}
 }
 

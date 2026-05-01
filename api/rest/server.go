@@ -124,12 +124,20 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		mux.HandleFunc("POST /oauth/register", oauth.oauthRegister)
 	}
 	if cfg.MCPHandler != nil {
-		mux.Handle("/mcp", cfg.MCPHandler)
-		mux.Handle("/mcp/", cfg.MCPHandler)
+		// Streamable HTTP transport uses GET (SSE stream), POST (messages), DELETE (session end).
+		// Explicit methods avoid conflict with the SPA catch-all "GET /".
+		mux.Handle("GET /mcp", cfg.MCPHandler)
+		mux.Handle("POST /mcp", cfg.MCPHandler)
+		mux.Handle("DELETE /mcp", cfg.MCPHandler)
+		mux.Handle("GET /mcp/", cfg.MCPHandler)
+		mux.Handle("POST /mcp/", cfg.MCPHandler)
+		mux.Handle("DELETE /mcp/", cfg.MCPHandler)
 	}
 	if cfg.MCPSSEHandler != nil {
-		mux.Handle("/sse", cfg.MCPSSEHandler)
-		mux.Handle("/sse/", cfg.MCPSSEHandler)
+		// Legacy SSE transport: GET for connection, POST for messages via /sse/ prefix.
+		mux.Handle("GET /sse", cfg.MCPSSEHandler)
+		mux.Handle("GET /sse/", cfg.MCPSSEHandler)
+		mux.Handle("POST /sse/", cfg.MCPSSEHandler)
 	}
 	if cfg.AgentsHandler != nil {
 		agents := cfg.AgentsHandler

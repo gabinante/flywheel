@@ -16,6 +16,10 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/contexts/use-auth'
 import { formatApiError } from '@/lib/api/client'
 import { cn } from '@/lib/utils'
+import {
+  getWorkerOutput,
+  summarizePayload,
+} from '@/lib/trace-utils'
 import type { components } from '@/lib/api/v1'
 
 type TraceStep = components['schemas']['TraceStep']
@@ -55,8 +59,6 @@ const STEP_TYPE_CONFIG: Record<
 /** States where the ticket is still being worked on and trace may grow. */
 const IN_PROGRESS_STATES = new Set(['planning', 'executing'])
 const LIVE_POLL_INTERVAL_MS = 1500
-const WORKER_OUTPUT_KIND = 'worker_output'
-
 function formatTimestamp(iso: string): string {
   try {
     const d = new Date(iso)
@@ -83,53 +85,6 @@ function formatRelativeTime(current: string, previous: string): string | null {
   } catch {
     return null
   }
-}
-
-function getPayloadRecord(step: TraceStep): Record<string, unknown> | null {
-  if (!step.payload || typeof step.payload !== 'object') return null
-  return step.payload as Record<string, unknown>
-}
-
-function getWorkerOutput(step: TraceStep):
-  | { stream: string; text: string }
-  | null {
-  const payload = getPayloadRecord(step)
-  if (!payload || payload.kind !== WORKER_OUTPUT_KIND) {
-    return null
-  }
-  if (typeof payload.text !== 'string') {
-    return null
-  }
-  return {
-    stream: typeof payload.stream === 'string' ? payload.stream : 'stdout',
-    text: payload.text,
-  }
-}
-
-function summarizePayload(step: TraceStep): string | null {
-  const payload = getPayloadRecord(step)
-  if (!payload) return null
-  if (payload.kind === WORKER_OUTPUT_KIND) {
-    return null
-  }
-  if ('message' in payload && typeof payload.message === 'string') {
-    return payload.message
-  }
-  if ('summary' in payload && typeof payload.summary === 'string') {
-    return payload.summary
-  }
-  if ('name' in payload && typeof payload.name === 'string') {
-    return payload.name
-  }
-  if ('text' in payload && typeof payload.text === 'string') {
-    return payload.text
-  }
-  if ('command' in payload && typeof payload.command === 'string') {
-    return payload.command
-  }
-  const keys = Object.keys(payload)
-  if (keys.length === 0) return null
-  return keys.slice(0, 3).join(', ')
 }
 
 function TimelineStep({

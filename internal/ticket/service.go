@@ -18,9 +18,10 @@ type ProjectGetter interface {
 
 // PolicyDecision represents the result of a policy evaluation.
 type PolicyDecision struct {
-	Action       string        // auto, notify, plan-only, open-pr-stop, approve, typed-confirm, human-required
-	MatchedRules []MatchedRule // which rules contributed to this decision
-	Reason       string        // human-readable explanation
+	Action       string              // auto, notify, plan-only, open-pr-stop, approve, typed-confirm, human-required
+	MatchedRules []MatchedRule       // which rules contributed to this decision
+	Reason       string              // human-readable explanation
+	Requirements []PolicyRequirement // automated gate conditions (unioned from matched rules)
 }
 
 // MatchedRule records a single rule that matched during policy evaluation.
@@ -29,6 +30,41 @@ type MatchedRule struct {
 	RuleName string
 	Action   string
 	Reason   string
+}
+
+// PolicyRequirement is a gate condition that must be satisfied (mirrors policy.GateRequirement).
+type PolicyRequirement struct {
+	Type   string         `json:"type"`
+	Config map[string]any `json:"config,omitempty"`
+}
+
+// PolicyRequirementStatus reports whether a single requirement is satisfied.
+type PolicyRequirementStatus struct {
+	Requirement PolicyRequirement `json:"requirement"`
+	Satisfied   bool              `json:"satisfied"`
+	Reason      string            `json:"reason,omitempty"`
+}
+
+// PolicyGateBlockedError is returned when a transition is blocked by unsatisfied gate requirements.
+type PolicyGateBlockedError struct {
+	Action      string
+	Unsatisfied []PolicyRequirementStatus
+}
+
+func (e *PolicyGateBlockedError) Error() string {
+	msg := "policy gate blocked: "
+	for i, u := range e.Unsatisfied {
+		if i > 0 {
+			msg += "; "
+		}
+		msg += u.Requirement.Type + ": " + u.Reason
+	}
+	return msg
+}
+
+// RequirementChecker checks automated gate requirements for a ticket.
+type RequirementChecker interface {
+	CheckRequirements(ctx context.Context, requirements []PolicyRequirement, ticketID, projectID, prURL string) []PolicyRequirementStatus
 }
 
 // PolicyEvaluator evaluates policy rules for a transition. Implemented by policy.Service.
@@ -46,15 +82,16 @@ type WorkflowResolver interface {
 
 // Service provides ticket operations.
 type Service struct {
-	store             TicketStore
-	transitionStore   *TransitionStore
-	sm                *StateMachine
-	bus               events.Bus
-	project           ProjectGetter
-	policyEvaluator   PolicyEvaluator
-	acceptanceRunner  AcceptanceRunner
-	autoApproveOnPass bool
-	workflowResolver  WorkflowResolver
+	store              TicketStore
+	transitionStore    *TransitionStore
+	sm                 *StateMachine
+	bus                events.Bus
+	project            ProjectGetter
+	policyEvaluator    PolicyEvaluator
+	requirementChecker RequirementChecker
+	acceptanceRunner   AcceptanceRunner
+	autoApproveOnPass  bool
+	workflowResolver   WorkflowResolver
 }
 
 // NewService returns a new Service. The store parameter accepts any TicketStore
@@ -86,6 +123,13 @@ func (s *Service) GetTransitions(ctx context.Context, ticketID string) ([]StateT
 // decision in the transition event payload.
 func (s *Service) SetPolicyEvaluator(pe PolicyEvaluator) {
 	s.policyEvaluator = pe
+}
+
+// SetRequirementChecker sets the optional checker for automated gate requirements.
+// When set, TransitionTicket checks requirements before executing and returns
+// PolicyGateBlockedError if any requirement is unsatisfied.
+func (s *Service) SetRequirementChecker(rc RequirementChecker) {
+	s.requirementChecker = rc
 }
 
 // SetAcceptanceRunner sets the optional runner for acceptance_test on submit. When set and the ticket has objective.acceptance_test, SubmitTicket runs it and rejects on failure.
@@ -328,6 +372,24 @@ func (s *Service) TransitionTicket(ctx context.Context, id string, trigger strin
 			return fmt.Errorf("policy evaluation: %w", err)
 		}
 		policyDecision = pd
+	}
+
+	// Check automated gate requirements if checker is configured and decision has requirements.
+	if s.requirementChecker != nil && policyDecision != nil && len(policyDecision.Requirements) > 0 {
+		prURL, _ := t.Outputs["pr_url"].(string)
+		statuses := s.requirementChecker.CheckRequirements(ctx, policyDecision.Requirements, t.ID, t.ProjectID, prURL)
+		var unsatisfied []PolicyRequirementStatus
+		for _, st := range statuses {
+			if !st.Satisfied {
+				unsatisfied = append(unsatisfied, st)
+			}
+		}
+		if len(unsatisfied) > 0 {
+			return &PolicyGateBlockedError{
+				Action:      policyDecision.Action,
+				Unsatisfied: unsatisfied,
+			}
+		}
 	}
 
 	deps, err := ResolveDependencies(s.store, ctx, t)

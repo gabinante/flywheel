@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext,
   closestCenter,
@@ -56,19 +56,57 @@ import {
 type WorkflowDefinition = components['schemas']['WorkflowDefinition']
 type WorkflowPhase = components['schemas']['WorkflowPhase']
 
+type LoopSegment = {
+  sourceIndex: number
+  targetIndex: number
+  sourceId: string
+  targetId: string
+  label: string
+  column: number
+}
+
+function computeLoopSegments(phases: WorkflowPhase[]): LoopSegment[] {
+  const segments: Omit<LoopSegment, 'column'>[] = []
+  for (let i = 0; i < phases.length; i++) {
+    const phase = phases[i]
+    if (!phase.on_failure) continue
+    const targetIdx = phases.findIndex((p) => p.id === phase.on_failure)
+    if (targetIdx === -1 || targetIdx >= i) continue
+    const maxIter = phase.config?.max_iterations
+    segments.push({
+      sourceIndex: i,
+      targetIndex: targetIdx,
+      sourceId: phase.id,
+      targetId: phases[targetIdx].id,
+      label: `on fail${maxIter ? ` (×${maxIter})` : ''}`,
+    })
+  }
+  // Sort by span width (narrower first = closer to cards)
+  segments.sort((a, b) => (a.sourceIndex - a.targetIndex) - (b.sourceIndex - b.targetIndex))
+  return segments.map((s, i) => ({ ...s, column: i }))
+}
+
+
 const STANDARD_SDLC_PHASES: WorkflowPhase[] = [
+  { id: 'decompose', name: 'Decomposition', type: 'agent',
+    description: 'Break the ticket into well-scoped child tickets with clear acceptance criteria. If already well-scoped, proceed directly.',
+    config: { role: 'planner', goal: 'Analyze the ticket scope. If it needs decomposition, create focused child tickets with depends_on edges. If already well-scoped, complete immediately.' } },
   { id: 'execute', name: 'Execution', type: 'agent',
-    description: 'Agent claims, codes, and submits work.',
+    description: 'Implement the work and open a PR.',
     config: { role: 'executor' } },
-  { id: 'review', name: 'Review', type: 'gate',
-    description: 'Human reviews and approves the work.',
-    config: { prompt: 'Review the submitted code and approve or reject.' } },
-  { id: 'deploy', name: 'Deploy', type: 'external',
-    description: 'Deploy the validated changes.',
+  { id: 'agentic-review', name: 'Agentic Code Review', type: 'agent',
+    description: 'Agent reviews code and provides feedback. Loops back to execution on rejection. Auto-passes after max iterations.',
+    config: { role: 'validator', max_iterations: 3 },
+    on_failure: 'execute' },
+  { id: 'quality-gate', name: 'Quality Gate', type: 'gate',
+    description: 'CI tests must pass before merge.',
+    config: { prompt: 'Verify all CI checks pass.', requirements: ['github_checks'] } },
+  { id: 'merge', name: 'Merge', type: 'external',
+    description: 'Merge the approved PR.',
+    config: { mode: 'sync' } },
+  { id: 'deploy-dev', name: 'Deploy to Dev', type: 'external',
+    description: 'Deploy merged changes to the dev environment.',
     config: { mode: 'async' } },
-  { id: 'observe', name: 'Observe', type: 'external',
-    description: 'Post-deploy monitoring window.',
-    config: { mode: 'poll', poll_interval: '30s', poll_timeout: '5m' } },
 ]
 
 const PRIMARY_TYPES: PhaseType[] = ['agent', 'external', 'gate']
@@ -101,6 +139,7 @@ function SortablePhaseNode({
   onToggle,
   onChange,
   onRemove,
+  phaseRef,
 }: {
   phase: WorkflowPhase
   index: number
@@ -110,6 +149,7 @@ function SortablePhaseNode({
   onToggle: () => void
   onChange: (phase: WorkflowPhase) => void
   onRemove: () => void
+  phaseRef: (el: HTMLDivElement | null) => void
 }) {
   const {
     attributes,
@@ -135,12 +175,15 @@ function SortablePhaseNode({
 
   return (
     <div ref={setNodeRef} style={style}>
-      {/* Timeline connector */}
+      {/* Down-arrow connector */}
       {index > 0 ? (
-        <div className="ml-5 h-4 w-px bg-white/10" />
+        <div className="ml-5 flex h-6 flex-col items-center">
+          <div className="w-px flex-1 bg-white/15" />
+          <ChevronDown className="size-3 text-white/20" />
+        </div>
       ) : null}
 
-      <div className={`rounded-xl border ${expanded ? meta.bgColor : 'border-white/10 bg-white/[0.03]'} transition-colors`}>
+      <div ref={phaseRef} className={`rounded-xl border ${expanded ? meta.bgColor : 'border-white/10 bg-white/[0.03]'} transition-colors`}>
         {/* Header row */}
         <div className="flex items-center gap-2 px-3 py-2.5">
           <button
@@ -173,6 +216,25 @@ function SortablePhaseNode({
           <Badge variant="outline" className={`text-[10px] ${meta.color}`}>
             {meta.label}
           </Badge>
+
+          {/* Loop indicator */}
+          {phase.on_failure && !expanded ? (
+            <span
+              className="text-[10px] text-amber-400/70"
+              title={`On failure → ${phase.on_failure}${phase.config?.max_iterations ? ` (max ${phase.config.max_iterations})` : ''}`}
+            >
+              ↺{phase.config?.max_iterations ? ` ×${phase.config.max_iterations}` : ''}
+            </span>
+          ) : null}
+
+          {/* Gate requirements indicator */}
+          {phase.type === 'gate' && !expanded && Array.isArray(phase.config?.requirements) && (phase.config.requirements as string[]).length > 0 ? (
+            <span className="text-[10px] text-purple-400/70" title={(phase.config.requirements as string[]).join(', ')}>
+              {(phase.config.requirements as string[]).map((r) =>
+                r === 'github_checks' ? 'CI' : r === 'human_approval' ? 'Approval' : r,
+              ).join(' + ')}
+            </span>
+          ) : null}
 
           <span className="text-[10px] text-muted-foreground tabular-nums">
             {index + 1}/{totalPhases}
@@ -256,10 +318,6 @@ function SortablePhaseNode({
         ) : null}
       </div>
 
-      {/* Connector after (only if not last) */}
-      {index < totalPhases - 1 && !expanded ? (
-        <div className="ml-5 h-4 w-px bg-white/10" />
-      ) : null}
     </div>
   )
 }
@@ -327,7 +385,7 @@ export function WorkflowTimelineEditor({
         // Fallback: API unavailable or returned no data — show Standard SDLC
         setPhases(STANDARD_SDLC_PHASES)
         setName('Standard SDLC')
-        setDescription('Default workflow: agent executes, human reviews, deploy, observe.')
+        setDescription('Decompose, execute, agentic review loop, quality gate, merge, deploy to dev.')
         setIsSuggested(true)
         setSource(null)
       }
@@ -407,6 +465,63 @@ export function WorkflowTimelineEditor({
   }, [client, projectId, orgId, name, description, phases])
 
   const save = useCallback(() => saveToScope(scope), [saveToScope, scope])
+
+  const loopSegments = useMemo(() => computeLoopSegments(phases), [phases])
+  const timelineRef = useRef<HTMLDivElement>(null)
+  const phaseRefs = useRef<Map<number, HTMLDivElement>>(new Map())
+  const [arcPaths, setArcPaths] = useState<{ d: string; label: string; labelX: number; labelY: number }[]>([])
+
+  // Measure DOM positions and compute SVG arcs after render
+  useEffect(() => {
+    if (loopSegments.length === 0 || !timelineRef.current) {
+      setArcPaths([])
+      return
+    }
+    // Use requestAnimationFrame to ensure layout is settled
+    const id = requestAnimationFrame(() => {
+      const container = timelineRef.current
+      if (!container) return
+      const containerRect = container.getBoundingClientRect()
+      const paths: { d: string; label: string; labelX: number; labelY: number }[] = []
+
+      for (const seg of loopSegments) {
+        const sourceEl = phaseRefs.current.get(seg.sourceIndex)
+        const targetEl = phaseRefs.current.get(seg.targetIndex)
+        if (!sourceEl || !targetEl) continue
+
+        const sourceRect = sourceEl.getBoundingClientRect()
+        const targetRect = targetEl.getBoundingClientRect()
+
+        // Y positions relative to container
+        const sourceY = sourceRect.top + sourceRect.height / 2 - containerRect.top
+        const targetY = targetRect.top + targetRect.height / 2 - containerRect.top
+
+        // X: right edge of container, offset by column
+        const baseX = containerRect.width
+        const arcX = baseX + 12 + seg.column * 28
+        const r = 6 // corner radius
+
+        // Build path: right from source card edge → down to arcX → up to target row → left with arrowhead
+        const d = [
+          `M ${baseX} ${sourceY}`,
+          `L ${arcX - r} ${sourceY}`,
+          `Q ${arcX} ${sourceY} ${arcX} ${sourceY - r}`,
+          `L ${arcX} ${targetY + r}`,
+          `Q ${arcX} ${targetY} ${arcX - r} ${targetY}`,
+          `L ${baseX} ${targetY}`,
+        ].join(' ')
+
+        paths.push({
+          d,
+          label: seg.label,
+          labelX: arcX + 4,
+          labelY: (sourceY + targetY) / 2,
+        })
+      }
+      setArcPaths(paths)
+    })
+    return () => cancelAnimationFrame(id)
+  }, [loopSegments, phases, expandedId])
 
   if (loading) {
     return (
@@ -494,32 +609,69 @@ export function WorkflowTimelineEditor({
         </div>
 
         {/* Timeline */}
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={phases.map((p) => p.id)}
-            strategy={verticalListSortingStrategy}
+        <div className="relative" style={{ marginRight: loopSegments.length > 0 ? `${loopSegments.length * 28 + 20}px` : undefined }}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
           >
-            <div className="space-y-0">
-              {phases.map((phase, index) => (
-                <SortablePhaseNode
-                  key={phase.id}
-                  phase={phase}
-                  index={index}
-                  totalPhases={phases.length}
-                  allPhases={phases}
-                  expanded={expandedId === phase.id}
-                  onToggle={() => setExpandedId(expandedId === phase.id ? null : phase.id)}
-                  onChange={(updated) => updatePhase(index, updated)}
-                  onRemove={() => removePhase(index)}
-                />
+            <SortableContext
+              items={phases.map((p) => p.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-0" ref={timelineRef}>
+                {phases.map((phase, index) => (
+                  <SortablePhaseNode
+                    key={phase.id}
+                    phase={phase}
+                    index={index}
+                    totalPhases={phases.length}
+                    allPhases={phases}
+                    expanded={expandedId === phase.id}
+                    onToggle={() => setExpandedId(expandedId === phase.id ? null : phase.id)}
+                    onChange={(updated) => updatePhase(index, updated)}
+                    onRemove={() => removePhase(index)}
+                    phaseRef={(el) => {
+                      if (el) phaseRefs.current.set(index, el)
+                      else phaseRefs.current.delete(index)
+                    }}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+
+          {/* Loop arc overlay */}
+          {arcPaths.length > 0 ? (
+            <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
+              <defs>
+                <marker id="loop-arrow" markerWidth="6" markerHeight="8" refX="6" refY="4" orient="auto">
+                  <polygon points="0,0 6,4 0,8" fill="rgb(245 158 11 / 0.6)" />
+                </marker>
+              </defs>
+              {arcPaths.map((arc, i) => (
+                <g key={i}>
+                  <path
+                    d={arc.d}
+                    fill="none"
+                    stroke="rgb(245 158 11 / 0.4)"
+                    strokeWidth="1.5"
+                    markerEnd="url(#loop-arrow)"
+                  />
+                  <text
+                    x={arc.labelX}
+                    y={arc.labelY}
+                    fill="rgb(245 158 11 / 0.6)"
+                    fontSize="9"
+                    dominantBaseline="central"
+                  >
+                    {arc.label}
+                  </text>
+                </g>
               ))}
-            </div>
-          </SortableContext>
-        </DndContext>
+            </svg>
+          ) : null}
+        </div>
 
         {/* Add step buttons */}
         <div className="flex items-center gap-2 pt-2">

@@ -2692,6 +2692,29 @@ components:
         outcome_at:
           type: string
           format: date-time
+    GateRequirement:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [github_checks, human_approval]
+        config:
+          type: object
+          additionalProperties: true
+      required:
+        - type
+    GateRequirementStatus:
+      type: object
+      properties:
+        requirement:
+          $ref: '#/components/schemas/GateRequirement'
+        satisfied:
+          type: boolean
+        reason:
+          type: string
+        checked_at:
+          type: string
+          format: date-time
     PolicyChangeEvent:
       type: object
       properties:

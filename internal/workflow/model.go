@@ -8,7 +8,7 @@ type PhaseType string
 const (
 	PhaseAgent    PhaseType = "agent"    // agentic code session with worker role
 	PhaseExternal PhaseType = "external" // HTTP call (sync/async/poll)
-	PhaseGate     PhaseType = "gate"     // human approval checkpoint
+	PhaseGate     PhaseType = "gate"     // condition checkpoint (CI checks, PR approval, human sign-off, etc.)
 
 	// Legacy types — still accepted in validation but UI only shows the three above.
 	PhaseManual    PhaseType = "manual"    // legacy: human must approve → use gate
@@ -60,6 +60,7 @@ type Position struct {
 	CurrentPhase *Phase            `json:"current_phase"`
 	PhaseIndex   int               `json:"phase_index"`
 	TotalPhases  int               `json:"total_phases"`
+	Phases       []Phase           `json:"phases"`
 	History      []PhaseCompletion `json:"history"`
 }
 

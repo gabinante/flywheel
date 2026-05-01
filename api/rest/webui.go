@@ -16,8 +16,8 @@ var webUIReverseProxyFactory = func(target *url.URL) http.Handler {
 // MountWebUI registers routes to serve the Vite/React production build from
 // distDir. When devProxyURL is set, frontend GET requests that are not claimed
 // by more specific API routes are reverse-proxied to the Vite dev server so
-// HMR works through the main Flywheel origin. The SPA uses hash-based routing
-// (/#/...) so REST paths like /orgs are not claimed by the frontend router.
+// HMR works through the main Flywheel origin. The SPA uses browser-history
+// routing, so a catch-all serves index.html for any unmatched GET request.
 func MountWebUI(mux *http.ServeMux, distDir, devProxyURL string) {
 	if devProxyURL != "" {
 		target, err := url.Parse(devProxyURL)
@@ -48,7 +48,14 @@ func MountWebUI(mux *http.ServeMux, distDir, devProxyURL string) {
 	assetsServer := http.FileServer(http.Dir(assetsDir))
 	mux.Handle("GET /assets/", http.StripPrefix("/assets/", assetsServer))
 
-	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+	// SPA fallback: serve index.html for any unmatched GET so the React
+	// router can handle client-side routes like /orgs/:orgId/projects/...
+	// Skip paths with file extensions (missing assets, source maps, etc.).
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		if ext := filepath.Ext(r.URL.Path); ext != "" && ext != ".html" {
+			http.NotFound(w, r)
+			return
+		}
 		http.ServeFile(w, r, index)
 	})
 }

@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -16,7 +15,6 @@ import (
 
 // Load reads configuration from environment with sensible defaults.
 // If a .env file exists in the current directory, it is loaded first (values already in env are not overwritten).
-// In embedded mode, also loads ~/.warrant/data/config.env for bootstrap-generated settings.
 //
 // Environment variables should be populated by varlock before the server starts:
 //
@@ -27,23 +25,8 @@ import (
 // are never logged. See scripts/varlock and .env.schema for details.
 func Load() *Config {
 	loadEnvFile(".env")
-	// In embedded mode, also load the data dir config if it exists.
-	// This allows headless bootstrap to persist config across restarts.
-	if getEnv("STORAGE_MODE", "") == "embedded" {
-		dataDir := getEnv("WARRANT_DATA_DIR", "")
-		if dataDir == "" {
-			if home, err := os.UserHomeDir(); err == nil {
-				dataDir = filepath.Join(home, ".warrant", "data")
-			}
-		}
-		if dataDir != "" {
-			loadEnvFile(filepath.Join(dataDir, "config.env"))
-		}
-	}
 	port := getEnv("PORT", "8080")
 	baseURL := getEnv("BASE_URL", "http://localhost:"+port)
-	storageMode := getEnv("STORAGE_MODE", "")
-	embeddedEnabled := storageMode == "embedded"
 	agentRunner := getEnv("DISPATCH_AGENT_RUNNER", "")
 	dockerEnabled := getEnvBool("DISPATCH_DOCKER_ENABLED", false)
 	if agentRunner == "" {
@@ -85,10 +68,6 @@ func Load() *Config {
 		Notification: NotificationConfig{
 			Enabled:         getEnvBool("NOTIFICATION_ENABLED", true),
 			SlackWebhookURL: getEnv("NOTIFICATION_SLACK_WEBHOOK_URL", ""),
-		},
-		Embedded: EmbeddedConfig{
-			Enabled: embeddedEnabled,
-			DataDir: getEnv("WARRANT_DATA_DIR", ""),
 		},
 		Dispatch: DispatchConfig{
 			Enabled:                     getEnvBool("DISPATCH_ENABLED", false),
@@ -281,7 +260,6 @@ type Config struct {
 	Cost                      CostConfig
 	Mirror                    MirrorConfig
 	Notification              NotificationConfig
-	Embedded                  EmbeddedConfig
 	Findings                  FindingsConfig
 	RunAcceptanceTestOnSubmit bool
 }
@@ -336,13 +314,6 @@ type MirrorConfig struct {
 type NotificationConfig struct {
 	Enabled         bool   // master switch: enable the notification service
 	SlackWebhookURL string // default Slack incoming webhook URL (per-project overrides via preferences)
-}
-
-// EmbeddedConfig controls zero-config embedded mode (SQLite + in-memory Redis).
-// When Enabled is true, Postgres and Redis are not required.
-type EmbeddedConfig struct {
-	Enabled bool   // STORAGE_MODE=embedded or auto-detected
-	DataDir string // directory for SQLite DB and findings (default: ~/.warrant/data)
 }
 
 type DispatchConfig struct {

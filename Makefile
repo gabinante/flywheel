@@ -1,4 +1,4 @@
-.PHONY: run run-mcp run-embedded migrate migrate-create migrate-down test generate docker-up docker-down docker-embedded-up docker-embedded-down build build-flywheel-git build-flywheel-mcp web-build varlock-validate install setup-local
+.PHONY: run run-mcp migrate migrate-create migrate-down test generate docker-up docker-down build build-flywheel-git build-flywheel-mcp web-build varlock-validate install setup-local dev dev-infra dev-stop
 
 VARLOCK := ./scripts/varlock
 
@@ -20,7 +20,7 @@ varlock-validate:
 
 # For Docker Compose, migrations run in the server container. Use this for hosted/non-Docker deploys.
 migrate:
-	migrate -path db/migrations -database "$${DATABASE_URL:-postgres://flywheel:flywheel@localhost:5433/flywheel?sslmode=disable}" up
+	migrate -path db/migrations -database "$${DATABASE_URL:-postgres://warrant:warrant@localhost:5433/warrant?sslmode=disable}" up
 
 build-flywheel-git:
 	go build -o flywheel-git ./cmd/flywheel-git
@@ -35,7 +35,7 @@ migrate-create:
 	echo "Created db/migrations/$${ts}_$${name}.{up,down}.sql"
 
 migrate-down:
-	migrate -path db/migrations -database "$${DATABASE_URL:-postgres://flywheel:flywheel@localhost:5433/flywheel?sslmode=disable}" down 1
+	migrate -path db/migrations -database "$${DATABASE_URL:-postgres://warrant:warrant@localhost:5433/warrant?sslmode=disable}" down 1
 
 test:
 	go test $$(go list ./... | grep -v 'node_modules')
@@ -46,12 +46,6 @@ docker-up:
 docker-down:
 	docker compose down
 
-# ─── Embedded / Zero-Config Mode ─────────────────────────────────────────────
-
-# Run in embedded mode (SQLite, no Postgres/Redis required).
-run-embedded:
-	STORAGE_MODE=embedded go run ./cmd/server
-
 # Build the warrant binary.
 build:
 	go build -o warrant ./cmd/server
@@ -60,12 +54,29 @@ build:
 install: build
 	cp warrant /usr/local/bin/warrant
 
-# Docker: build and run in embedded mode (zero-config).
-docker-embedded-up:
-	docker compose -f docker-compose.embedded.yml up -d
+# ─── Local Development ─────────────────────────────────────────────────────
+# Start dev: infra (Postgres+Redis), migrations, then native Go server.
+# Re-runnable: kills existing server on :8080 before starting fresh.
+dev: dev-infra
+	@lsof -ti:8080 | xargs kill 2>/dev/null || true
+	@sleep 1
+	@$(MAKE) migrate 2>/dev/null || true
+	$(VARLOCK) run -- go run ./cmd/server
 
-docker-embedded-down:
-	docker compose -f docker-compose.embedded.yml down
+# Start only Docker infra and wait for healthy.
+dev-infra:
+	@docker compose up -d postgres redis
+	@printf "Waiting for Postgres..."
+	@until docker compose exec -T postgres pg_isready -U warrant -d warrant >/dev/null 2>&1; do printf "."; sleep 1; done
+	@echo " ready."
+	@printf "Waiting for Redis..."
+	@until docker compose exec -T redis redis-cli ping 2>/dev/null | grep -q PONG; do printf "."; sleep 1; done
+	@echo " ready."
+
+# Stop the dev server without stopping infra.
+dev-stop:
+	@lsof -ti:8080 | xargs kill 2>/dev/null || true
+	@echo "Server stopped."
 
 # ─── Claude Code Local Setup ─────────────────────────────────────────────────
 

@@ -19,13 +19,11 @@ import (
 	"github.com/gabinante/flywheel/events/hooks"
 	"github.com/gabinante/flywheel/internal/agent"
 	"github.com/gabinante/flywheel/internal/auth"
-	"github.com/gabinante/flywheel/internal/bootstrap"
 	"github.com/gabinante/flywheel/internal/catalog"
 	"github.com/gabinante/flywheel/internal/claims"
 	"github.com/gabinante/flywheel/internal/cost"
 	"github.com/gabinante/flywheel/internal/delivery"
 	"github.com/gabinante/flywheel/internal/dispatch"
-	"github.com/gabinante/flywheel/internal/embedded"
 	"github.com/gabinante/flywheel/internal/entity"
 	"github.com/gabinante/flywheel/internal/environment"
 	"github.com/gabinante/flywheel/internal/execution"
@@ -55,9 +53,90 @@ import (
 	"github.com/gabinante/flywheel/internal/workflow"
 	"github.com/gabinante/flywheel/internal/workstream"
 
-	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 )
+
+// ticketPolicyBridge adapts policy.TicketPolicyAdapter to ticket.PolicyEvaluator,
+// converting between the policy and ticket package types to avoid circular imports.
+type ticketPolicyBridge struct {
+	adapter *policy.TicketPolicyAdapter
+}
+
+func (b *ticketPolicyBridge) EvaluateForTicket(ctx context.Context, t *ticket.Ticket, trigger string) (*ticket.PolicyDecision, error) {
+	var services []string
+	if len(t.Context.Constraints) > 0 {
+		services = policy.ExtractServicesFromConstraints(t.Context.Constraints)
+	}
+
+	pd, err := b.adapter.EvaluateForTicketData(ctx, t.ProjectID, "", string(t.Type), int(t.Priority), services, trigger)
+	if err != nil {
+		return nil, err
+	}
+	if pd == nil {
+		return nil, nil
+	}
+
+	result := &ticket.PolicyDecision{
+		Action: string(pd.Action),
+		Reason: "",
+	}
+	if pd.EffectiveRule != nil {
+		result.Reason = pd.EffectiveRule.Reason
+	}
+	for _, mr := range pd.MatchedRules {
+		result.MatchedRules = append(result.MatchedRules, ticket.MatchedRule{
+			RuleID:   mr.RuleID,
+			RuleName: mr.RuleName,
+			Action:   string(mr.Action),
+			Reason:   mr.Reason,
+		})
+	}
+	for _, req := range pd.Requirements {
+		result.Requirements = append(result.Requirements, ticket.PolicyRequirement{
+			Type:   string(req.Type),
+			Config: req.Config,
+		})
+	}
+	return result, nil
+}
+
+// requirementCheckerBridge adapts policy.CheckerRegistry to ticket.RequirementChecker.
+type requirementCheckerBridge struct {
+	registry *policy.CheckerRegistry
+}
+
+func (b *requirementCheckerBridge) CheckRequirements(ctx context.Context, requirements []ticket.PolicyRequirement, ticketID, projectID, prURL string) []ticket.PolicyRequirementStatus {
+	// Convert ticket requirements to policy requirements.
+	policyReqs := make([]policy.GateRequirement, len(requirements))
+	for i, r := range requirements {
+		policyReqs[i] = policy.GateRequirement{
+			Type:   policy.GateRequirementType(r.Type),
+			Config: r.Config,
+		}
+	}
+
+	rctx := policy.CheckContext{
+		TicketID:  ticketID,
+		ProjectID: projectID,
+		PRURL:     prURL,
+	}
+
+	statuses := b.registry.CheckAll(ctx, policyReqs, rctx)
+
+	// Convert back to ticket types.
+	result := make([]ticket.PolicyRequirementStatus, len(statuses))
+	for i, s := range statuses {
+		result[i] = ticket.PolicyRequirementStatus{
+			Requirement: ticket.PolicyRequirement{
+				Type:   string(s.Requirement.Type),
+				Config: s.Requirement.Config,
+			},
+			Satisfied: s.Satisfied,
+			Reason:    s.Reason,
+		}
+	}
+	return result
+}
 
 // leaseValidatorAdapter adapts queue.LeaseStore to execution.LeaseValidator.
 type leaseValidatorAdapter struct {
@@ -79,16 +158,17 @@ func main() {
 
 	cfg := config.Load()
 	ctx := context.Background()
-
-	if cfg.Embedded.Enabled {
-		runEmbedded(ctx, cfg)
-		return
-	}
 	runPostgres(ctx, cfg)
 }
 
 // runPostgres is the original Postgres+Redis startup path.
 func runPostgres(ctx context.Context, cfg *config.Config) {
+	// Create a cancellable context for all background services. Cancelling this
+	// during shutdown ensures goroutines stop before the pool and Redis are closed,
+	// preventing "closed pool" errors.
+	ctx, cancelServices := context.WithCancel(ctx)
+	defer cancelServices()
+
 	pool, err := db.NewPool(ctx, cfg.DB.URL)
 	if err != nil {
 		slog.Error("db init failed", "error", err)
@@ -136,8 +216,15 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	postureStore := policy.NewPostgresStore(pool)
 	postureSvc := policy.NewPostureService(postureStore, bus)
 	policyAdapter := policy.NewTicketPolicyAdapter(postureSvc)
-	_ = policyAdapter // adapter available for ticket service integration
-	_ = postureSvc    // posture service available for API handlers
+	ticketSvc.SetPolicyEvaluator(&ticketPolicyBridge{adapter: policyAdapter})
+
+	// Gate requirement checkers: automated conditions that must pass for transitions.
+	checkerRegistry := policy.NewCheckerRegistry()
+	checkerRegistry.Register(policy.RequireGitHubChecks, &policy.GitHubChecksChecker{})
+	checkerRegistry.Register(policy.RequireHumanApproval, &policy.HumanApprovalChecker{})
+	ticketSvc.SetRequirementChecker(&requirementCheckerBridge{registry: checkerRegistry})
+
+	_ = postureSvc // posture service available for API handlers
 	slog.Info("policy config loaded", "default_posture", cfg.Policy.DefaultPosture, "auto_apply", cfg.Policy.AutoApplyDefault)
 
 	redisOpts, err := redis.ParseURL(cfg.Redis.URL)
@@ -488,6 +575,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		dispatcher.SetTicketTransitioner(ticketSvc)
 		dispatcher.SetWorkflowEngine(workflowEngine)
 		dispatcher.SetExternalExecutor(externalExecutor)
+		dispatcher.SetCheckerRegistry(checkerRegistry)
 		dispatcher.SetOutputPatcher(ticketStore)
 		// Wire worktree cleanup for rollback when dispatcher manages worktrees.
 		rollbackSvc.SetWorktreeRemover(&dispatch.WorktreeManager{
@@ -575,300 +663,13 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		WebDevProxyURL: cfg.Server.WebDevProxyURL,
 	})
 
-	serve(ctx, cfg, router, dispatcher, bus)
-}
-
-// runEmbedded starts the server in embedded mode: SQLite for storage, miniredis
-// for leases, no external dependencies required. If this is the first run, it
-// launches the interactive bootstrap wizard.
-func runEmbedded(ctx context.Context, cfg *config.Config) {
-	slog.Info("starting in embedded mode (SQLite + in-memory Redis)")
-
-	// Also load config from data dir if it exists.
-	dataDir := cfg.Embedded.DataDir
-	if dataDir == "" {
-		dataDir = embedded.DefaultDataDir()
-	}
-
-	// Open SQLite database.
-	sqliteDB, err := embedded.OpenDB("")
-	if err != nil {
-		slog.Error("embedded db init failed", "error", err)
-		os.Exit(1)
-	}
-	defer sqliteDB.Close()
-
-	// Start miniredis for lease storage (in-memory, no persistence needed).
-	mr, err := miniredis.Run()
-	if err != nil {
-		slog.Error("miniredis start failed", "error", err)
-		os.Exit(1)
-	}
-	defer mr.Close()
-	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer redisClient.Close()
-
-	bus := events.NewInProcessBus()
-
-	// Create embedded stores.
-	orgSt := embedded.NewOrgStore(sqliteDB)
-	orgSvc := org.NewService(orgSt)
-	projectSt := embedded.NewProjectStore(sqliteDB)
-	projectSvc := project.NewService(projectSt)
-	orchestratorSt := embedded.NewOrchestratorStore(sqliteDB)
-	workStreamSt := embedded.NewWorkStreamStore(sqliteDB)
-	workStreamSvc := workstream.NewService(workStreamSt)
-	ticketSt := embedded.NewTicketStore(sqliteDB)
-	ticketSvc := ticket.NewService(ticketSt, bus, projectSvc)
-
-	leaseTTL := time.Duration(cfg.Queue.LeaseTTLMinutes) * time.Minute
-	queueRedis := queue.NewRedisStore(redisClient, leaseTTL)
-	queueSvc := queue.NewService(ticketSvc, ticketSvc, queueRedis)
-	scheduler := queue.NewScheduler(queueRedis, ticketSvc, ticketSvc, bus, 30*time.Second)
-	scheduler.EnableStalenessSweep(ticketSvc, 0) // default: 2x lease TTL
-	scheduler.SetFailureSummarizer(ticketSvc)
-	go scheduler.Run(ctx)
-
-	leaseValidator := &leaseValidatorAdapter{leases: queueRedis}
-	agentSt := embedded.NewAgentStore(sqliteDB)
-	agentSvc := agent.NewService(agentSt)
-	execSt := embedded.NewExecutionStepStore(sqliteDB)
-	execSvc := execution.NewService(execSt, leaseValidator)
-	reviewSt := embedded.NewReviewStore(sqliteDB)
-	reviewSvc := review.NewService(reviewSt, ticketSvc, bus)
-	envSt := embedded.NewEnvironmentStore(sqliteDB)
-	envSvc := environment.NewService(envSt, bus)
-	pillarSt := embedded.NewPillarStore(sqliteDB)
-	pillarSvc := pillar.NewService(pillarSt)
-	costStore := cost.NewMemStore()
-	costCfg := cost.DefaultConfig()
-	costSvc := cost.NewService(costStore, costCfg, nil, nil)
-
-	// Hooks: change event publication library + gap detection (spec v0.2 §2.4).
-	hooksClient := hooks.NewClient(bus)
-	gapDetector := hooks.NewGapDetector(bus, hooksClient)
-	go gapDetector.Start(ctx)
-
-	// Catalog service (Layer 14 project map).
-	catalogSt := catalog.NewSQLiteStore(sqliteDB)
-	catalogSvc := catalog.NewService(catalogSt)
-	catalogScanner := catalog.NewScanner()
-
-	// Delivery service for embedded mode.
-	deliverySvcEmbed := delivery.NewService(projectSvc, envSvc, catalogSvc, nil)
-	deliverySvcEmbed.SetFlyIOFallback(os.Getenv("FLY_API_TOKEN"), os.Getenv("FLY_API_BASE_URL"))
-
-	// Rollback service for embedded mode.
-	rollbackSvcEmbed := rollback.NewService(ticketSvc, ticketSvc, bus)
-	rollbackSvcEmbed.SetLeaseRemover(queueSvc)
-
-	// Run first-run wizard if no data exists yet.
-	firstRun := bootstrap.IsFirstRun(dataDir)
-	if firstRun {
-		if bootstrap.IsTTY() {
-			slog.Info("first run detected, launching interactive setup wizard")
-			_, wizardErr := bootstrap.RunWizard(ctx, orgSvc, projectSvc, agentSvc)
-			if wizardErr != nil {
-				slog.Error("wizard failed", "error", wizardErr)
-				os.Exit(1)
-			}
-		} else {
-			slog.Info("first run detected, running headless bootstrap (no TTY)")
-			headlessCfg := bootstrap.HeadlessConfigFromEnv()
-			_, wizardErr := bootstrap.RunHeadless(ctx, headlessCfg, orgSvc, projectSvc, agentSvc)
-			if wizardErr != nil {
-				slog.Error("headless bootstrap failed", "error", wizardErr)
-				os.Exit(1)
-			}
-		}
-	}
-
-	// Ensure JWT secret exists (auto-generate if not set).
-	jwtSecret := cfg.Auth.JWTSecret
-	if jwtSecret == "" {
-		jwtSecret = autoGenerateSecret()
-		slog.Info("auto-generated JWT secret for embedded mode")
-	}
-
-	strictServer := &rest.StrictServer{
-		OrgSvc:        orgSvc,
-		ProjectSvc:    projectSvc,
-		WorkStreamSvc: workStreamSvc,
-		TicketSvc:     ticketSvc,
-		QueueSvc:      queueSvc,
-		TraceSvc:      execSvc,
-		ReviewSvc:     reviewSvc,
-		EnvSvc:        envSvc,
-		AgentStore:    agentSt,
-		CostSvc:       costSvc,
-	}
-
-	// Code intelligence: bundled default for embedded mode.
-	embeddedCodeIntel := mcp.NewTreeSitterCodeIntel()
-
-	// Findings layer for embedded mode: always in-memory (no Weaviate dependency).
-	var embeddedFindingsProvider mcp.FindingsProvider
-	if cfg.Findings.WeaviateURL != "" {
-		embeddedFindingsProvider = mcp.NewWeaviateFindingsStore(mcp.WeaviateFindingsConfig{
-			URL:        cfg.Findings.WeaviateURL,
-			APIKey:     cfg.Findings.WeaviateAPIKey,
-			Vectorizer: cfg.Findings.WeaviateVectorizer,
-		})
-	} else {
-		embeddedFindingsProvider = mcp.NewMemoryFindingsStore()
-	}
-
-	// Coordinator learning loop for embedded mode.
-	_ = mcp.NewCoordinatorFeedbackSubscriber(bus, embeddedFindingsProvider, ticketSvc)
-	slog.Info("coordinator-feedback: learning loop subscriber active (embedded)")
-
-	// In embedded mode, set up MCP with API key auth (no OAuth required).
-	authMiddleware := rest.AuthMiddleware(jwtSecret, agentSvc)
-	mcpSrv, err := mcp.NewServer(&mcp.Backend{
-		Project:        projectSvc,
-		WorkStream:     workStreamSvc,
-		Ticket:         ticketSvc,
-		Queue:          queueSvc,
-		Trace:          execSvc,
-		Review:         reviewSvc,
-		Org:            orgSvc,
-		AgentStore:     agentSt,
-		CodeIntel:      embeddedCodeIntel,
-		Findings:       embeddedFindingsProvider,
-		Catalog:        catalogSvc,
-		CatalogScanner: catalogScanner,
-		Pillar:         pillarSvc,
-		Rollback:       rollbackSvcEmbed,
-	})
-	if err != nil {
-		slog.Error("mcp server init failed", "error", err)
-		os.Exit(1)
-	}
-	streamable := mcp.NewStreamableHTTPHandler(mcpSrv)
-	mcpHandler := &rest.MCPHTTPHandler{
-		Handler:   streamable,
-		BaseURL:   cfg.Auth.BaseURL,
-		JWTSecret: jwtSecret,
-		AgentSvc:  agentSvc,
-	}
-	sseHandler := mcp.NewSSEHandler(mcpSrv)
-	mcpSSEHandler := &rest.MCPHTTPHandler{
-		Handler:   sseHandler,
-		BaseURL:   cfg.Auth.BaseURL,
-		JWTSecret: jwtSecret,
-		AgentSvc:  agentSvc,
-	}
-
-	// Foundational streams (in-memory store for embedded mode).
-	streamMemStore := stream.NewMemoryStore()
-	streamSvc := stream.NewService(streamMemStore, bus)
-	streamSvc.SubscribeToTicketEvents(func(ticketID string) string {
-		t, err := ticketSvc.GetTicket(ctx, ticketID)
-		if err != nil || t == nil {
-			return ""
-		}
-		return t.ProjectID
-	})
-
-	repoDir, _ := os.Getwd()
-	var orchestratorWorker dispatch.Worker
-	if cfg.Orchestrator.Enabled {
-		orchestratorWorker = dispatch.NewWorker(dispatch.Config{
-			ClaudePath:           cfg.Dispatch.ClaudePath,
-			AgentRunner:          cfg.Orchestrator.AgentRunner,
-			AgentDriver:          cfg.Orchestrator.AgentDriver,
-			AgentCLIPath:         cfg.Orchestrator.AgentCLIPath,
-			AgentModel:           cfg.Orchestrator.AgentModel,
-			AgentReasoningEffort: cfg.Orchestrator.AgentReasoningEffort,
-			AgentAPIBaseURL:      cfg.Orchestrator.AgentAPIBaseURL,
-			APIKey:               cfg.Dispatch.APIKey,
-			AgentAPIKey:          cfg.Orchestrator.AgentAPIKey,
-			RepoDir:              repoDir,
-			CostSvc:              costSvc,
-		})
-	}
-	orchestratorSvc := orchestrator.NewService(orchestratorSt, projectSvc, orchestratorWorker, orchestrator.Config{
-		Enabled:      cfg.Orchestrator.Enabled,
-		RepoDir:      repoDir,
-		ServerURL:    cfg.Auth.BaseURL,
-		AgentID:      "command-center-orchestrator",
-		HistoryLimit: cfg.Orchestrator.HistoryLimit,
-		CostSvc:      costSvc,
-		AgentRunner:  cfg.Orchestrator.AgentRunner,
-		AgentDriver:  cfg.Orchestrator.AgentDriver,
-		AgentModel:   cfg.Orchestrator.AgentModel,
-		WorkerConfig: dispatch.Config{
-			ClaudePath:           cfg.Dispatch.ClaudePath,
-			AgentRunner:          cfg.Orchestrator.AgentRunner,
-			AgentDriver:          cfg.Orchestrator.AgentDriver,
-			AgentCLIPath:         cfg.Orchestrator.AgentCLIPath,
-			AgentModel:           cfg.Orchestrator.AgentModel,
-			AgentReasoningEffort: cfg.Orchestrator.AgentReasoningEffort,
-			AgentAPIBaseURL:      cfg.Orchestrator.AgentAPIBaseURL,
-			APIKey:               cfg.Dispatch.APIKey,
-			AgentAPIKey:          cfg.Orchestrator.AgentAPIKey,
-			RepoDir:              repoDir,
-			CostSvc:              costSvc,
-		},
-	})
-
-	// Progress monitor for embedded mode.
-	_ = progress.NewMonitor(bus, orchestratorSvc, ticketSvc)
-	slog.Info("progress: monitor started (embedded)")
-
-	router := rest.NewRouter(rest.RouterConfig{
-		StrictServer:   strictServer,
-		AuthMiddleware: authMiddleware,
-		MCPHandler:     mcpHandler,
-		MCPSSEHandler:  mcpSSEHandler,
-		AgentsHandler:  &rest.AgentsHandler{AgentSvc: agentSvc},
-		EnvironmentsHandler: &rest.EnvironmentsHandler{
-			EnvSvc:     envSvc,
-			ProjectSvc: projectSvc,
-			OrgSvc:     orgSvc,
-			AgentStore: agentSt,
-		},
-		OrchestratorHandler: &rest.OrchestratorHandler{
-			Service:    orchestratorSvc,
-			ProjectSvc: projectSvc,
-			OrgSvc:     orgSvc,
-			AgentStore: agentSt,
-		},
-		UsageHandler: &rest.UsageHandler{
-			CostSvc:    costSvc,
-			ProjectSvc: projectSvc,
-			OrgSvc:     orgSvc,
-			AgentStore: agentSt,
-		},
-		StreamsHandler: &rest.StreamsHandler{Svc: streamSvc},
-		HooksHandler:   &rest.HooksHandler{Client: hooksClient},
-		CatalogHandler: &rest.CatalogHandler{Svc: catalogSvc, Scanner: catalogScanner},
-		PillarsHandler: &rest.PillarsHandler{PillarSvc: pillarSvc},
-		DeliveryHandler: &rest.DeliveryHandler{
-			DeliverySvc: deliverySvcEmbed,
-			ProjectSvc:  projectSvc,
-			OrgSvc:      orgSvc,
-			AgentStore:  agentSt,
-		},
-		InvitesHandler: &rest.InvitesHandler{
-			OrgSvc:     orgSvc,
-			AgentStore: agentSt,
-		},
-		WorkerConfigHandler: &rest.WorkerConfigHandler{
-			BaseURL: cfg.Auth.BaseURL,
-		},
-		HealthCheckers: []rest.HealthChecker{
-			&rest.RedisHealthChecker{Client: redisClient},
-		},
-		WebDist:        cfg.Server.WebDist,
-		WebDevProxyURL: cfg.Server.WebDevProxyURL,
-	})
-
-	serve(ctx, cfg, router, nil, bus)
+	serve(ctx, cfg, router, dispatcher, bus, cancelServices)
 }
 
 // serve starts the HTTP server and blocks until SIGINT/SIGTERM.
-func serve(ctx context.Context, cfg *config.Config, router http.Handler, dispatcher *dispatch.Dispatcher, bus events.DurableEventBus) {
+// cancelServices cancels the context shared by background goroutines (scheduler,
+// gap detector, stream bridge, etc.) so they stop before the pool is closed.
+func serve(_ context.Context, cfg *config.Config, router http.Handler, dispatcher *dispatch.Dispatcher, bus events.DurableEventBus, cancelServices context.CancelFunc) {
 	srv := &http.Server{
 		Addr:              ":" + cfg.Server.Port,
 		Handler:           router,
@@ -889,10 +690,18 @@ func serve(ctx context.Context, cfg *config.Config, router http.Handler, dispatc
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
+	// Cancel the background services context first so goroutines using the pool
+	// stop before we close the pool/redis connections. This prevents "closed pool" errors.
+	cancelServices()
+
 	if dispatcher != nil {
 		dispatcher.Stop()
 	}
 	_ = bus.Stop()
+
+	// Brief pause for background goroutines (scheduler, gap detector) to observe
+	// the cancelled context and exit before pool.Close() runs.
+	time.Sleep(100 * time.Millisecond)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {

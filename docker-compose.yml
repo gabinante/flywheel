@@ -1,14 +1,18 @@
+name: warrant
+
 services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: flywheel
-      POSTGRES_PASSWORD: flywheel
-      POSTGRES_DB: flywheel
+      POSTGRES_USER: warrant
+      POSTGRES_PASSWORD: warrant
+      POSTGRES_DB: warrant
     ports:
       - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U flywheel -d flywheel"]
+      test: ["CMD-SHELL", "pg_isready -U warrant -d warrant"]
       interval: 2s
       timeout: 5s
       retries: 5
@@ -23,8 +27,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # Browser GitHub OAuth: set BASE_URL=http://localhost:8080 in .env so redirects match this port mapping (see .env.example).
-  # Secrets are loaded via varlock inside the container (validates against .env.schema).
   server:
     build: .
     ports:
@@ -33,11 +35,13 @@ services:
       - .env
     environment:
       PORT: "8080"
-      DATABASE_URL: postgres://flywheel:flywheel@postgres:5432/flywheel?sslmode=disable
-      REDIS_URL: redis://redis:6379/0
-      VARLOCK_SCHEMA_FILE: /app/.env.schema
+      DATABASE_URL: postgres://warrant:warrant@postgres:5432/warrant?sslmode=disable
+      REDIS_URL: redis://redis:6379/1
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+volumes:
+  pgdata:

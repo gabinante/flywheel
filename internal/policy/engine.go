@@ -55,10 +55,14 @@ func (e *Engine) Evaluate(rules []Rule, tctx TransitionContext) PolicyDecision {
 		}
 	}
 
+	// Union requirements from all matched rules (deduplicated by type).
+	requirements := e.unionRequirements(rules, matched)
+
 	return PolicyDecision{
 		Action:        mostRestrictive.Action,
 		MatchedRules:  matched,
 		EffectiveRule: &mostRestrictive,
+		Requirements:  requirements,
 	}
 }
 
@@ -74,11 +78,12 @@ func (e *Engine) EvaluateGates(rules []Rule, baseCtx TransitionContext, happyPat
 		decision := e.Evaluate(rules, stepCtx)
 
 		gates = append(gates, PolicyGate{
-			Transition: step.Trigger,
-			FromState:  step.FromState,
-			ToState:    step.ToState,
-			Action:     decision.Action,
-			Rules:      decision.MatchedRules,
+			Transition:   step.Trigger,
+			FromState:    step.FromState,
+			ToState:      step.ToState,
+			Action:       decision.Action,
+			Rules:        decision.MatchedRules,
+			Requirements: decision.Requirements,
 		})
 	}
 
@@ -90,6 +95,29 @@ type PathStep struct {
 	Trigger   string
 	FromState string
 	ToState   string
+}
+
+// unionRequirements collects and deduplicates requirements from all matched rules.
+func (e *Engine) unionRequirements(rules []Rule, matched []MatchedRule) []GateRequirement {
+	matchedIDs := make(map[string]bool, len(matched))
+	for _, m := range matched {
+		matchedIDs[m.RuleID] = true
+	}
+
+	seen := make(map[GateRequirementType]bool)
+	var result []GateRequirement
+	for _, rule := range rules {
+		if !matchedIDs[rule.ID] {
+			continue
+		}
+		for _, req := range rule.Requirements {
+			if !seen[req.Type] {
+				seen[req.Type] = true
+				result = append(result, req)
+			}
+		}
+	}
+	return result
 }
 
 // ruleMatches returns true if all predicates on the rule match the transition context.

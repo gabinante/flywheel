@@ -42,6 +42,29 @@ func TestMountWebUI_servesIndexAndAssets(t *testing.T) {
 		}
 	})
 
+	t.Run("spa fallback on deep path", func(t *testing.T) {
+		t.Parallel()
+		req := httptest.NewRequest(http.MethodGet, "/orgs/abc/projects/def/infrastructure", nil)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status %d", rec.Code)
+		}
+		if body := rec.Body.String(); body == "" || body[0] != '<' {
+			t.Fatalf("expected index.html, got %q", body)
+		}
+	})
+
+	t.Run("missing asset returns 404", func(t *testing.T) {
+		t.Parallel()
+		req := httptest.NewRequest(http.MethodGet, "/missing-file.js", nil)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("expected 404 for missing .js, got %d", rec.Code)
+		}
+	})
+
 	t.Run("assets", func(t *testing.T) {
 		t.Parallel()
 		req := httptest.NewRequest(http.MethodGet, "/assets/x.txt", nil)

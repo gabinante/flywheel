@@ -309,6 +309,149 @@ func TestCreateTicket_PublishesRichCreatedEvent(t *testing.T) {
 	}
 }
 
+// --- Policy Gate Blocked Tests ---
+
+type mockRequirementChecker struct {
+	statuses []PolicyRequirementStatus
+}
+
+func (m *mockRequirementChecker) CheckRequirements(_ context.Context, _ []PolicyRequirement, _, _, _ string) []PolicyRequirementStatus {
+	return m.statuses
+}
+
+type mockPolicyEvaluator struct {
+	decision *PolicyDecision
+}
+
+func (m *mockPolicyEvaluator) EvaluateForTicket(_ context.Context, _ *Ticket, _ string) (*PolicyDecision, error) {
+	return m.decision, nil
+}
+
+func TestTransitionTicket_PolicyGateBlocked(t *testing.T) {
+	store := newInMemoryStore()
+	svc := newTestService(store)
+	ctx := context.Background()
+
+	// Create and claim a ticket to get it to planning state.
+	tk, err := svc.CreateTicket(ctx, "proj-1", "test", TypeTask, P2, "agent-1", nil, "", Objective{SuccessCriteria: []string{"done"}}, TicketContext{}, "")
+	if err != nil {
+		t.Fatalf("CreateTicket: %v", err)
+	}
+
+	// Set up policy evaluator that returns requirements.
+	svc.SetPolicyEvaluator(&mockPolicyEvaluator{
+		decision: &PolicyDecision{
+			Action: "approve",
+			Requirements: []PolicyRequirement{
+				{Type: "github_checks"},
+			},
+		},
+	})
+
+	// Set up requirement checker that reports unsatisfied.
+	svc.SetRequirementChecker(&mockRequirementChecker{
+		statuses: []PolicyRequirementStatus{
+			{
+				Requirement: PolicyRequirement{Type: "github_checks"},
+				Satisfied:   false,
+				Reason:      "CI checks failed",
+			},
+		},
+	})
+
+	// Attempt to claim (should be blocked by gate).
+	err = svc.TransitionTicket(ctx, tk.ID, TriggerClaim, Actor{ID: "agent-1", Type: ActorAgent}, map[string]any{"agent_id": "agent-1"})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	blocked, ok := err.(*PolicyGateBlockedError)
+	if !ok {
+		t.Fatalf("expected PolicyGateBlockedError, got %T: %v", err, err)
+	}
+	if len(blocked.Unsatisfied) != 1 {
+		t.Fatalf("expected 1 unsatisfied, got %d", len(blocked.Unsatisfied))
+	}
+	if blocked.Unsatisfied[0].Requirement.Type != "github_checks" {
+		t.Errorf("expected github_checks, got %s", blocked.Unsatisfied[0].Requirement.Type)
+	}
+}
+
+func TestTransitionTicket_PolicyGateSatisfied(t *testing.T) {
+	store := newInMemoryStore()
+	svc := newTestService(store)
+	ctx := context.Background()
+
+	tk, err := svc.CreateTicket(ctx, "proj-1", "test", TypeTask, P2, "agent-1", nil, "", Objective{SuccessCriteria: []string{"done"}}, TicketContext{}, "")
+	if err != nil {
+		t.Fatalf("CreateTicket: %v", err)
+	}
+
+	// Set up policy with requirements that are all satisfied.
+	svc.SetPolicyEvaluator(&mockPolicyEvaluator{
+		decision: &PolicyDecision{
+			Action: "auto",
+			Requirements: []PolicyRequirement{
+				{Type: "github_checks"},
+			},
+		},
+	})
+	svc.SetRequirementChecker(&mockRequirementChecker{
+		statuses: []PolicyRequirementStatus{
+			{
+				Requirement: PolicyRequirement{Type: "github_checks"},
+				Satisfied:   true,
+				Reason:      "all checks passed",
+			},
+		},
+	})
+
+	// Should succeed — all requirements satisfied.
+	err = svc.TransitionTicket(ctx, tk.ID, TriggerClaim, Actor{ID: "agent-1", Type: ActorAgent}, map[string]any{"agent_id": "agent-1"})
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+}
+
+func TestTransitionTicket_NoRequirements(t *testing.T) {
+	store := newInMemoryStore()
+	svc := newTestService(store)
+	ctx := context.Background()
+
+	tk, err := svc.CreateTicket(ctx, "proj-1", "test", TypeTask, P2, "agent-1", nil, "", Objective{SuccessCriteria: []string{"done"}}, TicketContext{}, "")
+	if err != nil {
+		t.Fatalf("CreateTicket: %v", err)
+	}
+
+	// Policy returns no requirements.
+	svc.SetPolicyEvaluator(&mockPolicyEvaluator{
+		decision: &PolicyDecision{
+			Action: "auto",
+		},
+	})
+	svc.SetRequirementChecker(&mockRequirementChecker{})
+
+	// Should succeed without checking requirements.
+	err = svc.TransitionTicket(ctx, tk.ID, TriggerClaim, Actor{ID: "agent-1", Type: ActorAgent}, map[string]any{"agent_id": "agent-1"})
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+}
+
+func TestPolicyGateBlockedError_Message(t *testing.T) {
+	err := &PolicyGateBlockedError{
+		Action: "approve",
+		Unsatisfied: []PolicyRequirementStatus{
+			{Requirement: PolicyRequirement{Type: "github_checks"}, Reason: "CI failed"},
+			{Requirement: PolicyRequirement{Type: "human_approval"}, Reason: "no review"},
+		},
+	}
+	msg := err.Error()
+	if msg != "policy gate blocked: github_checks: CI failed; human_approval: no review" {
+		t.Errorf("unexpected error message: %s", msg)
+	}
+}
+
 func TestPatchTicketMetadata_PublishesUpdatedEvent(t *testing.T) {
 	store := newInMemoryStore()
 	bus := &recordingBus{}

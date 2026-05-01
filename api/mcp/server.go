@@ -69,7 +69,9 @@ func NewServer(b *Backend) (*mcp.Server, error) {
 func NewStreamableHTTPHandler(server *mcp.Server) http.Handler {
 	return mcp.NewStreamableHTTPHandler(func(req *http.Request) *mcp.Server {
 		return server
-	}, nil)
+	}, &mcp.StreamableHTTPOptions{
+		Stateless: true,
+	})
 }
 
 // NewSSEHandler returns an http.Handler that serves MCP over SSE (legacy transport).

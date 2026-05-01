@@ -131,6 +131,17 @@ function WorkflowLifecycle({
                 )}
               />
               {phase.name}
+              {phase.on_failure && (
+                <span
+                  className={cn(
+                    'text-[9px]',
+                    isActive ? 'text-amber-400/80' : 'text-muted-foreground/50',
+                  )}
+                  title={`On failure: back to ${phase.on_failure}${(phase.config?.max_iterations as number) ? ` (max ${phase.config?.max_iterations} iterations)` : ''}`}
+                >
+                  ↺
+                </span>
+              )}
             </div>
 
             {i < phases.length - 1 ? (

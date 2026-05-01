@@ -110,14 +110,46 @@ type Predicate struct {
 	Values   []string          `json:"values"`
 }
 
+// GateRequirementType identifies an automated condition that must be satisfied.
+type GateRequirementType string
+
+const (
+	// RequireGitHubChecks requires all GitHub CI checks on the PR to pass.
+	RequireGitHubChecks GateRequirementType = "github_checks"
+	// RequireHumanApproval requires an approved review on the ticket.
+	RequireHumanApproval GateRequirementType = "human_approval"
+)
+
+// validGateRequirementTypes is the set of recognized requirement types.
+var validGateRequirementTypes = map[GateRequirementType]bool{
+	RequireGitHubChecks:  true,
+	RequireHumanApproval: true,
+}
+
+// GateRequirement is an automated condition that must be satisfied for a gate to clear.
+// Requirements are orthogonal to actions — a rule can require both CI passing AND human approval.
+type GateRequirement struct {
+	Type   GateRequirementType `json:"type"`
+	Config map[string]any      `json:"config,omitempty"` // type-specific (future use)
+}
+
+// GateRequirementStatus reports whether a single requirement is currently satisfied.
+type GateRequirementStatus struct {
+	Requirement GateRequirement `json:"requirement"`
+	Satisfied   bool            `json:"satisfied"`
+	Reason      string          `json:"reason,omitempty"`
+	CheckedAt   time.Time       `json:"checked_at,omitempty"`
+}
+
 // Rule is a single composable policy rule with applies-to predicates and an action.
 type Rule struct {
-	ID          string      `json:"id"`
-	Name        string      `json:"name"`
-	Description string      `json:"description,omitempty"`
-	Predicates  []Predicate `json:"predicates"` // ANDed: all must match
-	Action      Action      `json:"action"`
-	Enabled     bool        `json:"enabled"`
+	ID           string            `json:"id"`
+	Name         string            `json:"name"`
+	Description  string            `json:"description,omitempty"`
+	Predicates   []Predicate       `json:"predicates"`             // ANDed: all must match
+	Action       Action            `json:"action"`
+	Requirements []GateRequirement `json:"requirements,omitempty"` // automated conditions (unioned across rules)
+	Enabled      bool              `json:"enabled"`
 }
 
 // PolicySet is a named collection of rules associated with a project.
@@ -195,9 +227,10 @@ type TransitionContext struct {
 
 // PolicyDecision is the result of evaluating policy rules for a transition.
 type PolicyDecision struct {
-	Action        Action           `json:"action"`
-	MatchedRules  []MatchedRule    `json:"matched_rules"`
-	EffectiveRule *MatchedRule     `json:"effective_rule,omitempty"` // the most restrictive match
+	Action        Action            `json:"action"`
+	MatchedRules  []MatchedRule     `json:"matched_rules"`
+	EffectiveRule *MatchedRule      `json:"effective_rule,omitempty"`  // the most restrictive match
+	Requirements  []GateRequirement `json:"requirements,omitempty"`   // unioned from all matched rules
 }
 
 // MatchedRule records which rule matched and what action it prescribed.
@@ -210,11 +243,12 @@ type MatchedRule struct {
 
 // PolicyGate describes a future gate a ticket will encounter on its remaining path.
 type PolicyGate struct {
-	Transition string `json:"transition"` // trigger that will be gated
-	FromState  string `json:"from_state"`
-	ToState    string `json:"to_state"`
-	Action     Action `json:"action"`      // what the policy requires
-	Rules      []MatchedRule `json:"rules"` // which rules caused this gate
+	Transition   string            `json:"transition"`              // trigger that will be gated
+	FromState    string            `json:"from_state"`
+	ToState      string            `json:"to_state"`
+	Action       Action            `json:"action"`                  // what the policy requires
+	Rules        []MatchedRule     `json:"rules"`                   // which rules caused this gate
+	Requirements []GateRequirement `json:"requirements,omitempty"`  // unioned from matched rules
 }
 
 // EffectivePolicy is the complete policy view for a specific ticket,
@@ -247,6 +281,11 @@ func (r *Rule) Validate() error {
 	for i, p := range r.Predicates {
 		if err := p.Validate(); err != nil {
 			return fmt.Errorf("predicate[%d]: %w", i, err)
+		}
+	}
+	for i, req := range r.Requirements {
+		if !validGateRequirementTypes[req.Type] {
+			return fmt.Errorf("requirement[%d]: unknown type %q", i, req.Type)
 		}
 	}
 	return nil

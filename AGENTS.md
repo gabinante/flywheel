@@ -26,14 +26,38 @@ This file is the shared operating guide for coding agents working in this repo.
 
 ## Local dev
 
-- `make run` — start the full server with varlock-loaded env.
-- `make run-embedded` — SQLite/miniredis mode. Good for zero-config work, but not the right choice when testing GitHub OAuth.
+- `make dev` — **the primary dev command**. Ensures Docker Postgres+Redis are running, runs migrations, then starts the Go server. Re-invoke to restart after code changes.
+- `make dev-infra` — start only Postgres and Redis (useful before running tests).
+- `make dev-stop` — kill the server without stopping infra.
+- `make run` — start the server only (assumes infra is already up).
 - `make test` — Go tests.
 - `make web-build` — production web build.
 - `make generate` — regenerate from OpenAPI.
-- `cd web && npm install && npm run dev` — Vite dev server.
-- `cd web && npm run gen:api` — regenerate the TS client after OpenAPI changes.
+- `cd web && npm install && npm run dev` — Vite dev server (HMR).
+- `cd web && npm run gen:api` — regenerate TS client after OpenAPI changes.
 - `make varlock-validate` — validate `.env` against `.env.schema`.
+
+## MCP setup
+
+Flywheel exposes MCP at `/mcp` (Streamable HTTP). Both Claude Code and Cursor use the same endpoint.
+
+Add to `~/.claude/.mcp.json`:
+```json
+{
+  "mcpServers": {
+    "flywheel": {
+      "url": "http://localhost:8080/mcp",
+      "headers": { "X-API-Key": "<DISPATCH_API_KEY from .env>" }
+    }
+  }
+}
+```
+
+The SSE transport (`/sse`) is still available as a fallback for older clients.
+
+Dispatched workers receive MCP config automatically — no manual setup needed.
+
+After restarting the server (`make dev`), MCP clients reconnect automatically. If tools error after restart, start a new Claude Code session.
 
 ## OAuth and local URL rule
 

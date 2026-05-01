@@ -82,6 +82,7 @@ func (e *Engine) GetPosition(ctx context.Context, ticketID, workflowID, workflow
 		WorkflowID:   def.ID,
 		WorkflowName: def.Name,
 		TotalPhases:  len(def.Phases),
+		Phases:       def.Phases,
 		History:      completions,
 	}
 
@@ -149,6 +150,27 @@ func (e *Engine) AdvancePhase(ctx context.Context, ticketID, workflowID, current
 
 	// Handle failure with on_failure jump
 	if outcome == "failed" && def.Phases[currentIdx].OnFailure != "" {
+		// Check max_iterations for agent phases before applying on_failure
+		agentCfg, _ := ParseAgentConfig(def.Phases[currentIdx].Config)
+		if agentCfg != nil && agentCfg.MaxIterations > 0 {
+			completions, _ := e.store.ListCompletions(ctx, ticketID)
+			count := 0
+			for _, c := range completions {
+				if c.PhaseID == currentPhaseID {
+					count++
+				}
+			}
+			if count >= agentCfg.MaxIterations {
+				// Max iterations exhausted — treat as success, advance normally
+				outcome = "success"
+				if metadata == nil {
+					metadata = map[string]any{}
+				}
+				metadata["max_iterations_reached"] = true
+				goto advance
+			}
+		}
+
 		targetID := def.Phases[currentIdx].OnFailure
 		for _, p := range def.Phases {
 			if p.ID == targetID {
@@ -161,6 +183,7 @@ func (e *Engine) AdvancePhase(ctx context.Context, ticketID, workflowID, current
 		return nil, fmt.Errorf("on_failure target phase %s not found", targetID)
 	}
 
+advance:
 	// Advance to next phase
 	nextIdx := currentIdx + 1
 	if nextIdx >= len(def.Phases) {
