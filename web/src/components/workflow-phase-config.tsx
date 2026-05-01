@@ -9,17 +9,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import type { components } from '@/lib/api/v1'
 
 type WorkflowPhase = components['schemas']['WorkflowPhase']
 
 const WORKER_ROLES = [
-  { value: 'executor', label: 'Executor' },
-  { value: 'planner', label: 'Planner' },
-  { value: 'validator', label: 'Validator' },
-  { value: 'deployer', label: 'Deployer' },
-  { value: 'investigator', label: 'Investigator' },
+  { value: 'executor', label: 'Executor', description: 'Implements code changes, writes tests, creates PRs' },
+  { value: 'planner', label: 'Planner', description: 'Investigates codebase, produces structured implementation plans' },
+  { value: 'validator', label: 'Validator', description: 'Reviews PRs adversarially, approves or rejects with feedback' },
+  { value: 'deployer', label: 'Deployer', description: 'Executes deployments and verifies rollout success' },
+  { value: 'investigator', label: 'Investigator', description: 'Read-only research and codebase analysis' },
 ] as const
 
 const EXTERNAL_MODES = [
@@ -81,33 +82,74 @@ function updateConfig(phase: WorkflowPhase, key: string, value: unknown): Workfl
 
 export function AgentPhaseConfig({ phase, onChange }: PhaseConfigProps) {
   const config = phase.config ?? {}
+  const selectedRole = (config.role as string) || 'executor'
+  const roleInfo = WORKER_ROLES.find((r) => r.value === selectedRole)
+  const autoAdvance = config.auto_advance !== false
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label>
+            Worker role
+            <Select
+              value={selectedRole}
+              onValueChange={(v) => onChange(updateConfig(phase, 'role', v))}
+            >
+              <SelectTrigger className="w-full bg-white/5">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {WORKER_ROLES.map((r) => (
+                  <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Label>
+          {roleInfo && (
+            <p className="text-[11px] text-muted-foreground">{roleInfo.description}</p>
+          )}
+        </div>
+        <Label>
+          Goal
+          <Textarea
+            value={(config.goal as string) || ''}
+            onChange={(e) => onChange(updateConfig(phase, 'goal', e.target.value))}
+            placeholder="Objective for the agent session"
+            rows={2}
+          />
+        </Label>
+      </div>
       <Label>
-        Worker role
-        <Select
-          value={(config.role as string) || 'executor'}
-          onValueChange={(v) => onChange(updateConfig(phase, 'role', v))}
-        >
-          <SelectTrigger className="w-full bg-white/5">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {WORKER_ROLES.map((r) => (
-              <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Label>
-      <Label>
-        Goal
+        Custom instructions
         <Textarea
-          value={(config.goal as string) || ''}
-          onChange={(e) => onChange(updateConfig(phase, 'goal', e.target.value))}
-          placeholder="Objective for the agent session"
-          rows={2}
+          value={(config.prompt as string) || ''}
+          onChange={(e) => onChange(updateConfig(phase, 'prompt', e.target.value))}
+          placeholder="Additional system prompt instructions for this phase's agent"
+          rows={3}
         />
       </Label>
+      <div className="flex items-center gap-6">
+        <Label>
+          Max iterations (0 = unlimited)
+          <Input
+            type="number"
+            min={0}
+            value={(config.max_iterations as number) ?? 0}
+            onChange={(e) => onChange(updateConfig(phase, 'max_iterations', parseInt(e.target.value) || 0))}
+            className="w-32"
+          />
+        </Label>
+        <div className="flex items-center gap-2 pt-5">
+          <Switch
+            id={`auto-advance-${phase.id}`}
+            checked={autoAdvance}
+            onCheckedChange={(checked) => onChange(updateConfig(phase, 'auto_advance', checked))}
+          />
+          <label htmlFor={`auto-advance-${phase.id}`} className="text-xs text-muted-foreground cursor-pointer">
+            Auto-advance on success
+          </label>
+        </div>
+      </div>
     </div>
   )
 }
@@ -196,26 +238,61 @@ export function ExternalPhaseConfig({ phase, onChange }: PhaseConfigProps) {
   )
 }
 
+const GATE_REQUIREMENT_OPTIONS = [
+  { value: 'github_checks', label: 'GitHub Checks' },
+  { value: 'human_approval', label: 'Human Approval' },
+] as const
+
 export function GatePhaseConfig({ phase, onChange }: PhaseConfigProps) {
   const config = phase.config ?? {}
+  const requirements = (config.requirements as string[]) ?? []
+
+  const toggleRequirement = (req: string) => {
+    const next = requirements.includes(req)
+      ? requirements.filter((r) => r !== req)
+      : [...requirements, req]
+    onChange(updateConfig(phase, 'requirements', next))
+  }
+
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Label>
+          Prompt
+          <Textarea
+            value={(config.prompt as string) || ''}
+            onChange={(e) => onChange(updateConfig(phase, 'prompt', e.target.value))}
+            placeholder="What should the reviewer check before advancing?"
+            rows={2}
+          />
+        </Label>
+        <Label>
+          Required role (optional)
+          <Input
+            value={(config.required_role as string) || ''}
+            onChange={(e) => onChange(updateConfig(phase, 'required_role', e.target.value))}
+            placeholder="e.g. admin"
+          />
+        </Label>
+      </div>
       <Label>
-        Prompt
-        <Textarea
-          value={(config.prompt as string) || ''}
-          onChange={(e) => onChange(updateConfig(phase, 'prompt', e.target.value))}
-          placeholder="What should the reviewer check before advancing?"
-          rows={2}
-        />
-      </Label>
-      <Label>
-        Required role (optional)
-        <Input
-          value={(config.required_role as string) || ''}
-          onChange={(e) => onChange(updateConfig(phase, 'required_role', e.target.value))}
-          placeholder="e.g. admin"
-        />
+        Requirements
+        <div className="flex flex-wrap gap-2 pt-1">
+          {GATE_REQUIREMENT_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => toggleRequirement(opt.value)}
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                requirements.includes(opt.value)
+                  ? 'border-purple-500/40 bg-purple-500/15 text-purple-300'
+                  : 'border-white/10 bg-white/5 text-muted-foreground hover:border-white/20'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       </Label>
     </div>
   )

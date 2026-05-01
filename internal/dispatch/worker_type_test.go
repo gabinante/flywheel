@@ -218,7 +218,7 @@ func TestAssembleTypedWorkerPrompt(t *testing.T) {
 
 	for _, wt := range AllWorkerTypes() {
 		t.Run(string(wt), func(t *testing.T) {
-			prompt := AssembleTypedWorkerPrompt(wt, proj, tk, depOutputs, "http://localhost:8080", "agent-1")
+			prompt := AssembleTypedWorkerPrompt(wt, proj, tk, depOutputs, "http://localhost:8080", "agent-1", nil)
 			if prompt == "" {
 				t.Fatal("expected non-empty prompt")
 			}
@@ -252,7 +252,7 @@ func TestAssembleTypedWorkerPrompt_PlannerDoesNotCode(t *testing.T) {
 		Objective: ticket.Objective{Description: "Plan it"},
 	}
 
-	prompt := AssembleTypedWorkerPrompt(WorkerTypePlanner, proj, tk, nil, "http://localhost", "a-1")
+	prompt := AssembleTypedWorkerPrompt(WorkerTypePlanner, proj, tk, nil, "http://localhost", "a-1", nil)
 	if !strings.Contains(prompt, "do NOT write code") {
 		t.Error("planner prompt should instruct not to write code")
 	}
@@ -271,12 +271,54 @@ func TestAssembleTypedWorkerPrompt_ValidatorApproves(t *testing.T) {
 		Objective: ticket.Objective{Description: "Review it"},
 	}
 
-	prompt := AssembleTypedWorkerPrompt(WorkerTypeValidator, proj, tk, nil, "http://localhost", "a-1")
+	prompt := AssembleTypedWorkerPrompt(WorkerTypeValidator, proj, tk, nil, "http://localhost", "a-1", nil)
 	if !strings.Contains(prompt, "approve") {
 		t.Error("validator prompt should mention approve")
 	}
 	if !strings.Contains(prompt, "reject") {
 		t.Error("validator prompt should mention reject")
+	}
+}
+
+func TestAssembleTypedWorkerPrompt_PhaseOverrides(t *testing.T) {
+	proj := &project.Project{ID: "p-1", Name: "test"}
+	tk := &ticket.Ticket{
+		ID:        "t-1",
+		Title:     "Test with overrides",
+		Type:      ticket.TypeTask,
+		Priority:  1,
+		Objective: ticket.Objective{Description: "Do the thing"},
+	}
+
+	overrides := &PhaseOverrides{
+		Goal:   "Focus on the database layer",
+		Prompt: "Always run migrations before testing",
+	}
+	prompt := AssembleTypedWorkerPrompt(WorkerTypeExecutor, proj, tk, nil, "http://localhost", "a-1", overrides)
+
+	if !strings.Contains(prompt, "## Phase objective") {
+		t.Error("prompt should contain phase objective heading")
+	}
+	if !strings.Contains(prompt, "Focus on the database layer") {
+		t.Error("prompt should contain phase goal text")
+	}
+	if !strings.Contains(prompt, "## Phase instructions") {
+		t.Error("prompt should contain phase instructions heading")
+	}
+	if !strings.Contains(prompt, "Always run migrations before testing") {
+		t.Error("prompt should contain phase prompt text")
+	}
+
+	// Nil overrides should not include phase sections.
+	promptNil := AssembleTypedWorkerPrompt(WorkerTypeExecutor, proj, tk, nil, "http://localhost", "a-1", nil)
+	if strings.Contains(promptNil, "## Phase objective") {
+		t.Error("nil overrides should not include phase objective")
+	}
+
+	// Empty overrides should not include phase sections.
+	promptEmpty := AssembleTypedWorkerPrompt(WorkerTypeExecutor, proj, tk, nil, "http://localhost", "a-1", &PhaseOverrides{})
+	if strings.Contains(promptEmpty, "## Phase objective") {
+		t.Error("empty overrides should not include phase objective")
 	}
 }
 

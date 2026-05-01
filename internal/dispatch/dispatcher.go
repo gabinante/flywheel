@@ -14,6 +14,7 @@ import (
 	"github.com/gabinante/flywheel/events"
 	"github.com/gabinante/flywheel/internal/cost"
 	"github.com/gabinante/flywheel/internal/execution"
+	"github.com/gabinante/flywheel/internal/policy"
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/ticket"
 	"github.com/gabinante/flywheel/internal/workflow"
@@ -118,9 +119,10 @@ type Dispatcher struct {
 	leaseReleaser      LeaseReleaser          // nil-safe: if nil, worker exit does not release lease (Layer 2 TTL handles it)
 	failureSummarizer  FailureSummarizer      // nil-safe: if nil, worker exit does not inject failure context
 	ticketTransitioner TicketTransitioner        // nil-safe: if nil, merged tickets are not auto-closed
-	workflowEngine     *workflow.Engine          // nil-safe: if nil, workflow-aware dispatching is disabled
-	externalExecutor   *workflow.ExternalExecutor // nil-safe: if nil, external phases auto-advance
-	outputPatcher      TicketOutputPatcher       // nil-safe: if nil, merge state is not persisted
+	workflowEngine     *workflow.Engine              // nil-safe: if nil, workflow-aware dispatching is disabled
+	externalExecutor   *workflow.ExternalExecutor   // nil-safe: if nil, external phases auto-advance
+	checkerRegistry    *policy.CheckerRegistry      // nil-safe: if nil, gate requirements are not auto-checked
+	outputPatcher      TicketOutputPatcher          // nil-safe: if nil, merge state is not persisted
 
 	mu             sync.Mutex
 	active         map[string]context.CancelFunc // ticketID/role-prefixed key → cancel
@@ -297,6 +299,11 @@ func (d *Dispatcher) SetExternalExecutor(ee *workflow.ExternalExecutor) {
 	d.externalExecutor = ee
 }
 
+// SetCheckerRegistry sets the optional policy checker registry for gate requirement auto-checking.
+func (d *Dispatcher) SetCheckerRegistry(cr *policy.CheckerRegistry) {
+	d.checkerRegistry = cr
+}
+
 func (d *Dispatcher) SetRepoResolver(rr RepoResolver) {
 	d.repoResolver = rr
 }
@@ -329,6 +336,9 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 	// deferred due to capacity (worker still occupied the slot at submit time).
 	reviewing, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, ticket.StateAwaitingValidation)
 	if err != nil {
+		if ctx.Err() != nil {
+			return
+		}
 		slog.Error("dispatch: scan awaiting_review failed", "error", err)
 	} else {
 		for _, t := range reviewing {
@@ -340,8 +350,14 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 	}
 
 	// Scan for validated tickets with unmerged PRs — try merge or spawn resolver.
+	if ctx.Err() != nil {
+		return
+	}
 	validated, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, ticket.StateValidated)
 	if err != nil {
+		if ctx.Err() != nil {
+			return
+		}
 		slog.Error("dispatch: scan validated failed", "error", err)
 	} else {
 		for _, t := range validated {
@@ -362,8 +378,14 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 		}
 	}
 
+	if ctx.Err() != nil {
+		return
+	}
 	pending, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, ticket.StateDraft)
 	if err != nil {
+		if ctx.Err() != nil {
+			return
+		}
 		slog.Error("dispatch: scan pending failed", "error", err)
 		return
 	}
@@ -463,6 +485,7 @@ func (d *Dispatcher) handleTicketRejected(ctx context.Context, e events.Event) {
 	if t.State != ticket.StateExecuting {
 		return
 	}
+	d.advanceWorkflowIfNeeded(ctx, t, "failed")
 	slog.Info("dispatch: ticket rejected, re-spawning worker", "ticket", ticketID)
 	d.spawn(ctx, t)
 }
@@ -627,6 +650,7 @@ func (d *Dispatcher) handleTicketSubmitted(ctx context.Context, e events.Event) 
 	if t.State != ticket.StateAwaitingValidation {
 		return
 	}
+	d.advanceWorkflowIfNeeded(ctx, t, "success")
 	d.spawnReviewer(ctx, t)
 }
 
@@ -645,9 +669,10 @@ func (d *Dispatcher) handleTicketDone(ctx context.Context, e events.Event) {
 	}
 	d.mu.Unlock()
 
-	// Auto-merge the PR if outputs contain a pr_url.
+	// Advance workflow and auto-merge the PR if outputs contain a pr_url.
 	t, err := d.tickets.GetTicket(ctx, ticketID)
 	if err == nil && t != nil {
+		d.advanceWorkflowIfNeeded(ctx, t, "success")
 		if prURL, ok := t.Outputs["pr_url"].(string); ok && prURL != "" {
 			d.autoMergePR(ctx, t, prURL)
 		}
@@ -660,6 +685,21 @@ func (d *Dispatcher) handleTicketDone(ctx context.Context, e events.Event) {
 	// Check work stream completion.
 	if t != nil && t.WorkStreamID != "" {
 		d.checkWorkStreamCompletion(ctx, t)
+	}
+}
+
+// advanceWorkflowIfNeeded advances the workflow phase for a ticket if it has an active workflow.
+func (d *Dispatcher) advanceWorkflowIfNeeded(ctx context.Context, t *ticket.Ticket, outcome string) {
+	if t.WorkflowID == "" || t.WorkflowPhase == "" || d.workflowEngine == nil {
+		return
+	}
+	next, err := d.workflowEngine.AdvancePhase(ctx, t.ID, t.WorkflowID, t.WorkflowPhase, outcome, nil)
+	if err != nil {
+		slog.Error("dispatch: workflow advance failed", "ticket", t.ID, "error", err)
+		return
+	}
+	if next != nil {
+		t.WorkflowPhase = next.ID
 	}
 }
 
@@ -784,8 +824,20 @@ func (d *Dispatcher) runTypedWorkerWithProject(ctx context.Context, t *ticket.Ti
 		}
 	}
 
+	// Resolve phase overrides from workflow definition if available.
+	var phaseOverrides *PhaseOverrides
+	if t.WorkflowID != "" && t.WorkflowPhase != "" && d.workflowEngine != nil {
+		if pos, err := d.workflowEngine.GetPosition(ctx, t.ID, t.WorkflowID, t.WorkflowPhase); err == nil && pos != nil && pos.CurrentPhase != nil {
+			if pos.CurrentPhase.Type == workflow.PhaseAgent {
+				if agentCfg, parseErr := workflow.ParseAgentConfig(pos.CurrentPhase.Config); parseErr == nil {
+					phaseOverrides = &PhaseOverrides{Goal: agentCfg.Goal, Prompt: agentCfg.Prompt}
+				}
+			}
+		}
+	}
+
 	// Assemble type-specific prompt.
-	prompt := AssembleTypedWorkerPrompt(wt, proj, t, depOutputs, d.cfg.ServerURL, d.cfg.AgentID)
+	prompt := AssembleTypedWorkerPrompt(wt, proj, t, depOutputs, d.cfg.ServerURL, d.cfg.AgentID, phaseOverrides)
 	if roleDef, ok := dispatchRoleDefinition(proj, role); ok {
 		prompt = appendCustomRoleContext(prompt, roleDef)
 	}
@@ -1182,7 +1234,7 @@ func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
 
 	// Use the typed validator prompt for consistency.
 	depOutputs := make(map[string]map[string]any)
-	prompt := AssembleTypedWorkerPrompt(WorkerTypeValidator, proj, t, depOutputs, d.cfg.ServerURL, d.cfg.AgentID)
+	prompt := AssembleTypedWorkerPrompt(WorkerTypeValidator, proj, t, depOutputs, d.cfg.ServerURL, d.cfg.AgentID, nil)
 
 	// Reviewer works in the repo dir (needs access to the code for `gh` and `make test`).
 	// Use the existing worktree if available (the worker's branch), otherwise use
@@ -1340,19 +1392,41 @@ func (d *Dispatcher) closeMergedTicket(ctx context.Context, t *ticket.Ticket) {
 				break
 
 			case workflow.PhaseGate:
-				// Emit gate event so monitor + notification can surface it.
+				// Check if gate has automated requirements that can be auto-satisfied.
+				if d.checkerRegistry != nil {
+					gateCfg, _ := workflow.ParseGateConfig(next.Config)
+					if gateCfg != nil && len(gateCfg.Requirements) > 0 {
+						var reqs []policy.GateRequirement
+						for _, r := range gateCfg.Requirements {
+							reqs = append(reqs, policy.GateRequirement{Type: policy.GateRequirementType(r)})
+						}
+						prURL, _ := t.Outputs["pr_url"].(string)
+						statuses := d.checkerRegistry.CheckAll(ctx, reqs, policy.CheckContext{
+							TicketID: t.ID, ProjectID: t.ProjectID, PRURL: prURL,
+						})
+						if len(policy.Unsatisfied(statuses)) == 0 {
+							continue // all requirements met, auto-advance
+						}
+					}
+				}
+				// Requirements not met or no checker — emit gate event and stop.
 				prompt, _ := next.Config["prompt"].(string)
+				var requirements []string
+				if gateCfg, _ := workflow.ParseGateConfig(next.Config); gateCfg != nil {
+					requirements = gateCfg.Requirements
+				}
 				_ = d.bus.Publish(ctx, events.Event{
 					Type: events.EventWorkflowGateReached,
 					Payload: map[string]any{
-						"ticket_id":  t.ID,
-						"project_id": t.ProjectID,
-						"phase_id":   next.ID,
-						"phase_name": next.Name,
-						"prompt":     prompt,
+						"ticket_id":    t.ID,
+						"project_id":   t.ProjectID,
+						"phase_id":     next.ID,
+						"phase_name":   next.Name,
+						"prompt":       prompt,
+						"requirements": requirements,
 					},
 				})
-				slog.Info("dispatch: workflow gate reached, waiting for approval", "ticket", t.ID, "phase", next.Name)
+				slog.Info("dispatch: workflow gate reached, waiting for conditions", "ticket", t.ID, "phase", next.Name)
 				goto done
 
 			case workflow.PhaseExternal:
@@ -1500,38 +1574,28 @@ func (d *Dispatcher) cleanupTicketBranch(ctx context.Context, ticketID, projectI
 // validatePRChecks verifies CI checks pass on the PR before merging.
 // Returns true if checks pass (or no checks exist), false if failing/pending.
 // Emits EventTestsFailed when checks fail.
+// Uses policy.ParseGHPRChecks for the actual `gh pr checks` parsing.
 func (d *Dispatcher) validatePRChecks(ctx context.Context, t *ticket.Ticket, prURL, repoDir string) bool {
-	// Use `gh pr checks` to get CI status.
-	cmd := exec.Command("gh", "pr", "checks", prURL)
-	cmd.Dir = repoDir
-	out, err := cmd.CombinedOutput()
-	output := string(out)
-
-	if err != nil {
-		// gh pr checks exits non-zero if any check failed or is pending.
-		if strings.Contains(output, "fail") || strings.Contains(output, "X") {
-			slog.Warn("dispatch: CI checks failed", "ticket", t.ID)
-			_ = d.bus.Publish(ctx, events.Event{
-				Type: events.EventTestsFailed,
-				Payload: map[string]any{
-					"ticket_id":  t.ID,
-					"project_id": t.ProjectID,
-					"pr_url":     prURL,
-					"output":     truncate(output, 1000),
-				},
-			})
-			return false
-		}
-		// Checks still pending — skip for now, will retry on next scan.
-		if strings.Contains(output, "pending") || strings.Contains(output, "-") {
-			slog.Info("dispatch: CI checks pending, will retry later", "ticket", t.ID)
-			return false
-		}
-		// No checks configured or other error — allow merge.
-		slog.Info("dispatch: pr checks error, proceeding with merge", "ticket", t.ID, "error", err)
+	status, reason := policy.ParseGHPRChecks(prURL)
+	switch status {
+	case policy.ChecksFailed:
+		slog.Warn("dispatch: CI checks failed", "ticket", t.ID, "reason", reason)
+		_ = d.bus.Publish(ctx, events.Event{
+			Type: events.EventTestsFailed,
+			Payload: map[string]any{
+				"ticket_id":  t.ID,
+				"project_id": t.ProjectID,
+				"pr_url":     prURL,
+				"output":     reason,
+			},
+		})
+		return false
+	case policy.ChecksPending:
+		slog.Info("dispatch: CI checks pending, will retry later", "ticket", t.ID)
+		return false
+	default:
+		return true
 	}
-
-	return true
 }
 
 // truncate returns s truncated to maxLen characters.

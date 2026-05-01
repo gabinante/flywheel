@@ -62,9 +62,11 @@ func ParseExternalConfig(config map[string]any) (*ExternalPhaseConfig, error) {
 
 // AgentPhaseConfig is the typed config for an agent phase.
 type AgentPhaseConfig struct {
-	Role        string `json:"role"`         // executor, planner, validator, deployer, investigator
-	Goal        string `json:"goal"`         // freeform objective
-	AutoAdvance *bool  `json:"auto_advance"` // advance on successful submit (default true)
+	Role          string `json:"role"`                     // executor, planner, validator, deployer, investigator
+	Goal          string `json:"goal"`                     // freeform objective
+	Prompt        string `json:"prompt,omitempty"`          // custom system prompt supplement
+	AutoAdvance   *bool  `json:"auto_advance"`             // advance on successful submit (default true)
+	MaxIterations int    `json:"max_iterations,omitempty"` // 0 = unlimited; for review loops
 }
 
 // ParseAgentConfig extracts typed config from a phase's generic Config map.
@@ -83,10 +85,11 @@ func ParseAgentConfig(config map[string]any) (*AgentPhaseConfig, error) {
 	return &cfg, nil
 }
 
-// GatePhaseConfig is the typed config for a gate (human approval) phase.
+// GatePhaseConfig is the typed config for a gate phase (blocks until requirements are met).
 type GatePhaseConfig struct {
-	Prompt       string `json:"prompt"`
-	RequiredRole string `json:"required_role,omitempty"`
+	Prompt       string   `json:"prompt"`
+	RequiredRole string   `json:"required_role,omitempty"`
+	Requirements []string `json:"requirements,omitempty"` // e.g. ["github_checks"]
 }
 
 // ParseGateConfig extracts typed config from a phase's generic Config map.
