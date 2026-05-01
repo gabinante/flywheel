@@ -2,6 +2,7 @@
 /flywheel
 /flywheel-mcp
 /flywheel-git
+/server
 /dist
 web/node_modules
 web/dist
@@ -10,3 +11,7 @@ web/dist
 /logs/
 .DS_Store
 .claude/worktrees/
+.vite/
+.playwright-mcp/
+/packages/
+*.png
