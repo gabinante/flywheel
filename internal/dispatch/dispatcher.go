@@ -78,6 +78,9 @@ type TraceAppender interface {
 // maxMergeAttempts is the number of merge failures before escalating to a human.
 const maxMergeAttempts = 5
 
+// maxReviewAttempts is the number of reviewer failures before escalating to a human.
+const maxReviewAttempts = 3
+
 // Config holds dispatcher settings.
 type Config struct {
 	MaxWorkers        int
@@ -374,6 +377,22 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 		}
 	}
 
+	// Scan awaiting_validation tickets for externally-merged PRs.
+	// If someone merges the PR on GitHub before the Flywheel reviewer acts,
+	// auto-advance the ticket (approve → close) so it doesn't get stuck.
+	if ctx.Err() != nil {
+		return
+	}
+	d.reconcileExternalMerges(ctx, reviewing)
+
+	// Reconcile GitHub review decisions for awaiting_validation tickets.
+	// Catches: reviewer posted on GitHub but didn't call MCP, human reviewed on GitHub,
+	// or reviewer failed entirely.
+	if ctx.Err() != nil {
+		return
+	}
+	d.reconcileGitHubReviewStatus(ctx, reviewing)
+
 	// Scan for validated tickets with unmerged PRs — try merge or spawn resolver.
 	if ctx.Err() != nil {
 		return
@@ -426,8 +445,15 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 		slog.Error("dispatch: scan pending failed", "error", err)
 		return
 	}
+
+	// Recover draft tickets that have orphaned open PRs (e.g. from rollback after submit).
+	recovered := d.reconcileOrphanedPRs(ctx, pending)
+
 	slog.Info("dispatch: scan found pending tickets", "count", len(pending))
 	for _, t := range pending {
+		if recovered[t.ID] {
+			continue // already recovered to awaiting_validation
+		}
 		if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
 			continue
 		}
@@ -746,6 +772,13 @@ func (d *Dispatcher) handleTicketSubmitted(ctx context.Context, e events.Event) 
 	}
 	if t.State != ticket.StateAwaitingValidation {
 		return
+	}
+	// Reset review attempt counter on fresh submission so the count doesn't
+	// carry over from a previous reject→re-execute→submit cycle.
+	if t.Outputs != nil {
+		if _, had := t.Outputs["_review_attempts"]; had {
+			d.persistReviewAttempt(ctx, t.ID, 0)
+		}
 	}
 	nextPhase := d.advanceWorkflowIfNeeded(ctx, t, "success")
 	if nextPhase != nil {
@@ -1367,6 +1400,7 @@ func (d *Dispatcher) spawnReviewer(ctx context.Context, t *ticket.Ticket) {
 		return
 	}
 
+	ticketID := t.ID
 	d.wg.Add(1)
 	go func() {
 		defer d.wg.Done()
@@ -1375,6 +1409,9 @@ func (d *Dispatcher) spawnReviewer(ctx context.Context, t *ticket.Ticket) {
 			delete(d.active, reviewKey)
 			delete(d.activeProjects, reviewKey)
 			d.mu.Unlock()
+
+			d.handleReviewerExit(ctx, ticketID)
+
 			go d.reconcile(ctx)
 		}()
 
@@ -1438,6 +1475,56 @@ func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
 	}
 
 	return nil
+}
+
+// reconcileExternalMerges checks awaiting_validation tickets for PRs that were
+// merged externally (e.g. someone merged on GitHub before the Flywheel reviewer
+// acted). For each such ticket, it auto-approves and closes it so it doesn't
+// get stuck in the review queue.
+func (d *Dispatcher) reconcileExternalMerges(ctx context.Context, reviewing []*ticket.Ticket) {
+	if d.ticketTransitioner == nil {
+		return
+	}
+	for _, t := range reviewing {
+		if ctx.Err() != nil {
+			return
+		}
+		if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
+			continue
+		}
+		prURL, ok := t.Outputs["pr_url"].(string)
+		if !ok || prURL == "" {
+			continue
+		}
+		checkCmd := exec.Command("gh", "pr", "view", prURL, "--json", "state", "--jq", ".state")
+		stateOut, err := checkCmd.Output()
+		if err != nil {
+			continue
+		}
+		prState := strings.TrimSpace(string(stateOut))
+		if prState != "MERGED" {
+			continue
+		}
+
+		slog.Info("dispatch: PR merged externally while awaiting review, auto-advancing ticket",
+			"ticket", t.ID, "pr_url", prURL)
+
+		actor := ticket.Actor{ID: "dispatcher", Type: ticket.ActorSystem}
+		if err := d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerApprove, actor, nil); err != nil {
+			slog.Warn("dispatch: auto-approve for external merge failed", "ticket", t.ID, "error", err)
+			continue
+		}
+
+		// Re-fetch the ticket after approval so closeMergedTicket sees validated state.
+		updated, err := d.tickets.GetTicket(ctx, t.ID)
+		if err != nil {
+			slog.Warn("dispatch: re-fetch after auto-approve failed", "ticket", t.ID, "error", err)
+			continue
+		}
+		d.persistMergeState(ctx, t.ID, 0, "merged", "PR merged externally before review")
+		d.cleanupTicketBranch(ctx, t.ID, t.ProjectID)
+		d.closeMergedTicket(ctx, updated)
+	}
 }
 
 // autoMergePR merges the PR after a ticket is approved/validated.
@@ -2219,4 +2306,218 @@ func (d *Dispatcher) recordUsage(ctx context.Context, workerCfg Config, projectI
 		OutputTokens:  cost.EstimateTokens(output),
 	}
 	_, _ = d.cfg.CostSvc.RecordAndCheck(ctx, record)
+}
+
+// reconcileGitHubReviewStatus reads the PR review decision from GitHub for
+// awaiting_validation tickets. If the PR has been approved or has changes
+// requested (by a human or by the reviewer agent), Flywheel acts on it
+// regardless of whether the agent called approve/reject via MCP.
+func (d *Dispatcher) reconcileGitHubReviewStatus(ctx context.Context, tickets []*ticket.Ticket) {
+	if d.ticketTransitioner == nil {
+		return
+	}
+	for _, t := range tickets {
+		if ctx.Err() != nil {
+			return
+		}
+		prURL, ok := t.Outputs["pr_url"].(string)
+		if !ok || prURL == "" {
+			continue
+		}
+
+		repoDir, err := d.resolveProjectRepoDir(ctx, t.ProjectID)
+		if err != nil {
+			continue
+		}
+
+		cmd := exec.Command("gh", "pr", "view", prURL,
+			"--json", "reviewDecision", "--jq", ".reviewDecision")
+		cmd.Dir = repoDir
+		out, err := cmd.Output()
+		if err != nil {
+			continue
+		}
+		decision := strings.TrimSpace(string(out))
+
+		actor := ticket.Actor{ID: "dispatcher", Type: ticket.ActorSystem}
+
+		switch decision {
+		case "APPROVED":
+			slog.Info("dispatch: PR approved on GitHub, auto-approving ticket",
+				"ticket", t.ID, "pr_url", prURL)
+			if err := d.ticketTransitioner.TransitionTicket(
+				ctx, t.ID, ticket.TriggerApprove, actor, nil,
+			); err != nil {
+				slog.Warn("dispatch: auto-approve from GitHub failed",
+					"ticket", t.ID, "error", err)
+				continue
+			}
+			updated, _ := d.tickets.GetTicket(ctx, t.ID)
+			if updated != nil {
+				d.autoMergePR(ctx, updated, prURL)
+			}
+
+		case "CHANGES_REQUESTED":
+			slog.Info("dispatch: PR has changes requested on GitHub, auto-rejecting ticket",
+				"ticket", t.ID, "pr_url", prURL)
+			if err := d.ticketTransitioner.TransitionTicket(
+				ctx, t.ID, ticket.TriggerReject, actor,
+				map[string]any{"notes": "Changes requested on GitHub PR review"},
+			); err != nil {
+				slog.Warn("dispatch: auto-reject from GitHub failed",
+					"ticket", t.ID, "error", err)
+				continue
+			}
+			updated, _ := d.tickets.GetTicket(ctx, t.ID)
+			if updated != nil {
+				d.spawn(ctx, updated)
+			}
+		}
+	}
+}
+
+// handleReviewerExit is called when a reviewer agent exits. It checks whether
+// the reviewer acted (transitioned the ticket) and if not, checks GitHub for
+// a review decision. If still no decision, tracks the attempt and escalates
+// after maxReviewAttempts failures.
+func (d *Dispatcher) handleReviewerExit(ctx context.Context, ticketID string) {
+	bgCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	t, err := d.tickets.GetTicket(bgCtx, ticketID)
+	if err != nil || t == nil {
+		return
+	}
+	if t.State != ticket.StateAwaitingValidation {
+		return // Reviewer acted (approve/reject already moved the state)
+	}
+
+	// Immediate GitHub check — don't wait 60s for reconcile.
+	d.reconcileGitHubReviewStatus(bgCtx, []*ticket.Ticket{t})
+
+	// Re-fetch: reconcileGitHubReviewStatus may have transitioned the ticket.
+	t, err = d.tickets.GetTicket(bgCtx, ticketID)
+	if err != nil || t == nil || t.State != ticket.StateAwaitingValidation {
+		return
+	}
+
+	// Still stuck — no review on GitHub either. Track the attempt.
+	attempts := 0
+	if v, ok := t.Outputs["_review_attempts"]; ok {
+		switch n := v.(type) {
+		case float64:
+			attempts = int(n)
+		case int:
+			attempts = n
+		}
+	}
+	attempts++
+
+	slog.Warn("dispatch: reviewer exited without acting, no GitHub review found",
+		"ticket", ticketID, "review_attempts", attempts)
+
+	d.persistReviewAttempt(bgCtx, ticketID, attempts)
+
+	if attempts >= maxReviewAttempts {
+		d.escalateReviewFailure(bgCtx, t, fmt.Sprintf(
+			"Reviewer failed to post a review %d times. Ticket needs manual review.", attempts))
+	}
+}
+
+// persistReviewAttempt writes review attempt metadata into the ticket's outputs.
+func (d *Dispatcher) persistReviewAttempt(ctx context.Context, ticketID string, attempts int) {
+	if d.outputPatcher == nil {
+		return
+	}
+	_ = d.outputPatcher.PatchOutputs(ctx, ticketID, map[string]any{
+		"_review_attempts":        attempts,
+		"_review_last_attempt_at": time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+// escalateReviewFailure publishes an escalation event when review attempts exceed the threshold.
+func (d *Dispatcher) escalateReviewFailure(ctx context.Context, t *ticket.Ticket, reason string) {
+	slog.Warn("dispatch: escalating review failure", "ticket", t.ID, "reason", reason)
+	_ = d.bus.Publish(ctx, events.Event{
+		Type: events.EventTicketEscalated,
+		Payload: map[string]any{
+			"ticket_id":  t.ID,
+			"project_id": t.ProjectID,
+			"reason":     reason,
+			"source":     "auto_review",
+		},
+	})
+}
+
+// reconcileOrphanedPRs checks draft tickets for open PRs that exist on GitHub
+// (e.g. from a rollback after submit). If found, recovers the ticket to
+// awaiting_validation and spawns a reviewer.
+func (d *Dispatcher) reconcileOrphanedPRs(ctx context.Context, drafts []*ticket.Ticket) map[string]bool {
+	recovered := make(map[string]bool)
+	if d.ticketTransitioner == nil {
+		return recovered
+	}
+	for _, t := range drafts {
+		if ctx.Err() != nil {
+			return recovered
+		}
+		if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
+			continue
+		}
+
+		prURL, _ := t.Outputs["pr_url"].(string)
+
+		// If no pr_url but worktree exists, check GitHub for PR on this branch.
+		if prURL == "" && d.worktrees.Path(t.ID) != "" {
+			repoDir, err := d.resolveProjectRepoDir(ctx, t.ProjectID)
+			if err != nil {
+				continue
+			}
+			branch := d.branchForTicket(ctx, t)
+			cmd := exec.Command("gh", "pr", "list", "--head", branch,
+				"--state", "open", "--json", "url", "--jq", ".[0].url")
+			cmd.Dir = repoDir
+			out, err := cmd.Output()
+			if err != nil {
+				continue
+			}
+			prURL = strings.TrimSpace(string(out))
+		}
+
+		if prURL == "" || prURL == "N/A" {
+			continue
+		}
+
+		// Verify PR is still open.
+		repoDir, err := d.resolveProjectRepoDir(ctx, t.ProjectID)
+		if err != nil {
+			continue
+		}
+		cmd := exec.Command("gh", "pr", "view", prURL, "--json", "state", "--jq", ".state")
+		cmd.Dir = repoDir
+		out, err := cmd.Output()
+		if err != nil {
+			continue
+		}
+		if strings.TrimSpace(string(out)) != "OPEN" {
+			continue
+		}
+
+		slog.Info("dispatch: draft ticket has open PR, recovering to review",
+			"ticket", t.ID, "pr_url", prURL)
+		if d.outputPatcher != nil {
+			_ = d.outputPatcher.PatchOutputs(ctx, t.ID, map[string]any{"pr_url": prURL})
+		}
+		actor := ticket.Actor{ID: "dispatcher", Type: ticket.ActorSystem}
+		if err := d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerRecoverPR, actor, nil); err != nil {
+			slog.Warn("dispatch: orphan PR recovery failed", "ticket", t.ID, "error", err)
+			continue
+		}
+		updated, _ := d.tickets.GetTicket(ctx, t.ID)
+		if updated != nil {
+			d.spawnReviewer(ctx, updated)
+		}
+		recovered[t.ID] = true
+	}
+	return recovered
 }

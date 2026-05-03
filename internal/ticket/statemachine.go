@@ -35,6 +35,7 @@ const (
 	TriggerLeaseExpired = "lease_expired" // planning|executing → draft
 	TriggerFail         = "fail"          // executing → draft (unrecoverable for this attempt)
 	TriggerReopen       = "reopen"        // closed → draft
+	TriggerRecoverPR    = "recover_pr"    // draft → awaiting_validation (system only, orphan PR recovery)
 
 	// Deprecated trigger alias for backward compat.
 	TriggerReopenReview = TriggerReopen // was done → awaiting_review, now closed → draft
@@ -109,10 +110,12 @@ func NewStateMachine() *StateMachine {
 		{StateAwaitingValidation, StateDraft, TriggerRollback, []GuardFn{}},
 		{StateValidated, StateDraft, TriggerRollback, []GuardFn{}},
 
-		// === Cancel (can cancel from early states) ===
+		// === Cancel (can cancel from early states + blocked states) ===
 		{StateDraft, StateClosed, TriggerCancel, []GuardFn{}},
 		{StatePlanning, StateClosed, TriggerCancel, []GuardFn{}},
 		{StateExecuting, StateClosed, TriggerCancel, []GuardFn{}},
+		{StateAwaitingInput, StateClosed, TriggerCancel, []GuardFn{}},
+		{StateAwaitingValidation, StateClosed, TriggerCancel, []GuardFn{}},
 
 		// === Lease expiry (returns to draft for re-claiming) ===
 		{StatePlanning, StateDraft, TriggerLeaseExpired, []GuardFn{}},
@@ -120,6 +123,9 @@ func NewStateMachine() *StateMachine {
 
 		// === Fail (executing → draft, can be retried) ===
 		{StateExecuting, StateDraft, TriggerFail, []GuardFn{}},
+
+		// === PR orphan recovery (system detects existing open PR on draft ticket) ===
+		{StateDraft, StateAwaitingValidation, TriggerRecoverPR, []GuardFn{guardSystemOnly}},
 
 		// === Reopen (closed → draft, human only) ===
 		{StateClosed, StateDraft, TriggerReopen, []GuardFn{guardIsHuman}},
@@ -190,6 +196,9 @@ func guardNoActiveLease(t *Ticket, _ Actor, _ map[string]any, _ []*Ticket) error
 }
 
 func guardIsLeaseholder(t *Ticket, actor Actor, _ map[string]any, _ []*Ticket) error {
+	if actor.Type == ActorHuman {
+		return nil
+	}
 	if t.AssignedTo != actor.ID {
 		return errors.New("actor is not the leaseholder")
 	}
