@@ -43,8 +43,9 @@ const (
 	EventPolicyEvaluated = "policy.evaluated" // policy was evaluated for a transition (audit trail)
 
 	// --- CI/merge events ---
-	EventTestsFailed = "ticket.tests_failed" // CI checks failed on PR before merge
-	EventTestsPassed = "ticket.tests_passed" // CI checks passed on PR
+	EventTestsFailed  = "ticket.tests_failed"  // CI checks failed on PR before merge
+	EventTestsPassed  = "ticket.tests_passed"  // CI checks passed on PR
+	EventTicketMerged = "ticket.merged"        // PR merged and ticket closed
 
 	// --- Deprecated aliases (backward compat for existing subscribers) ---
 	EventTicketDone      = EventTicketClosed // alias: done → closed
@@ -64,6 +65,7 @@ const (
 	EventWorkflowGateReached    = "workflow.gate_reached"    // workflow advance hit a gate phase requiring human approval
 	EventWorkflowExternalFired  = "workflow.external_fired"  // external phase HTTP request initiated
 	EventWorkflowExternalResult = "workflow.external_result" // external phase completed (via sync or callback)
+	EventWorkflowActionResult   = "workflow.action_result"   // action phase completed (inline Go function)
 
 	// --- Catalog (Layer 14) events ---
 	EventCatalogEntityCreated = "catalog.entity_created"

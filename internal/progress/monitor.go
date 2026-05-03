@@ -47,6 +47,7 @@ func (m *Monitor) subscribe() {
 	m.bus.Subscribe(events.EventTicketReplanned, m.handleReplanned)
 	m.bus.Subscribe(events.EventWorkflowGateReached, m.handleGateReached)
 	m.bus.Subscribe(events.EventWorkStreamCompleted, m.handleWorkStreamCompleted)
+	m.bus.Subscribe(events.EventTicketMerged, m.handleTicketMerged)
 }
 
 func (m *Monitor) inject(ctx context.Context, projectID, category, summary string) {
@@ -141,6 +142,20 @@ func (m *Monitor) handleGateReached(ctx context.Context, event events.Event) {
 	}
 	m.inject(ctx, projectID, "GATE",
 		fmt.Sprintf("%s: workflow phase '%s' requires approval", ticketID, phaseName))
+}
+
+func (m *Monitor) handleTicketMerged(ctx context.Context, event events.Event) {
+	ticketID, _ := event.Payload["ticket_id"].(string)
+	projectID, _ := event.Payload["project_id"].(string)
+	prURL, _ := event.Payload["pr_url"].(string)
+	if projectID == "" || ticketID == "" {
+		return
+	}
+	summary := fmt.Sprintf("%s: PR merged", ticketID)
+	if prURL != "" {
+		summary += " — " + prURL
+	}
+	m.inject(ctx, projectID, "MERGED", summary)
 }
 
 func (m *Monitor) handleWorkStreamCompleted(ctx context.Context, event events.Event) {

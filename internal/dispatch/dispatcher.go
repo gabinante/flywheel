@@ -1641,6 +1641,7 @@ func (d *Dispatcher) reconcileAwaitingValidationPRs(ctx context.Context, reviewi
 			}
 			d.persistMergeState(ctx, t.ID, 0, "merged", "PR merged externally before review")
 			d.cleanupTicketBranch(ctx, t.ID, t.ProjectID)
+			d.publishMergedEvent(ctx, t, prURL)
 			d.closeMergedTicket(ctx, updated)
 			continue
 		}
@@ -1716,6 +1717,7 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 			slog.Info("dispatch: PR already merged, closing ticket", "ticket", t.ID)
 			d.persistMergeState(ctx, t.ID, attempts, "merged", "")
 			d.cleanupTicketBranch(ctx, t.ID, t.ProjectID)
+			d.publishMergedEvent(ctx, t, prURL)
 			d.closeMergedTicket(ctx, t)
 			return
 		}
@@ -1772,8 +1774,21 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 		// Delete remote branch (best-effort) using persisted branch name.
 		d.cleanupTicketBranch(ctx, t.ID, t.ProjectID)
 
+		d.publishMergedEvent(ctx, t, prURL)
 		d.closeMergedTicket(ctx, t)
 	}
+}
+
+// publishMergedEvent emits a ticket.merged event so the orchestrator knows a PR landed.
+func (d *Dispatcher) publishMergedEvent(ctx context.Context, t *ticket.Ticket, prURL string) {
+	_ = d.bus.Publish(ctx, events.Event{
+		Type: events.EventTicketMerged,
+		Payload: map[string]any{
+			"ticket_id":  t.ID,
+			"project_id": t.ProjectID,
+			"pr_url":     prURL,
+		},
+	})
 }
 
 // closeMergedTicket advances a ticket through the post-merge lifecycle.
@@ -2297,6 +2312,7 @@ func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, 
 	d.persistMergeState(ctx, t.ID, 0, "merged", "")
 	d.cleanupTicketBranch(ctx, t.ID, t.ProjectID)
 
+	d.publishMergedEvent(ctx, t, prURL)
 	d.closeMergedTicket(ctx, t)
 	return nil
 }
