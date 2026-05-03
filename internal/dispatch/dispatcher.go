@@ -81,6 +81,31 @@ const maxMergeAttempts = 5
 // maxReviewAttempts is the number of reviewer failures before escalating to a human.
 const maxReviewAttempts = 3
 
+// defaultScanLimit caps the number of tickets processed per scan phase.
+const defaultScanLimit = 50
+
+// projectCache is a per-reconcile cache for project lookups.
+// Scoped to a single scanPending call, cleared on exit. Max staleness = reconcile interval.
+type projectCache struct {
+	getter ProjectGetter
+	cache  map[string]*project.Project
+}
+
+func newProjectCache(getter ProjectGetter) *projectCache {
+	return &projectCache{getter: getter, cache: make(map[string]*project.Project)}
+}
+
+func (c *projectCache) GetProject(ctx context.Context, id string) (*project.Project, error) {
+	if p, ok := c.cache[id]; ok {
+		return p, nil
+	}
+	p, err := c.getter.GetProject(ctx, id)
+	if err == nil {
+		c.cache[id] = p
+	}
+	return p, err
+}
+
 // Config holds dispatcher settings.
 type Config struct {
 	MaxWorkers        int
@@ -109,6 +134,7 @@ type Config struct {
 	DockerCPUs     string
 	DockerFirewall bool
 	AgentAPIKey    string
+	ScanLimit      int // max tickets per scan phase (default 50, 0 = unlimited)
 	CostSvc        *cost.Service
 	TraceSvc       TraceAppender
 }
@@ -137,6 +163,9 @@ type Dispatcher struct {
 	outputPatcher        TicketOutputPatcher          // nil-safe: if nil, merge state is not persisted
 	workflowPhaseUpdater WorkflowPhaseUpdater        // nil-safe: if nil, async phase processing is disabled
 
+	ghLimiter      *ghRateLimiter  // rate limiter for gh CLI subprocess calls
+	reconcileCache *projectCache  // per-reconcile project lookup cache; nil outside scanPending
+
 	mu             sync.Mutex
 	active         map[string]context.CancelFunc // ticketID/role-prefixed key → cancel
 	activeProjects map[string]string             // active key → projectID
@@ -159,6 +188,7 @@ func New(cfg Config, bus events.Bus, tickets TicketGetter, projects ProjectGette
 			RepoDir: cfg.RepoDir,
 		},
 		clones:         NewMultiRepoCloneManager(filepath.Join(cfg.WorktreeDir, ".clones")),
+		ghLimiter:      newGHRateLimiter(1, 10), // 1 token/sec sustained, burst 10
 		active:         make(map[string]context.CancelFunc),
 		activeProjects: make(map[string]string),
 	}
@@ -341,6 +371,30 @@ func (d *Dispatcher) SetWorkflowPhaseUpdater(wpu WorkflowPhaseUpdater) {
 	d.workflowPhaseUpdater = wpu
 }
 
+// scanLimitValue returns the configured scan limit or the default.
+func (d *Dispatcher) scanLimitValue() int {
+	if d.cfg.ScanLimit > 0 {
+		return d.cfg.ScanLimit
+	}
+	return defaultScanLimit
+}
+
+// ghCommand creates a rate-limited exec.Cmd for the GitHub CLI.
+// All gh subprocess calls should go through this method.
+func (d *Dispatcher) ghCommand(ctx context.Context, args ...string) *exec.Cmd {
+	_ = d.ghLimiter.Wait(ctx)
+	return exec.CommandContext(ctx, "gh", args...)
+}
+
+// cachedGetProject returns a project, using the per-reconcile cache if active.
+// Outside of scanPending (reconcileCache == nil), goes directly to the DB.
+func (d *Dispatcher) cachedGetProject(ctx context.Context, id string) (*project.Project, error) {
+	if d.reconcileCache != nil {
+		return d.reconcileCache.GetProject(ctx, id)
+	}
+	return d.projects.GetProject(ctx, id)
+}
+
 // reconcile wraps scanPending with an atomic CAS to prevent concurrent runs.
 func (d *Dispatcher) reconcile(ctx context.Context) bool {
 	if !atomic.CompareAndSwapInt32(&d.scanning, 0, 1) {
@@ -359,6 +413,12 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 	case <-time.After(2 * time.Second):
 	}
 
+	// Set up per-reconcile project cache; cleared on exit.
+	d.reconcileCache = newProjectCache(d.projects)
+	defer func() { d.reconcileCache = nil }()
+
+	scanLimit := d.scanLimitValue()
+
 	// Reviewers first — finish in-progress work before starting new work.
 	// This handles tickets stuck in awaiting_review when the reviewer was
 	// deferred due to capacity (worker still occupied the slot at submit time).
@@ -369,6 +429,9 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 		}
 		slog.Error("dispatch: scan awaiting_review failed", "error", err)
 	} else {
+		if len(reviewing) > scanLimit {
+			reviewing = reviewing[:scanLimit]
+		}
 		for _, t := range reviewing {
 			if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
 				continue
@@ -377,21 +440,12 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 		}
 	}
 
-	// Scan awaiting_validation tickets for externally-merged PRs.
-	// If someone merges the PR on GitHub before the Flywheel reviewer acts,
-	// auto-advance the ticket (approve → close) so it doesn't get stuck.
+	// Reconcile awaiting_validation PRs: merged externally, approved, or changes requested.
+	// Single pass replaces the old reconcileExternalMerges + reconcileGitHubReviewStatus.
 	if ctx.Err() != nil {
 		return
 	}
-	d.reconcileExternalMerges(ctx, reviewing)
-
-	// Reconcile GitHub review decisions for awaiting_validation tickets.
-	// Catches: reviewer posted on GitHub but didn't call MCP, human reviewed on GitHub,
-	// or reviewer failed entirely.
-	if ctx.Err() != nil {
-		return
-	}
-	d.reconcileGitHubReviewStatus(ctx, reviewing)
+	d.reconcileAwaitingValidationPRs(ctx, reviewing)
 
 	// Scan for validated tickets with unmerged PRs — try merge or spawn resolver.
 	if ctx.Err() != nil {
@@ -404,6 +458,9 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 		}
 		slog.Error("dispatch: scan validated failed", "error", err)
 	} else {
+		if len(validated) > scanLimit {
+			validated = validated[:scanLimit]
+		}
 		for _, t := range validated {
 			if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
 				continue
@@ -446,6 +503,10 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 		return
 	}
 
+	if len(pending) > scanLimit {
+		pending = pending[:scanLimit]
+	}
+
 	// Recover draft tickets that have orphaned open PRs (e.g. from rollback after submit).
 	recovered := d.reconcileOrphanedPRs(ctx, pending)
 
@@ -465,7 +526,7 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 // Returns true if the project cannot be found (fail-open for backward compat
 // with the legacy DISPATCH_PROJECT_ID single-project approach).
 func (d *Dispatcher) isProjectDispatchEnabled(ctx context.Context, projectID string) bool {
-	proj, err := d.projects.GetProject(ctx, projectID)
+	proj, err := d.cachedGetProject(ctx, projectID)
 	if err != nil || proj == nil {
 		return true // fail-open: don't block dispatch if project lookup fails
 	}
@@ -476,7 +537,7 @@ func (d *Dispatcher) isProjectDispatchEnabled(ctx context.Context, projectID str
 // Returns false if the project has no repo — workers must not execute against
 // the server's own codebase when no target repo is defined.
 func (d *Dispatcher) projectHasRepo(ctx context.Context, projectID string) bool {
-	proj, err := d.projects.GetProject(ctx, projectID)
+	proj, err := d.cachedGetProject(ctx, projectID)
 	if err != nil || proj == nil {
 		return false // fail-closed: don't dispatch if we can't verify the repo
 	}
@@ -487,7 +548,7 @@ func (d *Dispatcher) projectHasRepo(ctx context.Context, projectID string) bool 
 // Always uses the clone manager to create an isolated clone — never falls back
 // to the server's own codebase. This prevents cross-project repo contamination.
 func (d *Dispatcher) resolveProjectRepoDir(ctx context.Context, projectID string) (string, error) {
-	proj, err := d.projects.GetProject(ctx, projectID)
+	proj, err := d.cachedGetProject(ctx, projectID)
 	if err != nil {
 		return "", fmt.Errorf("get project: %w", err)
 	}
@@ -1254,7 +1315,7 @@ func (d *Dispatcher) projectWorkerLimit(ctx context.Context, projectID string) i
 	if d.projects == nil || projectID == "" {
 		return limit
 	}
-	proj, err := d.projects.GetProject(ctx, projectID)
+	proj, err := d.cachedGetProject(ctx, projectID)
 	if err != nil || proj == nil {
 		return limit
 	}
@@ -1391,7 +1452,26 @@ func (d *Dispatcher) spawnWaitingReviewers(ctx context.Context, projectID string
 
 // spawnReviewer launches a reviewer agent for a ticket in awaiting_review.
 // Reviewers count against the worker capacity limit.
+// Skips review if the PR HEAD commit hasn't changed since the last review
+// to prevent duplicate reviews when the executor re-submits without new commits.
 func (d *Dispatcher) spawnReviewer(ctx context.Context, t *ticket.Ticket) {
+	// Guard: don't re-review the same commit. If the PR HEAD hasn't changed
+	// since our last review, the executor failed to address feedback — escalate
+	// instead of posting another identical review.
+	if prURL, ok := t.Outputs["pr_url"].(string); ok && prURL != "" {
+		headSHA := d.prHeadCommit(ctx, prURL)
+		if headSHA != "" {
+			if lastReviewed, ok := t.Outputs["_last_reviewed_commit"].(string); ok && lastReviewed == headSHA {
+				slog.Warn("dispatch: skipping review, no new commits since last review",
+					"ticket", t.ID, "commit", headSHA)
+				d.escalateReviewFailure(ctx, t,
+					fmt.Sprintf("Executor re-submitted without new commits (HEAD still %s). "+
+						"Review feedback was not addressed.", headSHA[:min(len(headSHA), 12)]))
+				return
+			}
+		}
+	}
+
 	reviewKey := "review:" + t.ID
 
 	workerCtx, _, active, limit, started := d.startActive(ctx, reviewKey, t.ProjectID)
@@ -1401,6 +1481,8 @@ func (d *Dispatcher) spawnReviewer(ctx context.Context, t *ticket.Ticket) {
 	}
 
 	ticketID := t.ID
+	projectID := t.ProjectID
+	prURL, _ := t.Outputs["pr_url"].(string)
 	d.wg.Add(1)
 	go func() {
 		defer d.wg.Done()
@@ -1409,6 +1491,14 @@ func (d *Dispatcher) spawnReviewer(ctx context.Context, t *ticket.Ticket) {
 			delete(d.active, reviewKey)
 			delete(d.activeProjects, reviewKey)
 			d.mu.Unlock()
+
+			// Persist the PR HEAD commit that was reviewed so future spawn
+			// attempts can detect no-new-commits re-submissions.
+			if prURL != "" {
+				if headSHA := d.prHeadCommit(ctx, prURL); headSHA != "" {
+					d.persistReviewedCommit(ctx, ticketID, projectID, headSHA)
+				}
+			}
 
 			d.handleReviewerExit(ctx, ticketID)
 
@@ -1421,6 +1511,26 @@ func (d *Dispatcher) spawnReviewer(ctx context.Context, t *ticket.Ticket) {
 	}()
 
 	slog.Info("dispatch: spawned reviewer", "ticket", t.ID, "project", t.ProjectID, "active", active, "max", limit)
+}
+
+// prHeadCommit returns the HEAD commit SHA of a PR, or "" on error.
+func (d *Dispatcher) prHeadCommit(ctx context.Context, prURL string) string {
+	cmd := d.ghCommand(ctx, "pr", "view", prURL, "--json", "headRefOid", "--jq", ".headRefOid")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// persistReviewedCommit records which commit SHA the reviewer last reviewed.
+func (d *Dispatcher) persistReviewedCommit(ctx context.Context, ticketID, projectID, commitSHA string) {
+	if d.outputPatcher == nil {
+		return
+	}
+	_ = d.outputPatcher.PatchOutputs(ctx, ticketID, map[string]any{
+		"_last_reviewed_commit": commitSHA,
+	})
 }
 
 // runReviewer spawns a validator worker that reviews the ticket's PR and approves or rejects.
@@ -1477,11 +1587,10 @@ func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
 	return nil
 }
 
-// reconcileExternalMerges checks awaiting_validation tickets for PRs that were
-// merged externally (e.g. someone merged on GitHub before the Flywheel reviewer
-// acted). For each such ticket, it auto-approves and closes it so it doesn't
-// get stuck in the review queue.
-func (d *Dispatcher) reconcileExternalMerges(ctx context.Context, reviewing []*ticket.Ticket) {
+// reconcileAwaitingValidationPRs performs a single pass over awaiting_validation
+// tickets, fetching both state and reviewDecision in one gh call per PR.
+// This replaces the old reconcileExternalMerges + reconcileGitHubReviewStatus.
+func (d *Dispatcher) reconcileAwaitingValidationPRs(ctx context.Context, reviewing []*ticket.Ticket) {
 	if d.ticketTransitioner == nil {
 		return
 	}
@@ -1496,34 +1605,79 @@ func (d *Dispatcher) reconcileExternalMerges(ctx context.Context, reviewing []*t
 		if !ok || prURL == "" {
 			continue
 		}
-		checkCmd := exec.Command("gh", "pr", "view", prURL, "--json", "state", "--jq", ".state")
-		stateOut, err := checkCmd.Output()
+
+		// Single gh call fetches both state and reviewDecision.
+		cmd := d.ghCommand(ctx, "pr", "view", prURL,
+			"--json", "state,reviewDecision",
+			"--jq", "[.state, .reviewDecision] | @tsv")
+		out, err := cmd.Output()
 		if err != nil {
 			continue
 		}
-		prState := strings.TrimSpace(string(stateOut))
-		if prState != "MERGED" {
-			continue
+		parts := strings.Split(strings.TrimSpace(string(out)), "\t")
+		prState := ""
+		reviewDecision := ""
+		if len(parts) >= 1 {
+			prState = parts[0]
 		}
-
-		slog.Info("dispatch: PR merged externally while awaiting review, auto-advancing ticket",
-			"ticket", t.ID, "pr_url", prURL)
+		if len(parts) >= 2 {
+			reviewDecision = parts[1]
+		}
 
 		actor := ticket.Actor{ID: "dispatcher", Type: ticket.ActorSystem}
-		if err := d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerApprove, actor, nil); err != nil {
-			slog.Warn("dispatch: auto-approve for external merge failed", "ticket", t.ID, "error", err)
+
+		// Handle externally-merged PRs (was reconcileExternalMerges).
+		if prState == "MERGED" {
+			slog.Info("dispatch: PR merged externally while awaiting review, auto-advancing ticket",
+				"ticket", t.ID, "pr_url", prURL)
+			if err := d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerApprove, actor, nil); err != nil {
+				slog.Warn("dispatch: auto-approve for external merge failed", "ticket", t.ID, "error", err)
+				continue
+			}
+			updated, err := d.tickets.GetTicket(ctx, t.ID)
+			if err != nil {
+				slog.Warn("dispatch: re-fetch after auto-approve failed", "ticket", t.ID, "error", err)
+				continue
+			}
+			d.persistMergeState(ctx, t.ID, 0, "merged", "PR merged externally before review")
+			d.cleanupTicketBranch(ctx, t.ID, t.ProjectID)
+			d.closeMergedTicket(ctx, updated)
 			continue
 		}
 
-		// Re-fetch the ticket after approval so closeMergedTicket sees validated state.
-		updated, err := d.tickets.GetTicket(ctx, t.ID)
-		if err != nil {
-			slog.Warn("dispatch: re-fetch after auto-approve failed", "ticket", t.ID, "error", err)
-			continue
+		// Handle GitHub review decisions (was reconcileGitHubReviewStatus).
+		switch reviewDecision {
+		case "APPROVED":
+			slog.Info("dispatch: PR approved on GitHub, auto-approving ticket",
+				"ticket", t.ID, "pr_url", prURL)
+			if err := d.ticketTransitioner.TransitionTicket(
+				ctx, t.ID, ticket.TriggerApprove, actor, nil,
+			); err != nil {
+				slog.Warn("dispatch: auto-approve from GitHub failed",
+					"ticket", t.ID, "error", err)
+				continue
+			}
+			updated, _ := d.tickets.GetTicket(ctx, t.ID)
+			if updated != nil {
+				d.autoMergePR(ctx, updated, prURL)
+			}
+
+		case "CHANGES_REQUESTED":
+			slog.Info("dispatch: PR has changes requested on GitHub, auto-rejecting ticket",
+				"ticket", t.ID, "pr_url", prURL)
+			if err := d.ticketTransitioner.TransitionTicket(
+				ctx, t.ID, ticket.TriggerReject, actor,
+				map[string]any{"notes": "Changes requested on GitHub PR review"},
+			); err != nil {
+				slog.Warn("dispatch: auto-reject from GitHub failed",
+					"ticket", t.ID, "error", err)
+				continue
+			}
+			updated, _ := d.tickets.GetTicket(ctx, t.ID)
+			if updated != nil {
+				d.spawn(ctx, updated)
+			}
 		}
-		d.persistMergeState(ctx, t.ID, 0, "merged", "PR merged externally before review")
-		d.cleanupTicketBranch(ctx, t.ID, t.ProjectID)
-		d.closeMergedTicket(ctx, updated)
 	}
 }
 
@@ -1555,7 +1709,7 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 
 	// Check if the PR is already merged before attempting any work.
 	// gh pr view works with just a URL — no local clone needed.
-	checkCmd := exec.Command("gh", "pr", "view", prURL, "--json", "state", "--jq", ".state")
+	checkCmd := d.ghCommand(ctx, "pr", "view", prURL, "--json", "state", "--jq", ".state")
 	if stateOut, checkErr := checkCmd.Output(); checkErr == nil {
 		prState := strings.TrimSpace(string(stateOut))
 		if prState == "MERGED" {
@@ -1597,7 +1751,7 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 		return
 	}
 
-	cmd := exec.Command("gh", "pr", "merge", prURL, "--squash")
+	cmd := d.ghCommand(ctx, "pr", "merge", prURL, "--squash")
 	cmd.Dir = repoDir
 	out, mergeErr := cmd.CombinedOutput()
 	if mergeErr != nil {
@@ -1874,6 +2028,9 @@ func (d *Dispatcher) processReadyWorkflowPhases(ctx context.Context) {
 		slog.Error("dispatch: list ready workflow phases failed", "error", err)
 		return
 	}
+	if limit := d.scanLimitValue(); len(tickets) > limit {
+		tickets = tickets[:limit]
+	}
 	for _, t := range tickets {
 		if ctx.Err() != nil {
 			return
@@ -1901,6 +2058,9 @@ func (d *Dispatcher) checkPhaseTimeouts(ctx context.Context) {
 			}
 			slog.Error("dispatch: list phases for timeout check failed", "status", status, "error", err)
 			continue
+		}
+		if limit := d.scanLimitValue(); len(tickets) > limit {
+			tickets = tickets[:limit]
 		}
 		for _, t := range tickets {
 			if ctx.Err() != nil {
@@ -2109,7 +2269,7 @@ func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, 
 	slog.Info("dispatch: conflict resolver completed, retrying merge", "ticket", t.ID)
 
 	_ = d.worktrees.Remove(t.ID)
-	cmd := exec.Command("gh", "pr", "merge", prURL, "--squash")
+	cmd := d.ghCommand(ctx, "pr", "merge", prURL, "--squash")
 	cmd.Dir = repoDir
 	out, mergeErr := cmd.CombinedOutput()
 	if mergeErr != nil {
@@ -2330,7 +2490,7 @@ func (d *Dispatcher) reconcileGitHubReviewStatus(ctx context.Context, tickets []
 			continue
 		}
 
-		cmd := exec.Command("gh", "pr", "view", prURL,
+		cmd := d.ghCommand(ctx, "pr", "view", prURL,
 			"--json", "reviewDecision", "--jq", ".reviewDecision")
 		cmd.Dir = repoDir
 		out, err := cmd.Output()
@@ -2474,7 +2634,7 @@ func (d *Dispatcher) reconcileOrphanedPRs(ctx context.Context, drafts []*ticket.
 				continue
 			}
 			branch := d.branchForTicket(ctx, t)
-			cmd := exec.Command("gh", "pr", "list", "--head", branch,
+			cmd := d.ghCommand(ctx, "pr", "list", "--head", branch,
 				"--state", "open", "--json", "url", "--jq", ".[0].url")
 			cmd.Dir = repoDir
 			out, err := cmd.Output()
@@ -2493,7 +2653,7 @@ func (d *Dispatcher) reconcileOrphanedPRs(ctx context.Context, drafts []*ticket.
 		if err != nil {
 			continue
 		}
-		cmd := exec.Command("gh", "pr", "view", prURL, "--json", "state", "--jq", ".state")
+		cmd := d.ghCommand(ctx, "pr", "view", prURL, "--json", "state", "--jq", ".state")
 		cmd.Dir = repoDir
 		out, err := cmd.Output()
 		if err != nil {

@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS idx_tickets_project_workflow_phase_status;
