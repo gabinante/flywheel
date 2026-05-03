@@ -9,6 +9,8 @@ import (
 // TicketUpdater is the minimal interface the engine needs to update ticket workflow state.
 type TicketUpdater interface {
 	UpdateWorkflowPhase(ctx context.Context, id string, workflowPhase string) error
+	UpdateWorkflowPhaseStatus(ctx context.Context, id string, status string) error
+	GetWorkflowPhase(ctx context.Context, id string) (string, error)
 }
 
 // DefinitionStore is the persistence interface used by the Engine.
@@ -64,6 +66,11 @@ func (e *Engine) Resolve(ctx context.Context, orgID, projectID string) (*Definit
 	return d, nil
 }
 
+// GetDefinition returns a workflow definition by ID.
+func (e *Engine) GetDefinition(ctx context.Context, id string) (*Definition, error) {
+	return e.store.GetByID(ctx, id)
+}
+
 // GetPosition returns the current workflow position for a ticket.
 func (e *Engine) GetPosition(ctx context.Context, ticketID, workflowID, workflowPhase string) (*Position, error) {
 	if workflowID == "" {
@@ -112,10 +119,27 @@ func (e *Engine) StartPhase(ctx context.Context, ticketID, workflowID string) er
 
 // AdvancePhase records completion of the current phase and moves to the next.
 // Returns the next phase (nil if workflow is complete).
+// Idempotent: if the ticket has already moved past currentPhaseID, returns the
+// current phase as a no-op (no duplicate completion recorded).
 func (e *Engine) AdvancePhase(ctx context.Context, ticketID, workflowID, currentPhaseID string, outcome string, metadata map[string]any) (*Phase, error) {
 	def, err := e.store.GetByID(ctx, workflowID)
 	if err != nil {
 		return nil, fmt.Errorf("get workflow: %w", err)
+	}
+
+	// Idempotency guard: check if the ticket has already advanced past this phase.
+	actualPhase, err := e.ticketUpdater.GetWorkflowPhase(ctx, ticketID)
+	if err != nil {
+		return nil, fmt.Errorf("get current phase: %w", err)
+	}
+	if actualPhase != currentPhaseID {
+		// Already advanced — return current phase as no-op.
+		for _, p := range def.Phases {
+			if p.ID == actualPhase {
+				return &p, nil
+			}
+		}
+		return nil, nil // workflow complete
 	}
 
 	// Find current phase index
@@ -130,7 +154,7 @@ func (e *Engine) AdvancePhase(ctx context.Context, ticketID, workflowID, current
 		return nil, fmt.Errorf("phase %s not found in workflow %s", currentPhaseID, workflowID)
 	}
 
-	// Record completion
+	// Record completion with started_at from the ticket's phase entry time.
 	now := time.Now().UTC()
 	if metadata == nil {
 		metadata = map[string]any{}
@@ -139,7 +163,7 @@ func (e *Engine) AdvancePhase(ctx context.Context, ticketID, workflowID, current
 		TicketID:    ticketID,
 		WorkflowID:  workflowID,
 		PhaseID:     currentPhaseID,
-		StartedAt:   now, // approximation; real start is when phase was entered
+		StartedAt:   now, // store will use workflow_phase_entered_at if available
 		CompletedAt: now,
 		Outcome:     outcome,
 		Metadata:    metadata,

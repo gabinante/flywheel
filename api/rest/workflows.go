@@ -3,6 +3,7 @@ package rest
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/gabinante/flywheel/internal/agent"
 	apierrors "github.com/gabinante/flywheel/internal/errors"
@@ -318,6 +319,18 @@ func validateDefinition(def *workflow.Definition) error {
 			return apierrors.New(apierrors.CodeInvalidInput, "duplicate phase id: "+p.ID, false)
 		}
 		seen[p.ID] = true
+
+		// Validate phase config for type-specific errors.
+		if configErrs := workflow.ValidatePhaseConfig(p.Type, p.Config); len(configErrs) > 0 {
+			return apierrors.New(apierrors.CodeInvalidInput, "phase "+p.ID+": "+configErrs[0], false)
+		}
+
+		// Validate timeout parses as duration if present.
+		if p.Timeout != "" {
+			if _, err := time.ParseDuration(p.Timeout); err != nil {
+				return apierrors.New(apierrors.CodeInvalidInput, "phase "+p.ID+": timeout "+p.Timeout+" is not a valid duration", false)
+			}
+		}
 	}
 	return nil
 }

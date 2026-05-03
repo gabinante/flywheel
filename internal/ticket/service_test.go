@@ -128,6 +128,33 @@ func (s *inMemoryTicketStore) UpdateWorkflowPhase(_ context.Context, _ string, _
 	return nil
 }
 
+func (s *inMemoryTicketStore) UpdateWorkflowPhaseStatus(_ context.Context, _ string, _ string) error {
+	return nil
+}
+
+func (s *inMemoryTicketStore) GetWorkflowPhase(_ context.Context, id string) (string, error) {
+	if t, ok := s.tickets[id]; ok {
+		return t.WorkflowPhase, nil
+	}
+	return "", nil
+}
+
+func (s *inMemoryTicketStore) ListByWorkflowPhaseStatus(_ context.Context, _ string, _ string) ([]*Ticket, error) {
+	return nil, nil
+}
+
+func (s *inMemoryTicketStore) CASWorkflowPhaseStatus(_ context.Context, _ string, _ string, _ string) (bool, error) {
+	return true, nil
+}
+
+func (s *inMemoryTicketStore) UpdateWorkflow(_ context.Context, _ string, _ string, _ string) error {
+	return nil
+}
+
+func (s *inMemoryTicketStore) PatchInputs(_ context.Context, _ string, _ map[string]any) error {
+	return nil
+}
+
 func (s *inMemoryTicketStore) UpdateTitleAndObjective(_ context.Context, id string, title string, objective Objective) error {
 	if t, ok := s.tickets[id]; ok {
 		t.Title = title

@@ -39,10 +39,10 @@ func (s *Store) Create(ctx context.Context, t *Ticket) error {
 	inJSON, _ := json.Marshal(t.Inputs)
 	outJSON, _ := json.Marshal(t.Outputs)
 	_, err := s.pool.Exec(ctx,
-		`INSERT INTO tickets (id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, workflow_id, workflow_phase, created_by, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+		`INSERT INTO tickets (id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, workflow_id, workflow_phase, workflow_phase_status, workflow_phase_entered_at, created_by, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
 		t.ID, t.ProjectID, t.Title, string(t.Type), int(t.Priority), string(t.State), t.Version,
-		objJSON, ctxJSON, inJSON, outJSON, t.DependsOn, nullIfEmpty(t.WorkStreamID), nullIfEmpty(t.EnvironmentID), nullIfEmpty(t.TargetRepo), nullIfEmpty(t.WorkflowID), nullIfEmpty(t.WorkflowPhase), t.CreatedBy, t.CreatedAt, t.UpdatedAt)
+		objJSON, ctxJSON, inJSON, outJSON, t.DependsOn, nullIfEmpty(t.WorkStreamID), nullIfEmpty(t.EnvironmentID), nullIfEmpty(t.TargetRepo), nullIfEmpty(t.WorkflowID), nullIfEmpty(t.WorkflowPhase), nullIfEmpty(t.WorkflowPhaseStatus), t.WorkflowPhaseEnteredAt, t.CreatedBy, t.CreatedAt, t.UpdatedAt)
 	return err
 }
 
@@ -51,12 +51,12 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Ticket, error) {
 	var t Ticket
 	var objJSON, ctxJSON, inJSON, outJSON []byte
 	var dependsOn []string
-	var assignedTo, workStreamID, environmentID, targetRepo, workflowID, workflowPhase *string
+	var assignedTo, workStreamID, environmentID, targetRepo, workflowID, workflowPhase, workflowPhaseStatus *string
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_phase, created_by, created_at, updated_at
+		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_phase, workflow_phase_status, workflow_phase_entered_at, created_by, created_at, updated_at
 		 FROM tickets WHERE id = $1`, id).
 		Scan(&t.ID, &t.ProjectID, &t.Title, &t.Type, &t.Priority, &t.State, &t.Version,
-			&objJSON, &ctxJSON, &inJSON, &outJSON, &dependsOn, &workStreamID, &environmentID, &targetRepo, &assignedTo, &workflowID, &workflowPhase, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt)
+			&objJSON, &ctxJSON, &inJSON, &outJSON, &dependsOn, &workStreamID, &environmentID, &targetRepo, &assignedTo, &workflowID, &workflowPhase, &workflowPhaseStatus, &t.WorkflowPhaseEnteredAt, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -78,6 +78,9 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Ticket, error) {
 	if workflowPhase != nil {
 		t.WorkflowPhase = *workflowPhase
 	}
+	if workflowPhaseStatus != nil {
+		t.WorkflowPhaseStatus = *workflowPhaseStatus
+	}
 	_ = json.Unmarshal(objJSON, &t.Objective)
 	_ = json.Unmarshal(ctxJSON, &t.Context)
 	t.Inputs = make(map[string]any)
@@ -97,7 +100,7 @@ func (s *Store) GetByIDs(ctx context.Context, ids []string) ([]*Ticket, error) {
 		return nil, nil
 	}
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_phase, created_by, created_at, updated_at
+		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_phase, workflow_phase_status, workflow_phase_entered_at, created_by, created_at, updated_at
 		 FROM tickets WHERE id = ANY($1)`, ids)
 	if err != nil {
 		return nil, err
@@ -108,7 +111,7 @@ func (s *Store) GetByIDs(ctx context.Context, ids []string) ([]*Ticket, error) {
 
 // GetByProject returns tickets for a project. If workStreamID is non-empty, filters by work_stream_id. If state is non-empty, filters by state.
 func (s *Store) GetByProject(ctx context.Context, projectID string, workStreamID string, state State) ([]*Ticket, error) {
-	q := `SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_phase, created_by, created_at, updated_at
+	q := `SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_phase, workflow_phase_status, workflow_phase_entered_at, created_by, created_at, updated_at
 		 FROM tickets WHERE project_id = $1`
 	args := []any{projectID}
 	argNum := 2
@@ -136,11 +139,11 @@ func (s *Store) ListByState(ctx context.Context, projectID string, state State) 
 	var q string
 	var args []any
 	if projectID != "" {
-		q = `SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_phase, created_by, created_at, updated_at
+		q = `SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_phase, workflow_phase_status, workflow_phase_entered_at, created_by, created_at, updated_at
 		     FROM tickets WHERE project_id = $1 AND state = $2 ORDER BY priority, created_at`
 		args = []any{projectID, string(state)}
 	} else {
-		q = `SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_phase, created_by, created_at, updated_at
+		q = `SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_phase, workflow_phase_status, workflow_phase_entered_at, created_by, created_at, updated_at
 		     FROM tickets WHERE state = $1 ORDER BY priority, created_at`
 		args = []any{string(state)}
 	}
@@ -206,9 +209,91 @@ func (s *Store) UpdateEnvironmentID(ctx context.Context, id string, environmentI
 	return err
 }
 
-// UpdateWorkflowPhase sets the workflow_phase for a ticket.
+// UpdateWorkflowPhase sets the workflow_phase for a ticket, also marking it as
+// 'ready' and recording the phase entry time.
 func (s *Store) UpdateWorkflowPhase(ctx context.Context, id string, workflowPhase string) error {
-	_, err := s.pool.Exec(ctx, `UPDATE tickets SET workflow_phase = $1, updated_at = now() WHERE id = $2`, nullIfEmpty(workflowPhase), id)
+	if workflowPhase == "" {
+		// Workflow complete — clear status and entered_at.
+		_, err := s.pool.Exec(ctx, `UPDATE tickets SET workflow_phase = NULL, workflow_phase_status = '', workflow_phase_entered_at = NULL, updated_at = now() WHERE id = $1`, id)
+		return err
+	}
+	_, err := s.pool.Exec(ctx, `UPDATE tickets SET workflow_phase = $1, workflow_phase_status = 'ready', workflow_phase_entered_at = now(), updated_at = now() WHERE id = $2`, workflowPhase, id)
+	return err
+}
+
+// UpdateWorkflowPhaseStatus sets only the workflow_phase_status for a ticket.
+func (s *Store) UpdateWorkflowPhaseStatus(ctx context.Context, id string, status string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE tickets SET workflow_phase_status = $1, updated_at = now() WHERE id = $2`, status, id)
+	return err
+}
+
+// GetWorkflowPhase returns the current workflow_phase for a ticket.
+func (s *Store) GetWorkflowPhase(ctx context.Context, id string) (string, error) {
+	var phase *string
+	err := s.pool.QueryRow(ctx, `SELECT workflow_phase FROM tickets WHERE id = $1`, id).Scan(&phase)
+	if err != nil {
+		return "", err
+	}
+	if phase == nil {
+		return "", nil
+	}
+	return *phase, nil
+}
+
+// ListByWorkflowPhaseStatus returns tickets with the given workflow_phase_status.
+// If projectID is non-empty, filters by project.
+func (s *Store) ListByWorkflowPhaseStatus(ctx context.Context, projectID, status string) ([]*Ticket, error) {
+	var q string
+	var args []any
+	if projectID != "" {
+		q = `SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_phase, workflow_phase_status, workflow_phase_entered_at, created_by, created_at, updated_at
+		     FROM tickets WHERE project_id = $1 AND workflow_phase_status = $2 ORDER BY priority, created_at`
+		args = []any{projectID, status}
+	} else {
+		q = `SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_phase, workflow_phase_status, workflow_phase_entered_at, created_by, created_at, updated_at
+		     FROM tickets WHERE workflow_phase_status = $1 ORDER BY priority, created_at`
+		args = []any{status}
+	}
+	rows, err := s.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return s.scanRows(rows)
+}
+
+// CASWorkflowPhaseStatus atomically updates workflow_phase_status from expected to desired.
+// Returns true if the update happened (CAS succeeded).
+func (s *Store) CASWorkflowPhaseStatus(ctx context.Context, id, expected, desired string) (bool, error) {
+	cmd, err := s.pool.Exec(ctx,
+		`UPDATE tickets SET workflow_phase_status = $1, updated_at = now() WHERE id = $2 AND workflow_phase_status = $3`,
+		desired, id, expected)
+	if err != nil {
+		return false, err
+	}
+	return cmd.RowsAffected() > 0, nil
+}
+
+// UpdateWorkflow sets both workflow_id and workflow_phase for a ticket.
+func (s *Store) UpdateWorkflow(ctx context.Context, id string, workflowID, workflowPhase string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE tickets SET workflow_id = $1, workflow_phase = $2, updated_at = now() WHERE id = $3`, nullIfEmpty(workflowID), nullIfEmpty(workflowPhase), id)
+	return err
+}
+
+// PatchInputs merges the given keys into existing inputs without overwriting unrelated keys.
+func (s *Store) PatchInputs(ctx context.Context, id string, patch map[string]any) error {
+	t, err := s.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if t.Inputs == nil {
+		t.Inputs = make(map[string]any)
+	}
+	for k, v := range patch {
+		t.Inputs[k] = v
+	}
+	inJSON, _ := json.Marshal(t.Inputs)
+	_, err = s.pool.Exec(ctx, `UPDATE tickets SET inputs = $1, updated_at = now() WHERE id = $2`, inJSON, id)
 	return err
 }
 
@@ -318,7 +403,7 @@ func (s *Store) ListStaleTickets(ctx context.Context, states []State, threshold 
 	}
 	cutoff := time.Now().UTC().Add(-threshold)
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_phase, created_by, created_at, updated_at
+		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_phase, workflow_phase_status, workflow_phase_entered_at, created_by, created_at, updated_at
 		 FROM tickets WHERE state = ANY($1) AND updated_at < $2 ORDER BY updated_at`, stateStrings, cutoff)
 	if err != nil {
 		return nil, err
@@ -333,9 +418,9 @@ func (s *Store) scanRows(rows pgx.Rows) ([]*Ticket, error) {
 		var t Ticket
 		var objJSON, ctxJSON, inJSON, outJSON []byte
 		var dependsOn []string
-		var workStreamID, environmentID, targetRepo, assignedTo, workflowID, workflowPhase *string
+		var workStreamID, environmentID, targetRepo, assignedTo, workflowID, workflowPhase, workflowPhaseStatus *string
 		if err := rows.Scan(&t.ID, &t.ProjectID, &t.Title, &t.Type, &t.Priority, &t.State, &t.Version,
-			&objJSON, &ctxJSON, &inJSON, &outJSON, &dependsOn, &workStreamID, &environmentID, &targetRepo, &assignedTo, &workflowID, &workflowPhase, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			&objJSON, &ctxJSON, &inJSON, &outJSON, &dependsOn, &workStreamID, &environmentID, &targetRepo, &assignedTo, &workflowID, &workflowPhase, &workflowPhaseStatus, &t.WorkflowPhaseEnteredAt, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, err
 		}
 		if assignedTo != nil {
@@ -355,6 +440,9 @@ func (s *Store) scanRows(rows pgx.Rows) ([]*Ticket, error) {
 		}
 		if workflowPhase != nil {
 			t.WorkflowPhase = *workflowPhase
+		}
+		if workflowPhaseStatus != nil {
+			t.WorkflowPhaseStatus = *workflowPhaseStatus
 		}
 		_ = json.Unmarshal(objJSON, &t.Objective)
 		_ = json.Unmarshal(ctxJSON, &t.Context)

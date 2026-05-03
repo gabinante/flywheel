@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -54,6 +55,13 @@ type FailureSummarizer interface {
 // TicketOutputPatcher persists merge metadata into ticket outputs.
 type TicketOutputPatcher interface {
 	PatchOutputs(ctx context.Context, id string, patch map[string]any) error
+}
+
+// WorkflowPhaseUpdater provides workflow phase status operations for the dispatcher.
+type WorkflowPhaseUpdater interface {
+	UpdateWorkflowPhaseStatus(ctx context.Context, id string, status string) error
+	ListByWorkflowPhaseStatus(ctx context.Context, projectID, status string) ([]*ticket.Ticket, error)
+	CASWorkflowPhaseStatus(ctx context.Context, id, expected, desired string) (bool, error)
 }
 
 // TicketTransitioner applies state transitions to tickets.
@@ -121,8 +129,10 @@ type Dispatcher struct {
 	ticketTransitioner TicketTransitioner        // nil-safe: if nil, merged tickets are not auto-closed
 	workflowEngine     *workflow.Engine              // nil-safe: if nil, workflow-aware dispatching is disabled
 	externalExecutor   *workflow.ExternalExecutor   // nil-safe: if nil, external phases auto-advance
+	actionRegistry     *workflow.ActionRegistry     // nil-safe: if nil, action phases auto-advance
 	checkerRegistry    *policy.CheckerRegistry      // nil-safe: if nil, gate requirements are not auto-checked
-	outputPatcher      TicketOutputPatcher          // nil-safe: if nil, merge state is not persisted
+	outputPatcher        TicketOutputPatcher          // nil-safe: if nil, merge state is not persisted
+	workflowPhaseUpdater WorkflowPhaseUpdater        // nil-safe: if nil, async phase processing is disabled
 
 	mu             sync.Mutex
 	active         map[string]context.CancelFunc // ticketID/role-prefixed key → cancel
@@ -193,6 +203,9 @@ func (d *Dispatcher) Start(ctx context.Context) {
 		_ = d.durableBus.SubscribePattern("ticket.cancelled", "dispatcher:cancelled", func(_ context.Context, e events.Event) {
 			d.handleTicketCancelled(ctx, e)
 		})
+		_ = d.durableBus.SubscribePattern("ticket.input_provided", "dispatcher:input-provided", func(_ context.Context, e events.Event) {
+			d.handleTicketInputProvided(ctx, e)
+		})
 	} else {
 		// Legacy exact subscriptions (backward compatible).
 		d.bus.Subscribe(events.EventTicketCreated, func(_ context.Context, e events.Event) {
@@ -221,6 +234,9 @@ func (d *Dispatcher) Start(ctx context.Context) {
 		})
 		d.bus.Subscribe(events.EventTicketCancelled, func(_ context.Context, e events.Event) {
 			d.handleTicketCancelled(ctx, e)
+		})
+		d.bus.Subscribe(events.EventTicketInputProvided, func(_ context.Context, e events.Event) {
+			d.handleTicketInputProvided(ctx, e)
 		})
 	}
 
@@ -300,6 +316,10 @@ func (d *Dispatcher) SetExternalExecutor(ee *workflow.ExternalExecutor) {
 }
 
 // SetCheckerRegistry sets the optional policy checker registry for gate requirement auto-checking.
+func (d *Dispatcher) SetActionRegistry(ar *workflow.ActionRegistry) {
+	d.actionRegistry = ar
+}
+
 func (d *Dispatcher) SetCheckerRegistry(cr *policy.CheckerRegistry) {
 	d.checkerRegistry = cr
 }
@@ -311,6 +331,11 @@ func (d *Dispatcher) SetRepoResolver(rr RepoResolver) {
 // SetOutputPatcher wires the ticket output patcher for durable merge state.
 func (d *Dispatcher) SetOutputPatcher(op TicketOutputPatcher) {
 	d.outputPatcher = op
+}
+
+// SetWorkflowPhaseUpdater wires the workflow phase status updater for async phase processing.
+func (d *Dispatcher) SetWorkflowPhaseUpdater(wpu WorkflowPhaseUpdater) {
+	d.workflowPhaseUpdater = wpu
 }
 
 // reconcile wraps scanPending with an atomic CAS to prevent concurrent runs.
@@ -377,6 +402,18 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 			d.autoMergePR(ctx, t, prURL)
 		}
 	}
+
+	// Process workflow phases that are ready for advancement.
+	if ctx.Err() != nil {
+		return
+	}
+	d.processReadyWorkflowPhases(ctx)
+
+	// Check for phase timeouts.
+	if ctx.Err() != nil {
+		return
+	}
+	d.checkPhaseTimeouts(ctx)
 
 	if ctx.Err() != nil {
 		return
@@ -573,8 +610,13 @@ func (d *Dispatcher) handleTicketCancelled(ctx context.Context, e events.Event) 
 	d.mu.Unlock()
 
 	// Safe to delete branch: ticket explicitly cancelled.
+	// Only clean up branches if the project has a repo configured.
 	if projectID != "" {
-		d.cleanupTicketBranch(ctx, ticketID, projectID)
+		if d.projectHasRepo(ctx, projectID) {
+			d.cleanupTicketBranch(ctx, ticketID, projectID)
+		} else {
+			_ = d.worktrees.Remove(ticketID)
+		}
 	} else {
 		_ = d.worktrees.Remove(ticketID)
 	}
@@ -582,14 +624,69 @@ func (d *Dispatcher) handleTicketCancelled(ctx context.Context, e events.Event) 
 	slog.Info("dispatch: ticket cancelled, branch cleaned up", "ticket", ticketID)
 }
 
-func (d *Dispatcher) tryDispatch(ctx context.Context, t *ticket.Ticket) {
-	if t.State != ticket.StateDraft {
+// handleTicketInputProvided re-dispatches a ticket after a human provides input.
+// The ticket exits awaiting_input → executing or planning, but the original worker
+// has already exited. We release the stale lease and re-dispatch immediately.
+func (d *Dispatcher) handleTicketInputProvided(ctx context.Context, e events.Event) {
+	ticketID, _ := e.Payload["ticket_id"].(string)
+	if ticketID == "" {
 		return
 	}
 
-	// Safety: refuse to dispatch tickets for projects with no repo configured.
-	if !d.projectHasRepo(ctx, t.ProjectID) {
-		slog.Error("dispatch: project has no repo_url, skipping ticket", "ticket", t.ID, "project", t.ProjectID)
+	t, err := d.tickets.GetTicket(ctx, ticketID)
+	if err != nil {
+		slog.Error("dispatch: input_provided get ticket failed", "ticket", ticketID, "error", err)
+		return
+	}
+	if d.cfg.ProjectID != "" && t.ProjectID != d.cfg.ProjectID {
+		return
+	}
+	if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
+		return
+	}
+
+	switch t.State {
+	case ticket.StateDraft:
+		// Lease already expired before event arrived — just dispatch.
+		slog.Info("dispatch: input_provided, ticket already draft, dispatching", "ticket", ticketID)
+		d.tryDispatch(ctx, t)
+
+	case ticket.StateExecuting, ticket.StatePlanning:
+		// At-least-once delivery guard: skip if a worker is already running.
+		d.mu.Lock()
+		_, running := d.active[ticketID]
+		d.mu.Unlock()
+		if running {
+			slog.Info("dispatch: input_provided, worker already active, skipping", "ticket", ticketID)
+			return
+		}
+
+		// Release the stale lease to transition back to draft.
+		if d.leaseReleaser == nil {
+			slog.Warn("dispatch: input_provided, no lease releaser configured", "ticket", ticketID)
+			return
+		}
+		if err := d.leaseReleaser.ForceReleaseLease(ctx, ticketID); err != nil {
+			slog.Error("dispatch: input_provided, lease release failed", "ticket", ticketID, "error", err)
+			return
+		}
+
+		// Re-read ticket after lease release (now draft) and dispatch.
+		t, err = d.tickets.GetTicket(ctx, ticketID)
+		if err != nil {
+			slog.Error("dispatch: input_provided, re-read ticket failed", "ticket", ticketID, "error", err)
+			return
+		}
+		slog.Info("dispatch: input_provided, lease released, dispatching", "ticket", ticketID)
+		d.tryDispatch(ctx, t)
+
+	default:
+		slog.Warn("dispatch: input_provided, unexpected state", "ticket", ticketID, "state", t.State)
+	}
+}
+
+func (d *Dispatcher) tryDispatch(ctx context.Context, t *ticket.Ticket) {
+	if t.State != ticket.StateDraft {
 		return
 	}
 
@@ -650,7 +747,28 @@ func (d *Dispatcher) handleTicketSubmitted(ctx context.Context, e events.Event) 
 	if t.State != ticket.StateAwaitingValidation {
 		return
 	}
-	d.advanceWorkflowIfNeeded(ctx, t, "success")
+	nextPhase := d.advanceWorkflowIfNeeded(ctx, t, "success")
+	if nextPhase != nil {
+		switch nextPhase.Type {
+		case workflow.PhaseAgent:
+			// If the next phase is a validator-like agent, spawn reviewer.
+			agentCfg, _ := workflow.ParseAgentConfig(nextPhase.Config)
+			if agentCfg != nil && agentCfg.Role == "validator" {
+				d.spawnReviewer(ctx, t)
+				return
+			}
+			// Other agent phases: spawn a regular worker.
+			d.spawn(ctx, t)
+			return
+		case workflow.PhaseGate, workflow.PhaseExternal, workflow.PhaseAction:
+			// Non-agent phases: set status=ready and let processReadyPhase handle it.
+			if d.workflowPhaseUpdater != nil {
+				_ = d.workflowPhaseUpdater.UpdateWorkflowPhaseStatus(ctx, t.ID, "ready")
+			}
+			return
+		}
+	}
+	// No workflow or legacy: fall through to default behavior.
 	d.spawnReviewer(ctx, t)
 }
 
@@ -689,18 +807,25 @@ func (d *Dispatcher) handleTicketDone(ctx context.Context, e events.Event) {
 }
 
 // advanceWorkflowIfNeeded advances the workflow phase for a ticket if it has an active workflow.
-func (d *Dispatcher) advanceWorkflowIfNeeded(ctx context.Context, t *ticket.Ticket, outcome string) {
+// Returns the next phase so callers can make routing decisions. Returns nil if
+// there is no workflow, the workflow is complete, or an error occurred.
+//
+// Contract: ticket state controls lifecycle permissions (who can do what);
+// workflow phase controls dispatch routing (what work to do next). They advance
+// at the same integration points but are driven by different actors.
+func (d *Dispatcher) advanceWorkflowIfNeeded(ctx context.Context, t *ticket.Ticket, outcome string) *workflow.Phase {
 	if t.WorkflowID == "" || t.WorkflowPhase == "" || d.workflowEngine == nil {
-		return
+		return nil
 	}
 	next, err := d.workflowEngine.AdvancePhase(ctx, t.ID, t.WorkflowID, t.WorkflowPhase, outcome, nil)
 	if err != nil {
 		slog.Error("dispatch: workflow advance failed", "ticket", t.ID, "error", err)
-		return
+		return nil
 	}
 	if next != nil {
 		t.WorkflowPhase = next.ID
 	}
+	return next
 }
 
 // checkWorkStreamCompletion checks whether all tickets in the work stream are
@@ -831,6 +956,15 @@ func (d *Dispatcher) runTypedWorkerWithProject(ctx context.Context, t *ticket.Ti
 			if pos.CurrentPhase.Type == workflow.PhaseAgent {
 				if agentCfg, parseErr := workflow.ParseAgentConfig(pos.CurrentPhase.Config); parseErr == nil {
 					phaseOverrides = &PhaseOverrides{Goal: agentCfg.Goal, Prompt: agentCfg.Prompt}
+					// Phase role takes highest precedence: phase config > ticket input hint > state default.
+					if agentCfg.Role != "" {
+						role = agentCfg.Role
+						if projectWt, ok := workerTypeForConfiguredRole(proj, agentCfg.Role); ok {
+							wt = projectWt
+						} else if parsed := WorkerType(agentCfg.Role); parsed.IsValid() {
+							wt = parsed
+						}
+					}
 				}
 			}
 		}
@@ -843,79 +977,85 @@ func (d *Dispatcher) runTypedWorkerWithProject(ctx context.Context, t *ticket.Ti
 	}
 
 	// Determine working directory.
-	// SAFETY: Every project gets its own isolated clone via resolveProjectRepoDir.
-	// Workers must never use d.cfg.RepoDir (the server's own codebase) — doing so
-	// causes branches and commits to be pushed to the wrong repository.
-	if proj.RepoURL == "" {
-		return fmt.Errorf("dispatch: project %s (%s) has no repo_url configured — refusing to execute ticket %s against the server's own codebase", proj.ID, proj.Name, t.ID)
-	}
-
 	var workDir string
-	repoDir, err := d.resolveProjectRepoDir(ctx, t.ProjectID)
-	if err != nil {
-		return fmt.Errorf("dispatch: resolve project repo: %w", err)
-	}
-
-	// If ticket targets a secondary repo, resolve that instead.
-	if t.TargetRepo != "" && d.repoResolver != nil && d.clones != nil {
-		repoURL, _, resolveErr := d.repoResolver.ResolveRepo(ctx, t.ProjectID, t.TargetRepo)
-		if resolveErr != nil {
-			slog.Warn("dispatch: resolve repo failed, falling back to primary", "target_repo", t.TargetRepo, "ticket", t.ID, "error", resolveErr)
-		} else if repoURL != "" {
-			cloneDir, cloneErr := d.clones.EnsureClone(repoURL, t.ProjectID+"/"+t.TargetRepo)
-			if cloneErr != nil {
-				return fmt.Errorf("clone repo %s: %w", t.TargetRepo, cloneErr)
-			}
-			repoDir = cloneDir
+	if proj.RepoURL == "" {
+		// No-repo mode: create a temp scratch directory. Workers get MCP access
+		// but no git workspace. Suitable for operators, triage, and non-code tasks.
+		tmpDir, tmpErr := os.MkdirTemp("", "flywheel-norepo-"+t.ID+"-")
+		if tmpErr != nil {
+			return fmt.Errorf("dispatch: create temp workdir: %w", tmpErr)
 		}
-	}
-
-	if d.cfg.DockerEnabled {
-		// Docker mode: container handles its own workspace; pass repo dir for context.
-		workDir = repoDir
+		workDir = tmpDir
+		slog.Info("dispatch: no-repo mode, using temp workdir", "ticket", t.ID, "workdir", workDir)
 	} else {
-		// Host mode: create git worktree for isolation.
-		branch := d.branchForTicket(ctx, t)
-		var err error
-		workDir, err = d.worktrees.CreateFromRepo(t.ID, branch, repoDir, proj.DefaultBranch)
+		// Repo mode: every project gets its own isolated clone via resolveProjectRepoDir.
+		// Workers must never use d.cfg.RepoDir (the server's own codebase).
+		repoDir, err := d.resolveProjectRepoDir(ctx, t.ProjectID)
 		if err != nil {
-			// If ancestry validation failed, try resetting the clone and retrying once.
-			if strings.Contains(err.Error(), "no common history") && d.clones != nil {
-				slog.Warn("dispatch: ancestry validation failed, resetting clone and retrying", "ticket", t.ID, "error", err)
-				cloneAlias := proj.ID
-				if t.TargetRepo != "" {
-					cloneAlias = proj.ID + "/" + t.TargetRepo
+			return fmt.Errorf("dispatch: resolve project repo: %w", err)
+		}
+
+		// If ticket targets a secondary repo, resolve that instead.
+		if t.TargetRepo != "" && d.repoResolver != nil && d.clones != nil {
+			repoURL, _, resolveErr := d.repoResolver.ResolveRepo(ctx, t.ProjectID, t.TargetRepo)
+			if resolveErr != nil {
+				slog.Warn("dispatch: resolve repo failed, falling back to primary", "target_repo", t.TargetRepo, "ticket", t.ID, "error", resolveErr)
+			} else if repoURL != "" {
+				cloneDir, cloneErr := d.clones.EnsureClone(repoURL, t.ProjectID+"/"+t.TargetRepo)
+				if cloneErr != nil {
+					return fmt.Errorf("clone repo %s: %w", t.TargetRepo, cloneErr)
 				}
-				if resetErr := d.clones.ResetClone(cloneAlias); resetErr != nil {
-					slog.Error("dispatch: clone reset failed", "ticket", t.ID, "error", resetErr)
-				} else {
-					// Re-ensure the clone after reset.
-					repoURL := proj.RepoURL
-					if t.TargetRepo != "" && d.repoResolver != nil {
-						if resolved, _, resolveErr := d.repoResolver.ResolveRepo(ctx, t.ProjectID, t.TargetRepo); resolveErr == nil && resolved != "" {
-							repoURL = resolved
+				repoDir = cloneDir
+			}
+		}
+
+		if d.cfg.DockerEnabled {
+			// Docker mode: container handles its own workspace; pass repo dir for context.
+			workDir = repoDir
+		} else {
+			// Host mode: create git worktree for isolation.
+			branch := d.branchForTicket(ctx, t)
+			var err error
+			workDir, err = d.worktrees.CreateFromRepo(t.ID, branch, repoDir, proj.DefaultBranch)
+			if err != nil {
+				// If ancestry validation failed, try resetting the clone and retrying once.
+				if strings.Contains(err.Error(), "no common history") && d.clones != nil {
+					slog.Warn("dispatch: ancestry validation failed, resetting clone and retrying", "ticket", t.ID, "error", err)
+					cloneAlias := proj.ID
+					if t.TargetRepo != "" {
+						cloneAlias = proj.ID + "/" + t.TargetRepo
+					}
+					if resetErr := d.clones.ResetClone(cloneAlias); resetErr != nil {
+						slog.Error("dispatch: clone reset failed", "ticket", t.ID, "error", resetErr)
+					} else {
+						// Re-ensure the clone after reset.
+						repoURL := proj.RepoURL
+						if t.TargetRepo != "" && d.repoResolver != nil {
+							if resolved, _, resolveErr := d.repoResolver.ResolveRepo(ctx, t.ProjectID, t.TargetRepo); resolveErr == nil && resolved != "" {
+								repoURL = resolved
+							}
+						}
+						if newCloneDir, cloneErr := d.clones.EnsureClone(repoURL, cloneAlias); cloneErr == nil {
+							repoDir = newCloneDir
+							workDir, err = d.worktrees.CreateFromRepo(t.ID, branch, repoDir, proj.DefaultBranch)
 						}
 					}
-					if newCloneDir, cloneErr := d.clones.EnsureClone(repoURL, cloneAlias); cloneErr == nil {
-						repoDir = newCloneDir
-						workDir, err = d.worktrees.CreateFromRepo(t.ID, branch, repoDir, proj.DefaultBranch)
+				}
+				if err != nil {
+					// Inject failure context so the next attempt knows why this failed.
+					if d.failureSummarizer != nil {
+						reason := fmt.Sprintf("Worktree creation failed: %s", err)
+						_ = d.failureSummarizer.AppendFailureSummary(ctx, t.ID, reason)
 					}
+					return err
 				}
 			}
-			if err != nil {
-				// Inject failure context so the next attempt knows why this failed.
-				if d.failureSummarizer != nil {
-					reason := fmt.Sprintf("Worktree creation failed: %s", err)
-					_ = d.failureSummarizer.AppendFailureSummary(ctx, t.ID, reason)
-				}
-				return err
+			// Persist branch name so merge/cleanup know exactly which branch to target.
+			if d.outputPatcher != nil {
+				_ = d.outputPatcher.PatchOutputs(ctx, t.ID, map[string]any{
+					"_branch": branch,
+				})
 			}
-		}
-		// Persist branch name so merge/cleanup know exactly which branch to target.
-		if d.outputPatcher != nil {
-			_ = d.outputPatcher.PatchOutputs(ctx, t.ID, map[string]any{
-				"_branch": branch,
-			})
 		}
 	}
 
@@ -962,6 +1102,10 @@ func resolveTicketWorkerRole(proj *project.Project, t *ticket.Ticket) (string, W
 		}
 	}
 	wt := DetermineWorkerType(t)
+	// If no repo is configured and we'd default to executor, use operator instead.
+	if wt == WorkerTypeExecutor && proj.RepoURL == "" {
+		wt = WorkerTypeOperator
+	}
 	return string(wt), wt
 }
 
@@ -1162,6 +1306,23 @@ func (d *Dispatcher) hasHigherPriorityWork(ctx context.Context, projectID string
 			if prURL == "N/A" || prURL == "n/a" || prURL == "none" {
 				continue
 			}
+			// Skip tickets whose merge has been escalated or exhausted attempts —
+			// they need human intervention and should not block new work.
+			if mergeStatus, _ := t.Outputs["_merge_status"].(string); mergeStatus == "escalated" {
+				continue
+			}
+			if v, ok := t.Outputs["_merge_attempts"]; ok {
+				var att int
+				switch n := v.(type) {
+				case float64:
+					att = int(n)
+				case int:
+					att = n
+				}
+				if att >= maxMergeAttempts {
+					continue
+				}
+			}
 			d.mu.Lock()
 			_, resolving := d.active["resolve:"+t.ID]
 			d.mu.Unlock()
@@ -1239,11 +1400,19 @@ func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
 	// Reviewer works in the repo dir (needs access to the code for `gh` and `make test`).
 	// Use the existing worktree if available (the worker's branch), otherwise use
 	// the project's isolated clone — never the server's own codebase.
+	// For repo-less projects, use a temp directory.
 	workDir := d.worktrees.Path(t.ID)
 	if workDir == "" {
-		workDir, err = d.resolveProjectRepoDir(ctx, t.ProjectID)
-		if err != nil {
-			return fmt.Errorf("dispatch: reviewer resolve repo: %w", err)
+		if proj.RepoURL == "" {
+			workDir, err = os.MkdirTemp("", "flywheel-review-"+t.ID+"-")
+			if err != nil {
+				return fmt.Errorf("dispatch: reviewer create temp dir: %w", err)
+			}
+		} else {
+			workDir, err = d.resolveProjectRepoDir(ctx, t.ProjectID)
+			if err != nil {
+				return fmt.Errorf("dispatch: reviewer resolve repo: %w", err)
+			}
 		}
 	}
 
@@ -1322,12 +1491,22 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 
 	repoDir, err := d.resolveProjectRepoDir(ctx, t.ProjectID)
 	if err != nil {
-		slog.Error("dispatch: cannot resolve repo for auto-merge", "ticket", t.ID, "error", err)
+		newAttempts := attempts + 1
+		slog.Error("dispatch: cannot resolve repo for auto-merge", "ticket", t.ID, "error", err, "attempt", newAttempts)
+		d.persistMergeState(ctx, t.ID, newAttempts, "repo_error", truncate(err.Error(), 500))
+		if newAttempts >= maxMergeAttempts {
+			d.escalateMergeFailure(ctx, t, fmt.Sprintf("cannot resolve repo after %d attempts: %v", newAttempts, err))
+		}
 		return
 	}
 
 	// Validate CI checks before attempting merge.
 	if !d.validatePRChecks(ctx, t, prURL, repoDir) {
+		newAttempts := attempts + 1
+		d.persistMergeState(ctx, t.ID, newAttempts, "checks_failing", "CI checks not passing")
+		if newAttempts >= maxMergeAttempts {
+			d.escalateMergeFailure(ctx, t, fmt.Sprintf("CI checks not passing after %d attempts", newAttempts))
+		}
 		return
 	}
 
@@ -1357,8 +1536,10 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 }
 
 // closeMergedTicket advances a ticket through the post-merge lifecycle.
-// If the ticket has a workflow, advances through remaining workflow phases.
-// Otherwise, uses the hardcoded path: validated → deploying → observing → closed.
+// Instead of a synchronous for-loop, advances the current phase with outcome
+// "success" (which sets the next phase to status=ready), then processes one
+// phase synchronously as a fast path. Remaining phases are picked up by the
+// reconcile loop via processReadyWorkflowPhases.
 // Nil-safe: if ticketTransitioner is nil, logs and returns.
 func (d *Dispatcher) closeMergedTicket(ctx context.Context, t *ticket.Ticket) {
 	if d.ticketTransitioner == nil {
@@ -1366,133 +1547,298 @@ func (d *Dispatcher) closeMergedTicket(ctx context.Context, t *ticket.Ticket) {
 		return
 	}
 
-	actor := ticket.Actor{ID: "dispatcher", Type: ticket.ActorSystem}
-
-	// Workflow-aware: advance through remaining phases instead of hardcoded triggers.
+	// Workflow-aware: advance the current phase, then process the next one.
 	if t.WorkflowID != "" && d.workflowEngine != nil && t.WorkflowPhase != "" {
-		for i := 0; i < 20; i++ { // safety limit
-			next, err := d.workflowEngine.AdvancePhase(ctx, t.ID, t.WorkflowID, t.WorkflowPhase, "success", nil)
-			if err != nil {
-				slog.Error("dispatch: workflow advance failed", "ticket", t.ID, "phase", t.WorkflowPhase, "error", err)
-				return
+		next := d.advanceWorkflowIfNeeded(ctx, t, "success")
+		if next == nil {
+			// Workflow complete — close the ticket.
+			actor := ticket.Actor{ID: "dispatcher", Type: ticket.ActorSystem}
+			if err := d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerClose, actor, nil); err != nil {
+				slog.Warn("dispatch: close after workflow complete failed", "ticket", t.ID, "error", err)
 			}
-			if next == nil {
-				// Workflow complete — close the ticket.
-				if err := d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerClose, actor, nil); err != nil {
-					// May already be closed or in wrong state; log and move on.
-					slog.Warn("dispatch: close after workflow complete failed", "ticket", t.ID, "error", err)
-				}
-				break
-			}
-			t.WorkflowPhase = next.ID
-
-			switch next.Type {
-			case workflow.PhaseAgent, workflow.PhaseManual:
-				// Phases that need external action — stop advancing.
-				break
-
-			case workflow.PhaseGate:
-				// Check if gate has automated requirements that can be auto-satisfied.
-				if d.checkerRegistry != nil {
-					gateCfg, _ := workflow.ParseGateConfig(next.Config)
-					if gateCfg != nil && len(gateCfg.Requirements) > 0 {
-						var reqs []policy.GateRequirement
-						for _, r := range gateCfg.Requirements {
-							reqs = append(reqs, policy.GateRequirement{Type: policy.GateRequirementType(r)})
-						}
-						prURL, _ := t.Outputs["pr_url"].(string)
-						statuses := d.checkerRegistry.CheckAll(ctx, reqs, policy.CheckContext{
-							TicketID: t.ID, ProjectID: t.ProjectID, PRURL: prURL,
-						})
-						if len(policy.Unsatisfied(statuses)) == 0 {
-							continue // all requirements met, auto-advance
-						}
-					}
-				}
-				// Requirements not met or no checker — emit gate event and stop.
-				prompt, _ := next.Config["prompt"].(string)
-				var requirements []string
-				if gateCfg, _ := workflow.ParseGateConfig(next.Config); gateCfg != nil {
-					requirements = gateCfg.Requirements
-				}
-				_ = d.bus.Publish(ctx, events.Event{
-					Type: events.EventWorkflowGateReached,
-					Payload: map[string]any{
-						"ticket_id":    t.ID,
-						"project_id":   t.ProjectID,
-						"phase_id":     next.ID,
-						"phase_name":   next.Name,
-						"prompt":       prompt,
-						"requirements": requirements,
-					},
-				})
-				slog.Info("dispatch: workflow gate reached, waiting for conditions", "ticket", t.ID, "phase", next.Name)
-				goto done
-
-			case workflow.PhaseExternal:
-				if d.externalExecutor != nil {
-					cfg, parseErr := workflow.ParseExternalConfig(next.Config)
-					if parseErr == nil && cfg.URL != "" {
-						switch cfg.Mode {
-						case "sync":
-							outcome, meta, execErr := d.externalExecutor.ExecuteSync(ctx, cfg, t.ID, t.WorkflowID, next.ID)
-							if execErr != nil {
-								slog.Error("dispatch: external phase sync failed", "ticket", t.ID, "phase", next.ID, "error", execErr)
-							}
-							_, _ = d.workflowEngine.AdvancePhase(ctx, t.ID, t.WorkflowID, next.ID, outcome, meta)
-							_ = d.bus.Publish(ctx, events.Event{
-								Type: events.EventWorkflowExternalResult,
-								Payload: map[string]any{
-									"ticket_id":  t.ID,
-									"project_id": t.ProjectID,
-									"phase_id":   next.ID,
-									"outcome":    outcome,
-								},
-							})
-							continue
-						case "async":
-							_, asyncErr := d.externalExecutor.InitiateAsync(ctx, cfg, t.ID, t.WorkflowID, next.ID)
-							if asyncErr != nil {
-								slog.Error("dispatch: external phase async initiate failed", "ticket", t.ID, "phase", next.ID, "error", asyncErr)
-							}
-							_ = d.bus.Publish(ctx, events.Event{
-								Type: events.EventWorkflowExternalFired,
-								Payload: map[string]any{
-									"ticket_id":  t.ID,
-									"project_id": t.ProjectID,
-									"phase_id":   next.ID,
-									"mode":       "async",
-								},
-							})
-							goto done // stop advancing, wait for callback
-						default: // poll or unknown
-							goto done
-						}
-					}
-				}
-				// No executor or no URL configured — auto-advance (backward compat).
-				continue
-
-			case workflow.PhaseDeploy:
-				continue // no-op: deploy phase auto-advances
-			case workflow.PhaseObserve:
-				continue // no-op: observe phase auto-advances
-			default:
-				continue
-			}
+			slog.Info("dispatch: ticket closed after merge (workflow complete)", "ticket", t.ID)
+			return
 		}
-	done:
+		// Fast path: process the ready phase immediately.
+		d.processReadyPhase(ctx, t)
 		slog.Info("dispatch: ticket advanced through workflow after merge", "ticket", t.ID)
 		return
 	}
 
 	// Legacy path: close validated ticket after merge.
+	actor := ticket.Actor{ID: "dispatcher", Type: ticket.ActorSystem}
 	if err := d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerClose, actor, nil); err != nil {
 		slog.Error("dispatch: post-merge close failed", "ticket", t.ID, "error", err)
 		return
 	}
-
 	slog.Info("dispatch: ticket closed after merge", "ticket", t.ID)
+}
+
+// processReadyPhase handles exactly one workflow phase for a ticket.
+// It reads the current phase from the workflow definition and executes the
+// appropriate handler. Phases that complete synchronously advance to the next
+// phase (setting status=ready for the reconcile loop to pick up).
+func (d *Dispatcher) processReadyPhase(ctx context.Context, t *ticket.Ticket) {
+	if t.WorkflowID == "" || t.WorkflowPhase == "" || d.workflowEngine == nil {
+		return
+	}
+
+	// CAS guard: only process if status is 'ready', atomically set to 'running'.
+	if d.workflowPhaseUpdater != nil {
+		ok, err := d.workflowPhaseUpdater.CASWorkflowPhaseStatus(ctx, t.ID, "ready", "running")
+		if err != nil {
+			slog.Error("dispatch: CAS workflow phase status failed", "ticket", t.ID, "error", err)
+			return
+		}
+		if !ok {
+			return // another processor got it
+		}
+	}
+
+	pos, err := d.workflowEngine.GetPosition(ctx, t.ID, t.WorkflowID, t.WorkflowPhase)
+	if err != nil || pos == nil || pos.CurrentPhase == nil {
+		slog.Error("dispatch: get workflow position failed", "ticket", t.ID, "error", err)
+		return
+	}
+
+	phase := pos.CurrentPhase
+
+	switch phase.Type {
+	case workflow.PhaseGate:
+		// Check requirements. Met → advance. Not met → set blocked, emit event.
+		if d.checkerRegistry != nil {
+			gateCfg, _ := workflow.ParseGateConfig(phase.Config)
+			if gateCfg != nil && len(gateCfg.Requirements) > 0 {
+				var reqs []policy.GateRequirement
+				for _, r := range gateCfg.Requirements {
+					reqs = append(reqs, policy.GateRequirement{Type: policy.GateRequirementType(r)})
+				}
+				prURL, _ := t.Outputs["pr_url"].(string)
+				statuses := d.checkerRegistry.CheckAll(ctx, reqs, policy.CheckContext{
+					TicketID: t.ID, ProjectID: t.ProjectID, PRURL: prURL,
+				})
+				if len(policy.Unsatisfied(statuses)) == 0 {
+					// All requirements met — advance.
+					next := d.advanceWorkflowIfNeeded(ctx, t, "success")
+					if next == nil {
+						// Workflow complete.
+						actor := ticket.Actor{ID: "dispatcher", Type: ticket.ActorSystem}
+						_ = d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerClose, actor, nil)
+					}
+					return
+				}
+			}
+		}
+		// Requirements not met — set blocked and emit gate event.
+		if d.workflowPhaseUpdater != nil {
+			_ = d.workflowPhaseUpdater.UpdateWorkflowPhaseStatus(ctx, t.ID, "blocked")
+		}
+		prompt, _ := phase.Config["prompt"].(string)
+		var requirements []string
+		if gateCfg, _ := workflow.ParseGateConfig(phase.Config); gateCfg != nil {
+			requirements = gateCfg.Requirements
+		}
+		_ = d.bus.Publish(ctx, events.Event{
+			Type: events.EventWorkflowGateReached,
+			Payload: map[string]any{
+				"ticket_id":    t.ID,
+				"project_id":   t.ProjectID,
+				"phase_id":     phase.ID,
+				"phase_name":   phase.Name,
+				"prompt":       prompt,
+				"requirements": requirements,
+			},
+		})
+		slog.Info("dispatch: workflow gate reached, waiting for conditions", "ticket", t.ID, "phase", phase.Name)
+
+	case workflow.PhaseExternal:
+		if d.externalExecutor != nil {
+			cfg, parseErr := workflow.ParseExternalConfig(phase.Config)
+			if parseErr == nil && cfg.URL != "" {
+				switch cfg.Mode {
+				case "sync":
+					outcome, _, execErr := d.externalExecutor.ExecuteSync(ctx, cfg, t.ID, t.WorkflowID, phase.ID)
+					if execErr != nil {
+						slog.Error("dispatch: external phase sync failed", "ticket", t.ID, "phase", phase.ID, "error", execErr)
+					}
+					next := d.advanceWorkflowIfNeeded(ctx, t, outcome)
+					_ = d.bus.Publish(ctx, events.Event{
+						Type: events.EventWorkflowExternalResult,
+						Payload: map[string]any{
+							"ticket_id":  t.ID,
+							"project_id": t.ProjectID,
+							"phase_id":   phase.ID,
+							"outcome":    outcome,
+						},
+					})
+					if next == nil {
+						actor := ticket.Actor{ID: "dispatcher", Type: ticket.ActorSystem}
+						_ = d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerClose, actor, nil)
+					}
+					return
+
+				case "async":
+					if d.workflowPhaseUpdater != nil {
+						_ = d.workflowPhaseUpdater.UpdateWorkflowPhaseStatus(ctx, t.ID, "blocked")
+					}
+					_, asyncErr := d.externalExecutor.InitiateAsync(ctx, cfg, t.ID, t.WorkflowID, phase.ID)
+					if asyncErr != nil {
+						slog.Error("dispatch: external phase async initiate failed", "ticket", t.ID, "phase", phase.ID, "error", asyncErr)
+					}
+					_ = d.bus.Publish(ctx, events.Event{
+						Type: events.EventWorkflowExternalFired,
+						Payload: map[string]any{
+							"ticket_id":  t.ID,
+							"project_id": t.ProjectID,
+							"phase_id":   phase.ID,
+							"mode":       "async",
+						},
+					})
+					return // wait for callback
+
+				default: // poll or unknown
+					if d.workflowPhaseUpdater != nil {
+						_ = d.workflowPhaseUpdater.UpdateWorkflowPhaseStatus(ctx, t.ID, "blocked")
+					}
+					return
+				}
+			}
+		}
+		// No executor or no URL — auto-advance (backward compat).
+		next := d.advanceWorkflowIfNeeded(ctx, t, "success")
+		if next == nil {
+			actor := ticket.Actor{ID: "dispatcher", Type: ticket.ActorSystem}
+			_ = d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerClose, actor, nil)
+		}
+
+	case workflow.PhaseAction:
+		if d.actionRegistry != nil {
+			actionCfg, parseErr := workflow.ParseActionConfig(phase.Config)
+			if parseErr == nil && actionCfg.Action != "" {
+				ac := workflow.ActionContext{
+					TicketID:   t.ID,
+					ProjectID:  t.ProjectID,
+					PhaseID:    phase.ID,
+					WorkflowID: t.WorkflowID,
+					Params:     actionCfg.Params,
+					Outputs:    t.Outputs,
+					Inputs:     t.Inputs,
+				}
+				result := d.actionRegistry.Execute(ctx, actionCfg.Action, ac)
+				if result.Metadata != nil && d.outputPatcher != nil {
+					_ = d.outputPatcher.PatchOutputs(ctx, t.ID, result.Metadata)
+				}
+				_ = d.bus.Publish(ctx, events.Event{
+					Type: events.EventWorkflowActionResult,
+					Payload: map[string]any{
+						"ticket_id":  t.ID,
+						"project_id": t.ProjectID,
+						"phase_id":   phase.ID,
+						"action":     actionCfg.Action,
+						"outcome":    result.Outcome,
+					},
+				})
+				outcome := result.Outcome
+				if outcome == "" {
+					outcome = "success"
+				}
+				next := d.advanceWorkflowIfNeeded(ctx, t, outcome)
+				if next == nil {
+					actor := ticket.Actor{ID: "dispatcher", Type: ticket.ActorSystem}
+					_ = d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerClose, actor, nil)
+				}
+				return
+			}
+		}
+		// No registry or no action — auto-advance (backward compat).
+		next := d.advanceWorkflowIfNeeded(ctx, t, "success")
+		if next == nil {
+			actor := ticket.Actor{ID: "dispatcher", Type: ticket.ActorSystem}
+			_ = d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerClose, actor, nil)
+		}
+
+	case workflow.PhaseAgent, workflow.PhaseManual:
+		// Phases that need agent dispatch or human action — set blocked and wait.
+		if d.workflowPhaseUpdater != nil {
+			_ = d.workflowPhaseUpdater.UpdateWorkflowPhaseStatus(ctx, t.ID, "blocked")
+		}
+
+	default:
+		// Legacy types (deploy, observe, automated) — auto-advance.
+		next := d.advanceWorkflowIfNeeded(ctx, t, "success")
+		if next == nil {
+			actor := ticket.Actor{ID: "dispatcher", Type: ticket.ActorSystem}
+			_ = d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerClose, actor, nil)
+		}
+	}
+}
+
+// processReadyWorkflowPhases queries tickets with workflow_phase_status='ready'
+// and processes each one. Called from scanPending during reconciliation.
+func (d *Dispatcher) processReadyWorkflowPhases(ctx context.Context) {
+	if d.workflowPhaseUpdater == nil || d.workflowEngine == nil {
+		return
+	}
+	tickets, err := d.workflowPhaseUpdater.ListByWorkflowPhaseStatus(ctx, d.cfg.ProjectID, "ready")
+	if err != nil {
+		if ctx.Err() != nil {
+			return
+		}
+		slog.Error("dispatch: list ready workflow phases failed", "error", err)
+		return
+	}
+	for _, t := range tickets {
+		if ctx.Err() != nil {
+			return
+		}
+		if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
+			continue
+		}
+		d.processReadyPhase(ctx, t)
+	}
+}
+
+// checkPhaseTimeouts checks for phases that have exceeded their configured timeout.
+// Phases with a Timeout field that have been running/blocked longer than the timeout
+// are advanced with outcome="failed" and metadata={"reason": "phase_timeout"}.
+func (d *Dispatcher) checkPhaseTimeouts(ctx context.Context) {
+	if d.workflowPhaseUpdater == nil || d.workflowEngine == nil {
+		return
+	}
+	// Check both running and blocked phases for timeouts.
+	for _, status := range []string{"running", "blocked"} {
+		tickets, err := d.workflowPhaseUpdater.ListByWorkflowPhaseStatus(ctx, d.cfg.ProjectID, status)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			slog.Error("dispatch: list phases for timeout check failed", "status", status, "error", err)
+			continue
+		}
+		for _, t := range tickets {
+			if ctx.Err() != nil {
+				return
+			}
+			if t.WorkflowID == "" || t.WorkflowPhase == "" || t.WorkflowPhaseEnteredAt == nil {
+				continue
+			}
+			pos, err := d.workflowEngine.GetPosition(ctx, t.ID, t.WorkflowID, t.WorkflowPhase)
+			if err != nil || pos == nil || pos.CurrentPhase == nil {
+				continue
+			}
+			if pos.CurrentPhase.Timeout == "" {
+				continue
+			}
+			timeout, err := time.ParseDuration(pos.CurrentPhase.Timeout)
+			if err != nil || timeout <= 0 {
+				continue
+			}
+			if time.Since(*t.WorkflowPhaseEnteredAt) > timeout {
+				slog.Warn("dispatch: phase timeout exceeded", "ticket", t.ID, "phase", t.WorkflowPhase, "timeout", pos.CurrentPhase.Timeout)
+				d.advanceWorkflowIfNeeded(ctx, t, "failed")
+			}
+		}
+	}
 }
 
 // escalateMergeFailure publishes an escalation event when merge attempts exceed the threshold.

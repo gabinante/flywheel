@@ -6,12 +6,27 @@ import (
 )
 
 type stubTicketUpdater struct {
-	phases map[string]string // ticketID → workflowPhase
+	phases   map[string]string // ticketID → workflowPhase
+	statuses map[string]string // ticketID → workflowPhaseStatus
 }
 
 func (s *stubTicketUpdater) UpdateWorkflowPhase(_ context.Context, id string, phase string) error {
 	s.phases[id] = phase
+	if phase != "" {
+		s.statuses[id] = "ready"
+	} else {
+		s.statuses[id] = ""
+	}
 	return nil
+}
+
+func (s *stubTicketUpdater) UpdateWorkflowPhaseStatus(_ context.Context, id string, status string) error {
+	s.statuses[id] = status
+	return nil
+}
+
+func (s *stubTicketUpdater) GetWorkflowPhase(_ context.Context, id string) (string, error) {
+	return s.phases[id], nil
 }
 
 func newTestEngine(defs ...*Definition) (*Engine, *stubTicketUpdater) {
@@ -19,7 +34,7 @@ func newTestEngine(defs ...*Definition) (*Engine, *stubTicketUpdater) {
 	for _, d := range defs {
 		store.defs[d.ID] = d
 	}
-	updater := &stubTicketUpdater{phases: make(map[string]string)}
+	updater := &stubTicketUpdater{phases: make(map[string]string), statuses: make(map[string]string)}
 	return NewEngine(store, updater), updater
 }
 
@@ -127,6 +142,9 @@ func TestAdvancePhase_HappyPath(t *testing.T) {
 	}
 	engine, updater := newTestEngine(def)
 
+	// Set initial phase (simulates StartPhase).
+	updater.phases["t-1"] = "execute"
+
 	// Advance from execute → review
 	next, err := engine.AdvancePhase(context.Background(), "t-1", "wf-1", "execute", "success", nil)
 	if err != nil {
@@ -172,6 +190,7 @@ func TestAdvancePhase_OnFailureJump(t *testing.T) {
 		},
 	}
 	engine, updater := newTestEngine(def)
+	updater.phases["t-1"] = "test"
 
 	// Fail the test phase → should jump back to execute
 	next, err := engine.AdvancePhase(context.Background(), "t-1", "wf-1", "test", "failed", nil)
@@ -226,8 +245,8 @@ func TestGetPosition_NoWorkflow(t *testing.T) {
 
 func TestTemplates(t *testing.T) {
 	templates := BuiltinTemplates()
-	if len(templates) != 3 {
-		t.Fatalf("expected 3 templates, got %d", len(templates))
+	if len(templates) != 6 {
+		t.Fatalf("expected 6 templates, got %d", len(templates))
 	}
 	names := map[string]bool{}
 	for _, tmpl := range templates {
@@ -236,7 +255,7 @@ func TestTemplates(t *testing.T) {
 			t.Fatalf("template %s has no phases", tmpl.Name)
 		}
 	}
-	for _, name := range []string{"Standard SDLC", "Fast Track", "Full Pipeline"} {
+	for _, name := range []string{"Standard SDLC", "Fast Track", "Full Pipeline", "Triage", "Generic Task", "Subticket SDLC"} {
 		if !names[name] {
 			t.Fatalf("missing template: %s", name)
 		}
@@ -284,6 +303,7 @@ func TestAdvancePhase_MaxIterationsExhausted(t *testing.T) {
 		},
 	}
 	engine, updater := newTestEngine(def)
+	updater.phases["t-1"] = "review"
 
 	// First failure — count=1, under max=3 → jump to execute
 	next, err := engine.AdvancePhase(context.Background(), "t-1", "wf-1", "review", "failed", nil)
@@ -294,6 +314,9 @@ func TestAdvancePhase_MaxIterationsExhausted(t *testing.T) {
 		t.Fatalf("first failure: expected jump to execute, got %+v", next)
 	}
 
+	// Advance from execute back to review (simulating re-execution).
+	updater.phases["t-1"] = "review"
+
 	// Second failure — count=2, still under max=3 → jump to execute
 	next, err = engine.AdvancePhase(context.Background(), "t-1", "wf-1", "review", "failed", nil)
 	if err != nil {
@@ -302,6 +325,9 @@ func TestAdvancePhase_MaxIterationsExhausted(t *testing.T) {
 	if next == nil || next.ID != "execute" {
 		t.Fatalf("second failure: expected jump to execute, got %+v", next)
 	}
+
+	// Advance from execute back to review again.
+	updater.phases["t-1"] = "review"
 
 	// Third failure — count=3 >= max=3, should auto-succeed to gate
 	next, err = engine.AdvancePhase(context.Background(), "t-1", "wf-1", "review", "failed", nil)
@@ -327,6 +353,7 @@ func TestAdvancePhase_OnFailureLoop(t *testing.T) {
 		},
 	}
 	engine, updater := newTestEngine(def)
+	updater.phases["t-1"] = "review"
 
 	// Fail review → should jump to execute
 	next, err := engine.AdvancePhase(context.Background(), "t-1", "wf-1", "review", "failed", nil)
@@ -379,5 +406,122 @@ func TestParseGateConfig_Requirements(t *testing.T) {
 	}
 	if len(cfg.Requirements) != 1 || cfg.Requirements[0] != "github_checks" {
 		t.Fatalf("expected requirements [github_checks], got %v", cfg.Requirements)
+	}
+}
+
+func TestValidatePhaseConfig_AgentUnknownKey(t *testing.T) {
+	errs := ValidatePhaseConfig(PhaseAgent, map[string]any{
+		"role": "executor",
+		"typo": "oops",
+	})
+	if len(errs) == 0 {
+		t.Fatal("expected error for unknown key 'typo'")
+	}
+}
+
+func TestValidatePhaseConfig_AgentUnknownRole(t *testing.T) {
+	errs := ValidatePhaseConfig(PhaseAgent, map[string]any{
+		"role": "nonexistent",
+	})
+	if len(errs) == 0 {
+		t.Fatal("expected error for unknown role")
+	}
+}
+
+func TestValidatePhaseConfig_AgentValid(t *testing.T) {
+	errs := ValidatePhaseConfig(PhaseAgent, map[string]any{
+		"role": "executor",
+		"goal": "implement feature",
+	})
+	if len(errs) != 0 {
+		t.Fatalf("expected no errors, got %v", errs)
+	}
+}
+
+func TestValidatePhaseConfig_ExternalInvalidMode(t *testing.T) {
+	errs := ValidatePhaseConfig(PhaseExternal, map[string]any{
+		"mode": "invalid",
+	})
+	if len(errs) == 0 {
+		t.Fatal("expected error for invalid mode")
+	}
+}
+
+func TestValidatePhaseConfig_ExternalInvalidDuration(t *testing.T) {
+	errs := ValidatePhaseConfig(PhaseExternal, map[string]any{
+		"mode":          "poll",
+		"poll_interval": "not-a-duration",
+	})
+	if len(errs) == 0 {
+		t.Fatal("expected error for invalid duration")
+	}
+}
+
+func TestValidatePhaseConfig_GateEmptyPrompt(t *testing.T) {
+	errs := ValidatePhaseConfig(PhaseGate, map[string]any{})
+	if len(errs) == 0 {
+		t.Fatal("expected error for empty prompt")
+	}
+}
+
+func TestValidatePhaseConfig_ActionEmptyAction(t *testing.T) {
+	errs := ValidatePhaseConfig(PhaseAction, map[string]any{})
+	if len(errs) == 0 {
+		t.Fatal("expected error for empty action")
+	}
+}
+
+func TestValidatePhaseConfig_LegacySkips(t *testing.T) {
+	errs := ValidatePhaseConfig(PhaseDeploy, map[string]any{"anything": "goes"})
+	if len(errs) != 0 {
+		t.Fatalf("expected no errors for legacy type, got %v", errs)
+	}
+}
+
+func TestAdvancePhase_Idempotent(t *testing.T) {
+	def := &Definition{
+		ID:   "wf-1",
+		Name: "Test",
+		Phases: []Phase{
+			{ID: "execute", Name: "Execute", Type: PhaseAgent},
+			{ID: "review", Name: "Review", Type: PhaseGate},
+			{ID: "deploy", Name: "Deploy", Type: PhaseExternal},
+		},
+	}
+	engine, updater := newTestEngine(def)
+	updater.phases["t-1"] = "execute"
+
+	// Advance from execute → review
+	next, err := engine.AdvancePhase(context.Background(), "t-1", "wf-1", "execute", "success", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next == nil || next.ID != "review" {
+		t.Fatalf("expected review, got %+v", next)
+	}
+
+	// Try to advance from execute again (idempotent) — ticket is already on review
+	next, err = engine.AdvancePhase(context.Background(), "t-1", "wf-1", "execute", "success", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Should return review (the current phase) without recording a duplicate completion
+	if next == nil || next.ID != "review" {
+		t.Fatalf("idempotent call: expected review, got %+v", next)
+	}
+	if updater.phases["t-1"] != "review" {
+		t.Fatalf("expected phase still review, got %s", updater.phases["t-1"])
+	}
+}
+
+func TestPhaseTimeout_Field(t *testing.T) {
+	p := Phase{
+		ID:      "execute",
+		Name:    "Execute",
+		Type:    PhaseAgent,
+		Timeout: "30m",
+	}
+	if p.Timeout != "30m" {
+		t.Fatalf("expected timeout 30m, got %s", p.Timeout)
 	}
 }

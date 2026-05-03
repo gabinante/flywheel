@@ -39,6 +39,7 @@ import (
 	"github.com/gabinante/flywheel/internal/orchestrator"
 	"github.com/gabinante/flywheel/internal/progress"
 	"github.com/gabinante/flywheel/internal/org"
+	"github.com/gabinante/flywheel/internal/projecttemplate"
 	"github.com/gabinante/flywheel/internal/pillar"
 	"github.com/gabinante/flywheel/internal/stateindex"
 	"github.com/gabinante/flywheel/internal/plan"
@@ -192,6 +193,8 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	orgSvc := org.NewService(orgStore)
 	projectStore := project.NewStore(pool)
 	projectSvc := project.NewService(projectStore)
+	projectTemplateStore := projecttemplate.NewStore(pool)
+	projectTemplateSvc := projecttemplate.NewService(projectTemplateStore)
 	orchestratorStore := orchestrator.NewStore(pool)
 	workStreamStore := workstream.NewStore(pool)
 	workStreamSvc := workstream.NewService(workStreamStore)
@@ -251,7 +254,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	if len(callbackSecret) == 0 {
 		callbackSecret = []byte(autoGenerateSecret())
 	}
-	callbackStore := workflow.NewRedisCallbackStore(redisClient)
+	callbackStore := workflow.NewPostgresCallbackStore(pool)
 	callbackHandler := workflow.NewCallbackHandler(callbackSecret, callbackStore, workflowEngine)
 	externalExecutor := workflow.NewExternalExecutor(callbackHandler, cfg.Auth.BaseURL)
 
@@ -397,8 +400,9 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		EnvSvc:        envSvc,
 		PlanSvc:       planSvc,
 		PolicySvc:     calibrationSvc,
-		AgentStore:    agentStore,
-		CostSvc:       costSvc,
+		AgentStore:         agentStore,
+		CostSvc:            costSvc,
+		ProjectTemplateSvc: projectTemplateSvc,
 	}
 
 	// Investigation service: uses the same worker infrastructure as dispatch.
@@ -500,26 +504,27 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			JWTExpirySec: 604800, // 7 days in seconds for token response
 		}
 		mcpSrv, err := mcp.NewServer(&mcp.Backend{
-			Project:        projectSvc,
-			WorkStream:     workStreamSvc,
-			Ticket:         ticketSvc,
-			Queue:          queueSvc,
-			Trace:          execSvc,
-			Review:         reviewSvc,
-			Org:            orgSvc,
-			Entity:         entitySvc,
-			AgentStore:     agentStore,
-			Investigation:  investigationSvc,
-			Claims:         claimsSvc,
-			CodeIntel:      codeIntel,
-			Findings:       findingsProvider,
-			Notification:   notifySvc,
-			Catalog:        catalogSvc,
-			CatalogScanner: catalogScanner,
-			Pillar:         pillarSvc,
-			StateIndex:     stateIndexSvc,
-			Rollback:       rollbackSvc,
-			Workflow:       workflowEngine,
+			Project:         projectSvc,
+			WorkStream:      workStreamSvc,
+			Ticket:          ticketSvc,
+			Queue:           queueSvc,
+			Trace:           execSvc,
+			Review:          reviewSvc,
+			Org:             orgSvc,
+			Entity:          entitySvc,
+			AgentStore:      agentStore,
+			Investigation:   investigationSvc,
+			Claims:          claimsSvc,
+			CodeIntel:       codeIntel,
+			Findings:        findingsProvider,
+			Notification:    notifySvc,
+			Catalog:         catalogSvc,
+			CatalogScanner:  catalogScanner,
+			Pillar:          pillarSvc,
+			StateIndex:      stateIndexSvc,
+			Rollback:        rollbackSvc,
+			Workflow:        workflowEngine,
+			ProjectTemplate: projectTemplateSvc,
 		})
 		if err != nil {
 			slog.Error("mcp server init failed", "error", err)
@@ -575,8 +580,11 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 		dispatcher.SetTicketTransitioner(ticketSvc)
 		dispatcher.SetWorkflowEngine(workflowEngine)
 		dispatcher.SetExternalExecutor(externalExecutor)
+		actionRegistry := workflow.NewActionRegistry()
+		dispatcher.SetActionRegistry(actionRegistry)
 		dispatcher.SetCheckerRegistry(checkerRegistry)
 		dispatcher.SetOutputPatcher(ticketStore)
+		dispatcher.SetWorkflowPhaseUpdater(ticketStore)
 		// Wire worktree cleanup for rollback when dispatcher manages worktrees.
 		rollbackSvc.SetWorktreeRemover(&dispatch.WorktreeManager{
 			BaseDir: cfg.Dispatch.WorktreeDir,
@@ -638,6 +646,11 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			ProjectSvc:  projectSvc,
 			OrgSvc:      orgSvc,
 			AgentStore:  agentStore,
+		},
+		ProjectTemplatesHandler: &rest.ProjectTemplatesHandler{
+			Svc:        projectTemplateSvc,
+			OrgSvc:     orgSvc,
+			AgentStore: agentStore,
 		},
 		WorkflowHandler: &rest.WorkflowHandler{
 			Engine:          workflowEngine,

@@ -60,24 +60,42 @@ func TestMigrationFilesAreUniqueAndPaired(t *testing.T) {
 		t.Fatal("no migration files found")
 	}
 
+	// Split versions into legacy numbered (< 1000) and timestamp-based (>= 1000).
+	var legacyVersions, tsVersions []int
+	for version := range versions {
+		if version < 1000 {
+			legacyVersions = append(legacyVersions, version)
+		} else {
+			tsVersions = append(tsVersions, version)
+		}
+	}
+	sort.Ints(legacyVersions)
+	sort.Ints(tsVersions)
+
+	// Legacy numbered migrations must be contiguous.
+	if len(legacyVersions) > 0 {
+		expected := legacyVersions[0]
+		for _, version := range legacyVersions {
+			if version != expected {
+				t.Fatalf("legacy migration versions must be contiguous: missing %03d before %03d", expected, version)
+			}
+			expected++
+		}
+	}
+
+	// Timestamp-based migrations just need to be unique (already guaranteed by map).
+	// All migrations must have exactly one up and one down.
 	ordered := make([]int, 0, len(versions))
 	for version := range versions {
 		ordered = append(ordered, version)
 	}
 	sort.Ints(ordered)
-
-	expected := ordered[0]
 	for _, version := range ordered {
-		if version != expected {
-			t.Fatalf("migration versions must be contiguous: missing %03d before %03d", expected, version)
-		}
-		expected++
-
 		current := versions[version]
 		if current.up != 1 || current.down != 1 {
 			sort.Strings(current.files)
 			t.Fatalf(
-				"migration %03d must have exactly one up and one down file, found up=%d down=%d in %s",
+				"migration %d must have exactly one up and one down file, found up=%d down=%d in %s",
 				version,
 				current.up,
 				current.down,

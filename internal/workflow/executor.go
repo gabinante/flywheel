@@ -105,6 +105,133 @@ func ParseGateConfig(config map[string]any) (*GatePhaseConfig, error) {
 	return &cfg, nil
 }
 
+// ValidRoles are the recognized agent phase roles.
+var ValidRoles = map[string]bool{
+	"executor": true, "planner": true, "validator": true, "deployer": true,
+	"investigator": true, "operator": true, "decomposer": true,
+	"fast-executor": true, "conflict-resolver": true,
+}
+
+// ValidatePhaseConfig checks a phase's config for unknown keys, type errors,
+// and semantic issues. Returns a slice of error strings (empty = valid).
+// Legacy phase types are skipped.
+func ValidatePhaseConfig(pt PhaseType, config map[string]any) []string {
+	switch pt {
+	case PhaseAgent:
+		return validateAgentPhaseConfig(config)
+	case PhaseExternal:
+		return validateExternalPhaseConfig(config)
+	case PhaseGate:
+		return validateGatePhaseConfig(config)
+	case PhaseAction:
+		return validateActionPhaseConfig(config)
+	default:
+		// Legacy types: skip validation.
+		return nil
+	}
+}
+
+func validateAgentPhaseConfig(config map[string]any) []string {
+	var errs []string
+	cfg, err := ParseAgentConfig(config)
+	if err != nil {
+		return []string{fmt.Sprintf("invalid agent config: %v", err)}
+	}
+	errs = append(errs, detectUnknownKeys(config, "role", "goal", "prompt", "auto_advance", "max_iterations")...)
+	if cfg.Role != "" && !ValidRoles[cfg.Role] {
+		errs = append(errs, fmt.Sprintf("unknown agent role %q; known roles: executor, planner, validator, deployer, investigator, operator, decomposer, fast-executor", cfg.Role))
+	}
+	if cfg.MaxIterations < 0 {
+		errs = append(errs, "max_iterations must be >= 0")
+	}
+	return errs
+}
+
+func validateExternalPhaseConfig(config map[string]any) []string {
+	var errs []string
+	cfg, err := ParseExternalConfig(config)
+	if err != nil {
+		return []string{fmt.Sprintf("invalid external config: %v", err)}
+	}
+	errs = append(errs, detectUnknownKeys(config, "mode", "url", "method", "headers", "body_template",
+		"success_status", "poll_url", "poll_interval", "poll_timeout", "poll_success_condition")...)
+	validModes := map[string]bool{"sync": true, "async": true, "poll": true}
+	if !validModes[cfg.Mode] {
+		errs = append(errs, fmt.Sprintf("invalid external mode %q; must be sync, async, or poll", cfg.Mode))
+	}
+	if cfg.PollInterval != "" {
+		if _, parseErr := time.ParseDuration(cfg.PollInterval); parseErr != nil {
+			errs = append(errs, fmt.Sprintf("poll_interval %q is not a valid duration", cfg.PollInterval))
+		}
+	}
+	if cfg.PollTimeout != "" {
+		if _, parseErr := time.ParseDuration(cfg.PollTimeout); parseErr != nil {
+			errs = append(errs, fmt.Sprintf("poll_timeout %q is not a valid duration", cfg.PollTimeout))
+		}
+	}
+	return errs
+}
+
+func validateGatePhaseConfig(config map[string]any) []string {
+	var errs []string
+	cfg, err := ParseGateConfig(config)
+	if err != nil {
+		return []string{fmt.Sprintf("invalid gate config: %v", err)}
+	}
+	errs = append(errs, detectUnknownKeys(config, "prompt", "required_role", "requirements")...)
+	if cfg.Prompt == "" {
+		errs = append(errs, "gate phase requires a non-empty 'prompt'")
+	}
+	return errs
+}
+
+func validateActionPhaseConfig(config map[string]any) []string {
+	var errs []string
+	cfg, err := ParseActionConfig(config)
+	if err != nil {
+		return []string{fmt.Sprintf("invalid action config: %v", err)}
+	}
+	errs = append(errs, detectUnknownKeys(config, "action", "params")...)
+	if cfg.Action == "" {
+		errs = append(errs, "action phase requires a non-empty 'action'")
+	}
+	return errs
+}
+
+// detectUnknownKeys returns errors for any keys in config not in the known set.
+func detectUnknownKeys(config map[string]any, known ...string) []string {
+	knownSet := make(map[string]bool, len(known))
+	for _, k := range known {
+		knownSet[k] = true
+	}
+	var errs []string
+	for k := range config {
+		if !knownSet[k] {
+			errs = append(errs, fmt.Sprintf("unknown config key %q", k))
+		}
+	}
+	return errs
+}
+
+// ActionPhaseConfig is the typed config for an action phase (inline Go function).
+type ActionPhaseConfig struct {
+	Action string         `json:"action"`           // registered handler name
+	Params map[string]any `json:"params,omitempty"` // static parameters
+}
+
+// ParseActionConfig extracts typed config from a phase's generic Config map.
+func ParseActionConfig(config map[string]any) (*ActionPhaseConfig, error) {
+	raw, err := json.Marshal(config)
+	if err != nil {
+		return nil, fmt.Errorf("marshal config: %w", err)
+	}
+	var cfg ActionPhaseConfig
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		return nil, fmt.Errorf("unmarshal config: %w", err)
+	}
+	return &cfg, nil
+}
+
 // templateVars are the variables available in body templates.
 type templateVars struct {
 	TicketID    string `json:"ticket_id"`

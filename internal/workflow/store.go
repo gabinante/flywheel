@@ -130,6 +130,8 @@ func (s *Store) DeactivateScope(ctx context.Context, scope, scopeID string) erro
 }
 
 // RecordCompletion records a phase completion for a ticket.
+// Uses the ticket's workflow_phase_entered_at as started_at when available,
+// providing accurate phase duration tracking.
 func (s *Store) RecordCompletion(ctx context.Context, c *PhaseCompletion) error {
 	if c.ID == "" {
 		c.ID = uuid.NewString()
@@ -140,7 +142,9 @@ func (s *Store) RecordCompletion(ctx context.Context, c *PhaseCompletion) error 
 	}
 	_, err = s.pool.Exec(ctx,
 		`INSERT INTO workflow_phase_completions (id, ticket_id, workflow_id, phase_id, started_at, completed_at, outcome, metadata)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		 VALUES ($1, $2, $3, $4,
+		   COALESCE((SELECT workflow_phase_entered_at FROM tickets WHERE id = $2), $5),
+		   $6, $7, $8)`,
 		c.ID, c.TicketID, c.WorkflowID, c.PhaseID, c.StartedAt, c.CompletedAt, c.Outcome, metaJSON)
 	return err
 }

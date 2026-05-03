@@ -9,6 +9,7 @@ const (
 	PhaseAgent    PhaseType = "agent"    // agentic code session with worker role
 	PhaseExternal PhaseType = "external" // HTTP call (sync/async/poll)
 	PhaseGate     PhaseType = "gate"     // condition checkpoint (CI checks, PR approval, human sign-off, etc.)
+	PhaseAction   PhaseType = "action"   // inline Go function execution
 
 	// Legacy types — still accepted in validation but UI only shows the three above.
 	PhaseManual    PhaseType = "manual"    // legacy: human must approve → use gate
@@ -25,6 +26,7 @@ type Phase struct {
 	Description string         `json:"description,omitempty"`
 	Config      map[string]any `json:"config,omitempty"`
 	OnFailure   string         `json:"on_failure,omitempty"`
+	Timeout     string         `json:"timeout,omitempty"` // e.g. "30m", "2h"; parsed as time.Duration
 }
 
 // Definition is a reusable workflow template that defines the delivery pipeline.
@@ -66,12 +68,12 @@ type Position struct {
 
 // ValidPhaseTypes returns all recognized phase types (including legacy).
 func ValidPhaseTypes() []PhaseType {
-	return []PhaseType{PhaseAgent, PhaseExternal, PhaseGate, PhaseManual, PhaseAutomated, PhaseDeploy, PhaseObserve}
+	return []PhaseType{PhaseAgent, PhaseExternal, PhaseGate, PhaseAction, PhaseManual, PhaseAutomated, PhaseDeploy, PhaseObserve}
 }
 
 // PrimaryPhaseTypes returns the three primary user-facing phase types.
 func PrimaryPhaseTypes() []PhaseType {
-	return []PhaseType{PhaseAgent, PhaseExternal, PhaseGate}
+	return []PhaseType{PhaseAgent, PhaseExternal, PhaseGate, PhaseAction}
 }
 
 // IsValidPhaseType checks if a phase type is recognized.
