@@ -21,6 +21,8 @@ func TestWorkerTypeIsValid(t *testing.T) {
 		{WorkerTypeValidator, true},
 		{WorkerTypeDeployer, true},
 		{WorkerTypeInvestigator, true},
+		{WorkerTypeOperator, true},
+		{WorkerTypeDecomposer, true},
 		{WorkerType("unknown"), false},
 		{WorkerType(""), false},
 	}
@@ -41,8 +43,8 @@ func TestWorkerTypeString(t *testing.T) {
 
 func TestAllWorkerTypes(t *testing.T) {
 	types := AllWorkerTypes()
-	if len(types) != 5 {
-		t.Errorf("expected 5 worker types, got %d", len(types))
+	if len(types) != 7 {
+		t.Errorf("expected 7 worker types, got %d", len(types))
 	}
 	for _, wt := range types {
 		if !wt.IsValid() {
@@ -99,6 +101,20 @@ func TestIsToolAllowed(t *testing.T) {
 		{WorkerTypeDeployer, "claim_ticket", true},
 		{WorkerTypeDeployer, "submit_ticket", true},
 		{WorkerTypeDeployer, "approve_ticket", false},
+		// Operator can claim and submit but not approve.
+		{WorkerTypeOperator, "claim_ticket", true},
+		{WorkerTypeOperator, "submit_ticket", true},
+		{WorkerTypeOperator, "log_step", true},
+		{WorkerTypeOperator, "approve_ticket", false},
+		{WorkerTypeOperator, "reject_ticket", false},
+		// Decomposer can claim, submit, and create_ticket.
+		{WorkerTypeDecomposer, "claim_ticket", true},
+		{WorkerTypeDecomposer, "submit_ticket", true},
+		{WorkerTypeDecomposer, "log_step", true},
+		{WorkerTypeDecomposer, "create_ticket", true},
+		{WorkerTypeDecomposer, "list_tickets", true},
+		{WorkerTypeDecomposer, "approve_ticket", false},
+		{WorkerTypeDecomposer, "reject_ticket", false},
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.wt)+"/"+tt.tool, func(t *testing.T) {
@@ -157,6 +173,22 @@ func TestDetermineWorkerType(t *testing.T) {
 			},
 			want: WorkerTypeInvestigator,
 		},
+		{
+			name: "operator from inputs",
+			t: &ticket.Ticket{
+				State:  ticket.StateDraft,
+				Inputs: map[string]any{"worker_type": "operator"},
+			},
+			want: WorkerTypeOperator,
+		},
+		{
+			name: "decomposer from inputs",
+			t: &ticket.Ticket{
+				State:  ticket.StateDraft,
+				Inputs: map[string]any{"worker_type": "decomposer"},
+			},
+			want: WorkerTypeDecomposer,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -193,6 +225,56 @@ func TestResolveTicketWorkerRoleCustomRole(t *testing.T) {
 	}
 	if wt != WorkerTypeValidator {
 		t.Fatalf("worker type = %q, want validator", wt)
+	}
+}
+
+func TestResolveTicketWorkerRoleNoRepo(t *testing.T) {
+	// Project with no repo should route default executor to operator.
+	proj := &project.Project{
+		ID:      "p-norepo",
+		RepoURL: "",
+	}
+	tk := &ticket.Ticket{
+		State: ticket.StateDraft,
+	}
+
+	role, wt := resolveTicketWorkerRole(proj, tk)
+	if wt != WorkerTypeOperator {
+		t.Fatalf("worker type = %q, want operator (no repo)", wt)
+	}
+	if role != "operator" {
+		t.Fatalf("role = %q, want operator", role)
+	}
+
+	// Explicit worker_type=executor should still work even without repo.
+	tk2 := &ticket.Ticket{
+		State:  ticket.StateDraft,
+		Inputs: map[string]any{"worker_type": "executor"},
+	}
+	_, wt2 := resolveTicketWorkerRole(proj, tk2)
+	if wt2 != WorkerTypeExecutor {
+		t.Fatalf("explicit executor should not be overridden, got %q", wt2)
+	}
+}
+
+func TestOperatorPromptNoGitReferences(t *testing.T) {
+	proj := &project.Project{ID: "p-1", Name: "test"}
+	tk := &ticket.Ticket{
+		ID:        "t-1",
+		Title:     "Triage alert",
+		Type:      ticket.TypeTask,
+		Priority:  1,
+		Objective: ticket.Objective{Description: "Investigate the alert"},
+	}
+
+	prompt := AssembleTypedWorkerPrompt(WorkerTypeOperator, proj, tk, nil, "http://localhost", "a-1", nil)
+	if !strings.Contains(prompt, "operator") {
+		t.Error("operator prompt should identify as operator")
+	}
+	for _, forbidden := range []string{"branch", "commit", "pull request", "git push"} {
+		if strings.Contains(strings.ToLower(prompt), forbidden) {
+			t.Errorf("operator prompt should not contain %q", forbidden)
+		}
 	}
 }
 
@@ -332,6 +414,8 @@ func TestBuildTypedTaskPrompt(t *testing.T) {
 		{WorkerTypeValidator, "Review"},
 		{WorkerTypeDeployer, "Deploy"},
 		{WorkerTypeInvestigator, "Investigate"},
+		{WorkerTypeOperator, "Operate"},
+		{WorkerTypeDecomposer, "Decompose"},
 		{WorkerType(""), "Execute"}, // default
 	}
 	for _, tt := range tests {
@@ -341,6 +425,45 @@ func TestBuildTypedTaskPrompt(t *testing.T) {
 				t.Errorf("buildTypedTaskPrompt(%q) should contain %q, got: %s", tt.wt, tt.contains, msg)
 			}
 		})
+	}
+}
+
+func TestAssembleTypedWorkerPrompt_DecomposerCreatesTickets(t *testing.T) {
+	proj := &project.Project{ID: "p-1", Name: "test"}
+	tk := &ticket.Ticket{
+		ID:        "t-1",
+		Title:     "Big feature",
+		Type:      ticket.TypeTask,
+		Priority:  1,
+		Objective: ticket.Objective{Description: "Implement a large feature"},
+	}
+
+	prompt := AssembleTypedWorkerPrompt(WorkerTypeDecomposer, proj, tk, nil, "http://localhost", "a-1", nil)
+	if !strings.Contains(prompt, "decomposer") {
+		t.Error("decomposer prompt should identify as decomposer")
+	}
+	if !strings.Contains(prompt, "create_ticket") {
+		t.Error("decomposer prompt should mention create_ticket")
+	}
+	if !strings.Contains(prompt, "subticket") {
+		t.Error("decomposer prompt should mention subtickets")
+	}
+	// Should not contain git/code references.
+	for _, forbidden := range []string{"commit", "pull request", "git push"} {
+		if strings.Contains(strings.ToLower(prompt), forbidden) {
+			t.Errorf("decomposer prompt should not contain %q", forbidden)
+		}
+	}
+}
+
+func TestDecomposerInputHint(t *testing.T) {
+	tk := &ticket.Ticket{
+		State:  ticket.StateDraft,
+		Inputs: map[string]any{"worker_type": "decomposer"},
+	}
+	got := DetermineWorkerType(tk)
+	if got != WorkerTypeDecomposer {
+		t.Errorf("DetermineWorkerType() = %q, want decomposer", got)
 	}
 }
 
@@ -430,6 +553,157 @@ func TestRunTypedWorker(t *testing.T) {
 	}
 	if !strings.Contains(call.TaskMessage, "Plan") {
 		t.Error("planner task message should contain 'Plan'")
+	}
+}
+
+func TestBuildProgressBlock(t *testing.T) {
+	t.Run("no prior attempts returns empty", func(t *testing.T) {
+		tk := &ticket.Ticket{}
+		if got := buildProgressBlock(tk); got != "" {
+			t.Errorf("expected empty string, got %q", got)
+		}
+	})
+
+	t.Run("rejected with branch and PR", func(t *testing.T) {
+		tk := &ticket.Ticket{
+			Context: ticket.TicketContext{
+				PriorAttempts: []ticket.AttemptSummary{
+					{AgentID: "a-1", Outcome: "rejected", Summary: "Missing tests"},
+				},
+			},
+			Outputs: map[string]any{
+				"_branch": "ticket/test-10",
+				"pr_url":  "https://github.com/org/repo/pull/10",
+			},
+		}
+		block := buildProgressBlock(tk)
+		for _, want := range []string{
+			"### Ticket progress",
+			"**Attempt:** 2",
+			"1 rejected",
+			"`ticket/test-10`",
+			"do NOT create a new branch",
+			"https://github.com/org/repo/pull/10",
+			"push fixes to this PR",
+			"**Last outcome:** rejected",
+			"Fix all BLOCKING issues",
+		} {
+			if !strings.Contains(block, want) {
+				t.Errorf("progress block should contain %q, got:\n%s", want, block)
+			}
+		}
+	})
+
+	t.Run("worker_exit outcome", func(t *testing.T) {
+		tk := &ticket.Ticket{
+			Context: ticket.TicketContext{
+				PriorAttempts: []ticket.AttemptSummary{
+					{AgentID: "a-1", Outcome: "worker_exit", Summary: "Crashed"},
+				},
+			},
+			Outputs: map[string]any{},
+		}
+		block := buildProgressBlock(tk)
+		if !strings.Contains(block, "Previous worker exited without completing") {
+			t.Errorf("should contain worker_exit action, got:\n%s", block)
+		}
+	})
+
+	t.Run("multiple prior attempts", func(t *testing.T) {
+		tk := &ticket.Ticket{
+			Context: ticket.TicketContext{
+				PriorAttempts: []ticket.AttemptSummary{
+					{AgentID: "a-1", Outcome: "worker_exit", Summary: "Crashed"},
+					{AgentID: "a-2", Outcome: "rejected", Summary: "Missing tests"},
+				},
+			},
+			Outputs: map[string]any{},
+		}
+		block := buildProgressBlock(tk)
+		if !strings.Contains(block, "**Attempt:** 3") {
+			t.Errorf("should show attempt 3, got:\n%s", block)
+		}
+		if !strings.Contains(block, "1 rejected") || !strings.Contains(block, "1 worker_exit") {
+			t.Errorf("should show breakdown, got:\n%s", block)
+		}
+		// Last outcome should be rejected
+		if !strings.Contains(block, "**Last outcome:** rejected") {
+			t.Errorf("last outcome should be rejected, got:\n%s", block)
+		}
+	})
+}
+
+func TestAssembleTypedWorkerPrompt_ProgressBlockBeforeObjective(t *testing.T) {
+	proj := &project.Project{ID: "p-1", Name: "test"}
+	tk := &ticket.Ticket{
+		ID:       "t-1",
+		Title:    "Fix the bug",
+		Type:     ticket.TypeTask,
+		Priority: 1,
+		Objective: ticket.Objective{
+			Description:    "Fix the broken feature",
+			SuccessCriteria: []string{"Tests pass"},
+		},
+		Context: ticket.TicketContext{
+			PriorAttempts: []ticket.AttemptSummary{
+				{AgentID: "a-1", Outcome: "rejected", Summary: "7 blocking issues"},
+			},
+		},
+		Outputs: map[string]any{
+			"_branch": "ticket/t-1",
+			"pr_url":  "https://github.com/org/repo/pull/5",
+		},
+	}
+
+	prompt := AssembleTypedWorkerPrompt(WorkerTypeExecutor, proj, tk, nil, "http://localhost", "a-1", nil)
+
+	// Progress block and prior attempts should appear before objective
+	progressIdx := strings.Index(prompt, "### Ticket progress")
+	priorIdx := strings.Index(prompt, "### Prior attempts")
+	objectiveIdx := strings.Index(prompt, "### Objective")
+
+	if progressIdx == -1 {
+		t.Fatal("prompt should contain '### Ticket progress'")
+	}
+	if priorIdx == -1 {
+		t.Fatal("prompt should contain '### Prior attempts'")
+	}
+	if objectiveIdx == -1 {
+		t.Fatal("prompt should contain '### Objective'")
+	}
+	if progressIdx > objectiveIdx {
+		t.Error("progress block should appear before objective")
+	}
+	if priorIdx > objectiveIdx {
+		t.Error("prior attempts should appear before objective")
+	}
+	if progressIdx > priorIdx {
+		t.Error("progress block should appear before prior attempts")
+	}
+
+	// Should NOT have a duplicate prior attempts section
+	count := strings.Count(prompt, "### Prior attempts")
+	if count != 1 {
+		t.Errorf("expected exactly 1 prior attempts section, got %d", count)
+	}
+}
+
+func TestAssembleTypedWorkerPrompt_NoPriorAttemptsNoProgress(t *testing.T) {
+	proj := &project.Project{ID: "p-1", Name: "test"}
+	tk := &ticket.Ticket{
+		ID:        "t-1",
+		Title:     "Fresh ticket",
+		Type:      ticket.TypeTask,
+		Priority:  1,
+		Objective: ticket.Objective{Description: "Do stuff"},
+	}
+
+	prompt := AssembleTypedWorkerPrompt(WorkerTypeExecutor, proj, tk, nil, "http://localhost", "a-1", nil)
+	if strings.Contains(prompt, "### Ticket progress") {
+		t.Error("fresh ticket should not have progress block")
+	}
+	if strings.Contains(prompt, "### Prior attempts") {
+		t.Error("fresh ticket should not have prior attempts")
 	}
 }
 

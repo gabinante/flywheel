@@ -2,6 +2,7 @@ package dispatch
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/gabinante/flywheel/internal/project"
@@ -56,6 +57,18 @@ func AssembleTypedWorkerPrompt(wt WorkerType, proj *project.Project, t *ticket.T
 	b.WriteString(fmt.Sprintf("- **Worker Type:** %s\n", wt))
 	b.WriteString("\n")
 
+	// Ticket progress (only present on re-entry)
+	b.WriteString(buildProgressBlock(t))
+
+	// Prior attempts (before objective so executor sees feedback first)
+	if len(t.Context.PriorAttempts) > 0 {
+		b.WriteString("### Prior attempts (IMPORTANT: address all feedback)\n\n")
+		for i, a := range t.Context.PriorAttempts {
+			b.WriteString(fmt.Sprintf("**Attempt %d** (outcome: %s):\n%s\n\n", i+1, a.Outcome, a.Summary))
+		}
+		b.WriteString("**Tip:** Call `get_trace` with this ticket's ID to see the previous agent's detailed execution log.\n\n")
+	}
+
 	b.WriteString("### Objective\n\n")
 	b.WriteString(t.Objective.Description)
 	b.WriteString("\n\n")
@@ -87,15 +100,6 @@ func AssembleTypedWorkerPrompt(wt WorkerType, proj *project.Project, t *ticket.T
 			b.WriteString(fmt.Sprintf("- %s\n", c))
 		}
 		b.WriteString("\n")
-	}
-
-	// Prior attempts (rejection feedback)
-	if len(t.Context.PriorAttempts) > 0 {
-		b.WriteString("### Prior attempts (IMPORTANT: address all feedback)\n\n")
-		for i, a := range t.Context.PriorAttempts {
-			b.WriteString(fmt.Sprintf("**Attempt %d** (outcome: %s):\n%s\n\n", i+1, a.Outcome, a.Summary))
-		}
-		b.WriteString("**Tip:** Call `get_trace` with this ticket's ID to see the previous agent's detailed execution log.\n\n")
 	}
 
 	// Human answers from escalation
@@ -205,6 +209,12 @@ func workerTypeRolePreamble(wt WorkerType) string {
 			"- If the task is impossible due to a bug or limitation outside your scope, STOP and escalate\n" +
 			"- Persist through failures (try at least 3 approaches) before escalating\n" +
 			"- If you find a small blocker that prevents your task, fix it; otherwise report it\n\n" +
+			"### Assessing current state\n\n" +
+			"- After starting the ticket, FIRST investigate whether the work is already done or partially done\n" +
+			"- Check relevant files and run the acceptance test (if defined) before writing any code\n" +
+			"- If the feature is **already fully implemented** and working: log the finding, then call `submit_ticket` with outputs explaining it was already complete. Do NOT escalate — this is a valid resolution\n" +
+			"- If the feature is **partially implemented**: continue from the current state. Build on what exists rather than starting from scratch\n" +
+			"- Only start writing new code after you understand what already exists\n\n" +
 			"### What you do NOT do\n\n" +
 			"- Do not approve or reject tickets\n" +
 			"- Do not create new tickets or work streams\n" +
@@ -282,9 +292,50 @@ func workerTypeRolePreamble(wt WorkerType) string {
 			"- Do not approve or reject tickets\n" +
 			"- Do not create commits or pull requests"
 
+	case WorkerTypeDecomposer:
+		return "You are a **decomposer** agent for a Flywheel ticket. " +
+			"Your job is to analyze ticket scope and break large tickets into well-scoped, " +
+			"independently implementable subtickets.\n\n" +
+			"### Your responsibilities\n\n" +
+			"- Read and understand the ticket objective, success criteria, and codebase context\n" +
+			"- Identify natural task boundaries and decomposition points\n" +
+			"- Create subtickets via `create_ticket` with proper `depends_on` ordering\n" +
+			"- Each subticket should have a single clear objective and be independently testable\n" +
+			"- Include parent ticket ID in subticket description for traceability (e.g. \"Decomposed from: <parent_ticket_id>\")\n" +
+			"- Set `workflow_id` on subtickets to assign a simpler workflow (no decompose phase)\n\n" +
+			"### When NOT to decompose\n\n" +
+			"- If the ticket is already well-scoped (single objective, clear acceptance criteria, reasonable size), " +
+			"submit immediately noting no decomposition needed\n" +
+			"- Do not decompose for the sake of decomposing — only when it genuinely reduces complexity\n\n" +
+			"### Subticket quality\n\n" +
+			"- Each subticket must have: a clear title, description, success criteria, and acceptance test\n" +
+			"- Use `depends_on` to order subtickets that depend on each other\n" +
+			"- Keep subtickets at a level where a single executor agent can complete them in one session\n\n" +
+			"### What you do NOT do\n\n" +
+			"- Do not write implementation code\n" +
+			"- Do not approve or reject tickets\n" +
+			"- Do not create work streams\n" +
+			"- Do not deploy to any environment"
+
+	case WorkerTypeOperator:
+		return "You are an **operator** agent for a Flywheel ticket. " +
+			"Your job is to analyze, triage, or respond to operational events. " +
+			"You are a non-coding agent — you analyze and report, not implement.\n\n" +
+			"### Your responsibilities\n\n" +
+			"- Analyze alerts, incidents, or operational tickets\n" +
+			"- Triage issues and classify severity\n" +
+			"- Execute runbook steps and document findings\n" +
+			"- Query system state and report observations\n" +
+			"- Recommend actions or escalate to humans when needed\n\n" +
+			"### What you do NOT do\n\n" +
+			"- Do not write or modify source code\n" +
+			"- Do not use version control or open review requests\n" +
+			"- Do not approve or reject tickets\n" +
+			"- Do not deploy to any environment"
+
 	default:
-		// Fallback to generic executor prompt for unknown types.
-		return "You are a coding agent executing a Flywheel ticket. " +
+		// Fallback to generic prompt for unknown types.
+		return "You are an agent executing a Flywheel ticket. " +
 			"Use the Flywheel MCP tools to manage your ticket lifecycle."
 	}
 }
@@ -316,7 +367,11 @@ func workerTypeWorkflow(wt WorkerType, projectID, ticketID string) string {
 			"Follow these steps exactly using the Flywheel MCP tools:\n\n"+
 				"1. Call `claim_ticket` with `project_id: \"%s\"` — this returns `ticket_id` and `lease_token`.\n"+
 				"2. Call `start_ticket` with the `ticket_id` and `lease_token` from step 1.\n"+
-				"3. Do the work. Call `log_step` with `ticket_id`, `lease_token`, and `step_type` after each significant action.\n"+
+				"3. Assess the current state: check relevant files and run the acceptance test (if any) to see if the work is already done.\n"+
+				"   - If fully implemented: log the finding and skip to step 6 (submit_ticket with summary that work was already complete).\n"+
+				"   - If partially done: implement only the remaining work.\n"+
+				"   - If not started: implement the full objective.\n"+
+				"   Call `log_step` with `ticket_id`, `lease_token`, and `step_type` after each significant action.\n"+
 				"4. Commit your changes to the current git branch.\n"+
 				"5. Push the branch and create a pull request:\n"+
 				"   - `git push -u origin HEAD`\n"+
@@ -350,10 +405,12 @@ func workerTypeWorkflow(wt WorkerType, projectID, ticketID string) string {
 				"   - Tests: are there tests? Do they cover the key paths?\n"+
 				"   - No regressions: does `make test` still pass?\n"+
 				"5. If you find issues:\n"+
-				"   - Add comments to the PR: `gh pr comment <number> --body \"<feedback>\"`\n"+
+				"   - Post a formal GitHub review requesting changes: `gh pr review <number> --request-changes --body \"<feedback>\"`\n"+
 				"   - Call `reject_ticket` with `ticket_id: \"%s\"` and notes describing what needs to change.\n"+
 				"6. If the code looks good:\n"+
+				"   - Post a formal GitHub approval review: `gh pr review <number> --approve --body \"Looks good.\"`\n"+
 				"   - Call `approve_ticket` with `ticket_id: \"%s\"`.\n\n"+
+				"**IMPORTANT:** Always use `gh pr review` (not `gh pr comment`) so the review status is visible on GitHub.\n\n"+
 				"**Be pragmatic.** Minor style nits are not worth rejecting over. "+
 				"Focus on correctness, missing tests for key behavior, and obvious bugs.",
 			ticketID, ticketID,
@@ -383,6 +440,43 @@ func workerTypeWorkflow(wt WorkerType, projectID, ticketID string) string {
 			"5. Your findings will be returned to the dispatching agent.\n\n" +
 			"**IMPORTANT:** You are read-only. Do not modify any files or state."
 
+	case WorkerTypeDecomposer:
+		return fmt.Sprintf(
+			"Follow these steps using the Flywheel MCP tools:\n\n"+
+				"1. Call `claim_ticket` with `project_id: \"%s\"` to get your lease.\n"+
+				"2. Call `start_ticket` with the ticket_id and lease_token.\n"+
+				"3. Read the ticket objective and investigate the codebase to understand scope.\n"+
+				"4. Decide: decompose or pass through.\n"+
+				"   - **Well-scoped:** Call `log_step` noting the ticket is already well-scoped, "+
+				"then `submit_ticket` with outputs: `{\"decomposition\": \"none\", \"reason\": \"already well-scoped\"}`.\n"+
+				"   - **Needs decomposition:** Continue to step 5.\n"+
+				"5. Create subtickets via `create_ticket`:\n"+
+				"   - Each gets: title, description (include \"Decomposed from: %s\"), success_criteria, acceptance_test\n"+
+				"   - Set `depends_on` for ordering between siblings where needed\n"+
+				"   - Set `workflow_id` to a simpler workflow (e.g. \"Subticket SDLC\" or \"Fast Track\")\n"+
+				"   - Set `inputs` with `{\"decomposed_from\": \"%s\"}` for provenance tracking\n"+
+				"6. Call `log_step` after each subticket creation.\n"+
+				"7. Call `submit_ticket` with outputs listing the created subticket IDs.\n"+
+				"8. If blocked, use `escalate_ticket` to ask for human help.",
+			projectID, ticketID, ticketID,
+		)
+
+	case WorkerTypeOperator:
+		return fmt.Sprintf(
+			"Follow these steps using the Flywheel MCP tools:\n\n"+
+				"1. Call `claim_ticket` with `project_id: \"%s\"` to get your lease.\n"+
+				"2. Call `start_ticket` with the ticket_id and lease_token.\n"+
+				"3. Analyze the situation:\n"+
+				"   - Query system state and observations\n"+
+				"   - Review alerts, logs, or relevant context\n"+
+				"   - Classify severity and identify root cause\n"+
+				"4. Call `log_step` after each significant finding.\n"+
+				"5. Call `submit_ticket` with your analysis and recommendations in outputs.\n"+
+				"6. If blocked or a decision requires human judgment, use `escalate_ticket`.\n\n"+
+				"**IMPORTANT:** Do not write code or modify files. You are analysis-only.",
+			projectID,
+		)
+
 	default:
 		return fmt.Sprintf(
 			"Follow these steps exactly using the Flywheel MCP tools:\n\n"+
@@ -395,4 +489,56 @@ func workerTypeWorkflow(wt WorkerType, projectID, ticketID string) string {
 			projectID,
 		)
 	}
+}
+
+// buildProgressBlock creates a ticket progress context block for re-spawned workers.
+// Returns empty string for fresh tickets (no prior attempts).
+func buildProgressBlock(t *ticket.Ticket) string {
+	if len(t.Context.PriorAttempts) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString("### Ticket progress\n\n")
+
+	// Attempt count with breakdown
+	counts := map[string]int{}
+	for _, a := range t.Context.PriorAttempts {
+		counts[a.Outcome]++
+	}
+	attemptNum := len(t.Context.PriorAttempts) + 1
+	var parts []string
+	for outcome, n := range counts {
+		parts = append(parts, fmt.Sprintf("%d %s", n, outcome))
+	}
+	// Sort for deterministic output
+	sort.Strings(parts)
+	b.WriteString(fmt.Sprintf("- **Attempt:** %d (%d prior: %s)\n",
+		attemptNum, len(t.Context.PriorAttempts), strings.Join(parts, ", ")))
+
+	// Existing branch
+	if branch, ok := t.Outputs["_branch"].(string); ok && branch != "" {
+		b.WriteString(fmt.Sprintf("- **Branch:** `%s` (exists — do NOT create a new branch)\n", branch))
+	}
+
+	// Existing PR
+	if prURL, ok := t.Outputs["pr_url"].(string); ok && prURL != "" {
+		b.WriteString(fmt.Sprintf("- **PR:** %s (exists — push fixes to this PR, do not create a new one)\n", prURL))
+	}
+
+	// Last outcome + action required
+	last := t.Context.PriorAttempts[len(t.Context.PriorAttempts)-1]
+	b.WriteString(fmt.Sprintf("- **Last outcome:** %s\n", last.Outcome))
+
+	switch last.Outcome {
+	case "rejected":
+		b.WriteString("- **Action required:** Fix all BLOCKING issues from the most recent review before resubmitting.\n")
+	case "worker_exit":
+		b.WriteString("- **Action required:** Previous worker exited without completing. Review the trace (`get_trace`), then pick up where it left off.\n")
+	default:
+		b.WriteString("- **Action required:** Retry the work. Check the trace (`get_trace`) for context on what happened.\n")
+	}
+
+	b.WriteString("\n")
+	return b.String()
 }
