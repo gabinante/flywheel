@@ -2,6 +2,7 @@ package dispatch
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -465,10 +466,70 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 			if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
 				continue
 			}
-			prURL, ok := t.Outputs["pr_url"].(string)
-			if !ok || prURL == "" {
+			prURL, _ := t.Outputs["pr_url"].(string)
+
+			// Backfill pr_url from artifacts for already-stuck tickets.
+			if !isValidPRURL(prURL) {
+				if artifacts, ok := t.Outputs["artifacts"].([]any); ok {
+					for _, a := range artifacts {
+						if m, ok := a.(map[string]any); ok {
+							if tp, _ := m["type"].(string); tp == "pr" || tp == "pull_request" {
+								if u, _ := m["url"].(string); isValidPRURL(u) {
+									prURL = u
+									if d.outputPatcher != nil {
+										_ = d.outputPatcher.PatchOutputs(ctx, t.ID, map[string]any{"pr_url": u})
+									}
+									break
+								}
+							}
+						}
+					}
+				}
+			}
+
+			// Try to discover PR via branch convention if still no pr_url.
+			if !isValidPRURL(prURL) {
+				if repoDir, err := d.resolveProjectRepoDir(ctx, t.ProjectID); err == nil {
+					branch := d.branchForTicket(ctx, t)
+					cmd := d.ghCommand(ctx, "pr", "list", "--head", branch,
+						"--state", "all", "--json", "url,state", "--jq", ".[0]")
+					cmd.Dir = repoDir
+					if out, err := cmd.Output(); err == nil {
+						var prInfo struct {
+							URL   string `json:"url"`
+							State string `json:"state"`
+						}
+						if json.Unmarshal(out, &prInfo) == nil && isValidPRURL(prInfo.URL) {
+							prURL = prInfo.URL
+							if d.outputPatcher != nil {
+								_ = d.outputPatcher.PatchOutputs(ctx, t.ID, map[string]any{"pr_url": prURL})
+							}
+							// If PR is already merged, close the ticket directly.
+							if prInfo.State == "MERGED" {
+								slog.Info("dispatch: discovered merged PR for validated ticket", "ticket", t.ID, "pr_url", prURL)
+								d.cleanupTicketBranch(ctx, t.ID, t.ProjectID)
+								d.publishMergedEvent(ctx, t, prURL)
+								d.closeMergedTicket(ctx, t)
+								continue
+							}
+						}
+					}
+				}
+			}
+
+			// No PR found anywhere — close as no-code validated ticket.
+			if !isValidPRURL(prURL) {
+				if d.ticketTransitioner != nil {
+					actor := ticket.Actor{ID: "dispatcher", Type: ticket.ActorSystem}
+					if err := d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerClose, actor, nil); err != nil {
+						slog.Warn("dispatch: close no-code validated ticket failed", "ticket", t.ID, "error", err)
+					} else {
+						slog.Info("dispatch: closed no-code validated ticket", "ticket", t.ID)
+					}
+				}
 				continue
 			}
+
 			d.mu.Lock()
 			_, resolving := d.active["resolve:"+t.ID]
 			d.mu.Unlock()
@@ -1392,12 +1453,8 @@ func (d *Dispatcher) hasHigherPriorityWork(ctx context.Context, projectID string
 	validated, err := d.tickets.ListByState(ctx, projectID, ticket.StateValidated)
 	if err == nil {
 		for _, t := range validated {
-			prURL, ok := t.Outputs["pr_url"].(string)
-			if !ok || prURL == "" {
-				continue
-			}
-			// Skip placeholder/sentinel PR URLs.
-			if prURL == "N/A" || prURL == "n/a" || prURL == "none" {
+			prURL, _ := t.Outputs["pr_url"].(string)
+			if !isValidPRURL(prURL) {
 				continue
 			}
 			// Skip tickets whose merge has been escalated or exhausted attempts —
@@ -1682,6 +1739,11 @@ func (d *Dispatcher) reconcileAwaitingValidationPRs(ctx context.Context, reviewi
 	}
 }
 
+// isValidPRURL returns true if the string looks like an actual PR URL.
+func isValidPRURL(prURL string) bool {
+	return strings.HasPrefix(prURL, "http://") || strings.HasPrefix(prURL, "https://")
+}
+
 // autoMergePR merges the PR after a ticket is approved/validated.
 // It first validates that CI checks pass, then merges. If the merge fails due
 // to conflicts, it spawns a conflict resolver worker. On success, it advances
@@ -1690,6 +1752,11 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 	// State guard: only merge from validated state. Prevents re-entrancy when
 	// ticket.closed event re-enters handleTicketDone.
 	if t.State != ticket.StateValidated {
+		return
+	}
+
+	if !isValidPRURL(prURL) {
+		slog.Warn("dispatch: skipping merge, invalid pr_url", "ticket", t.ID, "pr_url", prURL)
 		return
 	}
 
@@ -2660,7 +2727,7 @@ func (d *Dispatcher) reconcileOrphanedPRs(ctx context.Context, drafts []*ticket.
 			prURL = strings.TrimSpace(string(out))
 		}
 
-		if prURL == "" || prURL == "N/A" {
+		if !isValidPRURL(prURL) {
 			continue
 		}
 

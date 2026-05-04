@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gabinante/flywheel/events"
@@ -298,6 +299,16 @@ func (s *Service) UpdateTargetRepo(ctx context.Context, ticketID string, targetR
 	return s.store.UpdateTargetRepo(ctx, ticketID, targetRepo)
 }
 
+// UpdateWorkflow sets both workflow_id and workflow_phase for a ticket.
+func (s *Service) UpdateWorkflow(ctx context.Context, ticketID string, workflowID, workflowPhase string) error {
+	return s.store.UpdateWorkflow(ctx, ticketID, workflowID, workflowPhase)
+}
+
+// PatchInputs merges the given keys into existing inputs without overwriting unrelated keys.
+func (s *Service) PatchInputs(ctx context.Context, ticketID string, patch map[string]any) error {
+	return s.store.PatchInputs(ctx, ticketID, patch)
+}
+
 // PatchTicketMetadata merges optional title and objective fields into a ticket. Only non-nil patch fields from objective are applied.
 func (s *Service) PatchTicketMetadata(ctx context.Context, ticketID string, title *string, desc *string, successCriteria *[]string, acceptanceTest *string) error {
 	t, err := s.store.GetByID(ctx, ticketID)
@@ -407,7 +418,7 @@ func (s *Service) TransitionTicket(ctx context.Context, id string, trigger strin
 			assignedTo = aid
 		}
 	}
-	if trigger == TriggerLeaseExpired || trigger == TriggerReject || trigger == TriggerRollback {
+	if trigger == TriggerLeaseExpired || trigger == TriggerReject || trigger == TriggerRollback || trigger == TriggerCancel {
 		assignedTo = ""
 	}
 	if err := s.store.UpdateState(ctx, id, t.Version, newState, assignedTo); err != nil {
@@ -467,6 +478,28 @@ func (s *Service) SubmitTicket(ctx context.Context, id string, leaseToken string
 			return &AcceptanceTestFailure{Stdout: stdout, Stderr: ""}
 		}
 	}
+	// Normalize pr_url: extract from artifacts if missing.
+	if _, has := outputs["pr_url"]; !has {
+		if artifacts, ok := outputs["artifacts"].([]any); ok {
+			for _, a := range artifacts {
+				if m, ok := a.(map[string]any); ok {
+					if t, _ := m["type"].(string); t == "pr" || t == "pull_request" {
+						if u, _ := m["url"].(string); u != "" {
+							outputs["pr_url"] = u
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+	// Strip non-URL pr_url values.
+	if prURL, ok := outputs["pr_url"].(string); ok {
+		if prURL != "" && !strings.HasPrefix(prURL, "http://") && !strings.HasPrefix(prURL, "https://") {
+			delete(outputs, "pr_url")
+		}
+	}
+
 	payload := map[string]any{"outputs": outputs}
 	fromState := t.State
 	newState, err := s.sm.Transition(t, TriggerSubmit, Actor{ID: t.AssignedTo, Type: ActorAgent}, payload, nil)

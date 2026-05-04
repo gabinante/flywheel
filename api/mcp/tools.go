@@ -88,14 +88,22 @@ var ToolScopeRegistry = map[string]ToolScope{
 	"flywheel_add_git_note":  ToolScopeWriteExternal,
 	"flywheel_sync_git_notes": ToolScopeWriteExternal,
 
+	// Cancel — coordinators can cancel tickets
+	"cancel_ticket": ToolScopeWriteInternal,
+
 	// Review tools — human-gated by design
-	"approve_ticket": ToolScopeForbiddenCoordinator,
-	"reject_ticket":  ToolScopeForbiddenCoordinator,
-	"reopen_ticket":  ToolScopeForbiddenCoordinator,
+	"approve_ticket":       ToolScopeForbiddenCoordinator,
+	"reject_ticket":        ToolScopeForbiddenCoordinator,
+	"reopen_ticket":        ToolScopeForbiddenCoordinator,
+	"resolve_ticket_input": ToolScopeForbiddenCoordinator,
 
 	// Workflow tools (read-only)
 	"get_workflow_position":   ToolScopeRead,
 	"list_workflow_templates": ToolScopeRead,
+
+	// Project template tools (read-only)
+	"list_project_templates":    ToolScopeRead,
+	"list_workstream_templates": ToolScopeRead,
 }
 
 // GetToolScope returns the scope classification for a tool name.
@@ -140,12 +148,14 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"additionalProperties": false,
 	}}, wrap(listOrgsHandler))
 
-	mcp.AddTool(s, &mcp.Tool{Name: "create_project", Description: "Create a project in your default (first) organization. Use for initiatives, epics, or any work container. You do not pass org_id; the project is created in an org you belong to.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "create_project", Description: "Create a project in your default (first) organization. Use for initiatives, epics, or any work container. You do not pass org_id; the project is created in an org you belong to. Optionally seed from a project template: pass template_id to include all its workstreams, or template_id + work_stream_template_ids to select a subset.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"name":     map[string]any{"type": "string", "description": "Project name"},
-			"slug":     map[string]any{"type": "string", "description": "URL-friendly slug (optional, auto-generated if omitted)"},
-			"agent_id": map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+			"name":                      map[string]any{"type": "string", "description": "Project name"},
+			"slug":                      map[string]any{"type": "string", "description": "URL-friendly slug (optional, auto-generated if omitted)"},
+			"agent_id":                  map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+			"template_id":               map[string]any{"type": "string", "description": "Project template ID to seed workstreams and tickets from (optional). Use list_project_templates to see available templates."},
+			"work_stream_template_ids":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Specific workstream template IDs to include (optional). If omitted with template_id, all template workstreams are included."},
 		},
 		"required":             []string{"name"},
 		"additionalProperties": false,
@@ -226,6 +236,8 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"work_stream_id":   map[string]any{"type": "string", "description": "Work stream ID to attach this ticket to (optional)"},
 			"depends_on":       map[string]any{"type": "array", "description": "Array of ticket IDs this ticket depends on (optional)", "items": map[string]any{"type": "string"}},
 			"target_repo":      map[string]any{"type": "string", "description": "Target repository alias for multi-repo projects (optional, from list_project_repositories; omit for primary repo)"},
+			"workflow_id":      map[string]any{"type": "string", "description": "Workflow template to assign (optional). Subtickets should use a simpler workflow like 'Subticket SDLC' or 'Fast Track'. If omitted, uses project default."},
+			"inputs":           map[string]any{"type": "object", "description": "Key-value pairs for ticket inputs (optional). Use for metadata like decomposed_from.", "additionalProperties": true},
 			"agent_id":         map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
 		},
 		"required":             []string{"project_id", "title"},
@@ -335,17 +347,17 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"required":             []string{"ticket_id", "lease_token", "step_type"},
 		"additionalProperties": false,
 	}}, wrap(logStepHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "submit_ticket", Description: "Submit your outputs and move the ticket to awaiting_review. outputs must be a JSON object (e.g. {\"summary\":\"...\", \"artifacts\":[...]}). A human will approve or reject via the REST API. Call when the work is done.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "submit_ticket", Description: "Submit your outputs and move the ticket to awaiting_validation. outputs must be a JSON object with a top-level pr_url if you opened a PR (e.g. {\"summary\":\"...\", \"pr_url\":\"https://github.com/org/repo/pull/123\"}). A human will approve or reject via the REST API. Call when the work is done.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"ticket_id":   map[string]any{"type": "string", "description": "Ticket ID"},
 			"lease_token": map[string]any{"type": "string", "description": "Lease token from claim_ticket"},
-			"outputs":     map[string]any{"type": "string", "description": "JSON object string with outputs (e.g. {\"summary\":\"...\", \"artifacts\":[...]})"},
+			"outputs":     map[string]any{"type": "string", "description": "JSON object string with outputs. Include pr_url at top level if a PR was opened (e.g. {\"summary\":\"...\", \"pr_url\":\"https://github.com/org/repo/pull/123\"})"},
 		},
 		"required":             []string{"ticket_id", "lease_token", "outputs"},
 		"additionalProperties": false,
 	}}, wrap(submitTicketHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "escalate_ticket", Description: "Escalate to a human when you need help. Moves the ticket to needs_human. Provide a reason and a specific question; the human's answer is stored and the ticket returns to executing so you can continue. Use when blocked or when the objective is ambiguous.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "escalate_ticket", Description: "Escalate to a human when you need help. Moves the ticket to awaiting_input. Provide a reason and a specific question; the human's answer is stored and the ticket returns to executing so you can continue. Use when blocked or when the objective is ambiguous.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"ticket_id":   map[string]any{"type": "string", "description": "Ticket ID"},
@@ -384,7 +396,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"required":             []string{"ticket_id", "reason"},
 		"additionalProperties": false,
 	}}, wrap(rollbackTicketHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "list_pending_reviews", Description: "List tickets in awaiting_review for a project. Use this when the user asks 'what needs my review?' or 'show pending reviews'. Returns full tickets so you can summarize them in chat; use get_trace(ticket_id) to show execution steps for each.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "list_pending_reviews", Description: "List tickets in awaiting_validation for a project. Use this when the user asks 'what needs my review?' or 'show pending reviews'. Returns full tickets so you can summarize them in chat; use get_trace(ticket_id) to show execution steps for each.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"project_id": map[string]any{"type": "string", "description": "Project ID"},
@@ -418,7 +430,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"required":             []string{"project_id", "question"},
 		"additionalProperties": false,
 	}}, wrap(dispatchInvestigationHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "approve_ticket", Description: "Approve a ticket in awaiting_review. Moves it to done. Call when the user says to approve, ship it, looks good, etc. reviewer_id is inferred from OAuth.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "approve_ticket", Description: "Approve a ticket in awaiting_validation. Moves it to validated. Call when the user says to approve, ship it, looks good, etc. reviewer_id is inferred from OAuth.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"ticket_id": map[string]any{"type": "string", "description": "Ticket ID"},
@@ -428,7 +440,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"required":             []string{"ticket_id"},
 		"additionalProperties": false,
 	}}, wrap(approveTicketHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "reject_ticket", Description: "Reject a ticket in awaiting_review. Returns it to executing with your notes appended so the agent can fix and resubmit. Call when the user says reject, needs changes, etc. reviewer_id is inferred from OAuth.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "reject_ticket", Description: "Reject a ticket in awaiting_validation. Returns it to executing with your notes appended so the agent can fix and resubmit. Call when the user says reject, needs changes, etc. reviewer_id is inferred from OAuth.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"ticket_id": map[string]any{"type": "string", "description": "Ticket ID"},
@@ -438,7 +450,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"required":             []string{"ticket_id", "notes"},
 		"additionalProperties": false,
 	}}, wrap(rejectTicketHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "reopen_ticket", Description: "Move a ticket from done back to awaiting_review (e.g. mistaken approval). Preserves outputs. Only call when the user explicitly asks to reopen or return a completed ticket for review. reviewer_id is inferred from OAuth.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "reopen_ticket", Description: "Move a ticket from closed back to draft (e.g. mistaken closure). Preserves outputs. Only call when the user explicitly asks to reopen a completed ticket. reviewer_id is inferred from OAuth.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"ticket_id": map[string]any{"type": "string", "description": "Ticket ID"},
@@ -448,6 +460,27 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"required":             []string{"ticket_id"},
 		"additionalProperties": false,
 	}}, wrap(reopenTicketHandler))
+	mcp.AddTool(s, &mcp.Tool{Name: "cancel_ticket", Description: "Cancel a ticket from any early or blocked state (draft, planning, executing, awaiting_input, awaiting_validation). Moves it to closed. Use when a ticket is no longer needed or should be abandoned.", InputSchema: map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"ticket_id": map[string]any{"type": "string", "description": "Ticket ID"},
+			"reason":    map[string]any{"type": "string", "description": "Reason for cancellation"},
+			"agent_id":  map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+		},
+		"required":             []string{"ticket_id", "reason"},
+		"additionalProperties": false,
+	}}, wrap(cancelTicketHandler))
+	mcp.AddTool(s, &mcp.Tool{Name: "resolve_ticket_input", Description: "Resolve a ticket stuck in awaiting_input by providing an answer and moving it back to planning or executing. Auto-resolves the latest unresolved escalation. Use when a human has the answer to an agent's escalation question.", InputSchema: map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"ticket_id": map[string]any{"type": "string", "description": "Ticket ID"},
+			"answer":    map[string]any{"type": "string", "description": "Answer to the agent's question"},
+			"resume_to": map[string]any{"type": "string", "description": "State to resume to: planning (default) or executing", "enum": []string{"planning", "executing"}},
+			"agent_id":  map[string]any{"type": "string", "description": "Reviewer ID (optional, inferred from OAuth when using URL auth)"},
+		},
+		"required":             []string{"ticket_id", "answer"},
+		"additionalProperties": false,
+	}}, wrap(resolveTicketInputHandler))
 
 	// Git notes (Flywheel integration): if repo_path provided and server has access, run git notes; else return commands for flywheel-git CLI.
 	mcp.AddTool(s, &mcp.Tool{Name: "flywheel_add_git_note", Description: "Add a git note to a commit (refs/notes/flywheel/decision|trace|intent). Params: message (required), type (decision|trace|intent, default decision), commit_sha (default HEAD), optional repo_path, ticket_id, project_id. If server has repo_path, adds note; else returns commands to run flywheel-git note add locally.", InputSchema: map[string]any{
@@ -565,6 +598,9 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 
 	// Workflow tools.
 	registerWorkflowTools(s, b, wrap)
+
+	// Project template tools.
+	registerProjectTemplateTools(s, b, wrap)
 }
 
 func requireString(args map[string]any, key string) (string, error) {
@@ -813,7 +849,32 @@ func createProjectHandler(b *Backend, ctx context.Context, args map[string]any) 
 		if err != nil {
 			return toolErrTriple(apierrors.MapError(err))
 	}
-	return jsonResult(p)
+
+	// Seed from template if requested
+	var seedResult any
+	templateID := getString(args, "template_id", "")
+	if templateID != "" && b.ProjectTemplate != nil {
+		wsIDs := getStringArray(args, "work_stream_template_ids")
+		if len(wsIDs) == 0 {
+			pt, err := b.ProjectTemplate.GetProjectTemplate(ctx, templateID)
+			if err == nil && pt != nil {
+				wsIDs = pt.WorkstreamTemplateIDs
+			}
+		}
+		if len(wsIDs) > 0 {
+			sr, err := b.ProjectTemplate.SeedProject(ctx, p.ID, wsIDs, agentID, b.WorkStream, b.Ticket)
+			if err != nil {
+				return toolErrTriple(apierrors.New(apierrors.CodeInternal, "project created but template seeding failed: "+err.Error(), false))
+			}
+			seedResult = sr
+		}
+	}
+
+	result := map[string]any{"project": p}
+	if seedResult != nil {
+		result["seed_result"] = seedResult
+	}
+	return jsonResult(result)
 }
 
 // workStreamGitInstruction returns checkout/create guidance when the project is git-backed.
@@ -1205,6 +1266,26 @@ func createTicketHandler(b *Backend, ctx context.Context, args map[string]any) (
 		t, err := b.Ticket.CreateTicket(ctx, projectID, title, typ, prio, agentID, dependsOn, workStreamID, objective, ticket.TicketContext{}, idempotencyKey, targetRepo)
 		if err != nil {
 			return toolErrTriple(apierrors.MapError(err))
+		}
+		// Apply optional inputs metadata (e.g. decomposed_from for subticket provenance).
+		if inputsRaw, ok := args["inputs"].(map[string]any); ok && len(inputsRaw) > 0 {
+			if patchErr := b.Ticket.PatchInputs(ctx, t.ID, inputsRaw); patchErr != nil {
+				return toolErrTriple(apierrors.MapError(patchErr))
+			}
+			for k, v := range inputsRaw {
+				t.Inputs[k] = v
+			}
+		}
+		// Override workflow if specified (e.g. subtickets using a simpler workflow).
+		if wfID := getString(args, "workflow_id", ""); wfID != "" && b.Workflow != nil {
+			if wfDef, wfErr := b.Workflow.GetDefinition(ctx, wfID); wfErr == nil && wfDef != nil && len(wfDef.Phases) > 0 {
+				firstPhase := wfDef.Phases[0].ID
+				if updErr := b.Ticket.UpdateWorkflow(ctx, t.ID, wfDef.ID, firstPhase); updErr != nil {
+					return toolErrTriple(apierrors.MapError(updErr))
+				}
+				t.WorkflowID = wfDef.ID
+				t.WorkflowPhase = firstPhase
+			}
 		}
 		return jsonResult(map[string]any{
 			"ticket":   t,
@@ -2013,6 +2094,51 @@ func reopenTicketHandler(b *Backend, ctx context.Context, args map[string]any) (
 		return toolErrTriple(apierrors.MapError(err))
 	}
 	return jsonResult(map[string]any{"ok": true, "decision": review.DecisionReopened})
+}
+
+func cancelTicketHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
+	ticketID, err := requireString(args, "ticket_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	reason, err := requireString(args, "reason")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	agentID, err := getAgentIDFromArgs(ctx, args)
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	actor := ticket.Actor{ID: agentID, Type: ticket.ActorHuman}
+	payload := map[string]any{"reason": reason}
+	if err := b.Ticket.TransitionTicket(ctx, ticketID, ticket.TriggerCancel, actor, payload); err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	_ = b.Queue.CleanupLease(ctx, ticketID)
+	return jsonResult(map[string]any{"ok": true, "ticket_id": ticketID, "state": "closed"})
+}
+
+func resolveTicketInputHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
+	if b.Review == nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInternal, "reviews not configured", false))
+	}
+	ticketID, err := requireString(args, "ticket_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	answer, err := requireString(args, "answer")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	reviewerID, err := getAgentIDFromArgs(ctx, args)
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	resumeTo := getString(args, "resume_to", "planning")
+	if err := b.Review.ResolveTicketInput(ctx, ticketID, reviewerID, answer, resumeTo); err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	return jsonResult(map[string]any{"ok": true, "ticket_id": ticketID, "resumed_to": resumeTo})
 }
 
 // repoPathAccessible returns true if repoPath is non-empty and the path exists and is a git repo.
