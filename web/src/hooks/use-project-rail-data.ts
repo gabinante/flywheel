@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useMemo } from 'react'
 
 import { useAuth } from '@/contexts/use-auth'
 import type { DispatchStatus } from '@/hooks/use-dispatch-status'
@@ -234,12 +235,10 @@ export function useProjectRailData(projectId: string | undefined) {
     staleTime: 5_000,
   })
 
-  return {
-    activeTickets: data?.activeTickets ?? [],
-    pendingReviews: data?.pendingReviews ?? [],
-    escalations: data?.escalations ?? [],
-    activityItems: data?.activityItems ?? [],
-    loading,
-    refresh,
-  }
+  const activeTickets = useMemo(() => data?.activeTickets ?? [], [data?.activeTickets])
+  const pendingReviews = useMemo(() => data?.pendingReviews ?? [], [data?.pendingReviews])
+  const escalations = useMemo(() => data?.escalations ?? [], [data?.escalations])
+  const activityItems = useMemo(() => data?.activityItems ?? [], [data?.activityItems])
+
+  return { activeTickets, pendingReviews, escalations, activityItems, loading, refresh }
 }
