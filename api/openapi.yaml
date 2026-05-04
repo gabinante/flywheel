@@ -734,6 +734,22 @@ paths:
           required: true
           schema:
             type: string
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of steps to return (descending order). Omit for all steps.
+          schema:
+            type: integer
+            minimum: 1
+            default: 200
+        - name: offset
+          in: query
+          required: false
+          description: Number of steps to skip (for pagination).
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
       responses:
         "200":
           description: OK
@@ -1815,6 +1831,9 @@ components:
           type: string
         slug:
           type: string
+        description:
+          type: string
+          description: Short project description.
         repo_url:
           type: string
         default_branch:
@@ -1847,6 +1866,9 @@ components:
         name:
           type: string
           description: Project display name.
+        description:
+          type: string
+          description: Short project description.
         slug:
           type: string
           description: URL-safe identifier (unique per org).
@@ -2001,6 +2023,14 @@ components:
           type: array
           items:
             type: string
+        template_id:
+          type: string
+          description: "Project template ID to seed from"
+        work_stream_template_ids:
+          type: array
+          items:
+            type: string
+          description: "Which workstream templates to include. If omitted with template_id, all template workstreams are included."
     Objective:
       type: object
       properties:
@@ -2179,6 +2209,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TraceStep'
+        total_count:
+          type: integer
+          description: Total number of steps for this ticket (present when paginated)
     TraceStep:
       type: object
       properties:
@@ -2926,7 +2959,7 @@ components:
           type: string
         type:
           type: string
-          enum: [agent, external, gate, manual, automated, deploy, observe]
+          enum: [agent, external, gate, action, manual, automated, deploy, observe]
         description:
           type: string
         config:

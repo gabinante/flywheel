@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   Eye,
+  Loader2,
   RefreshCw,
   Terminal,
 } from 'lucide-react'
@@ -59,6 +60,8 @@ const STEP_TYPE_CONFIG: Record<
 /** States where the ticket is still being worked on and trace may grow. */
 const IN_PROGRESS_STATES = new Set(['planning', 'executing'])
 const LIVE_POLL_INTERVAL_MS = 1500
+const PAGE_SIZE = 200
+
 function formatTimestamp(iso: string): string {
   try {
     const d = new Date(iso)
@@ -201,12 +204,21 @@ function TimelineStep({
 
 function WorkerLogConsole({
   steps,
+  totalCount,
   isLive,
+  loadingOlder,
+  hasMore,
+  onLoadOlder,
 }: {
   steps: TraceStep[]
+  totalCount: number
   isLive: boolean
+  loadingOlder: boolean
+  hasMore: boolean
+  onLoadOlder: () => void
 }) {
   const scrollerRef = useRef<HTMLDivElement | null>(null)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
   const entries = steps
     .map((step, index) => {
       const output = getWorkerOutput(step)
@@ -220,10 +232,26 @@ function WorkerLogConsole({
     })
     .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
 
+  // Auto-scroll to bottom when live and new entries arrive.
   useEffect(() => {
     if (!isLive || !scrollerRef.current) return
     scrollerRef.current.scrollTop = scrollerRef.current.scrollHeight
   }, [entries.length, isLive])
+
+  // IntersectionObserver to load older entries when scrolling to top.
+  useEffect(() => {
+    if (!sentinelRef.current || !hasMore) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && !loadingOlder) {
+          onLoadOlder()
+        }
+      },
+      { root: scrollerRef.current, threshold: 0.1 },
+    )
+    observer.observe(sentinelRef.current)
+    return () => observer.disconnect()
+  }, [hasMore, loadingOlder, onLoadOlder])
 
   return (
     <div className="overflow-hidden rounded-xl border border-white/[0.08] bg-black/20">
@@ -234,7 +262,10 @@ function WorkerLogConsole({
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="muted" className="text-[10px] tabular-nums">
-            {entries.length} line{entries.length !== 1 ? 's' : ''}
+            {totalCount > entries.length
+              ? `${entries.length} / ${totalCount.toLocaleString()}`
+              : `${entries.length}`}{' '}
+            line{entries.length !== 1 ? 's' : ''}
           </Badge>
           {isLive ? (
             <span className="flex items-center gap-1 text-[10px] text-emerald-400/70">
@@ -261,6 +292,21 @@ function WorkerLogConsole({
           className="max-h-80 overflow-auto px-3 py-3 font-mono text-xs leading-6"
         >
           <div className="flex flex-col gap-1.5">
+            {/* Sentinel for loading older entries */}
+            {hasMore ? (
+              <div ref={sentinelRef} className="flex justify-center py-1">
+                {loadingOlder ? (
+                  <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60">
+                    <Loader2 className="size-3 animate-spin" />
+                    Loading older entries…
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-muted-foreground/40">
+                    ↑ Scroll for older
+                  </span>
+                )}
+              </div>
+            ) : null}
             {entries.map((entry) => (
               <div key={entry.id} className="flex items-start gap-3">
                 <span
@@ -300,34 +346,61 @@ export function ExecutionTraceCard({
   ticketState,
 }: ExecutionTraceCardProps) {
   const { client } = useAuth()
+  // All steps loaded so far, in chronological order (oldest first).
   const [steps, setSteps] = useState<TraceStep[] | null>(null)
+  const [totalCount, setTotalCount] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [loadingOlder, setLoadingOlder] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Track how many steps we've fetched so far (offset for next older-page fetch).
+  const fetchedCountRef = useRef(0)
 
   const isInProgress = ticketState
     ? IN_PROGRESS_STATES.has(ticketState)
     : false
 
-  const fetchTrace = useCallback(
+  // Fetch the latest page (offset=0). Used for initial load and live polling.
+  const fetchLatestPage = useCallback(
     async (opts?: { silent?: boolean }) => {
       if (!opts?.silent) setLoading(true)
       const { data, error, response } = await client.GET(
         '/tickets/{ticketID}/trace',
-        { params: { path: { ticketID: ticketId } } },
+        {
+          params: {
+            path: { ticketID: ticketId },
+            query: { limit: PAGE_SIZE, offset: 0 },
+          },
+        },
       )
       if (!response.ok) {
         if (response.status === 404) {
           setSteps([])
+          setTotalCount(0)
           setErr(null)
         } else {
           setErr(formatApiError(error))
         }
       } else {
-        setSteps(data?.steps ?? [])
+        const newSteps = (data?.steps ?? []).slice().reverse() // API returns DESC, we want ASC
+        const total = data?.total_count ?? newSteps.length
+        setTotalCount(total)
         setErr(null)
+
+        setSteps((prev) => {
+          if (!prev || prev.length === 0) {
+            // First load — just use the new steps.
+            fetchedCountRef.current = newSteps.length
+            return newSteps
+          }
+          // Merge: keep older prepended steps, replace the tail with fresh data.
+          const olderCount = prev.length - fetchedCountRef.current
+          const older = olderCount > 0 ? prev.slice(0, olderCount) : []
+          fetchedCountRef.current = newSteps.length
+          return [...older, ...newSteps]
+        })
       }
       setLoading(false)
       setRefreshing(false)
@@ -335,22 +408,59 @@ export function ExecutionTraceCard({
     [client, ticketId],
   )
 
+  // Fetch an older page and prepend.
+  const fetchOlderPage = useCallback(async () => {
+    if (loadingOlder) return
+    setLoadingOlder(true)
+
+    const currentTotal = totalCount
+    const currentLoaded = steps?.length ?? 0
+    if (currentLoaded >= currentTotal) {
+      setLoadingOlder(false)
+      return
+    }
+
+    // We need to fetch the next chunk of older steps.
+    // The API returns DESC order. offset=0 is newest. We want the next older batch.
+    // currentLoaded steps are already in memory. Fetch from offset=currentLoaded.
+    const { data, response } = await client.GET(
+      '/tickets/{ticketID}/trace',
+      {
+        params: {
+          path: { ticketID: ticketId },
+          query: { limit: PAGE_SIZE, offset: currentLoaded },
+        },
+      },
+    )
+    if (response.ok && data?.steps) {
+      const olderSteps = data.steps.slice().reverse() // DESC → ASC
+      if (olderSteps.length > 0) {
+        setSteps((prev) => [...olderSteps, ...(prev ?? [])])
+        if (data.total_count != null) {
+          setTotalCount(data.total_count)
+        }
+      }
+    }
+    setLoadingOlder(false)
+  }, [client, ticketId, totalCount, steps?.length, loadingOlder])
+
+  // Initial fetch.
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      await fetchTrace()
+      await fetchLatestPage()
       if (cancelled) return
     })()
     return () => {
       cancelled = true
     }
-  }, [fetchTrace])
+  }, [fetchLatestPage])
 
   // Poll more aggressively while the worker is active so the log view feels live.
   useEffect(() => {
     if (isInProgress) {
       intervalRef.current = setInterval(() => {
-        void fetchTrace({ silent: true })
+        void fetchLatestPage({ silent: true })
       }, LIVE_POLL_INTERVAL_MS)
     }
     return () => {
@@ -359,12 +469,14 @@ export function ExecutionTraceCard({
         intervalRef.current = null
       }
     }
-  }, [isInProgress, fetchTrace])
+  }, [isInProgress, fetchLatestPage])
 
   const handleRefresh = () => {
     setRefreshing(true)
-    void fetchTrace({ silent: true })
+    void fetchLatestPage({ silent: true })
   }
+
+  const hasMore = (steps?.length ?? 0) < totalCount
 
   if (loading && steps === null) {
     return (
@@ -397,7 +509,7 @@ export function ExecutionTraceCard({
     )
   }
 
-  const stepCount = steps?.length ?? 0
+  const stepCount = totalCount || (steps?.length ?? 0)
   const workerLogSteps = (steps ?? []).filter((step) => getWorkerOutput(step))
   const timelineSteps = (steps ?? []).filter((step) => !getWorkerOutput(step))
 
@@ -460,11 +572,37 @@ export function ExecutionTraceCard({
           ) : (
             <div className="flex flex-col gap-4">
               {workerLogSteps.length > 0 || isInProgress ? (
-                <WorkerLogConsole steps={workerLogSteps} isLive={isInProgress} />
+                <WorkerLogConsole
+                  steps={workerLogSteps}
+                  totalCount={stepCount}
+                  isLive={isInProgress}
+                  loadingOlder={loadingOlder}
+                  hasMore={hasMore}
+                  onLoadOlder={fetchOlderPage}
+                />
               ) : null}
 
               {timelineSteps.length > 0 ? (
                 <div className="flex flex-col">
+                  {hasMore ? (
+                    <div className="flex justify-center pb-2">
+                      {loadingOlder ? (
+                        <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60">
+                          <Loader2 className="size-3 animate-spin" />
+                          Loading older steps…
+                        </span>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-[10px] text-muted-foreground/60"
+                          onClick={fetchOlderPage}
+                        >
+                          Load older steps ({totalCount - (steps?.length ?? 0)} remaining)
+                        </Button>
+                      )}
+                    </div>
+                  ) : null}
                   {timelineSteps.map((step, i) => (
                     <TimelineStep
                       key={step.id ?? i}

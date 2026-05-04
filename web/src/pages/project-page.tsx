@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import {
   Eye,
   GitBranch,
@@ -28,6 +28,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { ProjectPageSkeleton, Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/contexts/use-auth'
+import { useProjectPaths } from '@/hooks/use-project-paths'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 
@@ -247,10 +248,7 @@ function RepositoryCard({
 }
 
 export function ProjectPage() {
-  const { orgId, projectId } = useParams<{
-    orgId: string
-    projectId: string
-  }>()
+  const { orgId, projectId, orgSlug, base } = useProjectPaths()
   const { client } = useAuth()
   const [project, setProject] = useState<Project | null | undefined>(undefined)
   const [workStreams, setWorkStreams] = useState<WorkStream[] | null>(null)
@@ -368,7 +366,7 @@ export function ProjectPage() {
             Organizations
           </Link>
           <span className="px-1">/</span>
-          <Link to={`/orgs/${orgId}/projects`} className="hover:underline">
+          <Link to={`/orgs/${orgSlug}/projects`} className="hover:underline">
             Projects
           </Link>
         </p>
@@ -448,25 +446,25 @@ export function ProjectPage() {
         </h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <NavCard
-            to={`/orgs/${orgId}/projects/${projectId}/tickets`}
+            to={`${base}/tickets`}
             icon={Ticket}
             title="Tickets"
             description="View and manage all tickets in this project"
           />
           <NavCard
-            to={`/orgs/${orgId}/projects/${projectId}/reviews`}
+            to={`${base}/reviews`}
             icon={Eye}
             title="Pending Reviews"
             description="Review tickets awaiting approval"
           />
           <NavCard
-            to={`/orgs/${orgId}/projects/${projectId}/policies`}
+            to={`${base}/policies`}
             icon={ShieldCheck}
             title="Policy Health"
             description="Monitor policy compliance and gates"
           />
           <NavCard
-            to={`/orgs/${orgId}/projects/${projectId}/usage`}
+            to={`${base}/usage`}
             icon={PieChart}
             title="Usage"
             description="Inspect token, cost, and API usage trends"
@@ -481,13 +479,13 @@ export function ProjectPage() {
           </h2>
           <div className="flex gap-2">
             <Button asChild variant="ghost" size="xs">
-              <Link to={`/orgs/${orgId}/projects/${projectId}/work-streams`}>
+              <Link to={`${base}/work-streams`}>
                 <LayoutList className="size-3.5" />
                 All streams
               </Link>
             </Button>
             <Button asChild variant="ghost" size="xs">
-              <Link to={`/orgs/${orgId}/projects/${projectId}/work-streams/new`}>
+              <Link to={`${base}/work-streams/new`}>
                 <Plus className="size-3.5" />
                 New
               </Link>
@@ -509,7 +507,7 @@ export function ProjectPage() {
               <p className="text-sm text-muted-foreground">
                 No work streams yet.{' '}
                 <Link
-                  to={`/orgs/${orgId}/projects/${projectId}/work-streams/new`}
+                  to={`${base}/work-streams/new`}
                   className="font-medium text-foreground underline-offset-4 hover:underline"
                 >
                   Create one
@@ -526,7 +524,7 @@ export function ProjectPage() {
               return (
                 <Link
                   key={ws.id}
-                  to={`/orgs/${orgId}/projects/${projectId}/tickets?work_stream_id=${encodeURIComponent(ws.id)}`}
+                  to={`${base}/tickets?work_stream_id=${encodeURIComponent(ws.id)}`}
                   className="group"
                 >
                   <Card className="border-white/10 bg-white/5 backdrop-blur-md transition-all duration-200 hover:border-white/20 hover:bg-white/10">
@@ -556,7 +554,7 @@ export function ProjectPage() {
                               onClick={(event: React.MouseEvent) => event.stopPropagation()}
                             >
                               <Link
-                                to={`/orgs/${orgId}/projects/${projectId}/work-streams/${ws.id}`}
+                                to={`${base}/work-streams/${ws.id}`}
                               >
                                 Manage
                               </Link>
@@ -584,7 +582,7 @@ export function ProjectPage() {
         )}
       </section>
 
-      <DispatchDashboard orgId={orgId} projectId={projectId} />
+      <DispatchDashboard projectId={projectId} basePath={base} />
 
       <RepositoryCard
         projectId={projectId}
@@ -611,7 +609,7 @@ export function ProjectPage() {
                 </div>
                 <div className="ml-auto">
                   <Button asChild variant="outline" size="xs">
-                    <Link to={`/orgs/${orgId}/projects/${projectId}/tickets`}>
+                    <Link to={`${base}/tickets`}>
                       View tickets
                     </Link>
                   </Button>

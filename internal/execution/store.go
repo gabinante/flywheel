@@ -68,6 +68,46 @@ func (s *Store) GetStepsByTicketID(ctx context.Context, ticketID string) ([]Step
 	return steps, rows.Err()
 }
 
+// GetStepsByTicketIDPaginated returns steps for a ticket with pagination (ordered by created_at DESC)
+// along with the total count of steps for that ticket.
+func (s *Store) GetStepsByTicketIDPaginated(ctx context.Context, ticketID string, limit, offset int) ([]Step, int, error) {
+	var total int
+	err := s.pool.QueryRow(ctx,
+		`SELECT count(*) FROM execution_steps WHERE ticket_id = $1`, ticketID).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+	if total == 0 {
+		return nil, 0, nil
+	}
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, type, payload, worker_type, created_at FROM execution_steps WHERE ticket_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+		ticketID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var steps []Step
+	for rows.Next() {
+		var st Step
+		var payloadJSON []byte
+		var workerType *string
+		if err := rows.Scan(&st.ID, &st.Type, &payloadJSON, &workerType, &st.CreatedAt); err != nil {
+			return nil, 0, err
+		}
+		st.Payload = make(map[string]any)
+		_ = json.Unmarshal(payloadJSON, &st.Payload)
+		if workerType != nil {
+			st.WorkerType = *workerType
+		}
+		steps = append(steps, st)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return steps, total, nil
+}
+
 // GetAgentIDByTicketID returns the agent_id for the most recent step (current worker). Used for trace summary.
 func (s *Store) GetAgentIDByTicketID(ctx context.Context, ticketID string) (string, error) {
 	var agentID string

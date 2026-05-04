@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
@@ -12,6 +12,8 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/use-auth'
+import { useProjectPaths } from '@/hooks/use-project-paths'
+import { useResolvedRouteParams } from '@/hooks/use-resolved-route-params'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
 import { DetailPageSkeleton } from '@/components/ui/skeleton'
 import { formatApiError } from '@/lib/api/client'
@@ -20,11 +22,8 @@ import type { components } from '@/lib/api/v1'
 type WorkStream = components['schemas']['WorkStream']
 
 export function WorkStreamEditPage() {
-  const { orgId, projectId, workStreamId } = useParams<{
-    orgId: string
-    projectId: string
-    workStreamId: string
-  }>()
+  const { workStreamId } = useResolvedRouteParams()
+  const { orgId, projectId, orgSlug, projectSlug, base } = useProjectPaths()
   const navigate = useNavigate()
   const { client } = useAuth()
   const [stream, setStream] = useState<WorkStream | null | undefined>(undefined)
@@ -125,7 +124,7 @@ export function WorkStreamEditPage() {
     return <p className="text-muted-foreground text-sm">Work stream not found.</p>
   }
 
-  const streamTicketsHref = `/orgs/${orgId}/projects/${projectId}/tickets?work_stream_id=${encodeURIComponent(workStreamId)}`
+  const streamTicketsHref = `${base}/tickets?work_stream_id=${encodeURIComponent(workStreamId)}`
   const streamCrumbLabel = stream.name ?? stream.slug ?? stream.id
 
   return (
@@ -133,8 +132,8 @@ export function WorkStreamEditPage() {
       <div className="flex flex-col gap-1">
         <p className="text-muted-foreground text-xs">
           <OrgProjectCrumbs
-            orgId={orgId}
-            projectId={projectId}
+            orgId={orgSlug}
+            projectId={projectSlug}
             projectLabel={projectLabel}
           />
           <span className="px-1">/</span>
@@ -166,7 +165,7 @@ export function WorkStreamEditPage() {
         </Button>
         <Button asChild variant="secondary" size="sm">
           <Link
-            to={`/orgs/${orgId}/projects/${projectId}/tickets?work_stream_id=${encodeURIComponent(workStreamId)}`}
+            to={`${base}/tickets?work_stream_id=${encodeURIComponent(workStreamId)}`}
           >
             Tickets in this stream
           </Link>

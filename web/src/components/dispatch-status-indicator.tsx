@@ -1,6 +1,21 @@
 import { useDispatchStatus } from '@/hooks/use-dispatch-status'
 import { cn } from '@/lib/utils'
 
+/** Human-friendly labels for idle reason codes. */
+const IDLE_REASON_LABELS: Record<string, string> = {
+  all_work_complete: 'All tickets resolved',
+  dispatch_disabled_project: 'Dispatch disabled',
+  no_repo_configured: 'No repository configured',
+  at_capacity: 'All worker slots in use',
+  review_and_merge_pending: 'Tickets awaiting review and merge',
+  review_pending: 'Tickets awaiting review',
+  merge_pending: 'Tickets awaiting merge',
+  deps_not_met: 'All queued tickets blocked by dependencies',
+  awaiting_human_input: 'Tickets waiting for human input',
+  no_draft_tickets: 'No queued tickets',
+  idle: 'No agents active',
+}
+
 /**
  * Persistent header indicator showing dispatcher agent capacity.
  * Displays "N/M agents" with a colored dot:
@@ -17,6 +32,10 @@ export function DispatchStatusIndicator() {
 
   const isActive = status.active_workers > 0
 
+  const tooltip = isActive
+    ? `${status.active_workers} agent${status.active_workers !== 1 ? 's' : ''} working on: ${status.active_ticket_ids.join(', ')}`
+    : IDLE_REASON_LABELS[status.idle_reason ?? 'idle'] ?? 'No agents active'
+
   return (
     <div
       className={cn(
@@ -25,11 +44,7 @@ export function DispatchStatusIndicator() {
           ? 'bg-emerald-500/10 text-emerald-400'
           : 'bg-muted text-muted-foreground',
       )}
-      title={
-        isActive
-          ? `${status.active_workers} agent${status.active_workers !== 1 ? 's' : ''} working on: ${status.active_ticket_ids.join(', ')}`
-          : 'No agents active'
-      }
+      title={tooltip}
     >
       <span
         className={cn(

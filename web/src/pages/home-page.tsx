@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 
 import { useAuth } from '@/contexts/use-auth'
-import { resolvePreferredOrgId, setPreferredOrgId } from '@/lib/org-preferences'
+import { resolvePreferredOrgId, resolvePreferredOrgSlug, setPreferredOrgId } from '@/lib/org-preferences'
 
 /* ------------------------------------------------------------------ */
 /* SVG icon helpers (inline to avoid extra deps)                      */
@@ -131,7 +131,8 @@ export function HomePage() {
       const orgId = resolvePreferredOrgId(data)
       if (orgId) {
         setPreferredOrgId(orgId)
-        setAuthenticatedTarget(`/orgs/${orgId}/projects`)
+        const slug = resolvePreferredOrgSlug(data) ?? orgId
+        setAuthenticatedTarget(`/orgs/${slug}/projects`)
       } else {
         setAuthenticatedTarget('/orgs')
       }
@@ -188,10 +189,10 @@ export function HomePage() {
 
           {/* Headline */}
           <h1 className="landing-hero-heading text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
-            <span className="text-foreground">Adderall for</span>
+            <span className="text-foreground">The nervous system</span>
             <br />
             <span className="bg-gradient-to-r from-emerald-400 via-emerald-300 to-teal-400 bg-clip-text text-transparent">
-              coding agents
+              for your business
             </span>
           </h1>
 

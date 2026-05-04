@@ -5,25 +5,30 @@ package dispatch
 type WorkerType string
 
 const (
-	// WorkerTypePlanner generates plans from tickets. It reads code, investigates,
+	// WorkerTypePlanner generates plans from tickets. It investigates context
 	// and produces a structured plan but does not modify files.
 	WorkerTypePlanner WorkerType = "planner"
 
-	// WorkerTypeExecutor produces diffs from plans. It writes code, runs tests,
-	// and submits the result.
+	// WorkerTypeExecutor implements changes — code, config, or other deliverables.
 	WorkerTypeExecutor WorkerType = "executor"
 
-	// WorkerTypeValidator verifies that diffs meet acceptance criteria. It reviews
-	// PRs, runs tests, and approves or rejects.
+	// WorkerTypeValidator reviews work adversarially, approves or rejects with feedback.
 	WorkerTypeValidator WorkerType = "validator"
 
 	// WorkerTypeDeployer applies plans to target environments. It executes
 	// deployment operations and observes outcomes.
 	WorkerTypeDeployer WorkerType = "deployer"
 
-	// WorkerTypeInvestigator runs as a subagent dispatch for research tasks.
-	// It reads code, searches, and reports findings without modifying state.
+	// WorkerTypeInvestigator runs as a subagent for read-only research and analysis.
 	WorkerTypeInvestigator WorkerType = "investigator"
+
+	// WorkerTypeOperator handles triage, analysis, and operational response.
+	// It does not write source code, create branches, or make commits.
+	WorkerTypeOperator WorkerType = "operator"
+
+	// WorkerTypeDecomposer analyzes ticket scope and breaks large tickets
+	// into well-scoped, independently implementable subtickets.
+	WorkerTypeDecomposer WorkerType = "decomposer"
 )
 
 // AllWorkerTypes returns all defined worker types.
@@ -34,6 +39,8 @@ func AllWorkerTypes() []WorkerType {
 		WorkerTypeValidator,
 		WorkerTypeDeployer,
 		WorkerTypeInvestigator,
+		WorkerTypeOperator,
+		WorkerTypeDecomposer,
 	}
 }
 
@@ -41,7 +48,8 @@ func AllWorkerTypes() []WorkerType {
 func (wt WorkerType) IsValid() bool {
 	switch wt {
 	case WorkerTypePlanner, WorkerTypeExecutor, WorkerTypeValidator,
-		WorkerTypeDeployer, WorkerTypeInvestigator:
+		WorkerTypeDeployer, WorkerTypeInvestigator, WorkerTypeOperator,
+		WorkerTypeDecomposer:
 		return true
 	}
 	return false
@@ -160,6 +168,51 @@ var workerTypeToolAccess = map[WorkerType]ToolAccess{
 			"reject_ticket",
 			"create_ticket",
 			"create_work_stream",
+		},
+	},
+	WorkerTypeOperator: {
+		AllowedTools: []string{
+			"claim_ticket",
+			"start_ticket",
+			"get_ticket",
+			"log_step",
+			"submit_ticket",
+			"escalate_ticket",
+			"renew_lease",
+			"get_project_context",
+			"list_tickets",
+			"findings_save",
+			"findings_query",
+			"state_query",
+			"state_summary",
+		},
+		DeniedTools: []string{
+			"approve_ticket",
+			"reject_ticket",
+			"create_ticket",
+			"create_work_stream",
+			"update_work_stream_plan",
+		},
+	},
+	WorkerTypeDecomposer: {
+		AllowedTools: []string{
+			"claim_ticket",
+			"start_ticket",
+			"get_ticket",
+			"log_step",
+			"submit_ticket",
+			"escalate_ticket",
+			"renew_lease",
+			"get_project_context",
+			"list_tickets",
+			"get_work_stream",
+			"create_ticket",
+		},
+		DeniedTools: []string{
+			"approve_ticket",
+			"reject_ticket",
+			"create_work_stream",
+			"update_work_stream_plan",
 		},
 	},
 }

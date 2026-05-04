@@ -1,18 +1,18 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
 
 import { CommandCenterRail } from '@/components/command-center/command-center-rail'
 import { OrchestratorConsole } from '@/components/command-center/orchestrator-console'
 import { TicketInspector } from '@/components/command-center/ticket-inspector'
 import { Badge } from '@/components/ui/badge'
 import { useRightRail } from '@/contexts/use-right-rail'
+import { useProjectPaths } from '@/hooks/use-project-paths'
 import { useProjectRailData } from '@/hooks/use-project-rail-data'
 import type { components } from '@/lib/api/v1'
 
 type Ticket = components['schemas']['Ticket']
 
 export function CommandCenterPage() {
-  const { orgId, projectId } = useParams<{ orgId: string; projectId: string }>()
+  const { orgId, projectId, orgSlug, projectSlug } = useProjectPaths()
   const { clearRailContent, setOpen, setRailContent } = useRightRail()
   const {
     activeTickets,
@@ -100,8 +100,8 @@ export function CommandCenterPage() {
         escalations={escalations}
         activityItems={activityItems}
         loading={loading}
-        orgId={orgId}
-        projectId={projectId}
+        orgId={orgSlug}
+        projectId={projectSlug}
         selectedTicketId={selectedTicketId}
         onSelectTicket={setSelectedTicketId}
       />,
@@ -112,8 +112,10 @@ export function CommandCenterPage() {
     escalations,
     loading,
     orgId,
+    orgSlug,
     pendingReviews,
     projectId,
+    projectSlug,
     selectedTicketId,
     setRailContent,
   ])

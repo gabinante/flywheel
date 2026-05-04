@@ -13,13 +13,14 @@ import {
   Ticket,
   Workflow,
 } from 'lucide-react'
-import { Link, useLocation, useParams } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { OrgSwitcher } from '@/components/org-switcher'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectEscalations } from '@/hooks/use-project-escalations'
+import { useProjectPaths } from '@/hooks/use-project-paths'
 import { useSidebar } from '@/contexts/use-sidebar'
 import { cn } from '@/lib/utils'
 
@@ -123,10 +124,8 @@ export function LeftSidebar() {
   const { isExpanded, toggle } = useSidebar()
   const { token, signOut } = useAuth()
   const location = useLocation()
-  const { orgId, projectId } = useParams<{ orgId: string; projectId: string }>()
+  const { projectId, base: projectBase } = useProjectPaths()
   const { escalations } = useProjectEscalations(projectId)
-
-  const projectBase = orgId && projectId ? `/orgs/${orgId}/projects/${projectId}` : ''
   const escalationCount = escalations.length
 
   const navigateItems: NavItem[] = projectBase

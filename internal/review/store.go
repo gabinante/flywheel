@@ -2,9 +2,11 @@ package review
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -113,10 +115,10 @@ func (s *Store) CountByReviewerPerDay(ctx context.Context, reviewerID string, da
 	return approved, rejected, nil
 }
 
-// ListPendingReviewTicketIDs returns ticket IDs in state awaiting_review for a project.
+// ListPendingReviewTicketIDs returns ticket IDs in state awaiting_validation for a project.
 func (s *Store) ListPendingReviewTicketIDs(ctx context.Context, projectID string) ([]string, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id FROM tickets WHERE project_id = $1 AND state = 'awaiting_review' ORDER BY updated_at`, projectID)
+		`SELECT id FROM tickets WHERE project_id = $1 AND state = 'awaiting_validation' ORDER BY updated_at`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -130,6 +132,33 @@ func (s *Store) ListPendingReviewTicketIDs(ctx context.Context, projectID string
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
+}
+
+// GetLatestUnresolvedEscalation returns the most recent unresolved escalation for a ticket, or nil if none.
+func (s *Store) GetLatestUnresolvedEscalation(ctx context.Context, ticketID string) (*Escalation, error) {
+	var e Escalation
+	var answer, resolvedBy *string
+	var resolvedAt *time.Time
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, ticket_id, agent_id, reason, question, answer, resolved_by, resolved_at, created_at
+		 FROM escalations WHERE ticket_id = $1 AND resolved_at IS NULL ORDER BY created_at DESC LIMIT 1`, ticketID).
+		Scan(&e.ID, &e.TicketID, &e.AgentID, &e.Reason, &e.Question, &answer, &resolvedBy, &resolvedAt, &e.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if answer != nil {
+		e.Answer = *answer
+	}
+	if resolvedBy != nil {
+		e.ResolvedBy = *resolvedBy
+	}
+	if resolvedAt != nil {
+		e.ResolvedAt = resolvedAt
+	}
+	return &e, nil
 }
 
 // ListEscalationsByProject returns unresolved escalations for a project.

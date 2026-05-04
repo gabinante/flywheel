@@ -354,7 +354,7 @@ export function OrchestratorConsole({
   }, [applyThread, draft, fetchThread, onMessageComplete, projectId, sending, token])
 
   return (
-    <Card className="min-h-[720px] border-white/12 bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.12),transparent_32%),radial-gradient(circle_at_top_right,rgba(251,146,60,0.08),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))]">
+    <Card className="flex h-[calc(100vh-12rem)] min-h-[480px] max-h-[900px] flex-col border-white/12 bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.12),transparent_32%),radial-gradient(circle_at_top_right,rgba(251,146,60,0.08),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))]">
       <CardHeader className="border-b border-white/10 pb-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-1">
@@ -382,10 +382,10 @@ export function OrchestratorConsole({
         </div>
       </CardHeader>
 
-      <CardContent className="flex h-full flex-1 flex-col gap-4 py-5">
+      <CardContent className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden py-5">
         <div
           ref={transcriptRef}
-          className="flex min-h-[360px] flex-1 flex-col gap-3 overflow-y-auto pr-1"
+          className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1"
         >
           {loading ? (
             <div className="grid gap-3">

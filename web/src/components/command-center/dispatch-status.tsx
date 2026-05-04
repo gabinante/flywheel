@@ -2,6 +2,20 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useDispatchStatus } from '@/hooks/use-dispatch-status'
 import { cn } from '@/lib/utils'
 
+const IDLE_REASON_LABELS: Record<string, string> = {
+  all_work_complete: 'All tickets resolved',
+  dispatch_disabled_project: 'Dispatch disabled',
+  no_repo_configured: 'No repository configured',
+  at_capacity: 'All worker slots in use',
+  review_and_merge_pending: 'Tickets awaiting review and merge',
+  review_pending: 'Tickets awaiting review',
+  merge_pending: 'Tickets awaiting merge',
+  deps_not_met: 'All queued tickets blocked by dependencies',
+  awaiting_human_input: 'Tickets waiting for human input',
+  no_draft_tickets: 'No queued tickets',
+  idle: 'No agents active',
+}
+
 export function DispatchStatus() {
   const { status, loading } = useDispatchStatus()
   const error = !loading && !status ? 'Dispatcher unavailable' : null
@@ -41,6 +55,11 @@ export function DispatchStatus() {
                 style={{ width: `${Math.min(pct, 100)}%` }}
               />
             </div>
+            {active === 0 && status?.idle_reason && (
+              <p className="text-xs text-amber-400/80">
+                {IDLE_REASON_LABELS[status.idle_reason] ?? status.idle_reason}
+              </p>
+            )}
             {status?.active_ticket_ids && status.active_ticket_ids.length > 0 && (
               <p className="text-[10px] text-muted-foreground">
                 {status.active_ticket_ids.length} ticket

@@ -100,11 +100,11 @@ export function ActiveWorkPanel({
           <ul className="flex flex-col gap-1">
             {escalations.map(({ escalation, ticket }) => (
               <li key={escalation.id ?? ticket.id}>
-                <button
-                  type="button"
+                <Link
+                  to={`/orgs/${orgId}/projects/${projectId}/tickets/${ticket.id}`}
                   onClick={() => ticket.id && onSelectTicket(ticket.id)}
                   className={cn(
-                    'group flex w-full flex-col gap-1 rounded-lg px-2.5 py-2 text-left transition-colors',
+                    'group flex w-full flex-col gap-1 rounded-lg px-2.5 py-2 text-left no-underline transition-colors',
                     selectedTicketId === ticket.id
                       ? 'bg-red-500/12 ring-1 ring-red-500/30'
                       : 'bg-red-500/[0.04] hover:bg-red-500/[0.08]',
@@ -129,7 +129,7 @@ export function ActiveWorkPanel({
                       {elapsed(escalation.created_at)}
                     </span>
                   </div>
-                </button>
+                </Link>
               </li>
             ))}
           </ul>
@@ -156,11 +156,11 @@ export function ActiveWorkPanel({
           <ul className="flex flex-col gap-1">
             {tickets.map((t) => (
               <li key={t.id}>
-                <button
-                  type="button"
+                <Link
+                  to={`/orgs/${orgId}/projects/${projectId}/tickets/${t.id}`}
                   onClick={() => t.id && onSelectTicket(t.id)}
                   className={cn(
-                    'group flex w-full flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left transition-colors',
+                    'group flex w-full flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left no-underline transition-colors',
                     selectedTicketId === t.id
                       ? 'bg-primary/10 ring-1 ring-primary/30'
                       : 'bg-white/[0.03] hover:bg-white/[0.06]',
@@ -185,7 +185,7 @@ export function ActiveWorkPanel({
                       {elapsed(t.updated_at)}
                     </span>
                   </div>
-                </button>
+                </Link>
               </li>
             ))}
           </ul>
@@ -212,11 +212,11 @@ export function ActiveWorkPanel({
           <ul className="flex flex-col gap-1">
             {pendingReviews.map((t) => (
               <li key={t.id}>
-                <button
-                  type="button"
+                <Link
+                  to={`/orgs/${orgId}/projects/${projectId}/tickets/${t.id}`}
                   onClick={() => t.id && onSelectTicket(t.id)}
                   className={cn(
-                    'group flex w-full flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left transition-colors',
+                    'group flex w-full flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left no-underline transition-colors',
                     selectedTicketId === t.id
                       ? 'bg-primary/10 ring-1 ring-primary/30'
                       : 'bg-white/[0.03] hover:bg-white/[0.06]',
@@ -233,7 +233,7 @@ export function ActiveWorkPanel({
                       {elapsed(t.updated_at)}
                     </span>
                   </div>
-                </button>
+                </Link>
               </li>
             ))}
           </ul>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { Check, Copy, Settings, Trash2, UserPlus, Users } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { ListPageSkeleton } from '@/components/ui/skeleton'
 import { WorkflowTimelineEditor } from '@/components/workflow-timeline-editor'
 import { useAuth } from '@/contexts/use-auth'
+import { useResolvedRouteParams } from '@/hooks/use-resolved-route-params'
 
 interface Member {
   org_id: string
@@ -257,7 +258,7 @@ function InvitesCard({ orgId }: { orgId: string }) {
 }
 
 export function OrgSettingsPage() {
-  const { orgId } = useParams<{ orgId: string }>()
+  const { orgId, orgParam } = useResolvedRouteParams()
   const { client } = useAuth()
   const [org, setOrg] = useState<Org | null | undefined>(undefined)
   const [err, setErr] = useState<string | null>(null)
@@ -291,7 +292,7 @@ export function OrgSettingsPage() {
         <p className="text-xs text-muted-foreground">
           <Link to="/orgs" className="hover:underline">Orgs</Link>
           <span className="px-1">/</span>
-          <Link to={`/orgs/${orgId}/projects`} className="hover:underline">{org.name}</Link>
+          <Link to={`/orgs/${orgParam}/projects`} className="hover:underline">{org.name}</Link>
           <span className="px-1">/</span>
           <span>Settings</span>
         </p>

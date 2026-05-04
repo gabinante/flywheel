@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
 import type { ApexOptions } from 'apexcharts'
 import ReactApexChart from 'react-apexcharts'
 import { AlertTriangle, Bot, Coins, Cpu, PieChart, TrendingUp } from 'lucide-react'
@@ -15,6 +14,7 @@ import {
 } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { useAuth } from '@/contexts/use-auth'
+import { useProjectPaths } from '@/hooks/use-project-paths'
 import {
   getProjectUsage,
   type UsageBreakdown,
@@ -165,7 +165,7 @@ function ChartEmptyState({
 }
 
 export function UsagePage() {
-  const { projectId } = useParams<{ orgId: string; projectId: string }>()
+  const { projectId } = useProjectPaths()
   const { token } = useAuth()
   const [days, setDays] = useState<number>(30)
   const [usage, setUsage] = useState<UsageResponse | null>(null)

@@ -1,11 +1,13 @@
 import { lazy, Suspense } from 'react'
-import { HashRouter, Navigate, Outlet, Route, Routes, useParams } from 'react-router-dom'
+import { HashRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 
 import { AppShell } from '@/components/app-shell'
 import { ErrorBoundary } from '@/components/error-boundary'
 import { AuthProvider } from '@/contexts/auth-provider'
+import { SlugResolverProvider, useSlugResolver } from '@/contexts/slug-resolver-provider'
 import { useAuth } from '@/contexts/use-auth'
+import { useResolvedRouteParams } from '@/hooks/use-resolved-route-params'
 import { queryClient } from '@/lib/query-client'
 import { HomePage } from '@/pages/home-page'
 import { OrgsPage } from '@/pages/orgs-page'
@@ -15,6 +17,7 @@ import { TicketDetailPage } from '@/pages/ticket-detail-page'
 import { ReviewsPage } from '@/pages/reviews-page'
 import { ProjectSettingsPage } from '@/pages/project-settings-page'
 import { WorkStreamsPage } from '@/pages/work-streams-page'
+import { ProjectCreatePage } from '@/pages/project-create-page'
 import { WorkStreamCreatePage } from '@/pages/work-stream-create-page'
 import { WorkStreamEditPage } from '@/pages/work-stream-edit-page'
 import { OrgSettingsPage } from '@/pages/org-settings-page'
@@ -62,10 +65,40 @@ function HomeRoute() {
   return <HomePage key={token ?? 'anon'} />
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Redirect UUID-based URLs to slug-based URLs when slugs are known. */
+function SlugRedirect() {
+  const location = useLocation()
+  const { orgId, orgParam, projectId, projectParam } = useResolvedRouteParams()
+  const { orgSlug, projectSlug } = useSlugResolver()
+
+  if (orgParam && orgId && UUID_RE.test(orgParam)) {
+    const slug = orgSlug(orgId)
+    if (slug) {
+      const newPath = location.pathname.replace(`/orgs/${orgParam}`, `/orgs/${slug}`)
+      return <Navigate to={newPath + location.search} replace />
+    }
+  }
+
+  if (projectParam && projectId && UUID_RE.test(projectParam)) {
+    const slug = projectSlug(projectId)
+    if (slug) {
+      const newPath = location.pathname.replace(
+        `/projects/${projectParam}`,
+        `/projects/${slug}`,
+      )
+      return <Navigate to={newPath + location.search} replace />
+    }
+  }
+
+  return <Outlet />
+}
+
 /** Redirect project root to the command center */
 function ProjectRedirect() {
-  const { orgId, projectId } = useParams<{ orgId: string; projectId: string }>()
-  return <Navigate to={`/orgs/${orgId}/projects/${projectId}/command`} replace />
+  const { orgParam, projectParam } = useResolvedRouteParams()
+  return <Navigate to={`/orgs/${orgParam}/projects/${projectParam}/command`} replace />
 }
 
 export default function App() {
@@ -74,6 +107,7 @@ export default function App() {
       <AuthProvider>
         <ErrorBoundary>
           <HashRouter>
+            <SlugResolverProvider>
             <Routes>
               {/* Home/landing page renders full-width, outside AppShell constraints */}
               <Route path="/" element={<HomeRoute />} />
@@ -81,6 +115,8 @@ export default function App() {
               <Route path="/invite/:code" element={<InviteAcceptPage />} />
               <Route element={<AppShell />}>
                 <Route element={<RequireAuthLayout />}>
+                  {/* Auto-redirect UUID URLs to slug URLs */}
+                  <Route element={<SlugRedirect />}>
                   <Route path="/orgs" element={<OrgsPage />} />
                   <Route
                     path="/orgs/:orgId/settings"
@@ -89,6 +125,10 @@ export default function App() {
                   <Route
                     path="/orgs/:orgId/projects"
                     element={<ProjectsPage />}
+                  />
+                  <Route
+                    path="/orgs/:orgId/projects/new"
+                    element={<ProjectCreatePage />}
                   />
                   <Route
                     path="/orgs/:orgId/projects/:projectId"
@@ -178,7 +218,9 @@ export default function App() {
                   />
                 </Route>
               </Route>
+              </Route>
             </Routes>
+            </SlugResolverProvider>
           </HashRouter>
         </ErrorBoundary>
       </AuthProvider>

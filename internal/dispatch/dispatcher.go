@@ -2679,8 +2679,29 @@ func (d *Dispatcher) persistReviewAttempt(ctx context.Context, ticketID string, 
 }
 
 // escalateReviewFailure publishes an escalation event when review attempts exceed the threshold.
+// It records the escalation reason in ticket outputs so the same reason is never published twice
+// (survives restarts, unlike in-memory dedup).
 func (d *Dispatcher) escalateReviewFailure(ctx context.Context, t *ticket.Ticket, reason string) {
+	// Skip if already escalated for this exact reason (persisted in ticket outputs).
+	if prev, ok := t.Outputs["_escalation_reason"].(string); ok && prev == reason {
+		slog.Debug("dispatch: skipping duplicate escalation", "ticket", t.ID)
+		return
+	}
+
 	slog.Warn("dispatch: escalating review failure", "ticket", t.ID, "reason", reason)
+
+	// Persist the escalation reason so future reconcile cycles don't re-fire.
+	if d.outputPatcher != nil {
+		_ = d.outputPatcher.PatchOutputs(ctx, t.ID, map[string]any{
+			"_escalation_reason": reason,
+		})
+		// Update in-memory copy so later calls in the same cycle see it.
+		if t.Outputs == nil {
+			t.Outputs = make(map[string]any)
+		}
+		t.Outputs["_escalation_reason"] = reason
+	}
+
 	_ = d.bus.Publish(ctx, events.Event{
 		Type: events.EventTicketEscalated,
 		Payload: map[string]any{

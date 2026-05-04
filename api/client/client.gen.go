@@ -1323,6 +1323,12 @@ type CreateProjectRequest struct {
 	RepoUrl   *string   `json:"repo_url,omitempty"`
 	Slug      *string   `json:"slug,omitempty"`
 	TechStack *[]string `json:"tech_stack,omitempty"`
+
+	// TemplateId Project template ID to seed from
+	TemplateId *string `json:"template_id,omitempty"`
+
+	// WorkStreamTemplateIds Which workstream templates to include. If omitted with template_id, all template workstreams are included.
+	WorkStreamTemplateIds *[]string `json:"work_stream_template_ids,omitempty"`
 }
 
 // CreateReviewRequest defines model for CreateReviewRequest.
@@ -1771,7 +1777,10 @@ type Project struct {
 	CreatedAt   *time.Time              `json:"created_at,omitempty"`
 
 	// DefaultBranch Branch to checkout when closing a work stream; default "main".
-	DefaultBranch  *string         `json:"default_branch,omitempty"`
+	DefaultBranch *string `json:"default_branch,omitempty"`
+
+	// Description Short project description.
+	Description    *string         `json:"description,omitempty"`
 	DispatchConfig *DispatchConfig `json:"dispatch_config,omitempty"`
 
 	// DispatchEnabled Whether the dispatcher picks up tickets for this project (default true).
@@ -2100,7 +2109,10 @@ type UpdatePolicyRequest struct {
 // UpdateProjectRequest defines model for UpdateProjectRequest.
 type UpdateProjectRequest struct {
 	// DefaultBranch Branch to checkout when closing a work stream; default "main".
-	DefaultBranch  *string         `json:"default_branch,omitempty"`
+	DefaultBranch *string `json:"default_branch,omitempty"`
+
+	// Description Short project description.
+	Description    *string         `json:"description,omitempty"`
 	DispatchConfig *DispatchConfig `json:"dispatch_config,omitempty"`
 
 	// DispatchEnabled Whether the dispatcher picks up tickets for this project (default true). Takes effect immediately.

@@ -15,6 +15,7 @@ type Project struct {
 	OrgID           string         `json:"org_id"`
 	Name            string         `json:"name"`
 	Slug            string         `json:"slug"`
+	Description     string         `json:"description,omitempty"`
 	RepoURL         string         `json:"repo_url,omitempty"`
 	DefaultBranch   string         `json:"default_branch,omitempty"` // branch to checkout when closing work stream; default "main"
 	TechStack       []string       `json:"tech_stack,omitempty"`

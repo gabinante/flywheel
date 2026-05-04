@@ -14,4 +14,5 @@ type ReviewStore interface {
 	ListPendingReviewTicketIDs(ctx context.Context, projectID string) ([]string, error)
 	ListEscalationsByProject(ctx context.Context, projectID string) ([]Escalation, error)
 	GetEscalationByID(ctx context.Context, id string) (*Escalation, error)
+	GetLatestUnresolvedEscalation(ctx context.Context, ticketID string) (*Escalation, error)
 }

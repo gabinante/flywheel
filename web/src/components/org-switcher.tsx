@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Building2 } from 'lucide-react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 import {
   Select,
@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useAuth } from '@/contexts/use-auth'
+import { useResolvedRouteParams } from '@/hooks/use-resolved-route-params'
 import {
   orgsWithIDs,
   resolvePreferredOrgId,
@@ -37,7 +38,7 @@ function orgLabel(org: OrgWithID): string {
 export function OrgSwitcher({ expanded }: OrgSwitcherProps) {
   const { token, client } = useAuth()
   const navigate = useNavigate()
-  const { orgId } = useParams<{ orgId?: string }>()
+  const { orgId } = useResolvedRouteParams()
   const [loadState, setLoadState] = useState<OrgLoadState>({
     token: null,
     orgs: [],
@@ -80,9 +81,10 @@ export function OrgSwitcher({ expanded }: OrgSwitcherProps) {
   if (!token) return null
 
   if (!expanded) {
+    const collapsedSlug = currentOrg?.slug ?? selectedOrgId
     return (
       <Link
-        to={selectedOrgId ? `/orgs/${selectedOrgId}/projects` : '/orgs'}
+        to={collapsedSlug ? `/orgs/${collapsedSlug}/projects` : '/orgs'}
         className="flex h-9 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
         title={currentOrg ? orgLabel(currentOrg) : 'Organizations'}
       >
@@ -121,7 +123,9 @@ export function OrgSwitcher({ expanded }: OrgSwitcherProps) {
         value={selectedOrgId}
         onValueChange={(nextOrgId) => {
           setPreferredOrgId(nextOrgId)
-          navigate(`/orgs/${nextOrgId}/projects`)
+          const nextOrg = orgs.find((o) => o.id === nextOrgId)
+          const slug = nextOrg?.slug ?? nextOrgId
+          navigate(`/orgs/${slug}/projects`)
         }}
       >
         <SelectTrigger

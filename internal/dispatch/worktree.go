@@ -143,8 +143,21 @@ func (m *MultiRepoCloneManager) ResetClone(alias string) error {
 	return os.RemoveAll(dir)
 }
 
+// currentRemoteURL returns the current origin remote URL for a git repo directory.
+// Returns empty string on any error.
+func currentRemoteURL(dir string) string {
+	cmd := exec.Command("git", "remote", "get-url", "origin")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // EnsureClone ensures a local clone exists for the given repo URL and returns its path.
-// If the clone already exists, it fetches latest changes.
+// If the clone already exists, it fetches latest changes. If the remote URL has changed
+// (e.g. project repo_url was updated), the stale clone is removed and re-cloned.
 func (m *MultiRepoCloneManager) EnsureClone(repoURL, alias string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -154,13 +167,23 @@ func (m *MultiRepoCloneManager) EnsureClone(repoURL, alias string) (string, erro
 	dir := filepath.Join(m.BaseDir, safe)
 
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
-		// Clone exists — fetch latest.
-		fetch := exec.Command("git", "fetch", "--all")
-		fetch.Dir = dir
-		if out, err := fetch.CombinedOutput(); err != nil {
-			slog.Warn("multi-repo fetch failed", "alias", alias, "output", strings.TrimSpace(string(out)), "error", err)
+		// Clone exists — check if the remote URL still matches.
+		if existing := currentRemoteURL(dir); existing != "" && existing != repoURL {
+			slog.Warn("multi-repo: repo URL changed, removing stale clone",
+				"alias", alias, "old_url", existing, "new_url", repoURL)
+			if err := os.RemoveAll(dir); err != nil {
+				return "", fmt.Errorf("remove stale clone: %w", err)
+			}
+			// Fall through to fresh clone below.
+		} else {
+			// URL matches (or couldn't be determined) — fetch latest.
+			fetch := exec.Command("git", "fetch", "--all")
+			fetch.Dir = dir
+			if out, err := fetch.CombinedOutput(); err != nil {
+				slog.Warn("multi-repo fetch failed", "alias", alias, "output", strings.TrimSpace(string(out)), "error", err)
+			}
+			return dir, nil
 		}
-		return dir, nil
 	}
 
 	// Clone the repo.

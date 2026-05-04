@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import {
   ArrowRight,
   Check,
@@ -28,8 +28,11 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { ProjectPageSkeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/contexts/use-auth'
+import { useProjectPaths } from '@/hooks/use-project-paths'
+import { useResolvedRouteParams } from '@/hooks/use-resolved-route-params'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 
@@ -123,15 +126,64 @@ function ScopeModelCard() {
 }
 
 function DispatchControlCard({
+  projectId,
   project,
   saving,
   onToggle,
+  onProjectChange,
 }: {
+  projectId: string
   project: Project
   saving: boolean
   onToggle: () => void
+  onProjectChange: (project: Project) => void
 }) {
+  const { client } = useAuth()
   const dispatchOn = project.dispatch_enabled !== false
+  const currentMax =
+    typeof project.dispatch_config?.max_active_workers === 'number' &&
+    project.dispatch_config.max_active_workers > 0
+      ? project.dispatch_config.max_active_workers
+      : 0
+  const [maxWorkers, setMaxWorkers] = useState(currentMax)
+  const [limitSaving, setLimitSaving] = useState(false)
+  const [limitSavedAt, setLimitSavedAt] = useState<number | null>(null)
+  const [limitError, setLimitError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const val =
+      typeof project.dispatch_config?.max_active_workers === 'number' &&
+      project.dispatch_config.max_active_workers > 0
+        ? project.dispatch_config.max_active_workers
+        : 0
+    setMaxWorkers(val)
+  }, [project.dispatch_config?.max_active_workers])
+
+  async function saveLimit() {
+    setLimitSaving(true)
+    setLimitError(null)
+    setLimitSavedAt(null)
+    const nextConfig = {
+      ...(project.dispatch_config ?? {}),
+      max_active_workers: maxWorkers > 0 ? maxWorkers : undefined,
+    }
+    const { data, error: apiError, response } = await client.PATCH(
+      '/projects/{projectID}',
+      {
+        params: { path: { projectID: projectId } },
+        body: { dispatch_config: nextConfig },
+      },
+    )
+    if (!response.ok || !data) {
+      setLimitError(formatApiError(apiError))
+      setLimitSaving(false)
+      return
+    }
+    onProjectChange(data)
+    setLimitSavedAt(Date.now())
+    setLimitSaving(false)
+  }
+
   return (
     <Card className="border-white/10 bg-white/5 backdrop-blur-md">
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -157,11 +209,50 @@ function DispatchControlCard({
           {saving ? 'Saving...' : dispatchOn ? 'Dispatch enabled' : 'Dispatch disabled'}
         </Button>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Capacity and worker selection are configured in the workers panel below.
           Turning dispatch off leaves existing tickets and settings unchanged.
         </p>
+        <section className="rounded-2xl border border-white/10 bg-black/10 p-4">
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_12rem] md:items-end">
+            <div className="space-y-1">
+              <h3 className="text-sm font-medium text-foreground">
+                Active worker limit
+              </h3>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Maximum workers this project can run at once across implementation,
+                review, and conflict-resolution work. Use 0 to inherit the server
+                default.
+              </p>
+            </div>
+            <Label>
+              Max active
+              <Input
+                type="number"
+                min={0}
+                step={1}
+                value={maxWorkers}
+                onChange={(event) =>
+                  setMaxWorkers(Math.max(0, Math.floor(Number(event.target.value) || 0)))
+                }
+              />
+            </Label>
+          </div>
+          {maxWorkers !== currentMax ? (
+            <div className="mt-3 flex items-center gap-2">
+              <Button size="xs" onClick={() => void saveLimit()} disabled={limitSaving}>
+                <Save className="size-3.5" />
+                {limitSaving ? 'Saving…' : 'Save'}
+              </Button>
+              {limitError ? (
+                <span className="text-xs text-destructive">{limitError}</span>
+              ) : null}
+            </div>
+          ) : null}
+          {limitSavedAt ? (
+            <span className="mt-2 block text-xs text-emerald-400">Saved</span>
+          ) : null}
+        </section>
       </CardContent>
     </Card>
   )
@@ -323,12 +414,12 @@ function ConnectLocalWorkerCard() {
 }
 
 function SettingsOverview({
-  orgId,
+  basePath,
   projectId,
   project,
   onProjectChange,
 }: {
-  orgId: string
+  basePath: string
   projectId: string
   project: Project
   onProjectChange: (project: Project) => void
@@ -342,7 +433,7 @@ function SettingsOverview({
         {SETTINGS_SECTIONS.map((section) => (
           <Link
             key={section.id}
-            to={`/orgs/${orgId}/projects/${projectId}/settings/${section.id}`}
+            to={`${basePath}/settings/${section.id}`}
             className="group"
           >
             <Card className="h-full border-white/10 bg-white/5 backdrop-blur-md transition-colors hover:border-white/20 hover:bg-white/10">
@@ -371,11 +462,8 @@ function SettingsOverview({
 }
 
 export function ProjectSettingsPage() {
-  const { orgId, projectId, section } = useParams<{
-    orgId: string
-    projectId: string
-    section?: string
-  }>()
+  const { section } = useResolvedRouteParams()
+  const { orgId, projectId, orgSlug, projectSlug, base } = useProjectPaths()
   const { client } = useAuth()
   const [project, setProject] = useState<Project | null | undefined>(undefined)
   const [err, setErr] = useState<string | null>(null)
@@ -453,15 +541,15 @@ export function ProjectSettingsPage() {
       <div className="flex flex-col gap-1.5">
         <p className="text-xs text-muted-foreground">
           <OrgProjectCrumbs
-            orgId={orgId}
-            projectId={projectId}
+            orgId={orgSlug}
+            projectId={projectSlug}
             projectLabel={projectLabel}
           />
           <span className="px-1">/</span>
           {selectedSectionMeta ? (
             <>
               <Link
-                to={`/orgs/${orgId}/projects/${projectId}/settings`}
+                to={`${base}/settings`}
                 className="hover:underline"
               >
                 Settings
@@ -485,14 +573,16 @@ export function ProjectSettingsPage() {
       </div>
 
       {selectedSection === undefined ? (
-        <SettingsOverview orgId={orgId} projectId={projectId} project={project} onProjectChange={setProject} />
+        <SettingsOverview basePath={base} projectId={projectId} project={project} onProjectChange={setProject} />
       ) : (
         <div className="space-y-6">
           {selectedSection === 'dispatch' ? (
             <DispatchControlCard
+              projectId={projectId}
               project={project}
               saving={dispatchSaving}
               onToggle={toggleDispatch}
+              onProjectChange={setProject}
             />
           ) : null}
 
@@ -514,7 +604,7 @@ export function ProjectSettingsPage() {
 
           <div className="flex justify-end">
             <Button asChild variant="ghost" size="sm">
-              <Link to={`/orgs/${orgId}/projects/${projectId}/settings`}>
+              <Link to={`${base}/settings`}>
                 Back to settings
               </Link>
             </Button>

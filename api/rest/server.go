@@ -36,8 +36,9 @@ type RouterConfig struct {
 	HooksHandler        *HooksHandler        // Change event webhook receiver (spec v0.2 §2.4)
 	PillarsHandler      *PillarsHandler      // Pillar and strategy layer (Layer 15)
 	DeliveryHandler     *DeliveryHandler     // Delivery integrations (pipeline, PR, config)
-	WorkflowHandler     *WorkflowHandler     // Configurable SDLC workflow definitions
-	InvitesHandler      *InvitesHandler      // Org invite links
+	WorkflowHandler           *WorkflowHandler           // Configurable SDLC workflow definitions
+	ProjectTemplatesHandler   *ProjectTemplatesHandler   // Project + workstream template library
+	InvitesHandler            *InvitesHandler            // Org invite links
 	WorkerConfigHandler *WorkerConfigHandler // MCP config for local Claude Code workers
 	// HealthCheckers are called by /readyz for deep readiness checks.
 	HealthCheckers []HealthChecker
@@ -191,6 +192,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	if cfg.WorkflowHandler != nil {
 		cfg.WorkflowHandler.RegisterRoutes(mux)
+	}
+	if cfg.ProjectTemplatesHandler != nil {
+		cfg.ProjectTemplatesHandler.RegisterRoutes(mux)
 	}
 	if cfg.InvitesHandler != nil {
 		cfg.InvitesHandler.RegisterRoutes(mux)

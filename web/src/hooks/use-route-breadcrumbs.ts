@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
-import { useLocation, useParams } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
+import { useResolvedRouteParams } from '@/hooks/use-resolved-route-params'
 
 export type BreadcrumbItem = {
   label: string
@@ -14,14 +15,10 @@ export type BreadcrumbItem = {
  */
 export function useRouteBreadcrumbs(): BreadcrumbItem[] {
   const location = useLocation()
-  const params = useParams<{
-    orgId?: string
-    projectId?: string
-    ticketId?: string
-    workStreamId?: string
-  }>()
+  const { projectId, orgParam, projectParam, ticketId, workStreamId } = useResolvedRouteParams()
 
-  const projectLabel = useProjectBreadcrumbLabel(params.projectId)
+  // Pass resolved UUID to the label hook so it can call the API
+  const projectLabel = useProjectBreadcrumbLabel(projectId)
 
   return useMemo(() => {
     const path = location.pathname
@@ -40,9 +37,9 @@ export function useRouteBreadcrumbs(): BreadcrumbItem[] {
       crumbs.push({ label: 'Organizations', href: '/orgs' })
     }
 
-    // Projects
-    if (params.orgId && path.includes('/projects')) {
-      const projectsPath = `/orgs/${params.orgId}/projects`
+    // Use raw URL params for href construction (they already contain slugs)
+    if (orgParam && path.includes('/projects')) {
+      const projectsPath = `/orgs/${orgParam}/projects`
 
       if (path === projectsPath) {
         crumbs.push({ label: 'Projects' })
@@ -50,16 +47,16 @@ export function useRouteBreadcrumbs(): BreadcrumbItem[] {
       }
       crumbs.push({ label: 'Projects', href: projectsPath })
 
-      if (params.projectId) {
-        const projectPath = `${projectsPath}/${params.projectId}`
+      if (projectParam) {
+        const projectPath = `${projectsPath}/${projectParam}`
 
         // Tickets
         if (path.includes('/tickets')) {
           crumbs.push({ label: projectLabel, href: projectPath })
           const ticketsPath = `${projectPath}/tickets`
-          if (params.ticketId) {
+          if (ticketId) {
             crumbs.push({ label: 'Tickets', href: ticketsPath })
-            crumbs.push({ label: params.ticketId })
+            crumbs.push({ label: ticketId })
           } else {
             crumbs.push({ label: 'Tickets' })
           }
@@ -87,9 +84,9 @@ export function useRouteBreadcrumbs(): BreadcrumbItem[] {
           if (path.includes('/new')) {
             crumbs.push({ label: 'Work Streams', href: wsPath })
             crumbs.push({ label: 'New' })
-          } else if (params.workStreamId) {
+          } else if (workStreamId) {
             crumbs.push({ label: 'Work Streams', href: wsPath })
-            crumbs.push({ label: params.workStreamId })
+            crumbs.push({ label: workStreamId })
           } else {
             crumbs.push({ label: 'Work Streams' })
           }
@@ -103,5 +100,5 @@ export function useRouteBreadcrumbs(): BreadcrumbItem[] {
     }
 
     return crumbs
-  }, [location.pathname, params.orgId, params.projectId, params.ticketId, params.workStreamId, projectLabel])
+  }, [location.pathname, orgParam, projectParam, ticketId, workStreamId, projectLabel])
 }

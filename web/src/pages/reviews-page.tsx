@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   CheckCircle2,
@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { FlywheelClient } from '@/contexts/auth-context'
 import { useAuth } from '@/contexts/use-auth'
+import { useProjectPaths } from '@/hooks/use-project-paths'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
 import { ReviewsPageSkeleton, Skeleton } from '@/components/ui/skeleton'
 import { formatApiError } from '@/lib/api/client'
@@ -289,10 +290,7 @@ function Kbd({ children }: { children: React.ReactNode }) {
 /* ------------------------------------------------------------------ */
 
 export function ReviewsPage() {
-  const { orgId, projectId } = useParams<{
-    orgId: string
-    projectId: string
-  }>()
+  const { orgId, projectId, orgSlug, projectSlug, base } = useProjectPaths()
   const { client } = useAuth()
   const [tickets, setTickets] = useState<Ticket[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -579,8 +577,8 @@ export function ReviewsPage() {
       <div className="flex flex-col gap-3">
         <p className="text-xs text-muted-foreground">
           <OrgProjectCrumbs
-            orgId={orgId}
-            projectId={projectId}
+            orgId={orgSlug}
+            projectId={projectSlug}
             projectLabel={projectLabel}
           />
           <span className="px-1">/</span>
@@ -858,7 +856,7 @@ export function ReviewsPage() {
                               <Kbd>o</Kbd>
                             </Button>
                             <Link
-                              to={`/orgs/${orgId}/projects/${projectId}/tickets/${t.id}`}
+                              to={`${base}/tickets/${t.id}`}
                               className="ml-auto flex items-center gap-1 text-xs text-emerald-400/70 transition-colors hover:text-emerald-400"
                             >
                               Full detail

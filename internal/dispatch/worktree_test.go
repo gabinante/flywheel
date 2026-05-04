@@ -231,6 +231,110 @@ func TestMultiRepoCloneManager_DirStructure(t *testing.T) {
 	}
 }
 
+// createBareRepo creates a bare git repo with one commit and returns its path.
+func createBareRepo(t *testing.T, name string) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), name+".git")
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	runGit(t, dir, "init", "--bare")
+
+	// Create a temporary working clone to make a commit.
+	work := filepath.Join(t.TempDir(), name+"-work")
+	cmd := exec.Command("git", "clone", dir, work)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("clone bare: %s: %v", out, err)
+	}
+
+	runGit(t, work, "config", "user.email", "test@test.com")
+	runGit(t, work, "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(work, "README.md"), []byte("# "+name), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, work, "add", ".")
+	runGit(t, work, "commit", "-m", "init "+name)
+	runGit(t, work, "push", "origin", "HEAD")
+
+	return dir
+}
+
+func TestMultiRepoCloneManager_URLChanged(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	repoA := createBareRepo(t, "repo-a")
+	repoB := createBareRepo(t, "repo-b")
+
+	mgr := NewMultiRepoCloneManager(t.TempDir())
+	alias := "test-project"
+
+	// First clone points to repo A.
+	dir, err := mgr.EnsureClone(repoA, alias)
+	if err != nil {
+		t.Fatalf("EnsureClone(A): %v", err)
+	}
+
+	got := currentRemoteURL(dir)
+	if got != repoA {
+		t.Fatalf("expected remote %s, got %s", repoA, got)
+	}
+
+	// Call EnsureClone with repo B under the same alias — should re-clone.
+	dir2, err := mgr.EnsureClone(repoB, alias)
+	if err != nil {
+		t.Fatalf("EnsureClone(B): %v", err)
+	}
+
+	if dir2 != dir {
+		t.Fatalf("expected same path %s, got %s", dir, dir2)
+	}
+
+	got2 := currentRemoteURL(dir2)
+	if got2 != repoB {
+		t.Fatalf("after URL change: expected remote %s, got %s", repoB, got2)
+	}
+}
+
+func TestMultiRepoCloneManager_URLUnchanged(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	repoA := createBareRepo(t, "repo-unchanged")
+
+	mgr := NewMultiRepoCloneManager(t.TempDir())
+	alias := "stable-project"
+
+	dir, err := mgr.EnsureClone(repoA, alias)
+	if err != nil {
+		t.Fatalf("EnsureClone: %v", err)
+	}
+
+	// Drop a marker file to verify the clone isn't wiped.
+	marker := filepath.Join(dir, "marker.txt")
+	if err := os.WriteFile(marker, []byte("keep me"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Second call with the same URL should fetch, not re-clone.
+	dir2, err := mgr.EnsureClone(repoA, alias)
+	if err != nil {
+		t.Fatalf("EnsureClone (2nd): %v", err)
+	}
+
+	if dir2 != dir {
+		t.Fatalf("expected same path %s, got %s", dir, dir2)
+	}
+
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("marker file gone — clone was unexpectedly wiped: %v", err)
+	}
+}
+
 // runGit is a test helper that runs a git command in the given directory.
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()

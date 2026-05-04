@@ -1,4 +1,4 @@
-import { Bot, ShieldCheck, Zap } from 'lucide-react'
+import { Bot, Cog, ShieldCheck, Zap } from 'lucide-react'
 
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -16,11 +16,12 @@ import type { components } from '@/lib/api/v1'
 type WorkflowPhase = components['schemas']['WorkflowPhase']
 
 const WORKER_ROLES = [
-  { value: 'executor', label: 'Executor', description: 'Implements code changes, writes tests, creates PRs' },
-  { value: 'planner', label: 'Planner', description: 'Investigates codebase, produces structured implementation plans' },
-  { value: 'validator', label: 'Validator', description: 'Reviews PRs adversarially, approves or rejects with feedback' },
+  { value: 'executor', label: 'Executor', description: 'Implements changes — code, config, or other deliverables' },
+  { value: 'planner', label: 'Planner', description: 'Investigates context, produces structured implementation plans' },
+  { value: 'validator', label: 'Validator', description: 'Reviews work adversarially, approves or rejects with feedback' },
   { value: 'deployer', label: 'Deployer', description: 'Executes deployments and verifies rollout success' },
-  { value: 'investigator', label: 'Investigator', description: 'Read-only research and codebase analysis' },
+  { value: 'investigator', label: 'Investigator', description: 'Read-only research and analysis' },
+  { value: 'operator', label: 'Operator', description: 'Triage, analysis, and operational response' },
 ] as const
 
 const EXTERNAL_MODES = [
@@ -50,6 +51,13 @@ export const PHASE_TYPE_META = {
     dotColor: 'bg-purple-500',
     bgColor: 'bg-purple-500/10 border-purple-500/30',
     icon: ShieldCheck,
+  },
+  action: {
+    label: 'Action',
+    color: 'text-emerald-400',
+    dotColor: 'bg-emerald-500',
+    bgColor: 'bg-emerald-500/10 border-emerald-500/30',
+    icon: Cog,
   },
 } as const
 
@@ -298,6 +306,40 @@ export function GatePhaseConfig({ phase, onChange }: PhaseConfigProps) {
   )
 }
 
+export function ActionPhaseConfigForm({ phase, onChange }: PhaseConfigProps) {
+  const config = phase.config ?? {}
+  return (
+    <div className="space-y-3">
+      <Label>
+        Action name
+        <Input
+          value={(config.action as string) || ''}
+          onChange={(e) => onChange(updateConfig(phase, 'action', e.target.value))}
+          placeholder="registered_handler_name"
+          className="font-mono"
+        />
+      </Label>
+      <Label>
+        Parameters (JSON)
+        <Textarea
+          value={config.params ? JSON.stringify(config.params, null, 2) : ''}
+          onChange={(e) => {
+            try {
+              const parsed = e.target.value.trim() ? JSON.parse(e.target.value) : undefined
+              onChange(updateConfig(phase, 'params', parsed))
+            } catch {
+              // Allow partial editing — don't update until valid JSON
+            }
+          }}
+          placeholder='{"key": "value"}'
+          rows={3}
+          className="font-mono text-xs"
+        />
+      </Label>
+    </div>
+  )
+}
+
 export function PhaseConfigForm(props: PhaseConfigProps) {
   const meta = getPhaseTypeMeta(props.phase.type)
   if (meta === PHASE_TYPE_META.agent || props.phase.type === 'agent') {
@@ -305,6 +347,9 @@ export function PhaseConfigForm(props: PhaseConfigProps) {
   }
   if (props.phase.type === 'gate' || props.phase.type === 'manual') {
     return <GatePhaseConfig {...props} />
+  }
+  if (props.phase.type === 'action') {
+    return <ActionPhaseConfigForm {...props} />
   }
   return <ExternalPhaseConfig {...props} />
 }

@@ -861,6 +861,8 @@ export interface components {
             org_id?: string;
             name?: string;
             slug?: string;
+            /** @description Short project description. */
+            description?: string;
             repo_url?: string;
             /** @description Branch to checkout when closing a work stream; default "main". */
             default_branch?: string;
@@ -882,6 +884,8 @@ export interface components {
             status?: "active" | "closed";
             /** @description Project display name. */
             name?: string;
+            /** @description Short project description. */
+            description?: string;
             /** @description URL-safe identifier (unique per org). */
             slug?: string;
             /** @description Git repo URL; when set, enables work streams + git integration (branch instructions in MCP). */
@@ -975,6 +979,10 @@ export interface components {
             slug?: string;
             repo_url?: string;
             tech_stack?: string[];
+            /** @description Project template ID to seed from */
+            template_id?: string;
+            /** @description Which workstream templates to include. If omitted with template_id, all template workstreams are included. */
+            work_stream_template_ids?: string[];
         };
         Objective: {
             description?: string;
@@ -1067,6 +1075,8 @@ export interface components {
             ticket_id?: string;
             agent_id?: string;
             steps?: components["schemas"]["TraceStep"][];
+            /** @description Total number of steps for this ticket (present when paginated) */
+            total_count?: number;
         };
         TraceStep: {
             id?: string;
@@ -1351,6 +1361,20 @@ export interface components {
             /** Format: date-time */
             outcome_at?: string;
         };
+        GateRequirement: {
+            /** @enum {string} */
+            type: "github_checks" | "human_approval";
+            config?: {
+                [key: string]: unknown;
+            };
+        };
+        GateRequirementStatus: {
+            requirement?: components["schemas"]["GateRequirement"];
+            satisfied?: boolean;
+            reason?: string;
+            /** Format: date-time */
+            checked_at?: string;
+        };
         PolicyChangeEvent: {
             id?: string;
             policy_id?: string;
@@ -1461,7 +1485,7 @@ export interface components {
             id: string;
             name: string;
             /** @enum {string} */
-            type: "agent" | "external" | "gate" | "manual" | "automated" | "deploy" | "observe";
+            type: "agent" | "external" | "gate" | "action" | "manual" | "automated" | "deploy" | "observe";
             description?: string;
             config?: {
                 [key: string]: unknown;
@@ -2467,7 +2491,12 @@ export interface operations {
     };
     GetTrace: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum number of steps to return (descending order). Omit for all steps. */
+                limit?: number;
+                /** @description Number of steps to skip (for pagination). */
+                offset?: number;
+            };
             header?: never;
             path: {
                 ticketID: string;

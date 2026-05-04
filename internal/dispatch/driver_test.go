@@ -175,8 +175,8 @@ func TestCodexDriverBuildCLIArgs(t *testing.T) {
 	if !strings.Contains(argStr, "exec") {
 		t.Error("expected codex exec command")
 	}
-	if !strings.Contains(argStr, "--ask-for-approval never") {
-		t.Error("expected non-interactive approval policy")
+	if !strings.Contains(argStr, "--full-auto") {
+		t.Error("expected full-auto flag")
 	}
 	if !strings.Contains(argStr, "--sandbox workspace-write") {
 		t.Error("expected workspace-write sandbox")

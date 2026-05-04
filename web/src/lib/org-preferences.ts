@@ -39,3 +39,11 @@ export function resolvePreferredOrgId(orgs: readonly Org[] | null | undefined): 
 
   return candidates[0].id
 }
+
+/** Returns the slug for the preferred org (falls back to ID). */
+export function resolvePreferredOrgSlug(orgs: readonly Org[] | null | undefined): string | null {
+  const id = resolvePreferredOrgId(orgs)
+  if (!id) return null
+  const match = orgsWithIDs(orgs).find((org) => org.id === id)
+  return match?.slug ?? id
+}

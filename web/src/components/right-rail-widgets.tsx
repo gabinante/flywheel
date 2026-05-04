@@ -1,16 +1,14 @@
-import { useNavigate, useParams } from 'react-router-dom'
-
 import { CommandCenterRail } from '@/components/command-center/command-center-rail'
 import { useAuth } from '@/contexts/use-auth'
+import { useProjectPaths } from '@/hooks/use-project-paths'
+import { useResolvedRouteParams } from '@/hooks/use-resolved-route-params'
 import { useProjectRailData } from '@/hooks/use-project-rail-data'
 
+const noop = () => {}
+
 export function RightRailWidgets() {
-  const { orgId, projectId, ticketId } = useParams<{
-    orgId: string
-    projectId: string
-    ticketId: string
-  }>()
-  const navigate = useNavigate()
+  const { ticketId } = useResolvedRouteParams()
+  const { orgId, projectId, orgSlug, projectSlug } = useProjectPaths()
   const { token } = useAuth()
   const { activeTickets, pendingReviews, escalations, activityItems, loading } =
     useProjectRailData(projectId)
@@ -30,12 +28,10 @@ export function RightRailWidgets() {
       escalations={escalations}
       activityItems={activityItems}
       loading={loading}
-      orgId={orgId}
-      projectId={projectId}
+      orgId={orgSlug}
+      projectId={projectSlug}
       selectedTicketId={ticketId ?? null}
-      onSelectTicket={(nextTicketId) =>
-        navigate(`/orgs/${orgId}/projects/${projectId}/tickets/${nextTicketId}`)
-      }
+      onSelectTicket={noop}
     />
   )
 }

@@ -112,6 +112,27 @@ func buildTypedTaskPrompt(wt WorkerType, ticketID, projectID string) string {
 				"You are read-only — do not modify any files or state.",
 			ticketID,
 		)
+	case WorkerTypeDecomposer:
+		return fmt.Sprintf(
+			"Decompose Flywheel ticket %s. "+
+				"FIRST: call the claim_ticket MCP tool with project_id \"%s\". "+
+				"This returns ticket_id and lease_token — use these for all subsequent MCP calls. "+
+				"THEN: call start_ticket, analyze the ticket scope, and decide whether to decompose. "+
+				"If well-scoped, submit immediately. If not, create subtickets via create_ticket "+
+				"with depends_on ordering, then submit_ticket listing the created subticket IDs. "+
+				"You MUST use the Flywheel MCP tools — do not skip any steps.",
+			ticketID, projectID,
+		)
+	case WorkerTypeOperator:
+		return fmt.Sprintf(
+			"Operate on Flywheel ticket %s. "+
+				"FIRST: call the claim_ticket MCP tool with project_id \"%s\". "+
+				"This returns ticket_id and lease_token — use these for all subsequent MCP calls. "+
+				"THEN: call start_ticket, analyze the situation, query state, log findings via log_step, "+
+				"and submit_ticket with your analysis and recommendations. "+
+				"Do NOT write code or modify files.",
+			ticketID, projectID,
+		)
 	default:
 		return fmt.Sprintf(
 			"Execute Flywheel ticket %s. "+

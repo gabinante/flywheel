@@ -24,7 +24,8 @@ func (h *DispatchHandler) getStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	status := h.Dispatcher.GetStatus()
+	projectID := r.URL.Query().Get("project_id")
+	status := h.Dispatcher.GetStatus(r.Context(), projectID)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(status)

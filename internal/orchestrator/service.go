@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -60,6 +61,9 @@ type Service struct {
 	router   *dispatch.ProjectWorkerRouter
 	cfg      Config
 	playbook Playbook
+
+	seMu             sync.Mutex
+	seenSystemEvents map[string][]string // projectID → bounded ring of content hashes
 }
 
 func NewService(store ConversationStore, projects ProjectGetter, worker Worker, cfg Config) *Service {
@@ -77,12 +81,13 @@ func NewService(store ConversationStore, projects ProjectGetter, worker Worker, 
 		router = dispatch.NewProjectWorkerRouter(cfg.WorkerConfig)
 	}
 	return &Service{
-		store:    store,
-		projects: projects,
-		worker:   worker,
-		router:   router,
-		cfg:      cfg,
-		playbook: DefaultPlaybook(),
+		store:           store,
+		projects:        projects,
+		worker:          worker,
+		router:          router,
+		cfg:             cfg,
+		playbook:        DefaultPlaybook(),
+		seenSystemEvents: make(map[string][]string),
 	}
 }
 
@@ -395,11 +400,29 @@ func (s *Service) InjectSystemEvent(ctx context.Context, projectID, category, su
 	if projectID == "" || summary == "" {
 		return nil
 	}
+	content := fmt.Sprintf("[%s] %s", category, summary)
+
+	const maxSeen = 50
+	s.seMu.Lock()
+	seen := s.seenSystemEvents[projectID]
+	for _, prev := range seen {
+		if prev == content {
+			s.seMu.Unlock()
+			return nil
+		}
+	}
+	seen = append(seen, content)
+	if len(seen) > maxSeen {
+		seen = seen[len(seen)-maxSeen:]
+	}
+	s.seenSystemEvents[projectID] = seen
+	s.seMu.Unlock()
+
 	msg := Message{
 		ID:        uuid.Must(uuid.NewV7()).String(),
 		ProjectID: projectID,
 		Role:      RoleSystem,
-		Content:   fmt.Sprintf("[%s] %s", category, summary),
+		Content:   content,
 		CreatedAt: time.Now().UTC(),
 	}
 	return s.store.CreateMessage(ctx, &msg)

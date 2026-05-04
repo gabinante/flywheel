@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
@@ -15,6 +15,7 @@ import {
 import { Progress } from '@/components/ui/progress'
 import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/contexts/use-auth'
+import { useProjectPaths } from '@/hooks/use-project-paths'
 import { Skeleton, WorkStreamsPageSkeleton } from '@/components/ui/skeleton'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
@@ -54,14 +55,13 @@ function computeStats(tickets: Ticket[]): TicketStats {
 
 type StreamCardProps = {
   ws: WorkStream
-  orgId: string
-  projectId: string
+  basePath: string
   tickets: Ticket[]
   onToggleStatus: (ws: WorkStream, newStatus: 'active' | 'closed') => void
   toggling: boolean
 }
 
-function StreamCard({ ws, orgId, projectId, tickets, onToggleStatus, toggling }: StreamCardProps) {
+function StreamCard({ ws, basePath, tickets, onToggleStatus, toggling }: StreamCardProps) {
   if (!ws.id) return null
 
   const stats = computeStats(tickets)
@@ -80,7 +80,7 @@ function StreamCard({ ws, orgId, projectId, tickets, onToggleStatus, toggling }:
           {/* Header row */}
           <div className="flex items-start justify-between gap-3">
             <Link
-              to={`/orgs/${orgId}/projects/${projectId}/tickets?work_stream_id=${encodeURIComponent(ws.id)}`}
+              to={`${basePath}/tickets?work_stream_id=${encodeURIComponent(ws.id)}`}
               className="group flex min-w-0 flex-1 flex-col gap-1"
             >
               <div className="flex flex-wrap items-center gap-2">
@@ -120,7 +120,7 @@ function StreamCard({ ws, orgId, projectId, tickets, onToggleStatus, toggling }:
 
               <Button asChild variant="outline" size="sm" className="border-white/10 bg-white/5 hover:bg-white/10">
                 <Link
-                  to={`/orgs/${orgId}/projects/${projectId}/work-streams/${ws.id}`}
+                  to={`${basePath}/work-streams/${ws.id}`}
                 >
                   Manage
                 </Link>
@@ -168,7 +168,7 @@ function StreamCard({ ws, orgId, projectId, tickets, onToggleStatus, toggling }:
 }
 
 export function WorkStreamsPage() {
-  const { orgId, projectId } = useParams<{ orgId: string; projectId: string }>()
+  const { orgId, projectId, orgSlug, projectSlug, base } = useProjectPaths()
   const { client } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const statusFilter = useMemo(
@@ -301,8 +301,8 @@ export function WorkStreamsPage() {
       <div className="flex flex-col gap-1">
         <p className="text-muted-foreground text-xs">
           <OrgProjectCrumbs
-            orgId={orgId}
-            projectId={projectId}
+            orgId={orgSlug}
+            projectId={projectSlug}
             projectLabel={projectLabel}
           />
           <span className="px-1">/</span>
@@ -318,10 +318,10 @@ export function WorkStreamsPage() {
 
       <div className="flex flex-wrap items-center gap-2">
         <Button asChild variant="outline" size="sm">
-          <Link to={`/orgs/${orgId}/projects/${projectId}`}>Back to project</Link>
+          <Link to={base}>Back to project</Link>
         </Button>
         <Button asChild size="sm">
-          <Link to={`/orgs/${orgId}/projects/${projectId}/work-streams/new`}>
+          <Link to={`${base}/work-streams/new`}>
             New work stream
           </Link>
         </Button>
@@ -392,8 +392,7 @@ export function WorkStreamsPage() {
                 <StreamCard
                   key={ws.id}
                   ws={ws}
-                  orgId={orgId}
-                  projectId={projectId}
+                  basePath={base}
                   tickets={ws.id ? (ticketsByStream[ws.id] ?? []) : []}
                   onToggleStatus={handleToggleStatus}
                   toggling={toggling}

@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
 import {
   Activity,
   ChevronDown,
@@ -19,6 +18,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { PolicyHealthSkeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/contexts/use-auth'
+import { useProjectPaths } from '@/hooks/use-project-paths'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
 
 /* ------------------------------------------------------------------ */
@@ -196,10 +196,7 @@ function formatTime(iso: string): string {
 /* ------------------------------------------------------------------ */
 
 export function PolicyHealthPage() {
-  const { orgId, projectId } = useParams<{
-    orgId: string
-    projectId: string
-  }>()
+  const { orgId, projectId, orgSlug, projectSlug } = useProjectPaths()
   const { token } = useAuth()
   const [health, setHealth] = useState<PolicyHealth[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -301,8 +298,8 @@ export function PolicyHealthPage() {
       <div className="flex flex-col gap-1">
         <p className="text-muted-foreground text-xs">
           <OrgProjectCrumbs
-            orgId={orgId}
-            projectId={projectId}
+            orgId={orgSlug}
+            projectId={projectSlug}
             projectLabel={projectLabel}
           />
           <span className="px-1">/</span>

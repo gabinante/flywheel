@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Activity,
@@ -7,6 +7,7 @@ import {
   FolderGit2,
   GitBranch,
   Layers,
+  Pencil,
   Plus,
   Settings,
   Sparkles,
@@ -18,12 +19,12 @@ import { Badge } from '@/components/ui/badge'
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
 } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { ListPageSkeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { useAuth } from '@/contexts/use-auth'
+import { useResolvedRouteParams } from '@/hooks/use-resolved-route-params'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 
@@ -31,14 +32,12 @@ type Project = components['schemas']['Project']
 type Ticket = components['schemas']['Ticket']
 type WorkStream = components['schemas']['WorkStream']
 
-/** Quick stats fetched per project. */
 interface ProjectStats {
   totalTickets: number
   activeTickets: number
   activeStreams: number
 }
 
-/** Deterministic hue from a string. */
 function stringToHue(s: string): number {
   let hash = 0
   for (let i = 0; i < s.length; i++) {
@@ -65,7 +64,6 @@ function ProjectAvatar({ name, id }: { name: string; id: string }) {
   )
 }
 
-/** Status indicator with semantic colors. */
 function StatusIndicator({ status }: { status: string | undefined }) {
   const isActive = status === 'active' || !status
   return (
@@ -86,7 +84,6 @@ function StatusIndicator({ status }: { status: string | undefined }) {
   )
 }
 
-/** Stat pill for displaying a count with an icon. */
 function StatPill({
   icon: Icon,
   value,
@@ -107,6 +104,77 @@ function StatPill({
         <span>{value ?? 0}</span>
       )}
     </span>
+  )
+}
+
+function InlineRename({
+  projectId,
+  currentName,
+  onSaved,
+}: {
+  projectId: string
+  currentName: string
+  onSaved: (newName: string) => void
+}) {
+  const { client } = useAuth()
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(currentName)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (editing) {
+      setDraft(currentName)
+      // Focus on next tick after render
+      requestAnimationFrame(() => inputRef.current?.select())
+    }
+  }, [editing, currentName])
+
+  const save = async () => {
+    const trimmed = draft.trim()
+    if (!trimmed || trimmed === currentName) {
+      setEditing(false)
+      return
+    }
+    const { response } = await client.PATCH('/projects/{projectID}', {
+      params: { path: { projectID: projectId } },
+      body: { name: trimmed },
+    })
+    if (response.ok) {
+      onSaved(trimmed)
+    }
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <Input
+        ref={inputRef}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => void save()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') void save()
+          if (e.key === 'Escape') setEditing(false)
+        }}
+        className="h-7 max-w-xs text-base font-semibold"
+        onClick={(e) => e.preventDefault()}
+      />
+    )
+  }
+
+  return (
+    <button
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setEditing(true)
+      }}
+      className="inline-flex items-center gap-1.5 group/rename"
+      title="Rename project"
+    >
+      <span className="text-base font-semibold leading-tight">{currentName}</span>
+      <Pencil className="h-3 w-3 text-muted-foreground/0 group-hover/rename:text-muted-foreground transition-colors" />
+    </button>
   )
 }
 
@@ -151,7 +219,7 @@ function EmptyProjectsState({ orgId }: { orgId: string }) {
 }
 
 export function ProjectsPage() {
-  const { orgId } = useParams<{ orgId: string }>()
+  const { orgId, orgParam } = useResolvedRouteParams()
   const { client } = useAuth()
   const [projects, setProjects] = useState<Project[] | null>(null)
   const [togglingById, setTogglingById] = useState<Record<string, boolean>>({})
@@ -160,7 +228,6 @@ export function ProjectsPage() {
   const [statsLoading, setStatsLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
 
-  // Fetch org name and projects
   useEffect(() => {
     if (!orgId) return
     let cancelled = false
@@ -192,7 +259,6 @@ export function ProjectsPage() {
     }
   }, [client, orgId])
 
-  // Once projects are loaded, fetch ticket and work stream counts
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -286,6 +352,14 @@ export function ProjectsPage() {
     [client],
   )
 
+  const handleRenamed = useCallback((projectId: string, newName: string) => {
+    setProjects((prev) =>
+      prev?.map((entry) =>
+        entry.id === projectId ? { ...entry, name: newName } : entry,
+      ) ?? prev,
+    )
+  }, [])
+
   if (!orgId) {
     return <p className="text-destructive text-sm">Missing org id.</p>
   }
@@ -314,7 +388,7 @@ export function ProjectsPage() {
             Projects{orgName ? ` — ${orgName}` : ''}
           </h1>
           <Link
-            to={`/orgs/${orgId}/settings`}
+            to={`/orgs/${orgParam}/settings`}
             className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground"
           >
             <Settings className="size-3.5" />
@@ -323,9 +397,9 @@ export function ProjectsPage() {
         </div>
       </motion.div>
       {projects.length === 0 ? (
-        <EmptyProjectsState orgId={orgId} />
+        <EmptyProjectsState orgId={orgParam ?? orgId ?? ''} />
       ) : (
-        <StaggerList className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <StaggerList className="flex flex-col gap-4">
           {projects.map((p) => {
             const name = p.name ?? p.slug ?? p.id ?? ''
             const id = p.id ?? ''
@@ -334,22 +408,31 @@ export function ProjectsPage() {
             const dispatchOn = p.dispatch_enabled !== false
             const dispatchToggleID = `dispatch-${id}`
             const isDispatchToggling = togglingById[id] === true
+            const description = p.description ?? ''
             return (
               <StaggerItem key={id}>
-                <Card className="group flex h-full flex-col hover:bg-white/[0.06]">
-                  <Link
-                    to={`/orgs/${orgId}/projects/${id}`}
-                    className="block flex-1"
-                  >
-                    <CardHeader>
-                      <div className="flex items-start gap-3">
+                <Card className="group hover:bg-white/[0.06]">
+                  <CardContent className="p-0">
+                    <div className="flex items-center gap-4 p-5">
+                      {/* Left: avatar + name/description/status/tech */}
+                      <Link
+                        to={`/orgs/${orgParam}/projects/${p.slug ?? id}`}
+                        className="flex min-w-0 flex-1 items-start gap-3"
+                      >
                         <ProjectAvatar name={name} id={id} />
-                        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                          <div className="flex flex-wrap items-start gap-2">
-                            <CardTitle className="max-w-full text-base font-semibold leading-tight whitespace-normal break-words">
-                              {name}
-                            </CardTitle>
+                        <div className="flex min-w-0 flex-1 flex-col gap-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <InlineRename
+                              projectId={id}
+                              currentName={name}
+                              onSaved={(newName) => handleRenamed(id, newName)}
+                            />
                           </div>
+                          {description && (
+                            <p className="text-xs text-muted-foreground line-clamp-2">
+                              {description}
+                            </p>
+                          )}
                           <div className="flex flex-wrap items-center gap-2">
                             <StatusIndicator status={p.status} />
                             {p.tech_stack && p.tech_stack.length > 0 ? (
@@ -365,11 +448,10 @@ export function ProjectsPage() {
                             ) : null}
                           </div>
                         </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                      <div className="flex flex-col gap-2.5">
-                        {/* Stats row */}
+                      </Link>
+
+                      {/* Middle: stats + repo info */}
+                      <div className="hidden sm:flex flex-col gap-1.5 shrink-0">
                         <div className="flex items-center gap-4">
                           <StatPill
                             icon={TicketCheck}
@@ -390,12 +472,10 @@ export function ProjectsPage() {
                             loading={isStatsLoading}
                           />
                         </div>
-
-                        {/* Repo and branch info */}
-                        {p.repo_url || p.default_branch ? (
+                        {(p.repo_url || p.default_branch) && (
                           <div className="flex items-center gap-3 text-xs text-muted-foreground/70">
                             {p.repo_url ? (
-                              <span className="inline-flex items-center gap-1 truncate">
+                              <span className="inline-flex items-center gap-1 truncate max-w-[200px]">
                                 <FolderGit2 className="h-3 w-3 shrink-0" />
                                 <span className="truncate font-mono">
                                   {p.repo_url.replace(/^https?:\/\/(www\.)?github\.com\//, '')}
@@ -409,32 +489,36 @@ export function ProjectsPage() {
                               </span>
                             ) : null}
                           </div>
-                        ) : null}
+                        )}
                       </div>
-                    </CardContent>
-                  </Link>
 
-                  <div className="flex items-center justify-between gap-3 border-t border-white/10 px-6 py-4">
-                    <label
-                      htmlFor={dispatchToggleID}
-                      className="flex min-w-0 flex-col gap-0.5"
-                    >
-                      <span className="text-xs font-medium text-foreground">
-                        {dispatchOn ? 'Dispatch running' : 'Dispatch paused'}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">
-                        {dispatchOn
-                          ? 'Agents can claim new work for this project.'
-                          : 'Agents will not pick up new tickets.'}
-                      </span>
-                    </label>
-                    <Switch
-                      id={dispatchToggleID}
-                      checked={dispatchOn}
-                      onCheckedChange={() => void toggleDispatch(p)}
-                      disabled={isDispatchToggling}
-                    />
-                  </div>
+                      {/* Right: dispatch toggle + settings */}
+                      <div className="flex items-center gap-3 shrink-0">
+                        <div className="flex flex-col items-end gap-0.5">
+                          <label
+                            htmlFor={dispatchToggleID}
+                            className="text-xs font-medium text-foreground cursor-pointer"
+                          >
+                            {dispatchOn ? 'Dispatch on' : 'Dispatch off'}
+                          </label>
+                          <Switch
+                            id={dispatchToggleID}
+                            checked={dispatchOn}
+                            onCheckedChange={() => void toggleDispatch(p)}
+                            disabled={isDispatchToggling}
+                          />
+                        </div>
+                        <Link
+                          to={`/orgs/${orgParam}/projects/${p.slug ?? id}/settings`}
+                          className="rounded-lg p-1.5 text-muted-foreground/60 transition-colors hover:bg-white/10 hover:text-foreground"
+                          title="Project settings"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Settings className="h-4 w-4" />
+                        </Link>
+                      </div>
+                    </div>
+                  </CardContent>
                 </Card>
               </StaggerItem>
             )

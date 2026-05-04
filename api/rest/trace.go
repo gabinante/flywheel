@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	apierrors "github.com/gabinante/flywheel/internal/errors"
 	"github.com/gabinante/flywheel/internal/execution"
@@ -14,6 +15,7 @@ import (
 type TraceService interface {
 	LogStep(ctx context.Context, ticketID, leaseToken string, step execution.Step) error
 	GetTrace(ctx context.Context, ticketID string) (*execution.ExecutionTrace, error)
+	GetTracePaginated(ctx context.Context, ticketID string, limit, offset int) (*execution.ExecutionTrace, error)
 }
 
 // TicketGetter returns a ticket by ID. *ticket.Service implements it.
@@ -76,7 +78,29 @@ func (h *TraceHandler) getTrace(w http.ResponseWriter, r *http.Request) {
 	if !EnsureProjectAccess(r.Context(), w, t.ProjectID, h.AgentStore, h.OrgSvc, h.ProjectSvc) {
 		return
 	}
-	trace, err := h.TraceSvc.GetTrace(r.Context(), ticketID)
+
+	// Parse optional pagination params.
+	limitStr := r.URL.Query().Get("limit")
+	offsetStr := r.URL.Query().Get("offset")
+	limit := 0
+	offset := 0
+	if limitStr != "" {
+		if v, err := strconv.Atoi(limitStr); err == nil && v > 0 {
+			limit = v
+		}
+	}
+	if offsetStr != "" {
+		if v, err := strconv.Atoi(offsetStr); err == nil && v >= 0 {
+			offset = v
+		}
+	}
+
+	var trace *execution.ExecutionTrace
+	if limit > 0 {
+		trace, err = h.TraceSvc.GetTracePaginated(r.Context(), ticketID, limit, offset)
+	} else {
+		trace, err = h.TraceSvc.GetTrace(r.Context(), ticketID)
+	}
 	if err != nil {
 		WriteStructuredError(w, apierrors.MapError(err))
 		return

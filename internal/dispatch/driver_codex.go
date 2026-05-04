@@ -32,10 +32,9 @@ func (d *CodexDriver) Executable() string {
 func (d *CodexDriver) BuildCLIArgs(systemPrompt, taskMessage string, mcp mcpConnection, _ string) []string {
 	args := []string{
 		"exec",
-		"--ask-for-approval", "never",
+		"--full-auto",
 		"--sandbox", "workspace-write",
 		"--color", "never",
-		"-c", "sandbox_workspace_write.network_access=true",
 	}
 	args = append(args, d.mcpOverrides(mcp)...)
 	args = append(args, buildCodexPrompt(systemPrompt, taskMessage))
@@ -53,7 +52,7 @@ func (d *CodexDriver) BuildDockerCmd(branch string, mcp mcpConnection) string {
 	}
 	b.WriteString("{ printf '## System Instructions\\n\\n'; cat /tmp/system-prompt.txt; ")
 	b.WriteString("printf '\\n\\n## Task\\n\\n'; cat /tmp/task-prompt.txt; } | ")
-	b.WriteString("codex exec --ask-for-approval never --dangerously-bypass-approvals-and-sandbox --color never ")
+	b.WriteString("codex exec --dangerously-bypass-approvals-and-sandbox --color never ")
 	for _, arg := range d.mcpOverrides(mcp) {
 		b.WriteString(shellQuote(arg))
 		b.WriteString(" ")

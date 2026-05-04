@@ -46,7 +46,7 @@ func NewService(store ReviewStore, ticketSvc TicketService, bus events.Bus) *Ser
 	return svc
 }
 
-// ApproveTicket transitions the ticket to done and records the review.
+// ApproveTicket transitions the ticket to validated and records the review.
 func (s *Service) ApproveTicket(ctx context.Context, ticketID, reviewerID, notes string) error {
 	actor := ticket.Actor{ID: reviewerID, Type: ticket.ActorHuman}
 	if err := s.ticketSvc.TransitionTicket(ctx, ticketID, ticket.TriggerApprove, actor, nil); err != nil {
@@ -61,8 +61,8 @@ func (s *Service) ApproveTicket(ctx context.Context, ticketID, reviewerID, notes
 	})
 }
 
-// ReopenTicketForReview transitions done → awaiting_review and records the review.
-// Use when a ticket was approved by mistake or needs another review pass; outputs are preserved.
+// ReopenTicketForReview transitions closed → draft and records the review.
+// Use when a ticket was approved by mistake or needs another pass; outputs are preserved.
 func (s *Service) ReopenTicketForReview(ctx context.Context, ticketID, reviewerID, notes string) error {
 	actor := ticket.Actor{ID: reviewerID, Type: ticket.ActorHuman}
 	if err := s.ticketSvc.TransitionTicket(ctx, ticketID, ticket.TriggerReopenReview, actor, nil); err != nil {
@@ -95,7 +95,7 @@ func (s *Service) RejectTicket(ctx context.Context, ticketID, reviewerID, notes 
 	})
 }
 
-// ResolveEscalation transitions needs_human -> executing, injects answer, and marks escalation resolved.
+// ResolveEscalation transitions awaiting_input -> executing, injects answer, and marks escalation resolved.
 func (s *Service) ResolveEscalation(ctx context.Context, ticketID, escalationID, reviewerID, answer string) error {
 	actor := ticket.Actor{ID: reviewerID, Type: ticket.ActorHuman}
 	if err := s.ticketSvc.TransitionTicket(ctx, ticketID, ticket.TriggerApprove, actor, nil); err != nil {
@@ -107,7 +107,33 @@ func (s *Service) ResolveEscalation(ctx context.Context, ticketID, escalationID,
 	return s.store.UpdateEscalationResolved(ctx, escalationID, answer, reviewerID)
 }
 
-// ListPendingReviews returns ticket IDs in awaiting_review for the project. Caller can fetch full tickets.
+// ResolveTicketInput transitions awaiting_input back to planning or executing, injects answer, and auto-resolves the latest escalation.
+func (s *Service) ResolveTicketInput(ctx context.Context, ticketID, reviewerID, answer, resumeTo string) error {
+	actor := ticket.Actor{ID: reviewerID, Type: ticket.ActorHuman}
+	payload := map[string]any{}
+	if resumeTo == "executing" {
+		payload["resume_state"] = "executing"
+	}
+	if err := s.ticketSvc.TransitionTicket(ctx, ticketID, ticket.TriggerProvideInput, actor, payload); err != nil {
+		return err
+	}
+	if answer != "" {
+		if err := s.ticketSvc.InjectEscalationAnswer(ctx, ticketID, answer); err != nil {
+			return err
+		}
+	}
+	// Auto-resolve the latest unresolved escalation if one exists.
+	esc, err := s.store.GetLatestUnresolvedEscalation(ctx, ticketID)
+	if err != nil {
+		return err
+	}
+	if esc != nil {
+		_ = s.store.UpdateEscalationResolved(ctx, esc.ID, answer, reviewerID)
+	}
+	return nil
+}
+
+// ListPendingReviews returns ticket IDs in awaiting_validation for the project. Caller can fetch full tickets.
 func (s *Service) ListPendingReviews(ctx context.Context, projectID string) ([]string, error) {
 	return s.store.ListPendingReviewTicketIDs(ctx, projectID)
 }

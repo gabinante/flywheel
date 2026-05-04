@@ -14,6 +14,7 @@ type LeaseValidator interface {
 type StepStore interface {
 	AppendStep(ctx context.Context, ticketID, agentID string, step Step) error
 	GetStepsByTicketID(ctx context.Context, ticketID string) ([]Step, error)
+	GetStepsByTicketIDPaginated(ctx context.Context, ticketID string, limit, offset int) ([]Step, int, error)
 	GetAgentIDByTicketID(ctx context.Context, ticketID string) (string, error)
 }
 
@@ -68,6 +69,27 @@ func (s *Service) GetTrace(ctx context.Context, ticketID string) (*ExecutionTrac
 		}
 	}
 	return &ExecutionTrace{TicketID: ticketID, AgentID: agentID, WorkerType: workerType, Steps: steps}, nil
+}
+
+// GetTracePaginated returns a paginated execution history for a ticket.
+// Steps are returned in descending created_at order (most recent first).
+func (s *Service) GetTracePaginated(ctx context.Context, ticketID string, limit, offset int) (*ExecutionTrace, error) {
+	steps, total, err := s.store.GetStepsByTicketIDPaginated(ctx, ticketID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	agentID := ""
+	workerType := ""
+	if total > 0 {
+		agentID, _ = s.store.GetAgentIDByTicketID(ctx, ticketID)
+		for _, step := range steps {
+			if step.WorkerType != "" {
+				workerType = step.WorkerType
+				break
+			}
+		}
+	}
+	return &ExecutionTrace{TicketID: ticketID, AgentID: agentID, WorkerType: workerType, Steps: steps, TotalCount: total}, nil
 }
 
 // SummarizeTrace produces an AttemptSummary for the latest run (for prior_attempts context injection).

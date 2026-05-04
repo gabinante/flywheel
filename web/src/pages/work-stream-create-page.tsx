@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { PlanMarkdown } from '@/components/plan-markdown'
@@ -15,14 +15,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/use-auth'
+import { useProjectPaths } from '@/hooks/use-project-paths'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
 import { formatApiError } from '@/lib/api/client'
 
 export function WorkStreamCreatePage() {
-  const { orgId, projectId } = useParams<{
-    orgId: string
-    projectId: string
-  }>()
+  const { orgId, projectId, orgSlug, projectSlug, base } = useProjectPaths()
   const navigate = useNavigate()
   const { client } = useAuth()
   const [name, setName] = useState('')
@@ -61,12 +59,12 @@ export function WorkStreamCreatePage() {
     }
     if (data?.id) {
       navigate(
-        `/orgs/${orgId}/projects/${projectId}/work-streams/${data.id}`,
+        `${base}/work-streams/${data.id}`,
         { replace: true },
       )
       return
     }
-    navigate(`/orgs/${orgId}/projects/${projectId}`, { replace: true })
+    navigate(base, { replace: true })
   }
 
   if (!orgId || !projectId) {
@@ -78,8 +76,8 @@ export function WorkStreamCreatePage() {
       <div className="flex flex-col gap-1">
         <p className="text-muted-foreground text-xs">
           <OrgProjectCrumbs
-            orgId={orgId}
-            projectId={projectId}
+            orgId={orgSlug}
+            projectId={projectSlug}
             projectLabel={projectLabel}
           />
           <span className="px-1">/</span>
@@ -98,7 +96,7 @@ export function WorkStreamCreatePage() {
 
       <div className="flex flex-wrap gap-2">
         <Button asChild variant="outline" size="sm">
-          <Link to={`/orgs/${orgId}/projects/${projectId}`}>Cancel</Link>
+          <Link to={base}>Cancel</Link>
         </Button>
       </div>
 

@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { useAuth } from '@/contexts/use-auth'
-import { useDispatchStatus } from '@/hooks/use-dispatch-status'
+import { useDispatchStatus, type DispatchStatus } from '@/hooks/use-dispatch-status'
 import { cn } from '@/lib/utils'
 
 import type { components } from '@/lib/api/v1'
@@ -144,18 +144,16 @@ function CapacityBar({
 
 function WorkerCard({
   worker,
-  orgId,
-  projectId,
+  basePath,
 }: {
   worker: WorkerInfo
-  orgId: string
-  projectId: string
+  basePath: string
 }) {
   const { ticket, workerType, startedAt } = worker
 
   return (
     <Link
-      to={`/orgs/${orgId}/projects/${projectId}/tickets/${ticket.id}`}
+      to={`${basePath}/tickets/${ticket.id}`}
       className="group flex flex-col gap-2 rounded-lg border border-border bg-white/[0.03] px-3 py-2.5 transition-all hover:bg-white/[0.06] hover:border-emerald-500/20"
     >
       <div className="flex items-center justify-between gap-2">
@@ -189,18 +187,66 @@ function WorkerCard({
 }
 
 // ---------------------------------------------------------------------------
+// Idle state with diagnostics
+// ---------------------------------------------------------------------------
+
+const IDLE_REASON_CONFIG: Record<string, { label: string; color: string }> = {
+  all_work_complete: { label: 'All tickets resolved', color: 'text-emerald-400' },
+  dispatch_disabled_project: { label: 'Dispatch disabled for this project', color: 'text-amber-400' },
+  no_repo_configured: { label: 'No repository configured', color: 'text-amber-400' },
+  at_capacity: { label: 'All worker slots in use', color: 'text-blue-400' },
+  review_and_merge_pending: { label: 'Tickets awaiting review and merge', color: 'text-amber-400' },
+  review_pending: { label: 'Tickets awaiting review', color: 'text-amber-400' },
+  merge_pending: { label: 'Tickets awaiting merge', color: 'text-amber-400' },
+  deps_not_met: { label: 'All queued tickets blocked by dependencies', color: 'text-amber-400' },
+  awaiting_human_input: { label: 'Tickets waiting for human input', color: 'text-amber-400' },
+  no_draft_tickets: { label: 'No queued tickets', color: 'text-muted-foreground' },
+  idle: { label: 'No agents active', color: 'text-muted-foreground' },
+}
+
+function IdleState({ status }: { status: DispatchStatus | null }) {
+  const reason = status?.idle_reason ?? 'idle'
+  const config = IDLE_REASON_CONFIG[reason] ?? IDLE_REASON_CONFIG.idle
+  const diag = status?.diagnostics
+
+  // Build a summary of non-zero ticket counts.
+  const parts: string[] = []
+  if (diag) {
+    if (diag.draft_count > 0) parts.push(`${diag.draft_count} draft`)
+    if (diag.planning_count > 0) parts.push(`${diag.planning_count} planning`)
+    if (diag.executing_count > 0) parts.push(`${diag.executing_count} executing`)
+    if (diag.awaiting_validation_count > 0) parts.push(`${diag.awaiting_validation_count} awaiting review`)
+    if (diag.validated_count > 0) parts.push(`${diag.validated_count} validated`)
+    if (diag.awaiting_input_count > 0) parts.push(`${diag.awaiting_input_count} awaiting input`)
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-1 py-4 text-center">
+      <p className={cn('text-xs font-medium', config.color)}>
+        {config.label}
+      </p>
+      {parts.length > 0 && (
+        <p className="text-[10px] text-muted-foreground/60">
+          {parts.join(', ')}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Main dispatch dashboard
 // ---------------------------------------------------------------------------
 
 export function DispatchDashboard({
-  orgId,
   projectId,
+  basePath,
 }: {
-  orgId: string
   projectId: string
+  basePath: string
 }) {
   const { client, token } = useAuth()
-  const { status } = useDispatchStatus()
+  const { status } = useDispatchStatus(projectId)
   const [workers, setWorkers] = useState<WorkerInfo[]>([])
   const [loading, setLoading] = useState(true)
   const hasLoaded = useRef(false)
@@ -330,22 +376,14 @@ export function DispatchDashboard({
             <Shimmer className="h-14 w-full rounded-lg" />
           </div>
         ) : workers.length === 0 ? (
-          <div className="flex flex-col items-center gap-1 py-4 text-center">
-            <p className="text-xs text-muted-foreground italic">
-              No active workers for this project.
-            </p>
-            <p className="text-[10px] text-muted-foreground/60">
-              Workers spin up automatically when tickets are queued.
-            </p>
-          </div>
+          <IdleState status={status} />
         ) : (
           <div className="flex flex-col gap-2">
             {workers.map((w) => (
               <WorkerCard
                 key={w.ticket.id}
                 worker={w}
-                orgId={orgId}
-                projectId={projectId}
+                basePath={basePath}
               />
             ))}
           </div>

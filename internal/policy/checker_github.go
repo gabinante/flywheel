@@ -54,7 +54,7 @@ func ParseGHPRChecks(prURL string) (ChecksStatus, string) {
 		if strings.Contains(output, "fail") || strings.Contains(output, "X") {
 			return ChecksFailed, "CI checks failed: " + truncateOutput(output, 200)
 		}
-		if strings.Contains(output, "pending") || strings.Contains(output, "-") {
+		if strings.Contains(output, "pending") || strings.Contains(output, "\t-\t") {
 			return ChecksPending, "CI checks still pending"
 		}
 		// No checks configured or other error — treat as passed.

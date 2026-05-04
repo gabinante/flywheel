@@ -1578,15 +1578,15 @@ func TestDispatchEnabledAllowsTickets(t *testing.T) {
 	}
 }
 
-func TestDispatchBlockedWhenNoRepoURL(t *testing.T) {
-	// Projects without repo_url must not have workers dispatched.
-	// This prevents workers from operating on the server's own codebase.
+func TestDispatchNoRepoUsesOperator(t *testing.T) {
+	// Projects without repo_url should dispatch as operator (not executor).
+	// Workers get a temp scratch dir instead of a git workspace.
 	proj := &project.Project{ID: "p-no-repo", Name: "no-repo-project", DispatchEnabled: true}
 	tk := &ticket.Ticket{
 		ID:        "t-norepo",
 		ProjectID: "p-no-repo",
 		State:     ticket.StateDraft,
-		Title:     "should not dispatch",
+		Title:     "should dispatch as operator",
 		Type:      ticket.TypeTask,
 		Objective: ticket.Objective{Description: "test"},
 	}
@@ -1608,8 +1608,16 @@ func TestDispatchBlockedWhenNoRepoURL(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 	d.Stop()
 
-	if worker.callCount() != 0 {
-		t.Errorf("expected 0 worker calls for project with no repo_url, got %d", worker.callCount())
+	if worker.callCount() != 1 {
+		t.Errorf("expected 1 worker call for no-repo project (operator mode), got %d", worker.callCount())
+	}
+	if worker.callCount() > 0 {
+		worker.mu.Lock()
+		call := worker.calls[0]
+		worker.mu.Unlock()
+		if !strings.Contains(call.SystemPrompt, "operator") {
+			t.Error("expected operator prompt for no-repo project")
+		}
 	}
 }
 
@@ -1934,7 +1942,7 @@ func TestPersistMergeState_NilPatcher(t *testing.T) {
 func TestAutoMergePR_ReadsAttemptsFromOutputs(t *testing.T) {
 	bus := events.NewInProcessBus()
 
-	// Ticket with 4 attempts persisted — should still try (< maxMergeAttempts).
+	// Ticket with 4 attempts persisted — repo failure should bump to 5 and escalate.
 	tk := &ticket.Ticket{
 		ID:        "t-4",
 		ProjectID: "p-1",
@@ -1953,14 +1961,15 @@ func TestAutoMergePR_ReadsAttemptsFromOutputs(t *testing.T) {
 	patcher := newMockOutputPatcher()
 	d.SetOutputPatcher(patcher)
 
-	// autoMergePR will fail to resolve repo (no project in mock with repo_url), but
-	// the key assertion is that it reads attempts from outputs and doesn't escalate for 4.
+	// autoMergePR will fail to resolve repo (no project in mock with repo_url).
+	// With 4 prior attempts, failure increments to 5 and triggers escalation.
 	d.autoMergePR(context.Background(), tk, "https://github.com/test/pr/4")
 
-	// With 4 attempts it should NOT escalate (threshold is 5).
-	// It will fail at resolveProjectRepoDir, but merge status should be set to "merging".
-	if got := patcher.get("t-4", "_merge_status"); got != "merging" {
-		t.Errorf("expected _merge_status=merging (tried before failing on repo), got %v", got)
+	if got := patcher.get("t-4", "_merge_status"); got != "escalated" {
+		t.Errorf("expected _merge_status=escalated (5th attempt triggers escalation), got %v", got)
+	}
+	if got := patcher.get("t-4", "_merge_attempts"); got != 5 {
+		t.Errorf("expected _merge_attempts=5, got %v (%T)", got, got)
 	}
 }
 
@@ -2159,4 +2168,306 @@ func TestTryDispatchDefersWhenHigherPriorityWork(t *testing.T) {
 	if pendingActive {
 		t.Error("should not dispatch pending ticket when review work is waiting")
 	}
+}
+
+// --- Input Provided Tests (awaiting_input → re-dispatch) ---
+
+func TestHandleInputProvided_Executing_ReleasesAndDispatches(t *testing.T) {
+	// Happy path: ticket in executing (stale lease, no active worker) →
+	// ForceReleaseLease → re-read as draft → tryDispatch → spawn.
+	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git", DispatchEnabled: true}
+	tk := &ticket.Ticket{
+		ID:        "t-input",
+		ProjectID: "p-1",
+		State:     ticket.StateExecuting,
+		Title:     "input provided test",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	releaser := &mockLeaseReleaser{}
+	worker := &mockWorker{}
+	cfg := Config{MaxWorkers: 5, ProjectID: "p-1", DockerEnabled: true, WorktreeDir: t.TempDir(), ServerURL: "http://localhost"}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+	seedTestClone(t, d, "p-1")
+
+	// After ForceReleaseLease, the re-read should return draft.
+	releaserCalled := false
+	originalRelease := releaser.ForceReleaseLease
+	_ = originalRelease // use the mock directly
+	releaser.err = nil
+
+	// Simulate: ForceReleaseLease transitions ticket to draft.
+	origForce := d.leaseReleaser
+	d.leaseReleaser = &mockLeaseReleaser{
+		err: nil,
+	}
+	// Wire up: when ForceReleaseLease is called, update mock ticket to draft.
+	d.leaseReleaser = &leaseReleaserFunc{fn: func(_ context.Context, id string) error {
+		releaserCalled = true
+		tg.mu.Lock()
+		tk.State = ticket.StateDraft
+		tg.mu.Unlock()
+		return nil
+	}}
+	_ = origForce
+
+	ctx := context.Background()
+	d.handleTicketInputProvided(ctx, events.Event{
+		Type:    events.EventTicketInputProvided,
+		Payload: map[string]any{"ticket_id": "t-input"},
+	})
+
+	// Wait for spawn goroutine.
+	d.wg.Wait()
+
+	if !releaserCalled {
+		t.Error("expected ForceReleaseLease to be called")
+	}
+	if worker.callCount() != 1 {
+		t.Errorf("expected 1 worker spawn after input_provided, got %d", worker.callCount())
+	}
+}
+
+func TestHandleInputProvided_AlreadyDraft_DispatchesDirectly(t *testing.T) {
+	// Lease expired before event arrived — ticket already draft → tryDispatch directly.
+	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git", DispatchEnabled: true}
+	tk := &ticket.Ticket{
+		ID:        "t-draft-input",
+		ProjectID: "p-1",
+		State:     ticket.StateDraft,
+		Title:     "already draft",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	releaser := &mockLeaseReleaser{}
+	worker := &mockWorker{}
+	cfg := Config{MaxWorkers: 5, ProjectID: "p-1", DockerEnabled: true, WorktreeDir: t.TempDir(), ServerURL: "http://localhost"}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+	seedTestClone(t, d, "p-1")
+
+	ctx := context.Background()
+	d.handleTicketInputProvided(ctx, events.Event{
+		Type:    events.EventTicketInputProvided,
+		Payload: map[string]any{"ticket_id": "t-draft-input"},
+	})
+
+	d.wg.Wait()
+
+	// No lease release needed — ticket was already draft.
+	if releaser.callCount() != 0 {
+		t.Errorf("expected 0 ForceReleaseLease calls for already-draft ticket, got %d", releaser.callCount())
+	}
+	if worker.callCount() != 1 {
+		t.Errorf("expected 1 worker spawn for draft ticket, got %d", worker.callCount())
+	}
+}
+
+func TestHandleInputProvided_WorkerAlreadyActive_Skips(t *testing.T) {
+	// At-least-once guard: if a worker is already running for this ticket, skip.
+	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git", DispatchEnabled: true}
+	tk := &ticket.Ticket{
+		ID:        "t-active-input",
+		ProjectID: "p-1",
+		State:     ticket.StateExecuting,
+		Title:     "worker active",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	releaser := &mockLeaseReleaser{}
+	worker := &mockWorker{}
+	cfg := Config{MaxWorkers: 5, ProjectID: "p-1", DockerEnabled: true, RepoDir: "/tmp", ServerURL: "http://localhost"}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+
+	// Simulate active worker.
+	d.mu.Lock()
+	d.active["t-active-input"] = func() {}
+	d.mu.Unlock()
+
+	ctx := context.Background()
+	d.handleTicketInputProvided(ctx, events.Event{
+		Type:    events.EventTicketInputProvided,
+		Payload: map[string]any{"ticket_id": "t-active-input"},
+	})
+
+	if releaser.callCount() != 0 {
+		t.Errorf("expected 0 ForceReleaseLease calls when worker active, got %d", releaser.callCount())
+	}
+	if worker.callCount() != 0 {
+		t.Errorf("expected 0 worker spawns when worker active, got %d", worker.callCount())
+	}
+}
+
+func TestHandleInputProvided_WrongProject_Filtered(t *testing.T) {
+	// Ticket belongs to a different project — should be filtered out.
+	proj := &project.Project{ID: "p-other", Name: "other", RepoURL: "https://github.com/test/repo.git", DispatchEnabled: true}
+	tk := &ticket.Ticket{
+		ID:        "t-wrong-proj",
+		ProjectID: "p-other",
+		State:     ticket.StateExecuting,
+		Title:     "wrong project",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	releaser := &mockLeaseReleaser{}
+	worker := &mockWorker{}
+	cfg := Config{MaxWorkers: 5, ProjectID: "p-1", DockerEnabled: true, RepoDir: "/tmp", ServerURL: "http://localhost"}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+
+	ctx := context.Background()
+	d.handleTicketInputProvided(ctx, events.Event{
+		Type:    events.EventTicketInputProvided,
+		Payload: map[string]any{"ticket_id": "t-wrong-proj"},
+	})
+
+	if releaser.callCount() != 0 {
+		t.Errorf("expected 0 ForceReleaseLease calls for wrong project, got %d", releaser.callCount())
+	}
+	if worker.callCount() != 0 {
+		t.Errorf("expected 0 worker spawns for wrong project, got %d", worker.callCount())
+	}
+}
+
+func TestHandleInputProvided_UnexpectedState_Skips(t *testing.T) {
+	// Ticket in closed state — log warning and skip.
+	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git", DispatchEnabled: true}
+	tk := &ticket.Ticket{
+		ID:        "t-closed-input",
+		ProjectID: "p-1",
+		State:     ticket.StateClosed,
+		Title:     "closed ticket",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	releaser := &mockLeaseReleaser{}
+	worker := &mockWorker{}
+	cfg := Config{MaxWorkers: 5, ProjectID: "p-1", DockerEnabled: true, RepoDir: "/tmp", ServerURL: "http://localhost"}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+
+	ctx := context.Background()
+	d.handleTicketInputProvided(ctx, events.Event{
+		Type:    events.EventTicketInputProvided,
+		Payload: map[string]any{"ticket_id": "t-closed-input"},
+	})
+
+	if releaser.callCount() != 0 {
+		t.Errorf("expected 0 ForceReleaseLease calls for closed ticket, got %d", releaser.callCount())
+	}
+	if worker.callCount() != 0 {
+		t.Errorf("expected 0 worker spawns for closed ticket, got %d", worker.callCount())
+	}
+}
+
+func TestHandleInputProvided_ReleaserFails_NoDispatch(t *testing.T) {
+	// ForceReleaseLease fails — should not proceed to tryDispatch.
+	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git", DispatchEnabled: true}
+	tk := &ticket.Ticket{
+		ID:        "t-release-fail",
+		ProjectID: "p-1",
+		State:     ticket.StateExecuting,
+		Title:     "release fails",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	releaser := &mockLeaseReleaser{err: fmt.Errorf("redis unavailable")}
+	worker := &mockWorker{}
+	cfg := Config{MaxWorkers: 5, ProjectID: "p-1", DockerEnabled: true, RepoDir: "/tmp", ServerURL: "http://localhost"}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+
+	ctx := context.Background()
+	d.handleTicketInputProvided(ctx, events.Event{
+		Type:    events.EventTicketInputProvided,
+		Payload: map[string]any{"ticket_id": "t-release-fail"},
+	})
+
+	if releaser.callCount() != 1 {
+		t.Errorf("expected 1 ForceReleaseLease call, got %d", releaser.callCount())
+	}
+	if worker.callCount() != 0 {
+		t.Errorf("expected 0 worker spawns after release failure, got %d", worker.callCount())
+	}
+}
+
+func TestHandleInputProvided_NilReleaser_NoPanic(t *testing.T) {
+	// When leaseReleaser is nil, should gracefully return without panic.
+	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git", DispatchEnabled: true}
+	tk := &ticket.Ticket{
+		ID:        "t-nil-release",
+		ProjectID: "p-1",
+		State:     ticket.StateExecuting,
+		Title:     "nil releaser",
+		Type:      ticket.TypeTask,
+		Objective: ticket.Objective{Description: "d"},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	worker := &mockWorker{}
+	cfg := Config{MaxWorkers: 5, ProjectID: "p-1", DockerEnabled: true, RepoDir: "/tmp", ServerURL: "http://localhost"}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	// Note: NOT setting leaseReleaser — it's nil.
+
+	ctx := context.Background()
+	// Should not panic.
+	d.handleTicketInputProvided(ctx, events.Event{
+		Type:    events.EventTicketInputProvided,
+		Payload: map[string]any{"ticket_id": "t-nil-release"},
+	})
+
+	if worker.callCount() != 0 {
+		t.Errorf("expected 0 worker spawns with nil releaser, got %d", worker.callCount())
+	}
+}
+
+// leaseReleaserFunc adapts a function to the LeaseReleaser interface for tests.
+type leaseReleaserFunc struct {
+	fn func(ctx context.Context, ticketID string) error
+}
+
+func (f *leaseReleaserFunc) ForceReleaseLease(ctx context.Context, ticketID string) error {
+	return f.fn(ctx, ticketID)
 }

@@ -30,6 +30,10 @@ func (m *mockTraceService) GetTrace(ctx context.Context, ticketID string) (*exec
 	return m.getTrace, m.getTraceErr
 }
 
+func (m *mockTraceService) GetTracePaginated(ctx context.Context, ticketID string, limit, offset int) (*execution.ExecutionTrace, error) {
+	return m.getTrace, m.getTraceErr
+}
+
 type mockTicketGetter struct {
 	ticket *ticket.Ticket
 	err   error

@@ -579,39 +579,6 @@ export function ProjectDispatchRoutingCard({
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
       </CardHeader>
       <CardContent className="space-y-6">
-        <section className="rounded-2xl border border-white/10 bg-black/10 p-4">
-          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_12rem] md:items-end">
-            <div className="space-y-1">
-              <h3 className="text-sm font-medium text-foreground">
-                Active worker limit
-              </h3>
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                Maximum workers this project can run at once across implementation,
-                review, and conflict-resolution work. Use 0 to inherit the server
-                default.
-              </p>
-            </div>
-            <Label>
-              Max active
-              <Input
-                type="number"
-                min={0}
-                step={1}
-                value={draft.max_active_workers}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    max_active_workers: Math.max(
-                      0,
-                      Math.floor(Number(event.target.value) || 0),
-                    ),
-                  }))
-                }
-              />
-            </Label>
-          </div>
-        </section>
-
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>

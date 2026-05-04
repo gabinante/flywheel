@@ -20,7 +20,7 @@ export function InviteAcceptPage() {
   const navigate = useNavigate()
   const [accepting, setAccepting] = useState(false)
   const [err, setErr] = useState<string | null>(null)
-  const [accepted, setAccepted] = useState<{ org: { id: string; name: string } } | null>(null)
+  const [accepted, setAccepted] = useState<{ org: { id: string; name: string; slug?: string } } | null>(null)
 
   // If we returned from OAuth, check for pending invite code
   useEffect(() => {
@@ -87,7 +87,7 @@ export function InviteAcceptPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center">
-            <Button onClick={() => navigate(`/orgs/${accepted.org.id}/projects`)}>
+            <Button onClick={() => navigate(`/orgs/${accepted.org.slug ?? accepted.org.id}/projects`)}>
               Go to projects
             </Button>
           </CardContent>

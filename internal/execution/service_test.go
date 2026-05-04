@@ -32,6 +32,21 @@ func (m *mockStepStore) GetStepsByTicketID(ctx context.Context, ticketID string)
 	return m.steps, nil
 }
 
+func (m *mockStepStore) GetStepsByTicketIDPaginated(ctx context.Context, ticketID string, limit, offset int) ([]Step, int, error) {
+	if m.getStepsErr != nil {
+		return nil, 0, m.getStepsErr
+	}
+	total := len(m.steps)
+	if offset >= total {
+		return nil, total, nil
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return m.steps[offset:end], total, nil
+}
+
 func (m *mockStepStore) GetAgentIDByTicketID(ctx context.Context, ticketID string) (string, error) {
 	if m.getAgentIDErr != nil {
 		return "", m.getAgentIDErr

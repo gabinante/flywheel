@@ -27,6 +27,7 @@ type ExecutionTrace struct {
 	AgentID    string `json:"agent_id"`
 	WorkerType string `json:"worker_type,omitempty"`
 	Steps      []Step `json:"steps"`
+	TotalCount int    `json:"total_count,omitempty"`
 }
 
 // AttemptSummary is a short summary of an attempt (for prior_attempts context).

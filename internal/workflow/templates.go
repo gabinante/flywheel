@@ -6,6 +6,9 @@ func BuiltinTemplates() []Definition {
 		StandardSDLC(),
 		FastTrack(),
 		FullPipeline(),
+		Triage(),
+		GenericTask(),
+		SubticketSDLC(),
 	}
 }
 
@@ -18,7 +21,7 @@ func StandardSDLC() Definition {
 			{
 				ID: "decompose", Name: "Decomposition", Type: PhaseAgent,
 				Description: "Break the ticket into well-scoped child tickets with clear acceptance criteria. If already well-scoped, proceed directly.",
-				Config:      map[string]any{"role": "planner", "goal": "Analyze the ticket scope. If it needs decomposition, create focused child tickets with depends_on edges. If already well-scoped, complete immediately."},
+				Config:      map[string]any{"role": "decomposer", "goal": "Analyze the ticket scope. If it needs decomposition, create focused child tickets with depends_on edges and assign them a simpler workflow. If already well-scoped, complete immediately."},
 			},
 			{
 				ID: "execute", Name: "Execution", Type: PhaseAgent,
@@ -68,6 +71,86 @@ func FastTrack() Definition {
 				ID: "merge", Name: "Auto-Merge", Type: PhaseExternal,
 				Description: "Automatically merge the PR.",
 				Config:      map[string]any{"mode": "sync"},
+			},
+		},
+	}
+}
+
+// Triage returns a workflow for incident/alert triage: analyze → diagnose → human review → respond.
+// No code, no repos — purely operational.
+func Triage() Definition {
+	return Definition{
+		Name:        "Triage",
+		Description: "Operational triage: analyze, diagnose, human review gate, then respond. No code required.",
+		Phases: []Phase{
+			{
+				ID: "analyze", Name: "Analyze", Type: PhaseAgent,
+				Description: "Initial analysis of the alert or incident.",
+				Config:      map[string]any{"role": "operator", "goal": "Analyze the incoming alert or incident. Gather context, check state, and classify severity."},
+			},
+			{
+				ID: "diagnose", Name: "Diagnose", Type: PhaseAgent,
+				Description: "Deep diagnosis and root cause analysis.",
+				Config:      map[string]any{"role": "operator", "goal": "Investigate root cause. Query system state, correlate with recent changes, and document findings."},
+			},
+			{
+				ID: "human-review", Name: "Human Review", Type: PhaseGate,
+				Description: "Human reviews the diagnosis before response.",
+				Config:      map[string]any{"prompt": "Review the diagnosis and approve the recommended response.", "requirements": []any{"human_approval"}},
+			},
+			{
+				ID: "respond", Name: "Respond", Type: PhaseAgent,
+				Description: "Execute the approved response. Loops back to diagnose on failure.",
+				Config:    map[string]any{"role": "operator", "goal": "Execute the approved response plan. Log all actions taken."},
+				OnFailure: "diagnose",
+			},
+		},
+	}
+}
+
+// GenericTask returns a minimal non-code workflow: execute → human review.
+func GenericTask() Definition {
+	return Definition{
+		Name:        "Generic Task",
+		Description: "Minimal workflow for non-code tasks: operator executes, human reviews.",
+		Phases: []Phase{
+			{
+				ID: "execute", Name: "Execute", Type: PhaseAgent,
+				Description: "Operator executes the task.",
+				Config:      map[string]any{"role": "operator"},
+			},
+			{
+				ID: "review", Name: "Review", Type: PhaseGate,
+				Description: "Human reviews the result.",
+				Config:      map[string]any{"prompt": "Review and approve the result.", "requirements": []any{"human_approval"}},
+			},
+		},
+	}
+}
+
+// SubticketSDLC returns a streamlined pipeline for well-scoped subtickets created by decomposition.
+// Uses a fast executor role (routable to smaller/cheaper models via project dispatch config),
+// lightweight single-iteration review, and merge.
+func SubticketSDLC() Definition {
+	return Definition{
+		Name:        "Subticket SDLC",
+		Description: "Streamlined pipeline for well-scoped subtickets: execute with fast model, lightweight review, merge.",
+		Phases: []Phase{
+			{
+				ID: "execute", Name: "Execution", Type: PhaseAgent,
+				Description: "Execute the well-scoped subticket.",
+				Config:      map[string]any{"role": "fast-executor"},
+			},
+			{
+				ID: "review", Name: "Review", Type: PhaseAgent,
+				Description: "Lightweight review of subticket work. Single iteration.",
+				Config:    map[string]any{"role": "validator", "max_iterations": 1},
+				OnFailure: "execute",
+			},
+			{
+				ID: "merge", Name: "Merge", Type: PhaseExternal,
+				Description: "Merge the approved subticket PR.",
+				Config: map[string]any{"mode": "sync"},
 			},
 		},
 	}

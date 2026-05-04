@@ -169,7 +169,7 @@ export function OrgsPage() {
             const count = projectCounts[id]
             return (
               <StaggerItem key={id}>
-                <Link to={`/orgs/${id}/projects`} className="block h-full">
+                <Link to={`/orgs/${o.slug ?? id}/projects`} className="block h-full">
                   <Card className="group h-full hover:bg-white/[0.06]">
                     <CardHeader>
                       <div className="flex items-start gap-3">

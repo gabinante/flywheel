@@ -109,7 +109,7 @@ const STANDARD_SDLC_PHASES: WorkflowPhase[] = [
     config: { mode: 'async' } },
 ]
 
-const PRIMARY_TYPES: PhaseType[] = ['agent', 'external', 'gate']
+const PRIMARY_TYPES: PhaseType[] = ['agent', 'external', 'gate', 'action']
 
 function newPhaseID(phases: WorkflowPhase[]): string {
   let idx = phases.length + 1
@@ -126,7 +126,7 @@ function defaultPhase(phases: WorkflowPhase[], type: PhaseType): WorkflowPhase {
     name: `New ${meta.label} Step`,
     type,
     description: '',
-    config: type === 'agent' ? { role: 'executor' } : type === 'external' ? { mode: 'sync' } : {},
+    config: type === 'agent' ? { role: 'executor' } : type === 'external' ? { mode: 'sync' } : type === 'action' ? { action: '' } : {},
   }
 }
 

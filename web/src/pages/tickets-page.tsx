@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ClipboardList,
   Code,
@@ -24,6 +24,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { StyledSelect } from '@/components/ui/styled-select'
 import { useAuth } from '@/contexts/use-auth'
+import { useProjectPaths } from '@/hooks/use-project-paths'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
 import { TicketsPageSkeleton } from '@/components/ui/skeleton'
 import { formatApiError } from '@/lib/api/client'
@@ -250,8 +251,7 @@ function EmptyState({
 
 interface TicketCardProps {
   ticket: Ticket
-  orgId: string
-  projectId: string
+  basePath: string
   streamLabel?: string
   depLabels: Map<string, string>
   isSelected: boolean
@@ -260,8 +260,7 @@ interface TicketCardProps {
 
 function TicketCard({
   ticket: t,
-  orgId,
-  projectId,
+  basePath,
   streamLabel,
   depLabels,
   isSelected,
@@ -272,7 +271,7 @@ function TicketCard({
 
   return (
     <Link
-      to={`/orgs/${orgId}/projects/${projectId}/tickets/${t.id}`}
+      to={`${basePath}/tickets/${t.id}`}
       data-ticket-id={t.id}
       onMouseEnter={onMouseEnter}
     >
@@ -376,7 +375,7 @@ function TicketCard({
 // ---------------------------------------------------------------------------
 
 export function TicketsPage() {
-  const { orgId, projectId } = useParams<{ orgId: string; projectId: string }>()
+  const { orgId, projectId, orgSlug, projectSlug, base } = useProjectPaths()
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const { client } = useAuth()
@@ -574,8 +573,8 @@ export function TicketsPage() {
           if (selectedIndex >= 0 && selectedIndex < tickets.length) {
             e.preventDefault()
             const t = tickets[selectedIndex]
-            if (t.id && orgId && projectId) {
-              navigate(`/orgs/${orgId}/projects/${projectId}/tickets/${t.id}`)
+            if (t.id && base) {
+              navigate(`${base}/tickets/${t.id}`)
             }
           }
           break
@@ -585,7 +584,7 @@ export function TicketsPage() {
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [tickets, selectedIndex, orgId, projectId, navigate])
+  }, [tickets, selectedIndex, base, navigate])
 
   // ---- Guard clauses ----
   if (!orgId || !projectId) {
@@ -605,15 +604,15 @@ export function TicketsPage() {
       <div className="flex flex-col gap-1">
         <p className="text-muted-foreground text-xs">
           <OrgProjectCrumbs
-            orgId={orgId}
-            projectId={projectId}
+            orgId={orgSlug}
+            projectId={projectSlug}
             projectLabel={projectLabel}
           />
           {workStreamFilter ? (
             <>
               <span className="px-1">/</span>
               <Link
-                to={`/orgs/${orgId}/projects/${projectId}/tickets?work_stream_id=${encodeURIComponent(workStreamFilter)}`}
+                to={`${base}/tickets?work_stream_id=${encodeURIComponent(workStreamFilter)}`}
                 className="hover:underline"
               >
                 {streamLabelById.get(workStreamFilter) ?? 'Work stream'}
@@ -709,8 +708,7 @@ export function TicketsPage() {
             <li key={t.id} role="option" aria-selected={idx === selectedIndex}>
               <TicketCard
                 ticket={t}
-                orgId={orgId}
-                projectId={projectId}
+                basePath={base}
                 streamLabel={t.work_stream_id ? streamLabelById.get(t.work_stream_id) : undefined}
                 depLabels={ticketTitleById}
                 isSelected={idx === selectedIndex}

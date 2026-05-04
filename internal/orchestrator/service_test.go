@@ -239,6 +239,40 @@ func TestGetThreadInitializesEmptySlices(t *testing.T) {
 	}
 }
 
+func TestInjectSystemEventDeduplicates(t *testing.T) {
+	store := &mockStore{}
+	svc := NewService(store, &mockProjectGetter{}, nil, Config{})
+
+	ctx := context.Background()
+	if err := svc.InjectSystemEvent(ctx, "proj-1", "escalation", "ticket-1 needs input"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.InjectSystemEvent(ctx, "proj-1", "escalation", "ticket-1 needs input"); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(store.messages) != 1 {
+		t.Fatalf("expected 1 message (deduplicated), got %d", len(store.messages))
+	}
+}
+
+func TestInjectSystemEventAllowsDifferentContent(t *testing.T) {
+	store := &mockStore{}
+	svc := NewService(store, &mockProjectGetter{}, nil, Config{})
+
+	ctx := context.Background()
+	if err := svc.InjectSystemEvent(ctx, "proj-1", "escalation", "ticket-1 needs input"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.InjectSystemEvent(ctx, "proj-1", "escalation", "ticket-2 failed"); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(store.messages) != 2 {
+		t.Fatalf("expected 2 messages (different content), got %d", len(store.messages))
+	}
+}
+
 func TestFailRunPersistsErrorAndCompletion(t *testing.T) {
 	store := &mockStore{}
 	run := Run{
