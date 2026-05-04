@@ -56,16 +56,17 @@ export function useProjectRailData(projectId: string | undefined) {
           params: { path: { projectID: projectId }, query: { state: 'awaiting_input' } },
         }),
         fetch(
-          `/streams/change?project_id=${encodeURIComponent(projectId)}&limit=40`,
+          `/api/v1/streams/change?project_id=${encodeURIComponent(projectId)}&limit=40`,
           {
             headers: { Authorization: `Bearer ${token}` },
           },
         ),
       ])
 
-      const status = statusRes.ok
-        ? ((await statusRes.json()) as DispatchStatus)
-        : null
+      let status: DispatchStatus | null = null
+      try {
+        status = statusRes.ok ? ((await statusRes.json()) as DispatchStatus) : null
+      } catch { /* non-JSON response, treat as unavailable */ }
       const activeTicketIds = [...new Set(status?.active_ticket_ids ?? [])]
 
       const activeTicketResults = await Promise.all(
@@ -94,9 +95,12 @@ export function useProjectRailData(projectId: string | undefined) {
         ? ((awaitingInputRes.data ?? []) as Ticket[])
         : []
 
-      const changeEvents: ChangeStreamEvent[] = changeStreamRes.ok
-        ? (((await changeStreamRes.json()) as ChangeStreamResponse).events ?? [])
-        : []
+      let changeEvents: ChangeStreamEvent[] = []
+      try {
+        changeEvents = changeStreamRes.ok
+          ? (((await changeStreamRes.json()) as ChangeStreamResponse).events ?? [])
+          : []
+      } catch { /* non-JSON response, skip activity feed */ }
 
       const ticketsById = new Map<string, Ticket>()
       for (const ticket of [...active, ...reviews]) {
