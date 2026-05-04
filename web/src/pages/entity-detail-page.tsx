@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import {
   ArrowLeft,
   Box,
@@ -24,6 +24,8 @@ import {
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/contexts/use-auth'
+import { useProjectPaths } from '@/hooks/use-project-paths'
+import { useResolvedRouteParams } from '@/hooks/use-resolved-route-params'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -201,7 +203,7 @@ function InstancesSection({
     setError(null)
     ;(async () => {
       try {
-        const resp = await fetch(`/api/v1/entities/${entityId}/instances`, {
+        const resp = await fetch(`/entities/${entityId}/instances`, {
           headers: { Authorization: `Bearer ${token}` },
         })
         if (cancelled) return
@@ -339,7 +341,7 @@ function EdgesSection({
           project_id: projectId,
           entity_id: entityId,
         })
-        const resp = await fetch(`/api/v1/catalog/edges?${params.toString()}`, {
+        const resp = await fetch(`/catalog/edges?${params.toString()}`, {
           headers: { Authorization: `Bearer ${token}` },
         })
         if (cancelled) return
@@ -370,7 +372,7 @@ function EdgesSection({
           Array.from(otherIds).map(async (id) => {
             try {
               const entResp = await fetch(
-                `/api/v1/catalog/entities/${id}?project_id=${encodeURIComponent(projectId)}`,
+                `/catalog/entities/${id}?project_id=${encodeURIComponent(projectId)}`,
                 { headers: { Authorization: `Bearer ${token}` } },
               )
               if (entResp.ok) {
@@ -482,7 +484,7 @@ function StreamSection({
     ;(async () => {
       try {
         const resp = await fetch(
-          `/api/v1/entities/${entityId}/stream?limit=50`,
+          `/entities/${entityId}/stream?limit=50`,
           { headers: { Authorization: `Bearer ${token}` } },
         )
         if (cancelled) return
@@ -595,11 +597,8 @@ function StreamSection({
 // ---------------------------------------------------------------------------
 
 export function EntityDetailPage() {
-  const { orgId, projectId, entityId } = useParams<{
-    orgId: string
-    projectId: string
-    entityId: string
-  }>()
+  const { entityId } = useResolvedRouteParams()
+  const { orgId, projectId, base } = useProjectPaths()
   const { token } = useAuth()
 
   const [entity, setEntity] = useState<CatalogEntity | null | undefined>(
@@ -613,7 +612,7 @@ export function EntityDetailPage() {
     ;(async () => {
       try {
         const resp = await fetch(
-          `/api/v1/catalog/entities/${entityId}?project_id=${encodeURIComponent(projectId)}`,
+          `/catalog/entities/${entityId}?project_id=${encodeURIComponent(projectId)}`,
           { headers: { Authorization: `Bearer ${token}` } },
         )
         if (cancelled) return
@@ -646,7 +645,7 @@ export function EntityDetailPage() {
     return <p className="text-sm text-destructive">Missing route params.</p>
   }
 
-  const infraHref = `/orgs/${orgId}/projects/${projectId}/infrastructure`
+  const infraHref = `${base}/infrastructure`
 
   if (error) {
     return (

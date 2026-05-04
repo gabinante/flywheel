@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import {
   Database,
   Globe,
@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/contexts/use-auth'
+import { useProjectPaths } from '@/hooks/use-project-paths'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -229,7 +230,7 @@ function ErrorState({ message }: { message: string }) {
 // ---------------------------------------------------------------------------
 
 export function CatalogEntityList() {
-  const { orgId, projectId } = useParams<{ orgId: string; projectId: string }>()
+  const { projectId, base } = useProjectPaths()
   const { token } = useAuth()
   const navigate = useNavigate()
 
@@ -259,7 +260,7 @@ export function CatalogEntityList() {
         }
 
         const response = await fetch(
-          `/api/v1/catalog/entities?${params.toString()}`,
+          `/catalog/entities?${params.toString()}`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -373,7 +374,7 @@ export function CatalogEntityList() {
                 entity={entity}
                 onClick={() =>
                   navigate(
-                    `/orgs/${orgId}/projects/${projectId}/infrastructure/entities/${entity.id}`,
+                    `${base}/infrastructure/entities/${entity.id}`,
                   )
                 }
               />

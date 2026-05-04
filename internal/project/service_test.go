@@ -28,6 +28,10 @@ func (m *mockProjectStore) GetByID(ctx context.Context, id string) (*Project, er
 	return m.getByID, m.getByIDErr
 }
 
+func (m *mockProjectStore) GetBySlug(ctx context.Context, orgID, slug string) (*Project, error) {
+	return nil, nil
+}
+
 func (m *mockProjectStore) ListByOrgID(ctx context.Context, orgID string, statusFilter string) ([]Project, error) {
 	return m.list, m.listErr
 }
@@ -37,6 +41,10 @@ func (m *mockProjectStore) UpdateStatus(ctx context.Context, projectID, status s
 }
 
 func (m *mockProjectStore) UpdateRepoURL(ctx context.Context, projectID, repoURL string) error {
+	return m.updateErr
+}
+
+func (m *mockProjectStore) UpdateDescription(ctx context.Context, projectID, description string) error {
 	return m.updateErr
 }
 

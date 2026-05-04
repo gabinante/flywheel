@@ -13,9 +13,11 @@ import (
 type ProjectStore interface {
 	Create(ctx context.Context, p *Project) error
 	GetByID(ctx context.Context, id string) (*Project, error)
+	GetBySlug(ctx context.Context, orgID, slug string) (*Project, error)
 	ListByOrgID(ctx context.Context, orgID string, statusFilter string) ([]Project, error)
 	UpdateStatus(ctx context.Context, projectID, status string) error
 	UpdateRepoURL(ctx context.Context, projectID, repoURL string) error
+	UpdateDescription(ctx context.Context, projectID, description string) error
 	UpdateName(ctx context.Context, projectID, name string) error
 	UpdateSlug(ctx context.Context, projectID, slug string) error
 	UpdateDefaultBranch(ctx context.Context, projectID, branch string) error
@@ -68,6 +70,11 @@ func (s *Service) GetProject(ctx context.Context, id string) (*Project, error) {
 	return s.store.GetByID(ctx, id)
 }
 
+// GetBySlug returns a project by org ID and slug.
+func (s *Service) GetBySlug(ctx context.Context, orgID, slug string) (*Project, error) {
+	return s.store.GetBySlug(ctx, orgID, slug)
+}
+
 // ListByOrgID returns projects for an org. statusFilter: "" or "active" = active only, "closed" = closed only, "all" = all.
 func (s *Service) ListByOrgID(ctx context.Context, orgID string, statusFilter string) ([]Project, error) {
 	return s.store.ListByOrgID(ctx, orgID, statusFilter)
@@ -84,6 +91,11 @@ func (s *Service) UpdateStatus(ctx context.Context, projectID, status string) er
 // UpdateRepoURL sets project repo_url. Empty string disables work streams + git integration.
 func (s *Service) UpdateRepoURL(ctx context.Context, projectID, repoURL string) error {
 	return s.store.UpdateRepoURL(ctx, projectID, repoURL)
+}
+
+// UpdateDescription sets project description.
+func (s *Service) UpdateDescription(ctx context.Context, projectID, description string) error {
+	return s.store.UpdateDescription(ctx, projectID, description)
 }
 
 // UpdateName sets project name.

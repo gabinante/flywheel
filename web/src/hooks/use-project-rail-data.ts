@@ -56,7 +56,7 @@ export function useProjectRailData(projectId: string | undefined) {
           params: { path: { projectID: projectId }, query: { state: 'awaiting_input' } },
         }),
         fetch(
-          `/api/v1/streams/change?project_id=${encodeURIComponent(projectId)}&limit=40`,
+          `/streams/change?project_id=${encodeURIComponent(projectId)}&limit=40`,
           {
             headers: { Authorization: `Bearer ${token}` },
           },

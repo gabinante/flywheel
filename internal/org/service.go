@@ -91,6 +91,11 @@ func (s *Service) GetOrg(ctx context.Context, id string) (*Org, error) {
 	return s.store.GetByID(ctx, id)
 }
 
+// GetBySlug returns an org by slug.
+func (s *Service) GetBySlug(ctx context.Context, slug string) (*Org, error) {
+	return s.store.GetBySlug(ctx, slug)
+}
+
 // ListMembers returns all members of an org.
 func (s *Service) ListMembers(ctx context.Context, orgID string) ([]Member, error) {
 	return s.store.ListMembers(ctx, orgID)

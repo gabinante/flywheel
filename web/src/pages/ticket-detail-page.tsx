@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import {
   Calendar,
   Clock,
@@ -17,6 +17,7 @@ import { TicketRelationshipsCard } from '@/components/ticket-relationships-card'
 import { TicketReopenPanel } from '@/components/ticket-reopen-panel'
 import { TicketEscalationPanel } from '@/components/ticket-escalation-panel'
 import { TicketReviewPanel } from '@/components/ticket-review-panel'
+import { TicketTransitionPanel } from '@/components/ticket-transition-panel'
 import { TicketTimeline } from '@/components/ticket-timeline'
 import { WorkStreamSummaryCard } from '@/components/work-stream-card'
 import { Badge } from '@/components/ui/badge'
@@ -24,6 +25,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
+import { useProjectPaths } from '@/hooks/use-project-paths'
+import { useResolvedRouteParams } from '@/hooks/use-resolved-route-params'
 import { DetailPageSkeleton } from '@/components/ui/skeleton'
 import { formatApiError } from '@/lib/api/client'
 import { cn } from '@/lib/utils'
@@ -80,11 +83,8 @@ function formatDate(iso: string): string {
 }
 
 export function TicketDetailPage() {
-  const { orgId, projectId, ticketId } = useParams<{
-    orgId: string
-    projectId: string
-    ticketId: string
-  }>()
+  const { orgId, projectId, ticketId } = useResolvedRouteParams()
+  const { orgSlug, projectSlug, base } = useProjectPaths()
   const { client, token } = useAuth()
   const [ticket, setTicket] = useState<Ticket | null | undefined>(undefined)
   const [workflowPos, setWorkflowPos] = useState<WorkflowPositionData | null>(null)
@@ -153,7 +153,7 @@ export function TicketDetailPage() {
     ;(async () => {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
       if (token) headers['Authorization'] = `Bearer ${token}`
-      const resp = await fetch(`/api/v1/tickets/${ticketId}/workflow`, { headers })
+      const resp = await fetch(`/tickets/${ticketId}/workflow`, { headers })
       if (cancelled || !resp.ok) return
       const data = await resp.json().catch(() => null)
       if (cancelled || !data?.position) return
@@ -297,7 +297,7 @@ export function TicketDetailPage() {
 
   const obj = ticket.objective
 
-  const allTicketsHref = `/orgs/${orgId}/projects/${projectId}/tickets`
+  const allTicketsHref = `${base}/tickets`
   const streamTicketsHref =
     ticket.work_stream_id && projectId
       ? `${allTicketsHref}?work_stream_id=${encodeURIComponent(ticket.work_stream_id)}`
@@ -317,8 +317,8 @@ export function TicketDetailPage() {
         {/* Breadcrumbs */}
         <p className="text-muted-foreground text-xs">
           <OrgProjectCrumbs
-            orgId={orgId}
-            projectId={projectId}
+            orgId={orgSlug}
+            projectId={projectSlug}
             projectLabel={projectLabel}
           />
           {streamTicketsHref ? (
@@ -387,6 +387,13 @@ export function TicketDetailPage() {
           currentPhaseId={workflowPos?.currentPhaseId}
         />
       </div>
+
+      {/* ── Manual state transition ───────────────────────── */}
+      <TicketTransitionPanel
+        ticketId={ticketId}
+        currentState={ticket.state ?? 'draft'}
+        onTransitioned={() => void reloadTicket()}
+      />
 
       {/* ── Escalation panel (awaiting_input state) ──────── */}
       {ticket.state === 'awaiting_input' && ticketId && projectId ? (
@@ -464,7 +471,7 @@ export function TicketDetailPage() {
               {projectId ? (
                 <Button asChild size="sm" variant="outline" className="w-fit">
                   <Link
-                    to={`/orgs/${orgId}/projects/${projectId}/reviews`}
+                    to={`${base}/reviews`}
                   >
                     Pending reviews
                   </Link>
@@ -513,7 +520,7 @@ export function TicketDetailPage() {
                 </p>
                 <Button asChild size="sm" className="w-fit">
                   <Link
-                    to={`/orgs/${orgId}/projects/${projectId}/tickets/${reviewBanner.nextTicketId}`}
+                    to={`${base}/tickets/${reviewBanner.nextTicketId}`}
                   >
                     Next in this stream
                   </Link>
@@ -529,7 +536,7 @@ export function TicketDetailPage() {
                 </p>
                 <Button asChild variant="outline" size="sm" className="w-fit">
                   <Link
-                    to={`/orgs/${orgId}/projects/${projectId}/reviews`}
+                    to={`${base}/reviews`}
                   >
                     Open pending reviews
                   </Link>
@@ -564,8 +571,8 @@ export function TicketDetailPage() {
 
       {/* ── Relationships ──────────────────────────────── */}
       <TicketRelationshipsCard
-        orgId={orgId}
-        projectId={projectId}
+        orgId={orgSlug}
+        projectId={projectSlug}
         ticket={ticket}
         projectTickets={projectTickets}
         projectTicketsError={projectTicketsErr}
@@ -582,13 +589,13 @@ export function TicketDetailPage() {
               <div className="flex flex-wrap gap-3 text-sm">
                 <Link
                   className="text-primary hover:underline transition-colors"
-                  to={`/orgs/${orgId}/projects/${projectId}/work-streams/${workStream.id}`}
+                  to={`${base}/work-streams/${workStream.id}`}
                 >
                   Manage work stream
                 </Link>
                 <Link
                   className="text-primary hover:underline transition-colors"
-                  to={`/orgs/${orgId}/projects/${projectId}/tickets?work_stream_id=${encodeURIComponent(workStream.id)}`}
+                  to={`${base}/tickets?work_stream_id=${encodeURIComponent(workStream.id)}`}
                 >
                   View tickets in this stream
                 </Link>

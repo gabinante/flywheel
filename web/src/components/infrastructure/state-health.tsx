@@ -559,7 +559,7 @@ export function StateHealth() {
       try {
         setSummaryLoading(true)
         const res = await stateApiFetch(
-          `/api/v1/state/summary?project_id=${encodeURIComponent(projectId)}`,
+          `/state/summary?project_id=${encodeURIComponent(projectId)}`,
           token,
         )
         if (cancelled) return
@@ -581,7 +581,7 @@ export function StateHealth() {
       try {
         setStalenessLoading(true)
         const res = await stateApiFetch(
-          `/api/v1/state/staleness?project_id=${encodeURIComponent(projectId)}`,
+          `/state/staleness?project_id=${encodeURIComponent(projectId)}`,
           token,
         )
         if (cancelled) return
@@ -603,7 +603,7 @@ export function StateHealth() {
       try {
         setDriftLoading(true)
         const res = await stateApiFetch(
-          `/api/v1/state/drift?project_id=${encodeURIComponent(projectId)}`,
+          `/state/drift?project_id=${encodeURIComponent(projectId)}`,
           token,
         )
         if (cancelled) return

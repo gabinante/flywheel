@@ -460,7 +460,7 @@ export function ProjectDeliveryOverview({
     let cancelled = false
     setPullRequests((prev) => ({ ...prev, loading: true, error: null }))
     void fetchJSON<PullRequestOverview>(
-      `/api/v1/projects/${projectId}/pull-requests`,
+      `/projects/${projectId}/pull-requests`,
       token,
     ).then((result) => {
       if (cancelled) return
@@ -479,7 +479,7 @@ export function ProjectDeliveryOverview({
     let cancelled = false
     setPipeline((prev) => ({ ...prev, loading: true, error: null }))
     void fetchJSON<PipelineOverview>(
-      `/api/v1/projects/${projectId}/pipeline?refresh=true`,
+      `/projects/${projectId}/pipeline?refresh=true`,
       token,
     ).then((result) => {
       if (cancelled) return

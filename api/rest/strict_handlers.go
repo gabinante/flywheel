@@ -22,6 +22,7 @@ import (
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/plan"
 	"github.com/gabinante/flywheel/internal/project"
+	"github.com/gabinante/flywheel/internal/projecttemplate"
 	"github.com/gabinante/flywheel/internal/queue"
 	"github.com/gabinante/flywheel/internal/review"
 	"github.com/gabinante/flywheel/internal/ticket"
@@ -42,8 +43,42 @@ type StrictServer struct {
 	EnvSvc        *environment.Service
 	PlanSvc       *plan.Service
 	PolicySvc     PolicyServiceForHandler
-	AgentStore    agent.AgentStore
-	CostSvc       *cost.Service
+	AgentStore         agent.AgentStore
+	CostSvc            *cost.Service
+	ProjectTemplateSvc *projecttemplate.Service // nil-safe: template seeding disabled when nil
+}
+
+// resolveOrg resolves an org slug to a UUID. Returns the input unchanged if already a UUID.
+func (s *StrictServer) resolveOrg(ctx context.Context, orgIDOrSlug string) string {
+	return ResolveOrgID(ctx, orgIDOrSlug, s.OrgSvc)
+}
+
+// resolveProject resolves a project slug to a UUID. Tries all orgs the user belongs to.
+// Returns the input unchanged if already a UUID or resolution fails.
+func (s *StrictServer) resolveProject(ctx context.Context, projectIDOrSlug string) string {
+	if uuidRE.MatchString(projectIDOrSlug) {
+		return projectIDOrSlug
+	}
+	// Try to find the project by slug across all orgs the user has access to.
+	agentID := GetAgentID(ctx)
+	if agentID == "" {
+		return projectIDOrSlug
+	}
+	a, err := s.AgentStore.GetByID(ctx, agentID)
+	if err != nil || a == nil || a.UserID == "" {
+		return projectIDOrSlug
+	}
+	orgIDs, err := s.OrgSvc.ListOrgIDsForUser(ctx, a.UserID)
+	if err != nil {
+		return projectIDOrSlug
+	}
+	for _, orgID := range orgIDs {
+		p, err := s.ProjectSvc.GetBySlug(ctx, orgID, projectIDOrSlug)
+		if err == nil && p != nil {
+			return p.ID
+		}
+	}
+	return projectIDOrSlug
 }
 
 func (s *StrictServer) GetHealthz(ctx context.Context, req generated.GetHealthzRequestObject) (generated.GetHealthzResponseObject, error) {
@@ -150,6 +185,7 @@ func (s *StrictServer) CreateOrg(ctx context.Context, req generated.CreateOrgReq
 }
 
 func (s *StrictServer) GetOrg(ctx context.Context, req generated.GetOrgRequestObject) (generated.GetOrgResponseObject, error) {
+	req.OrgID = s.resolveOrg(ctx, req.OrgID)
 	if err := CheckOrgAccess(ctx, req.OrgID, s.AgentStore, s.OrgSvc); err != nil {
 		return generated.GetOrg404JSONResponse(seToGen(err)), nil
 	}
@@ -161,6 +197,7 @@ func (s *StrictServer) GetOrg(ctx context.Context, req generated.GetOrgRequestOb
 }
 
 func (s *StrictServer) ListProjectsByOrg(ctx context.Context, req generated.ListProjectsByOrgRequestObject) (generated.ListProjectsByOrgResponseObject, error) {
+	req.OrgID = s.resolveOrg(ctx, req.OrgID)
 	if err := CheckOrgAccess(ctx, req.OrgID, s.AgentStore, s.OrgSvc); err != nil {
 		slog.Warn("ListProjectsByOrg denied", "org", req.OrgID, "error", err.Message)
 		return nil, err
@@ -183,6 +220,7 @@ func (s *StrictServer) ListProjectsByOrg(ctx context.Context, req generated.List
 }
 
 func (s *StrictServer) CreateProject(ctx context.Context, req generated.CreateProjectRequestObject) (generated.CreateProjectResponseObject, error) {
+	req.OrgID = s.resolveOrg(ctx, req.OrgID)
 	if err := CheckOrgAccess(ctx, req.OrgID, s.AgentStore, s.OrgSvc); err != nil {
 		return nil, err
 	}
@@ -208,10 +246,37 @@ func (s *StrictServer) CreateProject(ctx context.Context, req generated.CreatePr
 	if err != nil {
 		return nil, apierrors.MapError(err)
 	}
+
+	// Seed from template if requested
+	if s.ProjectTemplateSvc != nil && body.TemplateId != nil && *body.TemplateId != "" {
+		wsIDs := []string{}
+		if body.WorkStreamTemplateIds != nil {
+			wsIDs = *body.WorkStreamTemplateIds
+		} else {
+			pt, err := s.ProjectTemplateSvc.GetProjectTemplate(ctx, *body.TemplateId)
+			if err != nil {
+				slog.Warn("template lookup failed", "template_id", *body.TemplateId, "error", err)
+			} else if pt != nil {
+				wsIDs = pt.WorkstreamTemplateIDs
+			}
+		}
+		if len(wsIDs) > 0 {
+			createdBy := "system"
+			if agentID, ok := ctx.Value(ContextKeyAgentID).(string); ok && agentID != "" {
+				createdBy = agentID
+			}
+			if _, err := s.ProjectTemplateSvc.SeedProject(ctx, p.ID, wsIDs, createdBy, s.WorkStreamSvc, s.TicketSvc); err != nil {
+				slog.Error("template seed failed", "project_id", p.ID, "error", err)
+			}
+		}
+	}
+
 	return generated.CreateProject201JSONResponse(projectToGen(p)), nil
 }
 
 func (s *StrictServer) GetCommitNotes(ctx context.Context, req generated.GetCommitNotesRequestObject) (generated.GetCommitNotesResponseObject, error) {
+	req.OrgID = s.resolveOrg(ctx, req.OrgID)
+	req.ProjectID = s.resolveProject(ctx, req.ProjectID)
 	repoPath := req.Params.RepoPath
 	proj, err := s.ProjectSvc.GetProject(ctx, req.ProjectID)
 	if err != nil {
@@ -256,6 +321,8 @@ func (s *StrictServer) GetCommitNotes(ctx context.Context, req generated.GetComm
 }
 
 func (s *StrictServer) GetGitNotesLog(ctx context.Context, req generated.GetGitNotesLogRequestObject) (generated.GetGitNotesLogResponseObject, error) {
+	req.OrgID = s.resolveOrg(ctx, req.OrgID)
+	req.ProjectID = s.resolveProject(ctx, req.ProjectID)
 	repoPath := req.Params.RepoPath
 	proj, err := s.ProjectSvc.GetProject(ctx, req.ProjectID)
 	if err != nil {
@@ -304,6 +371,7 @@ func (s *StrictServer) GetGitNotesLog(ctx context.Context, req generated.GetGitN
 }
 
 func (s *StrictServer) GetProject(ctx context.Context, req generated.GetProjectRequestObject) (generated.GetProjectResponseObject, error) {
+	req.ProjectID = s.resolveProject(ctx, req.ProjectID)
 	if err := CheckProjectAccess(ctx, req.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
 		return nil, err
 	}
@@ -315,11 +383,12 @@ func (s *StrictServer) GetProject(ctx context.Context, req generated.GetProjectR
 }
 
 func (s *StrictServer) UpdateProject(ctx context.Context, req generated.UpdateProjectRequestObject) (generated.UpdateProjectResponseObject, error) {
+	req.ProjectID = s.resolveProject(ctx, req.ProjectID)
 	if err := CheckProjectAccess(ctx, req.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
 		return nil, err
 	}
-	if req.Body == nil || (req.Body.Status == nil && req.Body.RepoUrl == nil && req.Body.Name == nil && req.Body.Slug == nil && req.Body.DefaultBranch == nil && req.Body.DispatchEnabled == nil && req.Body.DispatchConfig == nil) {
-		return nil, apierrors.New(apierrors.CodeInvalidInput, "at least one of status, repo_url, name, slug, default_branch, dispatch_enabled, dispatch_config required", false)
+	if req.Body == nil || (req.Body.Status == nil && req.Body.RepoUrl == nil && req.Body.Name == nil && req.Body.Description == nil && req.Body.Slug == nil && req.Body.DefaultBranch == nil && req.Body.DispatchEnabled == nil && req.Body.DispatchConfig == nil) {
+		return nil, apierrors.New(apierrors.CodeInvalidInput, "at least one of status, repo_url, name, description, slug, default_branch, dispatch_enabled, dispatch_config required", false)
 	}
 	if req.Body.Status != nil {
 		if err := s.ProjectSvc.UpdateStatus(ctx, req.ProjectID, string(*req.Body.Status)); err != nil {
@@ -333,6 +402,11 @@ func (s *StrictServer) UpdateProject(ctx context.Context, req generated.UpdatePr
 	}
 	if req.Body.Name != nil && strings.TrimSpace(*req.Body.Name) != "" {
 		if err := s.ProjectSvc.UpdateName(ctx, req.ProjectID, strings.TrimSpace(*req.Body.Name)); err != nil {
+			return nil, apierrors.MapError(err)
+		}
+	}
+	if req.Body.Description != nil {
+		if err := s.ProjectSvc.UpdateDescription(ctx, req.ProjectID, *req.Body.Description); err != nil {
 			return nil, apierrors.MapError(err)
 		}
 	}
@@ -370,6 +444,7 @@ func (s *StrictServer) UpdateProject(ctx context.Context, req generated.UpdatePr
 }
 
 func (s *StrictServer) ListWorkStreams(ctx context.Context, req generated.ListWorkStreamsRequestObject) (generated.ListWorkStreamsResponseObject, error) {
+	req.ProjectID = s.resolveProject(ctx, req.ProjectID)
 	if err := CheckProjectAccess(ctx, req.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
 		return nil, err
 	}
@@ -389,6 +464,7 @@ func (s *StrictServer) ListWorkStreams(ctx context.Context, req generated.ListWo
 }
 
 func (s *StrictServer) CreateWorkStream(ctx context.Context, req generated.CreateWorkStreamRequestObject) (generated.CreateWorkStreamResponseObject, error) {
+	req.ProjectID = s.resolveProject(ctx, req.ProjectID)
 	if err := CheckProjectAccess(ctx, req.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
 		return nil, err
 	}
@@ -412,6 +488,7 @@ func (s *StrictServer) CreateWorkStream(ctx context.Context, req generated.Creat
 }
 
 func (s *StrictServer) GetWorkStream(ctx context.Context, req generated.GetWorkStreamRequestObject) (generated.GetWorkStreamResponseObject, error) {
+	req.ProjectID = s.resolveProject(ctx, req.ProjectID)
 	if err := CheckProjectAccess(ctx, req.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
 		return nil, err
 	}
@@ -429,6 +506,7 @@ func (s *StrictServer) GetWorkStream(ctx context.Context, req generated.GetWorkS
 }
 
 func (s *StrictServer) UpdateWorkStream(ctx context.Context, req generated.UpdateWorkStreamRequestObject) (generated.UpdateWorkStreamResponseObject, error) {
+	req.ProjectID = s.resolveProject(ctx, req.ProjectID)
 	if err := CheckProjectAccess(ctx, req.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
 		return nil, err
 	}
@@ -470,6 +548,7 @@ func (s *StrictServer) UpdateWorkStream(ctx context.Context, req generated.Updat
 }
 
 func (s *StrictServer) ListTickets(ctx context.Context, req generated.ListTicketsRequestObject) (generated.ListTicketsResponseObject, error) {
+	req.ProjectID = s.resolveProject(ctx, req.ProjectID)
 	if err := CheckProjectAccess(ctx, req.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
 		return nil, err
 	}
@@ -493,6 +572,7 @@ func (s *StrictServer) ListTickets(ctx context.Context, req generated.ListTicket
 }
 
 func (s *StrictServer) CreateTicket(ctx context.Context, req generated.CreateTicketRequestObject) (generated.CreateTicketResponseObject, error) {
+	req.ProjectID = s.resolveProject(ctx, req.ProjectID)
 	if err := CheckProjectAccess(ctx, req.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
 		return nil, err
 	}
@@ -587,6 +667,7 @@ func (s *StrictServer) UpdateTicket(ctx context.Context, req generated.UpdateTic
 }
 
 func (s *StrictServer) ListPendingReviews(ctx context.Context, req generated.ListPendingReviewsRequestObject) (generated.ListPendingReviewsResponseObject, error) {
+	req.ProjectID = s.resolveProject(ctx, req.ProjectID)
 	if err := CheckProjectAccess(ctx, req.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
 		return nil, err
 	}
@@ -766,6 +847,7 @@ func (s *StrictServer) TransitionTicket(ctx context.Context, req generated.Trans
 }
 
 func (s *StrictServer) ListEscalations(ctx context.Context, req generated.ListEscalationsRequestObject) (generated.ListEscalationsResponseObject, error) {
+	req.ProjectID = s.resolveProject(ctx, req.ProjectID)
 	if err := CheckProjectAccess(ctx, req.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
 		return nil, err
 	}
@@ -803,6 +885,7 @@ func (s *StrictServer) ResolveEscalation(ctx context.Context, req generated.Reso
 }
 
 func (s *StrictServer) ClaimTicket(ctx context.Context, req generated.ClaimTicketRequestObject) (generated.ClaimTicketResponseObject, error) {
+	req.ProjectID = s.resolveProject(ctx, req.ProjectID)
 	if err := CheckProjectAccess(ctx, req.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
 		return nil, err
 	}
@@ -953,11 +1036,13 @@ func projectToGen(p *project.Project) generated.Project {
 		slog.Error("projectToGen convert dispatch config failed", "project", p.ID, "error", err)
 		dispatchCfg = generated.DispatchConfig{}
 	}
+	desc := p.Description
 	return generated.Project{
 		Id:              &p.ID,
 		OrgId:           &p.OrgID,
 		Name:            &p.Name,
 		Slug:            &p.Slug,
+		Description:     &desc,
 		RepoUrl:         &p.RepoURL,
 		DefaultBranch:   &db,
 		TechStack:       &p.TechStack,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { ChevronRight, RefreshCw, Settings, Container, Layers } from 'lucide-react'
 import { motion } from 'framer-motion'
 
@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/contexts/use-auth'
+import { useProjectPaths } from '@/hooks/use-project-paths'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -53,7 +54,7 @@ async function fetchDeployments(
 
   try {
     const res = await fetch(
-      `/api/v1/catalog/deployments?project_id=${encodeURIComponent(projectId)}`,
+      `/catalog/deployments?project_id=${encodeURIComponent(projectId)}`,
       { headers },
     )
     if (!res.ok) {
@@ -76,7 +77,7 @@ async function fetchResources(
 
   try {
     const res = await fetch(
-      `/api/v1/state/resources?project_id=${encodeURIComponent(projectId)}&limit=200`,
+      `/state/resources?project_id=${encodeURIComponent(projectId)}&limit=200`,
       { headers },
     )
     if (!res.ok) {
@@ -286,7 +287,7 @@ function VerticalConnector({ index }: { index: number }) {
 // ── Main component ───────────────────────────────────────────────────────────
 
 export function PipelineView() {
-  const { projectId, orgId } = useParams<{ orgId: string; projectId: string }>()
+  const { projectId, base } = useProjectPaths()
   const { token } = useAuth()
 
   const [deployments, setDeployments] = useState<DeploymentEntry[]>([])
@@ -361,9 +362,7 @@ export function PipelineView() {
     )
   }, [deployments, resources])
 
-  const settingsPath = orgId && projectId
-    ? `/#/orgs/${orgId}/projects/${projectId}/settings`
-    : '#'
+  const settingsPath = base ? `/#${base}/settings` : '#'
 
   // ── Loading state ──────────────────────────────────────────────────────────
 
