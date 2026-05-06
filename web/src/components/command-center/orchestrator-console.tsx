@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  BrainCircuit,
   LoaderCircle,
   Sparkles,
   TerminalSquare,
@@ -14,7 +13,6 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from '@/components/ui/card'
 import { useAuth } from '@/contexts/use-auth'
 import {
@@ -354,27 +352,19 @@ export function OrchestratorConsole({
   }, [applyThread, draft, fetchThread, onMessageComplete, projectId, sending, token])
 
   return (
-    <Card className="flex h-[calc(100vh-12rem)] min-h-[480px] max-h-[900px] flex-col border-white/12 bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.12),transparent_32%),radial-gradient(circle_at_top_right,rgba(251,146,60,0.08),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))]">
-      <CardHeader className="border-b border-white/10 pb-4">
+    <Card className="flex h-[calc(100vh-12rem)] min-h-[480px] max-h-[900px] flex-col overflow-hidden border-white/12 bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.12),transparent_32%),radial-gradient(circle_at_top_right,rgba(251,146,60,0.08),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))]">
+      <CardHeader className="shrink-0 border-b border-white/10 pb-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline">Planner</Badge>
               <Badge variant="secondary">Scope and Tickets</Badge>
-              {showLivePlanner ? (
-                <Badge variant="outline" className="gap-1 border-primary/25 text-primary">
-                  <LoaderCircle className="size-3 animate-spin" />
-                  Active Generation
-                </Badge>
-              ) : null}
             </div>
-            <CardTitle className="text-base tracking-tight">
-              Orchestrator
-            </CardTitle>
-            <CardDescription className="max-w-2xl text-sm leading-relaxed">
-              {playbook?.summary ??
-                'Use this pane to clarify scope, inspect project context, and create or update work streams and tickets.'}
-            </CardDescription>
+            {playbook?.summary ? (
+              <CardDescription className="max-w-2xl text-sm leading-relaxed">
+                {playbook.summary}
+              </CardDescription>
+            ) : null}
           </div>
           <div className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
             Cmd/Ctrl+Enter to send
@@ -459,7 +449,7 @@ export function OrchestratorConsole({
           />
         ) : null}
 
-        <div className="space-y-3 border-t border-white/10 pt-4">
+        <div className="shrink-0 space-y-3 border-t border-white/10 pt-4">
           {error ? (
             <div className="rounded-2xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
               {error}
@@ -467,16 +457,19 @@ export function OrchestratorConsole({
           ) : null}
 
           <div className="grid gap-3">
-            <div className="rounded-2xl border border-white/10 bg-black/10 px-3 py-2">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <BrainCircuit className="size-3.5" />
-                Keep requests at the planning layer: scope review, ticket creation, queue triage, and re-planning.
-              </div>
-            </div>
-
             <textarea
+              ref={(el) => {
+                if (!el) return
+                el.style.height = 'auto'
+                el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+              }}
               value={draft}
-              onChange={(event) => setDraft(event.target.value)}
+              onChange={(event) => {
+                setDraft(event.target.value)
+                const el = event.target
+                el.style.height = 'auto'
+                el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+              }}
               onKeyDown={(event) => {
                 if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
                   event.preventDefault()
@@ -484,7 +477,8 @@ export function OrchestratorConsole({
                 }
               }}
               placeholder="Describe the task, scope, constraints, or ask what should be ticketed next."
-              className="min-h-[120px] resize-y rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary/40 focus:ring-2 focus:ring-primary/15"
+              className="min-h-[40px] max-h-[200px] resize-none rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary/40 focus:ring-2 focus:ring-primary/15"
+              rows={1}
               disabled={sending}
               aria-busy={showLivePlanner}
             />

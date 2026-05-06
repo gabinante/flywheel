@@ -100,7 +100,7 @@ const STANDARD_SDLC_PHASES: WorkflowPhase[] = [
     on_failure: 'execute' },
   { id: 'quality-gate', name: 'Quality Gate', type: 'gate',
     description: 'CI tests must pass before merge.',
-    config: { prompt: 'Verify all CI checks pass.', requirements: ['github_checks'] } },
+    config: { conditions: [{ type: 'github_checks' }] } },
   { id: 'merge', name: 'Merge', type: 'external',
     description: 'Merge the approved PR.',
     config: { mode: 'sync' } },
@@ -227,14 +227,24 @@ function SortablePhaseNode({
             </span>
           ) : null}
 
-          {/* Gate requirements indicator */}
-          {phase.type === 'gate' && !expanded && Array.isArray(phase.config?.requirements) && (phase.config.requirements as string[]).length > 0 ? (
-            <span className="text-[10px] text-purple-400/70" title={(phase.config.requirements as string[]).join(', ')}>
-              {(phase.config.requirements as string[]).map((r) =>
-                r === 'github_checks' ? 'CI' : r === 'human_approval' ? 'Approval' : r,
-              ).join(' + ')}
-            </span>
-          ) : null}
+          {/* Gate conditions indicator */}
+          {phase.type === 'gate' && !expanded && (() => {
+            const conds: Array<{ type: string }> = Array.isArray(phase.config?.conditions)
+              ? (phase.config.conditions as Array<{ type: string }>)
+              : Array.isArray(phase.config?.requirements)
+                ? (phase.config.requirements as string[]).map((r) => ({ type: r }))
+                : []
+            if (conds.length === 0) return null
+            const labels = conds.map((c) =>
+              c.type === 'github_checks' ? 'CI' : c.type === 'human_approval' ? 'Approval'
+              : c.type === 'webhook' ? 'Webhook' : c.type === 'http_check' ? 'HTTP' : c.type,
+            )
+            return (
+              <span className="text-[10px] text-purple-400/70" title={conds.map((c) => c.type).join(', ')}>
+                {labels.join(' + ')}
+              </span>
+            )
+          })()}
 
           <span className="text-[10px] text-muted-foreground tabular-nums">
             {index + 1}/{totalPhases}

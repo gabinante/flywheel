@@ -85,11 +85,40 @@ func ParseAgentConfig(config map[string]any) (*AgentPhaseConfig, error) {
 	return &cfg, nil
 }
 
-// GatePhaseConfig is the typed config for a gate phase (blocks until requirements are met).
+// GateCondition describes a single structured condition for a gate phase.
+type GateCondition struct {
+	Type   string         `json:"type"`             // github_checks | human_approval | webhook | http_check
+	Config map[string]any `json:"config,omitempty"` // type-specific params
+}
+
+// validGateConditionTypes is the set of recognized condition types.
+var validGateConditionTypes = map[string]bool{
+	"github_checks":  true,
+	"human_approval": true,
+	"webhook":        true,
+	"http_check":     true,
+}
+
+// GatePhaseConfig is the typed config for a gate phase (blocks until conditions are met).
 type GatePhaseConfig struct {
-	Prompt       string   `json:"prompt"`
-	RequiredRole string   `json:"required_role,omitempty"`
-	Requirements []string `json:"requirements,omitempty"` // e.g. ["github_checks"]
+	Conditions   []GateCondition `json:"conditions,omitempty"`
+	RequiredRole string          `json:"required_role,omitempty"`
+	// Deprecated: use Conditions instead. Kept for backward compatibility.
+	Prompt       string   `json:"prompt,omitempty"`
+	Requirements []string `json:"requirements,omitempty"`
+}
+
+// EffectiveConditions returns the conditions to evaluate, falling back to
+// converting legacy Requirements into GateCondition entries.
+func (g *GatePhaseConfig) EffectiveConditions() []GateCondition {
+	if len(g.Conditions) > 0 {
+		return g.Conditions
+	}
+	var out []GateCondition
+	for _, r := range g.Requirements {
+		out = append(out, GateCondition{Type: r})
+	}
+	return out
 }
 
 // ParseGateConfig extracts typed config from a phase's generic Config map.
@@ -178,10 +207,19 @@ func validateGatePhaseConfig(config map[string]any) []string {
 	if err != nil {
 		return []string{fmt.Sprintf("invalid gate config: %v", err)}
 	}
-	errs = append(errs, detectUnknownKeys(config, "prompt", "required_role", "requirements")...)
-	if cfg.Prompt == "" {
-		errs = append(errs, "gate phase requires a non-empty 'prompt'")
+	errs = append(errs, detectUnknownKeys(config, "prompt", "required_role", "requirements", "conditions")...)
+	// Validate structured conditions if present.
+	for i, c := range cfg.Conditions {
+		if !validGateConditionTypes[c.Type] {
+			errs = append(errs, fmt.Sprintf("conditions[%d]: unknown type %q", i, c.Type))
+		}
+		if c.Type == "http_check" {
+			if u, _ := c.Config["url"].(string); u == "" {
+				errs = append(errs, fmt.Sprintf("conditions[%d]: http_check requires a 'url' in config", i))
+			}
+		}
 	}
+	// No longer require prompt — conditions are the primary mechanism.
 	return errs
 }
 

@@ -1608,6 +1608,42 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Plan'
+
+  /api/v1/gate/callback/{token}:
+    post:
+      operationId: PostGateCallback
+      summary: Receive a webhook callback that satisfies a gate condition
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                metadata:
+                  type: object
+                  additionalProperties: true
+      responses:
+        "200":
+          description: Gate condition marked as satisfied
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  ticket_id:
+                    type: string
+                  phase_id:
+                    type: string
+        "404":
+          description: Token not found or expired
 components:
   securitySchemes:
     BearerAuth:
@@ -2725,12 +2761,22 @@ components:
         outcome_at:
           type: string
           format: date-time
+    GateCondition:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [github_checks, human_approval, webhook, http_check]
+        config:
+          type: object
+          additionalProperties: true
     GateRequirement:
       type: object
       properties:
         type:
           type: string
-          enum: [github_checks, human_approval]
+          enum: [github_checks, human_approval, webhook, http_check]
         config:
           type: object
           additionalProperties: true

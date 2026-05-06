@@ -309,6 +309,16 @@ func (s *Service) PatchInputs(ctx context.Context, ticketID string, patch map[st
 	return s.store.PatchInputs(ctx, ticketID, patch)
 }
 
+// PatchOutputs merges the given keys into existing outputs without overwriting unrelated keys.
+func (s *Service) PatchOutputs(ctx context.Context, ticketID string, patch map[string]any) error {
+	return s.store.PatchOutputs(ctx, ticketID, patch)
+}
+
+// UpdateWorkflowPhaseStatus sets the workflow phase status for a ticket.
+func (s *Service) UpdateWorkflowPhaseStatus(ctx context.Context, ticketID string, status string) error {
+	return s.store.UpdateWorkflowPhaseStatus(ctx, ticketID, status)
+}
+
 // PatchTicketMetadata merges optional title and objective fields into a ticket. Only non-nil patch fields from objective are applied.
 func (s *Service) PatchTicketMetadata(ctx context.Context, ticketID string, title *string, desc *string, successCriteria *[]string, acceptanceTest *string) error {
 	t, err := s.store.GetByID(ctx, ticketID)

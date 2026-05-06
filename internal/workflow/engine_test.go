@@ -457,10 +457,44 @@ func TestValidatePhaseConfig_ExternalInvalidDuration(t *testing.T) {
 	}
 }
 
-func TestValidatePhaseConfig_GateEmptyPrompt(t *testing.T) {
+func TestValidatePhaseConfig_GateEmptyConfig(t *testing.T) {
+	// Empty gate config is valid — conditions are optional (no prompt required).
 	errs := ValidatePhaseConfig(PhaseGate, map[string]any{})
+	if len(errs) != 0 {
+		t.Fatalf("expected no errors for empty gate config, got %v", errs)
+	}
+}
+
+func TestValidatePhaseConfig_GateConditions(t *testing.T) {
+	// Valid conditions.
+	errs := ValidatePhaseConfig(PhaseGate, map[string]any{
+		"conditions": []any{
+			map[string]any{"type": "github_checks"},
+			map[string]any{"type": "http_check", "config": map[string]any{"url": "https://example.com/health"}},
+		},
+	})
+	if len(errs) != 0 {
+		t.Fatalf("expected no errors, got %v", errs)
+	}
+
+	// Invalid condition type.
+	errs = ValidatePhaseConfig(PhaseGate, map[string]any{
+		"conditions": []any{
+			map[string]any{"type": "unknown_type"},
+		},
+	})
 	if len(errs) == 0 {
-		t.Fatal("expected error for empty prompt")
+		t.Fatal("expected error for unknown condition type")
+	}
+
+	// http_check without url.
+	errs = ValidatePhaseConfig(PhaseGate, map[string]any{
+		"conditions": []any{
+			map[string]any{"type": "http_check"},
+		},
+	})
+	if len(errs) == 0 {
+		t.Fatal("expected error for http_check without url")
 	}
 }
 

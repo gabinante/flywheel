@@ -225,6 +225,8 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	checkerRegistry := policy.NewCheckerRegistry()
 	checkerRegistry.Register(policy.RequireGitHubChecks, &policy.GitHubChecksChecker{})
 	checkerRegistry.Register(policy.RequireHumanApproval, &policy.HumanApprovalChecker{})
+	checkerRegistry.Register(policy.RequireHTTPCheck, &policy.HTTPCheckChecker{Client: &http.Client{Timeout: 10 * time.Second}})
+	checkerRegistry.Register(policy.RequireWebhook, &policy.WebhookChecker{})
 	ticketSvc.SetRequirementChecker(&requirementCheckerBridge{registry: checkerRegistry})
 
 	_ = postureSvc // posture service available for API handlers

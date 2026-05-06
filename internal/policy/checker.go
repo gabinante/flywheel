@@ -14,7 +14,9 @@ type RequirementChecker interface {
 type CheckContext struct {
 	TicketID  string
 	ProjectID string
-	PRURL     string // from ticket outputs["pr_url"]
+	PRURL     string         // from ticket outputs["pr_url"]
+	PhaseID   string         // current workflow phase ID
+	Outputs   map[string]any // ticket outputs map
 }
 
 // CheckerRegistry routes requirement checks to the appropriate checker.

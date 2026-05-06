@@ -29,6 +29,11 @@ func NewCallbackHandler(secret []byte, store CallbackStore, engine *Engine) *Cal
 	return &CallbackHandler{secret: secret, store: store, engine: engine}
 }
 
+// Store returns the underlying callback store.
+func (h *CallbackHandler) Store() CallbackStore {
+	return h.store
+}
+
 // GenerateToken creates a signed callback token for a ticket's current phase.
 func (h *CallbackHandler) GenerateToken(ctx context.Context, ticketID, workflowID, phaseID string, ttl time.Duration) (string, error) {
 	data := fmt.Sprintf("%s:%s:%s:%d", ticketID, workflowID, phaseID, time.Now().UnixNano())

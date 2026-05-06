@@ -50,6 +50,9 @@ func (h *WorkflowHandler) RegisterRoutes(mux *http.ServeMux) {
 	// Workflow callback (external async phases)
 	mux.HandleFunc("POST /api/v1/workflow/callback/{token}", h.handleCallback)
 
+	// Gate callback (marks a webhook gate condition as satisfied)
+	mux.HandleFunc("POST /api/v1/gate/callback/{token}", h.handleGateCallback)
+
 	// Prefix-free aliases for the frontend openapi-fetch client
 	mux.HandleFunc("GET /projects/{projectID}/workflow", h.getProjectWorkflow)
 	mux.HandleFunc("GET /projects/{projectID}/workflow/layers", h.getWorkflowLayers)
@@ -63,6 +66,7 @@ func (h *WorkflowHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /workflow/templates", h.listTemplates)
 	mux.HandleFunc("GET /tickets/{ticketID}/workflow", h.getTicketWorkflow)
 	mux.HandleFunc("POST /workflow/callback/{token}", h.handleCallback)
+	mux.HandleFunc("POST /gate/callback/{token}", h.handleGateCallback)
 }
 
 func (h *WorkflowHandler) getProjectWorkflow(w http.ResponseWriter, r *http.Request) {
@@ -298,6 +302,41 @@ func (h *WorkflowHandler) handleCallback(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+}
+
+func (h *WorkflowHandler) handleGateCallback(w http.ResponseWriter, r *http.Request) {
+	token := PathParam(r, "token")
+	if h.CallbackHandler == nil {
+		WriteStructuredError(w, apierrors.New(apierrors.CodeInvalidInput, "callbacks not configured", false))
+		return
+	}
+
+	// Look up token to get ticket/phase info, then delete it.
+	store := h.CallbackHandler.Store()
+	ticketID, _, phaseID, err := store.LookupCallbackToken(r.Context(), token)
+	if err != nil {
+		WriteStructuredError(w, apierrors.New(apierrors.CodeNotFound, "invalid or expired gate callback token", false))
+		return
+	}
+	if err := store.DeleteCallbackToken(r.Context(), token); err != nil {
+		WriteStructuredError(w, apierrors.MapError(err))
+		return
+	}
+
+	// Mark the webhook condition as satisfied by patching ticket outputs.
+	key := "_gate_webhook_" + phaseID
+	if err := h.TicketSvc.PatchOutputs(r.Context(), ticketID, map[string]any{key: true}); err != nil {
+		WriteStructuredError(w, apierrors.MapError(err))
+		return
+	}
+
+	// Reset phase status to "ready" so the reconcile loop re-evaluates all conditions.
+	if err := h.TicketSvc.UpdateWorkflowPhaseStatus(r.Context(), ticketID, "ready"); err != nil {
+		WriteStructuredError(w, apierrors.MapError(err))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "ticket_id": ticketID, "phase_id": phaseID})
 }
 
 func validateDefinition(def *workflow.Definition) error {

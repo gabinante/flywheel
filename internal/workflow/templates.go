@@ -38,8 +38,9 @@ func StandardSDLC() Definition {
 				ID: "quality-gate", Name: "Quality Gate", Type: PhaseGate,
 				Description: "CI tests must pass before merge.",
 				Config: map[string]any{
-					"prompt":       "Verify all CI checks pass.",
-					"requirements": []any{"github_checks"},
+					"conditions": []any{
+						map[string]any{"type": "github_checks"},
+					},
 				},
 			},
 			{
@@ -96,7 +97,11 @@ func Triage() Definition {
 			{
 				ID: "human-review", Name: "Human Review", Type: PhaseGate,
 				Description: "Human reviews the diagnosis before response.",
-				Config:      map[string]any{"prompt": "Review the diagnosis and approve the recommended response.", "requirements": []any{"human_approval"}},
+				Config: map[string]any{
+					"conditions": []any{
+						map[string]any{"type": "human_approval"},
+					},
+				},
 			},
 			{
 				ID: "respond", Name: "Respond", Type: PhaseAgent,
@@ -122,7 +127,11 @@ func GenericTask() Definition {
 			{
 				ID: "review", Name: "Review", Type: PhaseGate,
 				Description: "Human reviews the result.",
-				Config:      map[string]any{"prompt": "Review and approve the result.", "requirements": []any{"human_approval"}},
+				Config: map[string]any{
+					"conditions": []any{
+						map[string]any{"type": "human_approval"},
+					},
+				},
 			},
 		},
 	}
@@ -170,7 +179,11 @@ func FullPipeline() Definition {
 			{
 				ID: "review", Name: "Review", Type: PhaseGate,
 				Description: "Human reviews and approves the work.",
-				Config:      map[string]any{"prompt": "Review the code and approve or reject."},
+				Config: map[string]any{
+					"conditions": []any{
+						map[string]any{"type": "human_approval"},
+					},
+				},
 			},
 			{
 				ID: "open-pr", Name: "Open PR", Type: PhaseExternal,

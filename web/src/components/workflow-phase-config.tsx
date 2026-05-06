@@ -1,5 +1,6 @@
-import { Bot, Cog, ShieldCheck, Zap } from 'lucide-react'
+import { Bot, Cog, Plus, ShieldCheck, Trash2, Zap } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -246,62 +247,135 @@ export function ExternalPhaseConfig({ phase, onChange }: PhaseConfigProps) {
   )
 }
 
-const GATE_REQUIREMENT_OPTIONS = [
+type GateCondition = { type: string; config?: Record<string, unknown> }
+
+const GATE_CONDITION_TYPES = [
   { value: 'github_checks', label: 'GitHub Checks' },
   { value: 'human_approval', label: 'Human Approval' },
+  { value: 'webhook', label: 'Webhook' },
+  { value: 'http_check', label: 'HTTP Check' },
 ] as const
+
+function conditionLabel(type: string): string {
+  return GATE_CONDITION_TYPES.find((t) => t.value === type)?.label ?? type
+}
+
+/** Convert legacy requirements array to conditions array */
+function effectiveConditions(config: Record<string, unknown>): GateCondition[] {
+  if (Array.isArray(config.conditions) && config.conditions.length > 0) {
+    return config.conditions as GateCondition[]
+  }
+  if (Array.isArray(config.requirements)) {
+    return (config.requirements as string[]).map((r) => ({ type: r }))
+  }
+  return []
+}
 
 export function GatePhaseConfig({ phase, onChange }: PhaseConfigProps) {
   const config = phase.config ?? {}
-  const requirements = (config.requirements as string[]) ?? []
+  const conditions = effectiveConditions(config)
 
-  const toggleRequirement = (req: string) => {
-    const next = requirements.includes(req)
-      ? requirements.filter((r) => r !== req)
-      : [...requirements, req]
-    onChange(updateConfig(phase, 'requirements', next))
+  const setConditions = (next: GateCondition[]) => {
+    // Write conditions and clear legacy fields
+    const updated = { ...phase, config: { ...config, conditions: next } }
+    delete updated.config.requirements
+    delete updated.config.prompt
+    onChange(updated)
+  }
+
+  const addCondition = (type: string) => {
+    setConditions([...conditions, { type }])
+  }
+
+  const removeCondition = (index: number) => {
+    setConditions(conditions.filter((_, i) => i !== index))
+  }
+
+  const updateConditionConfig = (index: number, key: string, value: unknown) => {
+    const next = [...conditions]
+    next[index] = { ...next[index], config: { ...next[index].config, [key]: value } }
+    setConditions(next)
   }
 
   return (
     <div className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Label>
-          Prompt
-          <Textarea
-            value={(config.prompt as string) || ''}
-            onChange={(e) => onChange(updateConfig(phase, 'prompt', e.target.value))}
-            placeholder="What should the reviewer check before advancing?"
-            rows={2}
-          />
-        </Label>
-        <Label>
-          Required role (optional)
-          <Input
-            value={(config.required_role as string) || ''}
-            onChange={(e) => onChange(updateConfig(phase, 'required_role', e.target.value))}
-            placeholder="e.g. admin"
-          />
-        </Label>
-      </div>
       <Label>
-        Requirements
-        <div className="flex flex-wrap gap-2 pt-1">
-          {GATE_REQUIREMENT_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => toggleRequirement(opt.value)}
-              className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                requirements.includes(opt.value)
-                  ? 'border-purple-500/40 bg-purple-500/15 text-purple-300'
-                  : 'border-white/10 bg-white/5 text-muted-foreground hover:border-white/20'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+        Required role (optional)
+        <Input
+          value={(config.required_role as string) || ''}
+          onChange={(e) => onChange(updateConfig(phase, 'required_role', e.target.value))}
+          placeholder="e.g. admin"
+        />
       </Label>
+      <div className="space-y-2">
+        <span className="text-xs font-medium text-muted-foreground">Conditions</span>
+        {conditions.map((cond, i) => (
+          <div key={i} className="flex items-start gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+            <span className="mt-0.5 rounded-full border border-purple-500/40 bg-purple-500/15 px-2 py-0.5 text-[11px] font-medium text-purple-300">
+              {conditionLabel(cond.type)}
+            </span>
+            <div className="flex-1 space-y-2">
+              {cond.type === 'http_check' && (
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <Input
+                    value={(cond.config?.url as string) || ''}
+                    onChange={(e) => updateConditionConfig(i, 'url', e.target.value)}
+                    placeholder="https://api.example.com/health"
+                    className="text-xs"
+                  />
+                  <Select
+                    value={(cond.config?.method as string) || 'GET'}
+                    onValueChange={(v) => updateConditionConfig(i, 'method', v)}
+                  >
+                    <SelectTrigger className="w-full bg-white/5 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="GET">GET</SelectItem>
+                      <SelectItem value="HEAD">HEAD</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="number"
+                    value={(cond.config?.expected_status as number) ?? 200}
+                    onChange={(e) => updateConditionConfig(i, 'expected_status', parseInt(e.target.value) || 200)}
+                    placeholder="200"
+                    className="text-xs"
+                  />
+                </div>
+              )}
+              {cond.type === 'webhook' && (
+                <Input
+                  value={(cond.config?.notification_url as string) || ''}
+                  onChange={(e) => updateConditionConfig(i, 'notification_url', e.target.value)}
+                  placeholder="Notification URL (optional)"
+                  className="text-xs"
+                />
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => removeCondition(i)}
+              className="mt-0.5 text-muted-foreground hover:text-destructive"
+            >
+              <Trash2 className="size-3" />
+            </Button>
+          </div>
+        ))}
+        <Select onValueChange={(v) => addCondition(v)} value="">
+          <SelectTrigger className="w-48 bg-white/5 text-xs">
+            <span className="flex items-center gap-1 text-muted-foreground">
+              <Plus className="size-3" /> Add condition
+            </span>
+          </SelectTrigger>
+          <SelectContent>
+            {GATE_CONDITION_TYPES.map((t) => (
+              <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
     </div>
   )
 }

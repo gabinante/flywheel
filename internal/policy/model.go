@@ -118,12 +118,18 @@ const (
 	RequireGitHubChecks GateRequirementType = "github_checks"
 	// RequireHumanApproval requires an approved review on the ticket.
 	RequireHumanApproval GateRequirementType = "human_approval"
+	// RequireWebhook requires an external system to POST to a callback URL.
+	RequireWebhook GateRequirementType = "webhook"
+	// RequireHTTPCheck requires an HTTP endpoint to return the expected status.
+	RequireHTTPCheck GateRequirementType = "http_check"
 )
 
 // validGateRequirementTypes is the set of recognized requirement types.
 var validGateRequirementTypes = map[GateRequirementType]bool{
 	RequireGitHubChecks:  true,
 	RequireHumanApproval: true,
+	RequireWebhook:       true,
+	RequireHTTPCheck:     true,
 }
 
 // GateRequirement is an automated condition that must be satisfied for a gate to clear.

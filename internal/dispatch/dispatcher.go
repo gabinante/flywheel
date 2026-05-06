@@ -546,6 +546,12 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 	}
 	d.processReadyWorkflowPhases(ctx)
 
+	// Re-check blocked gates (http_check polling, github_checks re-eval).
+	if ctx.Err() != nil {
+		return
+	}
+	d.recheckBlockedGates(ctx)
+
 	// Check for phase timeouts.
 	if ctx.Err() != nil {
 		return
@@ -1928,48 +1934,52 @@ func (d *Dispatcher) processReadyPhase(ctx context.Context, t *ticket.Ticket) {
 
 	switch phase.Type {
 	case workflow.PhaseGate:
-		// Check requirements. Met → advance. Not met → set blocked, emit event.
+		// Check gate conditions. Met → advance. Not met → set blocked, emit event.
 		if d.checkerRegistry != nil {
 			gateCfg, _ := workflow.ParseGateConfig(phase.Config)
-			if gateCfg != nil && len(gateCfg.Requirements) > 0 {
-				var reqs []policy.GateRequirement
-				for _, r := range gateCfg.Requirements {
-					reqs = append(reqs, policy.GateRequirement{Type: policy.GateRequirementType(r)})
-				}
-				prURL, _ := t.Outputs["pr_url"].(string)
-				statuses := d.checkerRegistry.CheckAll(ctx, reqs, policy.CheckContext{
-					TicketID: t.ID, ProjectID: t.ProjectID, PRURL: prURL,
-				})
-				if len(policy.Unsatisfied(statuses)) == 0 {
-					// All requirements met — advance.
-					next := d.advanceWorkflowIfNeeded(ctx, t, "success")
-					if next == nil {
-						// Workflow complete.
-						actor := ticket.Actor{ID: "dispatcher", Type: ticket.ActorSystem}
-						_ = d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerClose, actor, nil)
+			if gateCfg != nil {
+				conditions := gateCfg.EffectiveConditions()
+				if len(conditions) > 0 {
+					var reqs []policy.GateRequirement
+					for _, c := range conditions {
+						reqs = append(reqs, policy.GateRequirement{Type: policy.GateRequirementType(c.Type), Config: c.Config})
 					}
-					return
+					prURL, _ := t.Outputs["pr_url"].(string)
+					statuses := d.checkerRegistry.CheckAll(ctx, reqs, policy.CheckContext{
+						TicketID: t.ID, ProjectID: t.ProjectID, PRURL: prURL,
+						PhaseID: phase.ID, Outputs: t.Outputs,
+					})
+					if len(policy.Unsatisfied(statuses)) == 0 {
+						// All conditions met — advance.
+						next := d.advanceWorkflowIfNeeded(ctx, t, "success")
+						if next == nil {
+							actor := ticket.Actor{ID: "dispatcher", Type: ticket.ActorSystem}
+							_ = d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerClose, actor, nil)
+						}
+						return
+					}
 				}
 			}
 		}
-		// Requirements not met — set blocked and emit gate event.
+		// Conditions not met — set blocked and emit gate event.
 		if d.workflowPhaseUpdater != nil {
 			_ = d.workflowPhaseUpdater.UpdateWorkflowPhaseStatus(ctx, t.ID, "blocked")
 		}
-		prompt, _ := phase.Config["prompt"].(string)
-		var requirements []string
-		if gateCfg, _ := workflow.ParseGateConfig(phase.Config); gateCfg != nil {
-			requirements = gateCfg.Requirements
+		gateCfg, _ := workflow.ParseGateConfig(phase.Config)
+		var conditionTypes []string
+		if gateCfg != nil {
+			for _, c := range gateCfg.EffectiveConditions() {
+				conditionTypes = append(conditionTypes, c.Type)
+			}
 		}
 		_ = d.bus.Publish(ctx, events.Event{
 			Type: events.EventWorkflowGateReached,
 			Payload: map[string]any{
-				"ticket_id":    t.ID,
-				"project_id":   t.ProjectID,
-				"phase_id":     phase.ID,
-				"phase_name":   phase.Name,
-				"prompt":       prompt,
-				"requirements": requirements,
+				"ticket_id":  t.ID,
+				"project_id": t.ProjectID,
+				"phase_id":   phase.ID,
+				"phase_name": phase.Name,
+				"conditions": conditionTypes,
 			},
 		})
 		slog.Info("dispatch: workflow gate reached, waiting for conditions", "ticket", t.ID, "phase", phase.Name)
@@ -2121,6 +2131,64 @@ func (d *Dispatcher) processReadyWorkflowPhases(ctx context.Context) {
 			continue
 		}
 		d.processReadyPhase(ctx, t)
+	}
+}
+
+// recheckBlockedGates re-evaluates gate conditions on blocked tickets.
+// This enables polling for http_check and github_checks conditions that may
+// become satisfied between reconcile loops.
+func (d *Dispatcher) recheckBlockedGates(ctx context.Context) {
+	if d.workflowPhaseUpdater == nil || d.workflowEngine == nil || d.checkerRegistry == nil {
+		return
+	}
+	tickets, err := d.workflowPhaseUpdater.ListByWorkflowPhaseStatus(ctx, d.cfg.ProjectID, "blocked")
+	if err != nil {
+		if ctx.Err() != nil {
+			return
+		}
+		slog.Error("dispatch: list blocked gates failed", "error", err)
+		return
+	}
+	if limit := d.scanLimitValue(); len(tickets) > limit {
+		tickets = tickets[:limit]
+	}
+	for _, t := range tickets {
+		if ctx.Err() != nil {
+			return
+		}
+		if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
+			continue
+		}
+		pos, err := d.workflowEngine.GetPosition(ctx, t.ID, t.WorkflowID, t.WorkflowPhase)
+		if err != nil || pos == nil || pos.CurrentPhase == nil {
+			continue
+		}
+		phase := pos.CurrentPhase
+		if phase.Type != workflow.PhaseGate {
+			continue
+		}
+		gateCfg, _ := workflow.ParseGateConfig(phase.Config)
+		if gateCfg == nil {
+			continue
+		}
+		conditions := gateCfg.EffectiveConditions()
+		if len(conditions) == 0 {
+			continue
+		}
+		var reqs []policy.GateRequirement
+		for _, c := range conditions {
+			reqs = append(reqs, policy.GateRequirement{Type: policy.GateRequirementType(c.Type), Config: c.Config})
+		}
+		prURL, _ := t.Outputs["pr_url"].(string)
+		statuses := d.checkerRegistry.CheckAll(ctx, reqs, policy.CheckContext{
+			TicketID: t.ID, ProjectID: t.ProjectID, PRURL: prURL,
+			PhaseID: phase.ID, Outputs: t.Outputs,
+		})
+		if len(policy.Unsatisfied(statuses)) == 0 {
+			// All conditions now satisfied — reset to ready so processReadyPhase advances.
+			_ = d.workflowPhaseUpdater.UpdateWorkflowPhaseStatus(ctx, t.ID, "ready")
+			slog.Info("dispatch: blocked gate now satisfied, advancing", "ticket", t.ID, "phase", phase.Name)
+		}
 	}
 }
 
