@@ -59,6 +59,10 @@ func (s *inMemoryStore) GetByID(_ context.Context, id string) (*Definition, erro
 	return d, nil
 }
 
+func (s *inMemoryStore) GetByIDAndVersion(_ context.Context, id string, _ int) (*Definition, error) {
+	return s.GetByID(nil, id)
+}
+
 func (s *inMemoryStore) GetByScope(_ context.Context, scope, scopeID string) (*Definition, error) {
 	for _, d := range s.defs {
 		if d.Scope == scope && d.ScopeID == scopeID && d.IsActive {
@@ -146,7 +150,7 @@ func TestAdvancePhase_HappyPath(t *testing.T) {
 	updater.phases["t-1"] = "execute"
 
 	// Advance from execute → review
-	next, err := engine.AdvancePhase(context.Background(), "t-1", "wf-1", "execute", "success", nil)
+	next, err := engine.AdvancePhase(context.Background(), "t-1", "wf-1", "execute", "success", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +162,7 @@ func TestAdvancePhase_HappyPath(t *testing.T) {
 	}
 
 	// Advance from review → deploy
-	next, err = engine.AdvancePhase(context.Background(), "t-1", "wf-1", "review", "success", nil)
+	next, err = engine.AdvancePhase(context.Background(), "t-1", "wf-1", "review", "success", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +171,7 @@ func TestAdvancePhase_HappyPath(t *testing.T) {
 	}
 
 	// Advance from deploy → complete
-	next, err = engine.AdvancePhase(context.Background(), "t-1", "wf-1", "deploy", "success", nil)
+	next, err = engine.AdvancePhase(context.Background(), "t-1", "wf-1", "deploy", "success", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +197,7 @@ func TestAdvancePhase_OnFailureJump(t *testing.T) {
 	updater.phases["t-1"] = "test"
 
 	// Fail the test phase → should jump back to execute
-	next, err := engine.AdvancePhase(context.Background(), "t-1", "wf-1", "test", "failed", nil)
+	next, err := engine.AdvancePhase(context.Background(), "t-1", "wf-1", "test", "failed", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +220,7 @@ func TestGetPosition(t *testing.T) {
 	}
 	engine, _ := newTestEngine(def)
 
-	pos, err := engine.GetPosition(context.Background(), "t-1", "wf-1", "review")
+	pos, err := engine.GetPosition(context.Background(), "t-1", "wf-1", "review", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +238,7 @@ func TestGetPosition(t *testing.T) {
 func TestGetPosition_NoWorkflow(t *testing.T) {
 	engine, _ := newTestEngine()
 
-	pos, err := engine.GetPosition(context.Background(), "t-1", "", "")
+	pos, err := engine.GetPosition(context.Background(), "t-1", "", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +310,7 @@ func TestAdvancePhase_MaxIterationsExhausted(t *testing.T) {
 	updater.phases["t-1"] = "review"
 
 	// First failure — count=1, under max=3 → jump to execute
-	next, err := engine.AdvancePhase(context.Background(), "t-1", "wf-1", "review", "failed", nil)
+	next, err := engine.AdvancePhase(context.Background(), "t-1", "wf-1", "review", "failed", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +322,7 @@ func TestAdvancePhase_MaxIterationsExhausted(t *testing.T) {
 	updater.phases["t-1"] = "review"
 
 	// Second failure — count=2, still under max=3 → jump to execute
-	next, err = engine.AdvancePhase(context.Background(), "t-1", "wf-1", "review", "failed", nil)
+	next, err = engine.AdvancePhase(context.Background(), "t-1", "wf-1", "review", "failed", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,7 +334,7 @@ func TestAdvancePhase_MaxIterationsExhausted(t *testing.T) {
 	updater.phases["t-1"] = "review"
 
 	// Third failure — count=3 >= max=3, should auto-succeed to gate
-	next, err = engine.AdvancePhase(context.Background(), "t-1", "wf-1", "review", "failed", nil)
+	next, err = engine.AdvancePhase(context.Background(), "t-1", "wf-1", "review", "failed", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,7 +360,7 @@ func TestAdvancePhase_OnFailureLoop(t *testing.T) {
 	updater.phases["t-1"] = "review"
 
 	// Fail review → should jump to execute
-	next, err := engine.AdvancePhase(context.Background(), "t-1", "wf-1", "review", "failed", nil)
+	next, err := engine.AdvancePhase(context.Background(), "t-1", "wf-1", "review", "failed", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -368,7 +372,7 @@ func TestAdvancePhase_OnFailureLoop(t *testing.T) {
 	}
 
 	// Success from execute → should advance to review
-	next, err = engine.AdvancePhase(context.Background(), "t-1", "wf-1", "execute", "success", nil)
+	next, err = engine.AdvancePhase(context.Background(), "t-1", "wf-1", "execute", "success", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -526,7 +530,7 @@ func TestAdvancePhase_Idempotent(t *testing.T) {
 	updater.phases["t-1"] = "execute"
 
 	// Advance from execute → review
-	next, err := engine.AdvancePhase(context.Background(), "t-1", "wf-1", "execute", "success", nil)
+	next, err := engine.AdvancePhase(context.Background(), "t-1", "wf-1", "execute", "success", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -535,7 +539,7 @@ func TestAdvancePhase_Idempotent(t *testing.T) {
 	}
 
 	// Try to advance from execute again (idempotent) — ticket is already on review
-	next, err = engine.AdvancePhase(context.Background(), "t-1", "wf-1", "execute", "success", nil)
+	next, err = engine.AdvancePhase(context.Background(), "t-1", "wf-1", "execute", "success", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

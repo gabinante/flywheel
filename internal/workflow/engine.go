@@ -16,6 +16,7 @@ type TicketUpdater interface {
 // DefinitionStore is the persistence interface used by the Engine.
 type DefinitionStore interface {
 	GetByID(ctx context.Context, id string) (*Definition, error)
+	GetByIDAndVersion(ctx context.Context, id string, version int) (*Definition, error)
 	GetByScope(ctx context.Context, scope, scopeID string) (*Definition, error)
 	ListCompletions(ctx context.Context, ticketID string) ([]PhaseCompletion, error)
 	RecordCompletion(ctx context.Context, c *PhaseCompletion) error
@@ -72,11 +73,12 @@ func (e *Engine) GetDefinition(ctx context.Context, id string) (*Definition, err
 }
 
 // GetPosition returns the current workflow position for a ticket.
-func (e *Engine) GetPosition(ctx context.Context, ticketID, workflowID, workflowPhase string) (*Position, error) {
+// If version > 0, uses the pinned version's phases.
+func (e *Engine) GetPosition(ctx context.Context, ticketID, workflowID, workflowPhase string, version int) (*Position, error) {
 	if workflowID == "" {
 		return nil, nil
 	}
-	def, err := e.store.GetByID(ctx, workflowID)
+	def, err := e.getDefinition(ctx, workflowID, version)
 	if err != nil {
 		return nil, fmt.Errorf("get workflow: %w", err)
 	}
@@ -106,8 +108,9 @@ func (e *Engine) GetPosition(ctx context.Context, ticketID, workflowID, workflow
 
 // StartPhase sets the ticket's workflow_phase to the first phase of its workflow.
 // Called when a ticket is first assigned a workflow.
-func (e *Engine) StartPhase(ctx context.Context, ticketID, workflowID string) error {
-	def, err := e.store.GetByID(ctx, workflowID)
+// If version > 0, uses the pinned version's phases.
+func (e *Engine) StartPhase(ctx context.Context, ticketID, workflowID string, version int) error {
+	def, err := e.getDefinition(ctx, workflowID, version)
 	if err != nil {
 		return fmt.Errorf("get workflow: %w", err)
 	}
@@ -121,8 +124,9 @@ func (e *Engine) StartPhase(ctx context.Context, ticketID, workflowID string) er
 // Returns the next phase (nil if workflow is complete).
 // Idempotent: if the ticket has already moved past currentPhaseID, returns the
 // current phase as a no-op (no duplicate completion recorded).
-func (e *Engine) AdvancePhase(ctx context.Context, ticketID, workflowID, currentPhaseID string, outcome string, metadata map[string]any) (*Phase, error) {
-	def, err := e.store.GetByID(ctx, workflowID)
+// If version > 0, uses the pinned version's phases.
+func (e *Engine) AdvancePhase(ctx context.Context, ticketID, workflowID, currentPhaseID string, outcome string, metadata map[string]any, version int) (*Phase, error) {
+	def, err := e.getDefinition(ctx, workflowID, version)
 	if err != nil {
 		return nil, fmt.Errorf("get workflow: %w", err)
 	}
@@ -223,6 +227,14 @@ advance:
 		return nil, err
 	}
 	return &next, nil
+}
+
+// getDefinition returns a definition, using the pinned version if > 0.
+func (e *Engine) getDefinition(ctx context.Context, workflowID string, version int) (*Definition, error) {
+	if version > 0 {
+		return e.store.GetByIDAndVersion(ctx, workflowID, version)
+	}
+	return e.store.GetByID(ctx, workflowID)
 }
 
 // PhaseTypeForTrigger returns the phase type that should handle the given

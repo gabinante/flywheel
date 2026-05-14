@@ -76,9 +76,9 @@ type PolicyEvaluator interface {
 }
 
 // WorkflowResolver resolves the effective workflow for a project.
-// Returns (workflowID, firstPhaseID, error). Empty workflowID means no workflow.
+// Returns (workflowID, version, firstPhaseID, error). Empty workflowID means no workflow.
 type WorkflowResolver interface {
-	ResolveForProject(ctx context.Context, orgID, projectID string) (workflowID, firstPhaseID string, err error)
+	ResolveForProject(ctx context.Context, orgID, projectID string) (workflowID string, version int, firstPhaseID string, err error)
 }
 
 // Service provides ticket operations.
@@ -211,11 +211,12 @@ func (s *Service) CreateTicket(ctx context.Context, projectID, title string, typ
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
-	// Auto-attach workflow if resolver is configured.
+	// Auto-attach workflow if resolver is configured, pinning the version.
 	if s.workflowResolver != nil {
-		wfID, phaseID, wfErr := s.workflowResolver.ResolveForProject(ctx, p.OrgID, projectID)
+		wfID, wfVersion, phaseID, wfErr := s.workflowResolver.ResolveForProject(ctx, p.OrgID, projectID)
 		if wfErr == nil && wfID != "" {
 			t.WorkflowID = wfID
+			t.WorkflowVersion = wfVersion
 			t.WorkflowPhase = phaseID
 		}
 	}
@@ -299,9 +300,9 @@ func (s *Service) UpdateTargetRepo(ctx context.Context, ticketID string, targetR
 	return s.store.UpdateTargetRepo(ctx, ticketID, targetRepo)
 }
 
-// UpdateWorkflow sets both workflow_id and workflow_phase for a ticket.
-func (s *Service) UpdateWorkflow(ctx context.Context, ticketID string, workflowID, workflowPhase string) error {
-	return s.store.UpdateWorkflow(ctx, ticketID, workflowID, workflowPhase)
+// UpdateWorkflow sets workflow_id, workflow_version, and workflow_phase for a ticket.
+func (s *Service) UpdateWorkflow(ctx context.Context, ticketID string, workflowID string, workflowVersion int, workflowPhase string) error {
+	return s.store.UpdateWorkflow(ctx, ticketID, workflowID, workflowVersion, workflowPhase)
 }
 
 // PatchInputs merges the given keys into existing inputs without overwriting unrelated keys.

@@ -273,7 +273,7 @@ func (h *WorkflowHandler) getTicketWorkflow(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusOK, map[string]any{"position": nil})
 		return
 	}
-	pos, err := h.Engine.GetPosition(r.Context(), ticketID, t.WorkflowID, t.WorkflowPhase)
+	pos, err := h.Engine.GetPosition(r.Context(), ticketID, t.WorkflowID, t.WorkflowPhase, t.WorkflowVersion)
 	if err != nil {
 		WriteStructuredError(w, apierrors.MapError(err))
 		return

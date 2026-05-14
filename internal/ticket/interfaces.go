@@ -26,7 +26,7 @@ type TicketStore interface {
 	GetWorkflowPhase(ctx context.Context, id string) (string, error)
 	ListByWorkflowPhaseStatus(ctx context.Context, projectID, status string) ([]*Ticket, error)
 	CASWorkflowPhaseStatus(ctx context.Context, id, expected, desired string) (bool, error)
-	UpdateWorkflow(ctx context.Context, id string, workflowID, workflowPhase string) error
+	UpdateWorkflow(ctx context.Context, id string, workflowID string, workflowVersion int, workflowPhase string) error
 	PatchInputs(ctx context.Context, id string, patch map[string]any) error
 	UpdateTitleAndObjective(ctx context.Context, id string, title string, obj Objective) error
 	CountByCreatedBy(ctx context.Context, createdBy string) (int, error)

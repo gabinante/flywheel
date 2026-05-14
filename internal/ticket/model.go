@@ -148,6 +148,7 @@ type Ticket struct {
 	TargetRepo    string         `json:"target_repo,omitempty"`    // repo alias from project_repositories; empty = primary repo
 	AssignedTo    string         `json:"assigned_to,omitempty"`
 	WorkflowID             string         `json:"workflow_id,omitempty"`              // active workflow definition; empty = legacy state machine
+	WorkflowVersion        int            `json:"workflow_version,omitempty"`          // pinned definition version; 0 = use latest
 	WorkflowPhase          string         `json:"workflow_phase,omitempty"`            // current phase ID within the workflow
 	WorkflowPhaseStatus    string         `json:"workflow_phase_status,omitempty"`     // "", "ready", "running", "blocked"
 	WorkflowPhaseEnteredAt *time.Time     `json:"workflow_phase_entered_at,omitempty"` // when the current phase was entered

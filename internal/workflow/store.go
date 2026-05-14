@@ -24,7 +24,7 @@ func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool}
 }
 
-// Create inserts a new workflow definition.
+// Create inserts a new workflow definition and snapshots the version.
 func (s *Store) Create(ctx context.Context, d *Definition) error {
 	if d.ID == "" {
 		d.ID = uuid.NewString()
@@ -43,10 +43,13 @@ func (s *Store) Create(ctx context.Context, d *Definition) error {
 		`INSERT INTO workflow_definitions (id, scope, scope_id, name, description, version, phases, is_active, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 		d.ID, d.Scope, d.ScopeID, d.Name, d.Description, d.Version, phasesJSON, d.IsActive, d.CreatedAt, d.UpdatedAt)
-	return err
+	if err != nil {
+		return err
+	}
+	return s.snapshotVersion(ctx, d.ID, d.Version, d.Name, d.Description, phasesJSON)
 }
 
-// Update replaces a workflow definition, bumping its version.
+// Update replaces a workflow definition, bumping its version and snapshotting it.
 func (s *Store) Update(ctx context.Context, d *Definition) error {
 	d.UpdatedAt = time.Now().UTC()
 	d.Version++
@@ -64,7 +67,7 @@ func (s *Store) Update(ctx context.Context, d *Definition) error {
 	if cmd.RowsAffected() == 0 {
 		return ErrNotFound
 	}
-	return nil
+	return s.snapshotVersion(ctx, d.ID, d.Version, d.Name, d.Description, phasesJSON)
 }
 
 // GetByID returns a workflow definition by ID.
@@ -192,4 +195,41 @@ func (s *Store) scanDefinitionFromRows(rows pgx.Rows) (*Definition, error) {
 	}
 	_ = json.Unmarshal(phasesJSON, &d.Phases)
 	return &d, nil
+}
+
+// GetByIDAndVersion returns a definition with the phases from a specific version.
+// Falls back to the current definition if no version snapshot exists (pre-migration data).
+func (s *Store) GetByIDAndVersion(ctx context.Context, id string, version int) (*Definition, error) {
+	// Get the base definition for scope/active metadata.
+	def, err := s.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	// Overlay phases from the version snapshot.
+	var phasesJSON []byte
+	var name, description string
+	err = s.pool.QueryRow(ctx,
+		`SELECT name, description, phases FROM workflow_definition_versions WHERE workflow_id = $1 AND version = $2`,
+		id, version).Scan(&name, &description, &phasesJSON)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// No snapshot — return current definition as fallback.
+		return def, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get version snapshot: %w", err)
+	}
+	def.Version = version
+	def.Name = name
+	def.Description = description
+	_ = json.Unmarshal(phasesJSON, &def.Phases)
+	return def, nil
+}
+
+// snapshotVersion inserts an immutable version snapshot.
+func (s *Store) snapshotVersion(ctx context.Context, workflowID string, version int, name, description string, phasesJSON []byte) error {
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO workflow_definition_versions (workflow_id, version, name, description, phases)
+		 VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
+		workflowID, version, name, description, phasesJSON)
+	return err
 }

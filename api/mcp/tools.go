@@ -1280,10 +1280,11 @@ func createTicketHandler(b *Backend, ctx context.Context, args map[string]any) (
 		if wfID := getString(args, "workflow_id", ""); wfID != "" && b.Workflow != nil {
 			if wfDef, wfErr := b.Workflow.GetDefinition(ctx, wfID); wfErr == nil && wfDef != nil && len(wfDef.Phases) > 0 {
 				firstPhase := wfDef.Phases[0].ID
-				if updErr := b.Ticket.UpdateWorkflow(ctx, t.ID, wfDef.ID, firstPhase); updErr != nil {
+				if updErr := b.Ticket.UpdateWorkflow(ctx, t.ID, wfDef.ID, wfDef.Version, firstPhase); updErr != nil {
 					return toolErrTriple(apierrors.MapError(updErr))
 				}
 				t.WorkflowID = wfDef.ID
+				t.WorkflowVersion = wfDef.Version
 				t.WorkflowPhase = firstPhase
 			}
 		}

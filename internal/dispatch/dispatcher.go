@@ -978,7 +978,7 @@ func (d *Dispatcher) advanceWorkflowIfNeeded(ctx context.Context, t *ticket.Tick
 	if t.WorkflowID == "" || t.WorkflowPhase == "" || d.workflowEngine == nil {
 		return nil
 	}
-	next, err := d.workflowEngine.AdvancePhase(ctx, t.ID, t.WorkflowID, t.WorkflowPhase, outcome, nil)
+	next, err := d.workflowEngine.AdvancePhase(ctx, t.ID, t.WorkflowID, t.WorkflowPhase, outcome, nil, t.WorkflowVersion)
 	if err != nil {
 		slog.Error("dispatch: workflow advance failed", "ticket", t.ID, "error", err)
 		return nil
@@ -1113,7 +1113,7 @@ func (d *Dispatcher) runTypedWorkerWithProject(ctx context.Context, t *ticket.Ti
 	// Resolve phase overrides from workflow definition if available.
 	var phaseOverrides *PhaseOverrides
 	if t.WorkflowID != "" && t.WorkflowPhase != "" && d.workflowEngine != nil {
-		if pos, err := d.workflowEngine.GetPosition(ctx, t.ID, t.WorkflowID, t.WorkflowPhase); err == nil && pos != nil && pos.CurrentPhase != nil {
+		if pos, err := d.workflowEngine.GetPosition(ctx, t.ID, t.WorkflowID, t.WorkflowPhase, t.WorkflowVersion); err == nil && pos != nil && pos.CurrentPhase != nil {
 			if pos.CurrentPhase.Type == workflow.PhaseAgent {
 				if agentCfg, parseErr := workflow.ParseAgentConfig(pos.CurrentPhase.Config); parseErr == nil {
 					phaseOverrides = &PhaseOverrides{Goal: agentCfg.Goal, Prompt: agentCfg.Prompt}
@@ -1924,7 +1924,7 @@ func (d *Dispatcher) processReadyPhase(ctx context.Context, t *ticket.Ticket) {
 		}
 	}
 
-	pos, err := d.workflowEngine.GetPosition(ctx, t.ID, t.WorkflowID, t.WorkflowPhase)
+	pos, err := d.workflowEngine.GetPosition(ctx, t.ID, t.WorkflowID, t.WorkflowPhase, t.WorkflowVersion)
 	if err != nil || pos == nil || pos.CurrentPhase == nil {
 		slog.Error("dispatch: get workflow position failed", "ticket", t.ID, "error", err)
 		return
@@ -2159,7 +2159,7 @@ func (d *Dispatcher) recheckBlockedGates(ctx context.Context) {
 		if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
 			continue
 		}
-		pos, err := d.workflowEngine.GetPosition(ctx, t.ID, t.WorkflowID, t.WorkflowPhase)
+		pos, err := d.workflowEngine.GetPosition(ctx, t.ID, t.WorkflowID, t.WorkflowPhase, t.WorkflowVersion)
 		if err != nil || pos == nil || pos.CurrentPhase == nil {
 			continue
 		}
@@ -2219,7 +2219,7 @@ func (d *Dispatcher) checkPhaseTimeouts(ctx context.Context) {
 			if t.WorkflowID == "" || t.WorkflowPhase == "" || t.WorkflowPhaseEnteredAt == nil {
 				continue
 			}
-			pos, err := d.workflowEngine.GetPosition(ctx, t.ID, t.WorkflowID, t.WorkflowPhase)
+			pos, err := d.workflowEngine.GetPosition(ctx, t.ID, t.WorkflowID, t.WorkflowPhase, t.WorkflowVersion)
 			if err != nil || pos == nil || pos.CurrentPhase == nil {
 				continue
 			}

@@ -41,7 +41,7 @@ func getWorkflowPositionHandler(b *Backend, ctx context.Context, args map[string
 	if t.WorkflowID == "" {
 		return jsonResult(map[string]any{"position": nil, "message": "ticket has no workflow assigned"})
 	}
-	pos, err := b.Workflow.GetPosition(ctx, ticketID, t.WorkflowID, t.WorkflowPhase)
+	pos, err := b.Workflow.GetPosition(ctx, ticketID, t.WorkflowID, t.WorkflowPhase, t.WorkflowVersion)
 	if err != nil {
 		return toolErrTriple(apierrors.MapError(err))
 	}

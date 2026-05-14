@@ -67,7 +67,7 @@ func (h *CallbackHandler) HandleCallback(ctx context.Context, token string, outc
 		return fmt.Errorf("delete callback token: %w", err)
 	}
 
-	_, err = h.engine.AdvancePhase(ctx, ticketID, workflowID, phaseID, outcome, metadata)
+	_, err = h.engine.AdvancePhase(ctx, ticketID, workflowID, phaseID, outcome, metadata, 0)
 	if err != nil {
 		return fmt.Errorf("advance phase: %w", err)
 	}

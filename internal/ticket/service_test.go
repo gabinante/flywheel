@@ -147,7 +147,7 @@ func (s *inMemoryTicketStore) CASWorkflowPhaseStatus(_ context.Context, _ string
 	return true, nil
 }
 
-func (s *inMemoryTicketStore) UpdateWorkflow(_ context.Context, _ string, _ string, _ string) error {
+func (s *inMemoryTicketStore) UpdateWorkflow(_ context.Context, _ string, _ string, _ int, _ string) error {
 	return nil
 }
 
