@@ -1,4 +1,4 @@
-.PHONY: run run-mcp migrate migrate-create migrate-down test generate docker-up docker-down build build-flywheel-git build-flywheel-mcp web-build varlock-validate install setup-local dev dev-infra dev-stop
+.PHONY: run run-mcp migrate migrate-create migrate-down test generate docker-up docker-down build build-flywheel-git build-flywheel-mcp web-build varlock-validate install setup-local dev dev-infra dev-stop preflight
 
 VARLOCK := ./scripts/varlock
 
@@ -55,9 +55,14 @@ install: build
 	cp warrant /usr/local/bin/warrant
 
 # ─── Local Development ─────────────────────────────────────────────────────
-# Start dev: infra (Postgres+Redis), migrations, then native Go server.
+
+# Preflight: verify all prerequisites (docker, migrate, nvm/node, .env).
+preflight:
+	@bash scripts/dev-preflight.sh
+
+# Start dev: preflight, infra (Postgres+Redis), migrations, then native Go server.
 # Re-runnable: kills existing server on :8080 before starting fresh.
-dev: dev-infra
+dev: preflight dev-infra
 	@lsof -ti:8080 | xargs kill 2>/dev/null || true
 	@sleep 1
 	@$(MAKE) migrate 2>/dev/null || true
