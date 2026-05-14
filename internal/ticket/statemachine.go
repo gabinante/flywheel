@@ -219,9 +219,10 @@ func guardEscalationReasonPresent(_ *Ticket, _ Actor, payload map[string]any, _ 
 	return nil
 }
 
-func guardIsHuman(_ *Ticket, _ Actor, _ map[string]any, _ []*Ticket) error {
-	// Approve/reject/resolve must be done by a human.
-	// For now we allow any actor; restrict to ActorHuman when auth is wired.
+func guardIsHuman(_ *Ticket, actor Actor, _ map[string]any, _ []*Ticket) error {
+	if actor.Type == ActorAgent {
+		return errors.New("only humans or system can perform this action")
+	}
 	return nil
 }
 

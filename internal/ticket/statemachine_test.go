@@ -73,6 +73,18 @@ func TestStateMachine_Transition(t *testing.T) {
 		{"draft rollback invalid", StateDraft, TriggerRollback, Actor{ID: "human1", Type: ActorHuman}, "", nil, nil, "", true},
 		{"planning rollback invalid", StatePlanning, TriggerRollback, Actor{ID: "agent1", Type: ActorAgent}, "agent1", nil, nil, "", true},
 
+		// === guardIsHuman enforcement (agents blocked) ===
+		{"agent cannot validate", StateAwaitingValidation, TriggerValidate, Actor{ID: "agent1", Type: ActorAgent}, "agent1", nil, nil, "", true},
+		{"agent cannot approve", StateAwaitingValidation, TriggerApprove, Actor{ID: "agent1", Type: ActorAgent}, "agent1", nil, nil, "", true},
+		{"agent cannot reject", StateAwaitingValidation, TriggerReject, Actor{ID: "agent1", Type: ActorAgent}, "agent1", nil, nil, "", true},
+		{"agent cannot invalidate", StateValidated, TriggerInvalidate, Actor{ID: "agent1", Type: ActorAgent}, "agent1", nil, nil, "", true},
+		{"agent cannot reopen", StateClosed, TriggerReopen, Actor{ID: "agent1", Type: ActorAgent}, "agent1", nil, nil, "", true},
+		{"agent cannot provide_input", StateAwaitingInput, TriggerProvideInput, Actor{ID: "agent1", Type: ActorAgent}, "agent1", nil, nil, "", true},
+
+		// === guardIsHuman enforcement (system allowed) ===
+		{"system can approve", StateAwaitingValidation, TriggerApprove, Actor{ID: "system", Type: ActorSystem}, "agent1", nil, nil, StateValidated, false},
+		{"system can validate", StateAwaitingValidation, TriggerValidate, Actor{ID: "system", Type: ActorSystem}, "agent1", nil, nil, StateValidated, false},
+
 		// === Invalid transitions ===
 		{"invalid trigger from draft", StateDraft, "invalid", Actor{}, "", nil, nil, "", true},
 		{"already claimed", StateDraft, TriggerClaim, Actor{ID: "agent2", Type: ActorAgent}, "agent1", nil, nil, "", true},

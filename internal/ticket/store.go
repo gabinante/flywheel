@@ -42,7 +42,7 @@ func (s *Store) Create(ctx context.Context, t *Ticket) error {
 		`INSERT INTO tickets (id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, workflow_id, workflow_phase, workflow_phase_status, workflow_phase_entered_at, created_by, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
 		t.ID, t.ProjectID, t.Title, string(t.Type), int(t.Priority), string(t.State), t.Version,
-		objJSON, ctxJSON, inJSON, outJSON, t.DependsOn, nullIfEmpty(t.WorkStreamID), nullIfEmpty(t.EnvironmentID), nullIfEmpty(t.TargetRepo), nullIfEmpty(t.WorkflowID), nullIfEmpty(t.WorkflowPhase), nullIfEmpty(t.WorkflowPhaseStatus), t.WorkflowPhaseEnteredAt, t.CreatedBy, t.CreatedAt, t.UpdatedAt)
+		objJSON, ctxJSON, inJSON, outJSON, t.DependsOn, nullIfEmpty(t.WorkStreamID), nullIfEmpty(t.EnvironmentID), nullIfEmpty(t.TargetRepo), nullIfEmpty(t.WorkflowID), nullIfEmpty(t.WorkflowPhase), t.WorkflowPhaseStatus, t.WorkflowPhaseEnteredAt, t.CreatedBy, t.CreatedAt, t.UpdatedAt)
 	return err
 }
 
