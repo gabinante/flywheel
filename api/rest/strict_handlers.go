@@ -387,8 +387,8 @@ func (s *StrictServer) UpdateProject(ctx context.Context, req generated.UpdatePr
 	if err := CheckProjectAccess(ctx, req.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
 		return nil, err
 	}
-	if req.Body == nil || (req.Body.Status == nil && req.Body.RepoUrl == nil && req.Body.Name == nil && req.Body.Description == nil && req.Body.Slug == nil && req.Body.DefaultBranch == nil && req.Body.DispatchEnabled == nil && req.Body.DispatchConfig == nil) {
-		return nil, apierrors.New(apierrors.CodeInvalidInput, "at least one of status, repo_url, name, description, slug, default_branch, dispatch_enabled, dispatch_config required", false)
+	if req.Body == nil || (req.Body.Status == nil && req.Body.RepoUrl == nil && req.Body.Name == nil && req.Body.Description == nil && req.Body.Slug == nil && req.Body.DefaultBranch == nil && req.Body.DispatchEnabled == nil && req.Body.DispatchConfig == nil && req.Body.ContextPack == nil) {
+		return nil, apierrors.New(apierrors.CodeInvalidInput, "at least one of status, repo_url, name, description, slug, default_branch, dispatch_enabled, dispatch_config, context_pack required", false)
 	}
 	if req.Body.Status != nil {
 		if err := s.ProjectSvc.UpdateStatus(ctx, req.ProjectID, string(*req.Body.Status)); err != nil {
@@ -432,6 +432,15 @@ func (s *StrictServer) UpdateProject(ctx context.Context, req generated.UpdatePr
 			return nil, err
 		}
 		if err := s.ProjectSvc.UpdateDispatchConfig(ctx, req.ProjectID, dispatchConfig); err != nil {
+			return nil, apierrors.MapError(err)
+		}
+	}
+	if req.Body.ContextPack != nil {
+		pack, err := convertByJSON[project.ContextPack](req.Body.ContextPack)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.ProjectSvc.UpdateContextPack(ctx, req.ProjectID, pack); err != nil {
 			return nil, apierrors.MapError(err)
 		}
 	}
@@ -1022,9 +1031,14 @@ func projectToGen(p *project.Project) generated.Project {
 	ca := p.CreatedAt
 	st := generated.ProjectStatus(p.Status)
 	cp := map[string]interface{}{}
-	if len(p.ContextPack.Conventions) > 0 || len(p.ContextPack.KeyFiles) > 0 {
+	if p.ContextPack.SystemPrompt != "" {
+		cp["system_prompt"] = p.ContextPack.SystemPrompt
+	}
+	if p.ContextPack.Conventions != "" {
 		cp["conventions"] = p.ContextPack.Conventions
-		// key_files etc. as needed
+	}
+	if len(p.ContextPack.KeyFiles) > 0 {
+		cp["key_files"] = p.ContextPack.KeyFiles
 	}
 	db := p.DefaultBranch
 	if db == "" {

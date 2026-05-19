@@ -882,7 +882,7 @@ export function ProjectDispatchRoutingCard({
                             </Select>
                           </Label>
                           <Label className="md:col-span-3">
-                            Role instructions
+                            Role-specific instructions
                             <Textarea
                               value={customRole.description}
                               onChange={(event) =>
@@ -891,7 +891,7 @@ export function ProjectDispatchRoutingCard({
                                 })
                               }
                               rows={2}
-                              placeholder="Additional instructions appended to workers launched for this role."
+                              placeholder="Instructions appended after the base prompt for this role. Use for role-specific behavioral rules."
                             />
                           </Label>
                         </div>

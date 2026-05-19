@@ -387,13 +387,22 @@ export function ProjectsPage() {
           <h1 className="text-xl font-semibold tracking-tight">
             Projects{orgName ? ` — ${orgName}` : ''}
           </h1>
-          <Link
-            to={`/orgs/${orgParam}/settings`}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground"
-          >
-            <Settings className="size-3.5" />
-            Org settings
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              to={`/orgs/${orgParam}/projects/new`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20 hover:border-primary/30"
+            >
+              <Plus className="size-3.5" />
+              Create project
+            </Link>
+            <Link
+              to={`/orgs/${orgParam}/settings`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground"
+            >
+              <Settings className="size-3.5" />
+              Org settings
+            </Link>
+          </div>
         </div>
       </motion.div>
       {projects.length === 0 ? (

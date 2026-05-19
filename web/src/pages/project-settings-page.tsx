@@ -4,6 +4,7 @@ import {
   ArrowRight,
   Check,
   Copy,
+  FileText,
   GitBranch,
   Monitor,
   Plug,
@@ -15,6 +16,7 @@ import {
 } from 'lucide-react'
 
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
+import { ProjectBasePromptCard } from '@/components/project-base-prompt-card'
 import { ProjectDispatchRoutingCard } from '@/components/project-dispatch-routing-card'
 import { ProjectIntegrationsSection } from '@/components/project-integrations-section'
 import { WorkflowTimelineEditor } from '@/components/workflow-timeline-editor'
@@ -38,7 +40,7 @@ import type { components } from '@/lib/api/v1'
 
 type Project = components['schemas']['Project']
 
-type SettingsSectionID = 'dispatch' | 'workers' | 'workflow' | 'integrations'
+type SettingsSectionID = 'dispatch' | 'workers' | 'workflow' | 'integrations' | 'prompts'
 
 const SETTINGS_SECTIONS: Array<{
   id: SettingsSectionID
@@ -46,6 +48,12 @@ const SETTINGS_SECTIONS: Array<{
   description: string
   icon: React.ComponentType<{ className?: string }>
 }> = [
+  {
+    id: 'prompts',
+    label: 'Base prompt',
+    description: 'Project-wide system prompt, conventions, and key files injected into all worker prompts.',
+    icon: FileText,
+  },
   {
     id: 'dispatch',
     label: 'Server-side dispatch',
@@ -576,6 +584,14 @@ export function ProjectSettingsPage() {
         <SettingsOverview basePath={base} projectId={projectId} project={project} onProjectChange={setProject} />
       ) : (
         <div className="space-y-6">
+          {selectedSection === 'prompts' ? (
+            <ProjectBasePromptCard
+              projectId={projectId}
+              project={project}
+              onProjectChange={setProject}
+            />
+          ) : null}
+
           {selectedSection === 'dispatch' ? (
             <DispatchControlCard
               projectId={projectId}

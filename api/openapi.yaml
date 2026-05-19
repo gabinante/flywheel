@@ -1919,6 +1919,23 @@ components:
           description: Whether the dispatcher picks up tickets for this project (default true). Takes effect immediately.
         dispatch_config:
           $ref: '#/components/schemas/DispatchConfig'
+        context_pack:
+          type: object
+          description: Project context pack (system_prompt, conventions, key_files).
+          properties:
+            system_prompt:
+              type: string
+            conventions:
+              type: string
+            key_files:
+              type: array
+              items:
+                type: object
+                properties:
+                  path:
+                    type: string
+                  snippet:
+                    type: string
     DispatchConfig:
       type: object
       properties:

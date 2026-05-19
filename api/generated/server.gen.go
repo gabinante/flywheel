@@ -1524,6 +1524,9 @@ type ExecutionTrace struct {
 	AgentId  *string      `json:"agent_id,omitempty"`
 	Steps    *[]TraceStep `json:"steps,omitempty"`
 	TicketId *string      `json:"ticket_id,omitempty"`
+
+	// TotalCount Total number of steps for this ticket (present when paginated)
+	TotalCount *int `json:"total_count,omitempty"`
 }
 
 // GitNotesLogEntry defines model for GitNotesLogEntry.
@@ -2109,6 +2112,16 @@ type UpdatePolicyRequest struct {
 
 // UpdateProjectRequest defines model for UpdateProjectRequest.
 type UpdateProjectRequest struct {
+	// ContextPack Project context pack (system_prompt, conventions, key_files).
+	ContextPack *struct {
+		Conventions *string `json:"conventions,omitempty"`
+		KeyFiles    *[]struct {
+			Path    *string `json:"path,omitempty"`
+			Snippet *string `json:"snippet,omitempty"`
+		} `json:"key_files,omitempty"`
+		SystemPrompt *string `json:"system_prompt,omitempty"`
+	} `json:"context_pack,omitempty"`
+
 	// DefaultBranch Branch to checkout when closing a work stream; default "main".
 	DefaultBranch *string `json:"default_branch,omitempty"`
 
@@ -2171,6 +2184,11 @@ type WorkStream struct {
 
 // WorkStreamStatus defines model for WorkStream.Status.
 type WorkStreamStatus string
+
+// PostGateCallbackJSONBody defines parameters for PostGateCallback.
+type PostGateCallbackJSONBody struct {
+	Metadata *map[string]interface{} `json:"metadata,omitempty"`
+}
 
 // GetMeStatsHistoryParams defines parameters for GetMeStatsHistory.
 type GetMeStatsHistoryParams struct {
@@ -2267,6 +2285,18 @@ type ListPlansByTicketParams struct {
 // ListPlansByTicketParamsBackend defines parameters for ListPlansByTicket.
 type ListPlansByTicketParamsBackend string
 
+// GetTraceParams defines parameters for GetTrace.
+type GetTraceParams struct {
+	// Limit Maximum number of steps to return (descending order). Omit for all steps.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of steps to skip (for pagination).
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// PostGateCallbackJSONRequestBody defines body for PostGateCallback for application/json ContentType.
+type PostGateCallbackJSONRequestBody PostGateCallbackJSONBody
+
 // UpdateEnvironmentJSONRequestBody defines body for UpdateEnvironment for application/json ContentType.
 type UpdateEnvironmentJSONRequestBody = UpdateEnvironmentRequest
 
@@ -2344,6 +2374,9 @@ type TransitionTicketJSONRequestBody = TransitionRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Receive a webhook callback that satisfies a gate condition
+	// (POST /api/v1/gate/callback/{token})
+	PostGateCallback(w http.ResponseWriter, r *http.Request, token string)
 	// Delete an environment (enforces minimum-two constraint)
 	// (DELETE /environments/{environmentID})
 	DeleteEnvironment(w http.ResponseWriter, r *http.Request, environmentID string)
@@ -2508,7 +2541,7 @@ type ServerInterface interface {
 	CreateReview(w http.ResponseWriter, r *http.Request, ticketID string)
 	// Execution trace (steps logged by the agent while working)
 	// (GET /tickets/{ticketID}/trace)
-	GetTrace(w http.ResponseWriter, r *http.Request, ticketID string)
+	GetTrace(w http.ResponseWriter, r *http.Request, ticketID string, params GetTraceParams)
 	// Append a step to the execution trace (requires valid lease)
 	// (POST /tickets/{ticketID}/trace)
 	LogStep(w http.ResponseWriter, r *http.Request, ticketID string)
@@ -2528,6 +2561,31 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// PostGateCallback operation middleware
+func (siw *ServerInterfaceWrapper) PostGateCallback(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "token" -------------
+	var token string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "token", r.PathValue("token"), &token, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostGateCallback(w, r, token)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // DeleteEnvironment operation middleware
 func (siw *ServerInterfaceWrapper) DeleteEnvironment(w http.ResponseWriter, r *http.Request) {
@@ -4148,8 +4206,27 @@ func (siw *ServerInterfaceWrapper) GetTrace(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTraceParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetTrace(w, r, ticketID)
+		siw.Handler.GetTrace(w, r, ticketID, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4366,6 +4443,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc("POST "+options.BaseURL+"/api/v1/gate/callback/{token}", wrapper.PostGateCallback)
 	m.HandleFunc("DELETE "+options.BaseURL+"/environments/{environmentID}", wrapper.DeleteEnvironment)
 	m.HandleFunc("GET "+options.BaseURL+"/environments/{environmentID}", wrapper.GetEnvironment)
 	m.HandleFunc("PUT "+options.BaseURL+"/environments/{environmentID}", wrapper.UpdateEnvironment)
@@ -4426,6 +4504,36 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/tickets/{ticketID}/transitions", wrapper.TransitionTicket)
 
 	return m
+}
+
+type PostGateCallbackRequestObject struct {
+	Token string `json:"token"`
+	Body  *PostGateCallbackJSONRequestBody
+}
+
+type PostGateCallbackResponseObject interface {
+	VisitPostGateCallbackResponse(w http.ResponseWriter) error
+}
+
+type PostGateCallback200JSONResponse struct {
+	PhaseId  *string `json:"phase_id,omitempty"`
+	Status   *string `json:"status,omitempty"`
+	TicketId *string `json:"ticket_id,omitempty"`
+}
+
+func (response PostGateCallback200JSONResponse) VisitPostGateCallbackResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PostGateCallback404Response struct {
+}
+
+func (response PostGateCallback404Response) VisitPostGateCallbackResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
 }
 
 type DeleteEnvironmentRequestObject struct {
@@ -5903,6 +6011,7 @@ func (response CreateReview409JSONResponse) VisitCreateReviewResponse(w http.Res
 
 type GetTraceRequestObject struct {
 	TicketID string `json:"ticketID"`
+	Params   GetTraceParams
 }
 
 type GetTraceResponseObject interface {
@@ -6025,6 +6134,9 @@ func (response TransitionTicket404JSONResponse) VisitTransitionTicketResponse(w 
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// Receive a webhook callback that satisfies a gate condition
+	// (POST /api/v1/gate/callback/{token})
+	PostGateCallback(ctx context.Context, request PostGateCallbackRequestObject) (PostGateCallbackResponseObject, error)
 	// Delete an environment (enforces minimum-two constraint)
 	// (DELETE /environments/{environmentID})
 	DeleteEnvironment(ctx context.Context, request DeleteEnvironmentRequestObject) (DeleteEnvironmentResponseObject, error)
@@ -6228,6 +6340,42 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// PostGateCallback operation middleware
+func (sh *strictHandler) PostGateCallback(w http.ResponseWriter, r *http.Request, token string) {
+	var request PostGateCallbackRequestObject
+
+	request.Token = token
+
+	var body PostGateCallbackJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostGateCallback(ctx, request.(PostGateCallbackRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostGateCallback")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostGateCallbackResponseObject); ok {
+		if err := validResponse.VisitPostGateCallbackResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // DeleteEnvironment operation middleware
@@ -7806,10 +7954,11 @@ func (sh *strictHandler) CreateReview(w http.ResponseWriter, r *http.Request, ti
 }
 
 // GetTrace operation middleware
-func (sh *strictHandler) GetTrace(w http.ResponseWriter, r *http.Request, ticketID string) {
+func (sh *strictHandler) GetTrace(w http.ResponseWriter, r *http.Request, ticketID string, params GetTraceParams) {
 	var request GetTraceRequestObject
 
 	request.TicketID = ticketID
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetTrace(ctx, request.(GetTraceRequestObject))

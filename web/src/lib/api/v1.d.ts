@@ -731,6 +731,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/gate/callback/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Receive a webhook callback that satisfies a gate condition */
+        post: operations["PostGateCallback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -895,6 +912,15 @@ export interface components {
             /** @description Whether the dispatcher picks up tickets for this project (default true). Takes effect immediately. */
             dispatch_enabled?: boolean;
             dispatch_config?: components["schemas"]["DispatchConfig"];
+            /** @description Project context pack (system_prompt, conventions, key_files). */
+            context_pack?: {
+                system_prompt?: string;
+                conventions?: string;
+                key_files?: {
+                    path?: string;
+                    snippet?: string;
+                }[];
+            };
         };
         DispatchConfig: {
             /** @description Maximum concurrent active workers for this project. Set 0 or omit to inherit the server DISPATCH_MAX_WORKERS default. */
@@ -1361,9 +1387,16 @@ export interface components {
             /** Format: date-time */
             outcome_at?: string;
         };
+        GateCondition: {
+            /** @enum {string} */
+            type: "github_checks" | "human_approval" | "webhook" | "http_check";
+            config?: {
+                [key: string]: unknown;
+            };
+        };
         GateRequirement: {
             /** @enum {string} */
-            type: "github_checks" | "human_approval";
+            type: "github_checks" | "human_approval" | "webhook" | "http_check";
             config?: {
                 [key: string]: unknown;
             };
@@ -3509,6 +3542,47 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Plan"][];
                 };
+            };
+        };
+    };
+    PostGateCallback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    metadata?: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description Gate condition marked as satisfied */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status?: string;
+                        ticket_id?: string;
+                        phase_id?: string;
+                    };
+                };
+            };
+            /** @description Token not found or expired */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

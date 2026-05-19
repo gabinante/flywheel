@@ -2471,3 +2471,152 @@ type leaseReleaserFunc struct {
 func (f *leaseReleaserFunc) ForceReleaseLease(ctx context.Context, ticketID string) error {
 	return f.fn(ctx, ticketID)
 }
+
+// --- Crash Loop Escalation Tests ---
+
+// mockDispatchFailureSummarizer records AppendFailureSummary calls for assertions.
+type mockDispatchFailureSummarizer struct {
+	mu    sync.Mutex
+	calls []string // ticket IDs
+}
+
+func (m *mockDispatchFailureSummarizer) AppendFailureSummary(_ context.Context, ticketID, _ string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls = append(m.calls, ticketID)
+	return nil
+}
+
+func TestHandleWorkerExit_CrashLoop_EscalatesToAwaitingInput(t *testing.T) {
+	// Simulate: worker has crashed maxWorkerAttempts times (prior_attempts already has
+	// maxWorkerAttempts-1 worker_exit entries). On this exit, the dispatcher should
+	// escalate to awaiting_input instead of releasing the lease back to draft.
+	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git"}
+
+	// Build prior_attempts with maxWorkerAttempts-1 worker_exit entries.
+	var priorAttempts []ticket.AttemptSummary
+	for i := 0; i < maxWorkerAttempts-1; i++ {
+		priorAttempts = append(priorAttempts, ticket.AttemptSummary{
+			AgentID: "system",
+			Outcome: "worker_exit",
+			Summary: "Worker exited without submitting",
+		})
+	}
+
+	tk := &ticket.Ticket{
+		ID:         "t-loop",
+		ProjectID:  "p-1",
+		State:      ticket.StateDraft,
+		Title:      "crash loop test",
+		Type:       ticket.TypeTask,
+		AssignedTo: "agent-1",
+		Objective:  ticket.Objective{Description: "d"},
+		Context:    ticket.TicketContext{PriorAttempts: priorAttempts},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	releaser := &mockLeaseReleaser{}
+	fs := &mockDispatchFailureSummarizer{}
+	trans := &mockTicketTransitioner{}
+	worker := &mockWorker{
+		spawnFunc: func(ctx context.Context, _, _, _, _, _, _ string) (*WorkerResult, error) {
+			return nil, fmt.Errorf("process killed")
+		},
+	}
+
+	cfg := Config{
+		MaxWorkers:    5,
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+	d.SetFailureSummarizer(fs)
+	d.SetTicketTransitioner(trans)
+
+	// Set ticket to executing (simulating that claim happened).
+	tg.mu.Lock()
+	tk.State = ticket.StateExecuting
+	tg.mu.Unlock()
+
+	d.spawn(context.Background(), tk)
+	d.wg.Wait()
+
+	// Should have escalated via TransitionTicket, NOT released the lease.
+	if releaser.callCount() != 0 {
+		t.Errorf("expected 0 ForceReleaseLease calls (escalated instead), got %d", releaser.callCount())
+	}
+	if trans.transitionCount() != 1 {
+		t.Fatalf("expected 1 transition (escalate), got %d", trans.transitionCount())
+	}
+	triggers := trans.triggers()
+	if triggers[0] != ticket.TriggerEscalate {
+		t.Errorf("expected trigger %q, got %q", ticket.TriggerEscalate, triggers[0])
+	}
+}
+
+func TestHandleWorkerExit_BelowMaxAttempts_ReleasesLease(t *testing.T) {
+	// Simulate: worker has crashed once before (1 prior worker_exit entry).
+	// On this exit, the dispatcher should still release the lease for retry
+	// since we're below maxWorkerAttempts.
+	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git"}
+	tk := &ticket.Ticket{
+		ID:         "t-retry",
+		ProjectID:  "p-1",
+		State:      ticket.StateDraft,
+		Title:      "retry test",
+		Type:       ticket.TypeTask,
+		AssignedTo: "agent-1",
+		Objective:  ticket.Objective{Description: "d"},
+		Context: ticket.TicketContext{
+			PriorAttempts: []ticket.AttemptSummary{
+				{AgentID: "system", Outcome: "worker_exit", Summary: "crash 1"},
+			},
+		},
+	}
+	bus := events.NewInProcessBus()
+	tg := newMockTicketGetter(tk)
+	pg := newMockProjectGetter(proj)
+
+	releaser := &mockLeaseReleaser{}
+	fs := &mockDispatchFailureSummarizer{}
+	trans := &mockTicketTransitioner{}
+	worker := &mockWorker{
+		spawnFunc: func(ctx context.Context, _, _, _, _, _, _ string) (*WorkerResult, error) {
+			return nil, fmt.Errorf("process killed")
+		},
+	}
+
+	cfg := Config{
+		MaxWorkers:    5,
+		DockerEnabled: true,
+		RepoDir:       "/tmp",
+		ServerURL:     "http://localhost",
+	}
+
+	d := New(cfg, bus, tg, pg)
+	d.worker = worker
+	d.SetLeaseReleaser(releaser)
+	d.SetFailureSummarizer(fs)
+	d.SetTicketTransitioner(trans)
+
+	tg.mu.Lock()
+	tk.State = ticket.StateExecuting
+	tg.mu.Unlock()
+
+	d.spawn(context.Background(), tk)
+	d.wg.Wait()
+
+	// Should have released the lease for retry (not escalated).
+	if releaser.callCount() != 1 {
+		t.Errorf("expected 1 ForceReleaseLease call, got %d", releaser.callCount())
+	}
+	if trans.transitionCount() != 0 {
+		t.Errorf("expected 0 transitions (below max attempts), got %d", trans.transitionCount())
+	}
+}

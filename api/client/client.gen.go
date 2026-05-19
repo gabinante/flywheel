@@ -1523,6 +1523,9 @@ type ExecutionTrace struct {
 	AgentId  *string      `json:"agent_id,omitempty"`
 	Steps    *[]TraceStep `json:"steps,omitempty"`
 	TicketId *string      `json:"ticket_id,omitempty"`
+
+	// TotalCount Total number of steps for this ticket (present when paginated)
+	TotalCount *int `json:"total_count,omitempty"`
 }
 
 // GitNotesLogEntry defines model for GitNotesLogEntry.
@@ -2108,6 +2111,16 @@ type UpdatePolicyRequest struct {
 
 // UpdateProjectRequest defines model for UpdateProjectRequest.
 type UpdateProjectRequest struct {
+	// ContextPack Project context pack (system_prompt, conventions, key_files).
+	ContextPack *struct {
+		Conventions *string `json:"conventions,omitempty"`
+		KeyFiles    *[]struct {
+			Path    *string `json:"path,omitempty"`
+			Snippet *string `json:"snippet,omitempty"`
+		} `json:"key_files,omitempty"`
+		SystemPrompt *string `json:"system_prompt,omitempty"`
+	} `json:"context_pack,omitempty"`
+
 	// DefaultBranch Branch to checkout when closing a work stream; default "main".
 	DefaultBranch *string `json:"default_branch,omitempty"`
 
@@ -2170,6 +2183,11 @@ type WorkStream struct {
 
 // WorkStreamStatus defines model for WorkStream.Status.
 type WorkStreamStatus string
+
+// PostGateCallbackJSONBody defines parameters for PostGateCallback.
+type PostGateCallbackJSONBody struct {
+	Metadata *map[string]interface{} `json:"metadata,omitempty"`
+}
 
 // GetMeStatsHistoryParams defines parameters for GetMeStatsHistory.
 type GetMeStatsHistoryParams struct {
@@ -2265,6 +2283,18 @@ type ListPlansByTicketParams struct {
 
 // ListPlansByTicketParamsBackend defines parameters for ListPlansByTicket.
 type ListPlansByTicketParamsBackend string
+
+// GetTraceParams defines parameters for GetTrace.
+type GetTraceParams struct {
+	// Limit Maximum number of steps to return (descending order). Omit for all steps.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of steps to skip (for pagination).
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// PostGateCallbackJSONRequestBody defines body for PostGateCallback for application/json ContentType.
+type PostGateCallbackJSONRequestBody PostGateCallbackJSONBody
 
 // UpdateEnvironmentJSONRequestBody defines body for UpdateEnvironment for application/json ContentType.
 type UpdateEnvironmentJSONRequestBody = UpdateEnvironmentRequest
@@ -2414,6 +2444,11 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
+	// PostGateCallbackWithBody request with any body
+	PostGateCallbackWithBody(ctx context.Context, token string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostGateCallback(ctx context.Context, token string, body PostGateCallbackJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// DeleteEnvironment request
 	DeleteEnvironment(ctx context.Context, environmentID string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -2623,7 +2658,7 @@ type ClientInterface interface {
 	CreateReview(ctx context.Context, ticketID string, body CreateReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetTrace request
-	GetTrace(ctx context.Context, ticketID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetTrace(ctx context.Context, ticketID string, params *GetTraceParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// LogStepWithBody request with any body
 	LogStepWithBody(ctx context.Context, ticketID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2637,6 +2672,30 @@ type ClientInterface interface {
 	TransitionTicketWithBody(ctx context.Context, ticketID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	TransitionTicket(ctx context.Context, ticketID string, body TransitionTicketJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+func (c *Client) PostGateCallbackWithBody(ctx context.Context, token string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostGateCallbackRequestWithBody(c.Server, token, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostGateCallback(ctx context.Context, token string, body PostGateCallbackJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostGateCallbackRequest(c.Server, token, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 func (c *Client) DeleteEnvironment(ctx context.Context, environmentID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -3563,8 +3622,8 @@ func (c *Client) CreateReview(ctx context.Context, ticketID string, body CreateR
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetTrace(ctx context.Context, ticketID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetTraceRequest(c.Server, ticketID)
+func (c *Client) GetTrace(ctx context.Context, ticketID string, params *GetTraceParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTraceRequest(c.Server, ticketID, params)
 	if err != nil {
 		return nil, err
 	}
@@ -3633,6 +3692,53 @@ func (c *Client) TransitionTicket(ctx context.Context, ticketID string, body Tra
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// NewPostGateCallbackRequest calls the generic PostGateCallback builder with application/json body
+func NewPostGateCallbackRequest(server string, token string, body PostGateCallbackJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostGateCallbackRequestWithBody(server, token, "application/json", bodyReader)
+}
+
+// NewPostGateCallbackRequestWithBody generates requests for PostGateCallback with any type of body
+func NewPostGateCallbackRequestWithBody(server string, token string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "token", token, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/gate/callback/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
 }
 
 // NewDeleteEnvironmentRequest generates requests for DeleteEnvironment
@@ -6025,7 +6131,7 @@ func NewCreateReviewRequestWithBody(server string, ticketID string, contentType 
 }
 
 // NewGetTraceRequest generates requests for GetTrace
-func NewGetTraceRequest(server string, ticketID string) (*http.Request, error) {
+func NewGetTraceRequest(server string, ticketID string, params *GetTraceParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -6048,6 +6154,44 @@ func NewGetTraceRequest(server string, ticketID string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "offset", *params.Offset, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
@@ -6229,6 +6373,11 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
+	// PostGateCallbackWithBodyWithResponse request with any body
+	PostGateCallbackWithBodyWithResponse(ctx context.Context, token string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostGateCallbackResponse, error)
+
+	PostGateCallbackWithResponse(ctx context.Context, token string, body PostGateCallbackJSONRequestBody, reqEditors ...RequestEditorFn) (*PostGateCallbackResponse, error)
+
 	// DeleteEnvironmentWithResponse request
 	DeleteEnvironmentWithResponse(ctx context.Context, environmentID string, reqEditors ...RequestEditorFn) (*DeleteEnvironmentResponse, error)
 
@@ -6438,7 +6587,7 @@ type ClientWithResponsesInterface interface {
 	CreateReviewWithResponse(ctx context.Context, ticketID string, body CreateReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateReviewResponse, error)
 
 	// GetTraceWithResponse request
-	GetTraceWithResponse(ctx context.Context, ticketID string, reqEditors ...RequestEditorFn) (*GetTraceResponse, error)
+	GetTraceWithResponse(ctx context.Context, ticketID string, params *GetTraceParams, reqEditors ...RequestEditorFn) (*GetTraceResponse, error)
 
 	// LogStepWithBodyWithResponse request with any body
 	LogStepWithBodyWithResponse(ctx context.Context, ticketID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*LogStepResponse, error)
@@ -6452,6 +6601,32 @@ type ClientWithResponsesInterface interface {
 	TransitionTicketWithBodyWithResponse(ctx context.Context, ticketID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TransitionTicketResponse, error)
 
 	TransitionTicketWithResponse(ctx context.Context, ticketID string, body TransitionTicketJSONRequestBody, reqEditors ...RequestEditorFn) (*TransitionTicketResponse, error)
+}
+
+type PostGateCallbackResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *struct {
+		PhaseId  *string `json:"phase_id,omitempty"`
+		Status   *string `json:"status,omitempty"`
+		TicketId *string `json:"ticket_id,omitempty"`
+	}
+}
+
+// Status returns HTTPResponse.Status
+func (r PostGateCallbackResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostGateCallbackResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
 }
 
 type DeleteEnvironmentResponse struct {
@@ -7785,6 +7960,23 @@ func (r TransitionTicketResponse) StatusCode() int {
 	return 0
 }
 
+// PostGateCallbackWithBodyWithResponse request with arbitrary body returning *PostGateCallbackResponse
+func (c *ClientWithResponses) PostGateCallbackWithBodyWithResponse(ctx context.Context, token string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostGateCallbackResponse, error) {
+	rsp, err := c.PostGateCallbackWithBody(ctx, token, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostGateCallbackResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostGateCallbackWithResponse(ctx context.Context, token string, body PostGateCallbackJSONRequestBody, reqEditors ...RequestEditorFn) (*PostGateCallbackResponse, error) {
+	rsp, err := c.PostGateCallback(ctx, token, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostGateCallbackResponse(rsp)
+}
+
 // DeleteEnvironmentWithResponse request returning *DeleteEnvironmentResponse
 func (c *ClientWithResponses) DeleteEnvironmentWithResponse(ctx context.Context, environmentID string, reqEditors ...RequestEditorFn) (*DeleteEnvironmentResponse, error) {
 	rsp, err := c.DeleteEnvironment(ctx, environmentID, reqEditors...)
@@ -8456,8 +8648,8 @@ func (c *ClientWithResponses) CreateReviewWithResponse(ctx context.Context, tick
 }
 
 // GetTraceWithResponse request returning *GetTraceResponse
-func (c *ClientWithResponses) GetTraceWithResponse(ctx context.Context, ticketID string, reqEditors ...RequestEditorFn) (*GetTraceResponse, error) {
-	rsp, err := c.GetTrace(ctx, ticketID, reqEditors...)
+func (c *ClientWithResponses) GetTraceWithResponse(ctx context.Context, ticketID string, params *GetTraceParams, reqEditors ...RequestEditorFn) (*GetTraceResponse, error) {
+	rsp, err := c.GetTrace(ctx, ticketID, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -8505,6 +8697,36 @@ func (c *ClientWithResponses) TransitionTicketWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseTransitionTicketResponse(rsp)
+}
+
+// ParsePostGateCallbackResponse parses an HTTP response from a PostGateCallbackWithResponse call
+func ParsePostGateCallbackResponse(rsp *http.Response) (*PostGateCallbackResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostGateCallbackResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			PhaseId  *string `json:"phase_id,omitempty"`
+			Status   *string `json:"status,omitempty"`
+			TicketId *string `json:"ticket_id,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
 }
 
 // ParseDeleteEnvironmentResponse parses an HTTP response from a DeleteEnvironmentWithResponse call
