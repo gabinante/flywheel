@@ -88,7 +88,7 @@ After restarting the server (`make dev`), MCP clients reconnect automatically. I
 
 - Runner and driver are separate:
   - runners: `cli`, `docker`, `openai-responses`, `openai-compatible`
-  - drivers: `claude`, `codex`, `generic` for CLI or Docker harnesses
+  - drivers: `claude`, `generic` for CLI or Docker harnesses
 - Use `openai-compatible` for LiteLLM, vLLM, and other OpenAI-compatible `/v1/chat/completions` endpoints. Always set an explicit model and API base URL.
 - Orchestrator and dispatch worker configs can differ. Use `ORCHESTRATOR_AGENT_*` when you want a stronger planner than the implementation workers.
 

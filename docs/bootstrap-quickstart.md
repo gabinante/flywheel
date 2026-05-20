@@ -96,9 +96,6 @@ claude mcp add flywheel -s user \
   -e FLYWHEEL_MCP_URL=http://localhost:8080/mcp \
   -- ~/.local/bin/flywheel-mcp-proxy
 
-# Codex CLI
-codex mcp add flywheel --url http://localhost:8080/mcp
-
 # Set the API key (printed during setup)
 export FLYWHEEL_API_KEY=wf_...
 ```
@@ -180,17 +177,12 @@ export DISPATCH_PROJECT_ID="..."   # from setup wizard
 # Command-center orchestrator: keep this strong.
 export ORCHESTRATOR_ENABLED=true
 export ORCHESTRATOR_AGENT_RUNNER=openai-responses
-export ORCHESTRATOR_AGENT_MODEL="gpt-5.2-codex"
+export ORCHESTRATOR_AGENT_MODEL="claude-sonnet-4-6"
 export ORCHESTRATOR_AGENT_REASONING_EFFORT=xhigh
 
-# Codex CLI on the host:
+# Claude CLI on the host (default):
 export DISPATCH_AGENT_RUNNER=cli
-export DISPATCH_AGENT_DRIVER=codex
-
-# Or dispatch workers via the OpenAI Responses API with local workspace tools:
-export DISPATCH_AGENT_RUNNER=openai-responses
-export OPENAI_API_KEY="sk-..."
-export DISPATCH_AGENT_MODEL="gpt-5.2-codex"
+export DISPATCH_AGENT_DRIVER=claude
 
 # Or use an OpenAI-compatible local gateway such as LiteLLM or vLLM:
 export DISPATCH_AGENT_RUNNER=openai-compatible
@@ -213,9 +205,9 @@ export OPENAI_API_KEY="local-token-or-gateway-key"
 | `ORCHESTRATOR_AGENT_MODEL` | `DISPATCH_AGENT_MODEL` | Strong planner model for command-center chat |
 | `ORCHESTRATOR_AGENT_REASONING_EFFORT` | `xhigh` for `openai-responses` | Reasoning effort for the orchestrator |
 | `DISPATCH_AGENT_RUNNER` | `cli` | Dispatch execution backend (`cli`, `docker`, `openai-responses`, `openai-compatible`) |
-| `DISPATCH_AGENT_DRIVER` | `claude` | Dispatch driver to run (`claude`, `codex`, `generic`, or custom) |
+| `DISPATCH_AGENT_DRIVER` | `claude` | Dispatch driver to run (`claude`, `generic`, or custom) |
 | `DISPATCH_AGENT_API_KEY` | (empty) | Explicit provider credential for dispatch workers |
-| `OPENAI_API_KEY` | (empty) | Fallback credential for Codex, `openai-responses`, and `openai-compatible` workers |
+| `OPENAI_API_KEY` | (empty) | Fallback credential for `openai-responses` and `openai-compatible` workers |
 | `DISPATCH_ENABLED` | `false` | Enable agent dispatch worker |
 | `GITHUB_CLIENT_ID` | (empty) | GitHub OAuth client ID |
 | `GITHUB_CLIENT_SECRET` | (empty) | GitHub OAuth client secret |

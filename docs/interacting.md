@@ -1,6 +1,6 @@
 # Interacting with Flywheel
 
-Flywheel is built for **agents** (Cursor, Codex, Claude Code, Claude Teams, CI) as first-class users. Humans use the REST API for setup and review. This doc describes both flows.
+Flywheel is built for **agents** (Cursor, Claude Code, Claude Teams, CI) as first-class users. Humans use the REST API for setup and review. This doc describes both flows.
 
 ---
 
@@ -84,26 +84,12 @@ For a full **operations runbook** (run locally, migrations, DB/Redis inspection,
 
 ---
 
-## 2. MCP (agents in IDE / Codex / Claude)
+## 2. MCP (agents in IDE / Claude)
 
 Agents talk to Flywheel via **MCP** so they can list projects, get a full ticket (objective + context pack + dependency outputs), claim work, log steps, submit or escalate, and renew leases—all as tools.
 
 **MCP over HTTP (recommended for Cursor)**
 When the Flywheel REST server is running with GitHub OAuth configured, MCP is also exposed at **`/mcp`**. Point Cursor at `"url": "http://localhost:8080/mcp"` (or your deployed base URL + `/mcp`). On first connect, Cursor gets a 401, discovers our OAuth metadata, and opens a browser for GitHub sign-in; after that it stores the token and uses it automatically. No manual token copy; `agent_id` is inferred from the token for tools like `claim_ticket` and `start_ticket`. See **docs/cursor-mcp.md** and **docs/oauth-mcp-cursor.md**.
-
-**Codex CLI**
-Codex can use the same streamable HTTP MCP endpoint:
-
-```bash
-codex mcp add flywheel --url http://localhost:8080/mcp
-```
-
-Or add it directly to `.codex/config.toml`:
-
-```toml
-[mcp_servers.flywheel]
-url = "http://localhost:8080/mcp"
-```
 
 **Run the MCP server (stdio)**
 

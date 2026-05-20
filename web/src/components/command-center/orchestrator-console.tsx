@@ -375,7 +375,7 @@ export function OrchestratorConsole({
       <CardContent className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden py-5">
         <div
           ref={transcriptRef}
-          className="flex min-h-[400px] flex-1 flex-col gap-3 overflow-y-auto pr-1"
+          className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1"
         >
           {loading ? (
             <div className="grid gap-3">

@@ -186,7 +186,7 @@ func RunWizard(ctx context.Context, orgSvc OrgCreator, projectSvc ProjectCreator
 	fmt.Println()
 	fmt.Println("  Server is starting on :8080 ...")
 	fmt.Println("  Connect Claude Code:  claude --mcp-server warrant=http://localhost:8080/mcp")
-	fmt.Println("  Connect Codex:        codex mcp add flywheel --url http://localhost:8080/mcp")
+	fmt.Println("  Connect Cursor:       copy .flywheel-mcp-config.json to your IDE MCP config")
 	fmt.Printf("  Set API key header:   Authorization: Bearer %s\n", apiKey)
 	fmt.Println()
 

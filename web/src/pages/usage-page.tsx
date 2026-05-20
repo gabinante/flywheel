@@ -52,8 +52,6 @@ function labelForTaskType(label: string) {
       return 'Claude'
     case 'conflict_resolution':
       return 'Conflict resolution'
-    case 'codex':
-      return 'Codex'
     case 'implementation':
       return 'Implementation'
     case 'investigation':
@@ -537,7 +535,7 @@ export function UsagePage() {
           <CardHeader className="border-b border-white/10 pb-4">
             <CardTitle className="text-sm">API usage</CardTitle>
             <CardDescription>
-              Token volume by API family such as Claude, Codex, or OpenAI-native runs.
+              Token volume by API family such as Claude or OpenAI-native runs.
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-5">

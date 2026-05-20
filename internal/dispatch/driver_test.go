@@ -151,77 +151,6 @@ func TestClaudeDriverExtraDockerArgs(t *testing.T) {
 	}
 }
 
-// --- CodexDriver Tests ---
-
-func TestCodexDriverName(t *testing.T) {
-	d := NewCodexDriver(DriverConfig{})
-	if d.Name() != "codex" {
-		t.Errorf("expected name 'codex', got %q", d.Name())
-	}
-}
-
-func TestCodexDriverExecutable(t *testing.T) {
-	d := NewCodexDriver(DriverConfig{})
-	if d.Executable() != "codex" {
-		t.Errorf("expected default executable 'codex', got %q", d.Executable())
-	}
-}
-
-func TestCodexDriverBuildCLIArgs(t *testing.T) {
-	d := NewCodexDriver(DriverConfig{})
-	args := d.BuildCLIArgs("be careful", "fix the bug", testMCPConnection(), "/tmp/mcp.json")
-	argStr := strings.Join(args, " ")
-
-	if !strings.Contains(argStr, "exec") {
-		t.Error("expected codex exec command")
-	}
-	if !strings.Contains(argStr, "--full-auto") {
-		t.Error("expected full-auto flag")
-	}
-	if !strings.Contains(argStr, "--sandbox workspace-write") {
-		t.Error("expected workspace-write sandbox")
-	}
-	if !strings.Contains(argStr, `mcp_servers.flywheel.url="http://localhost:8080/mcp"`) {
-		t.Error("expected Codex to target the /mcp endpoint")
-	}
-	if !strings.Contains(argStr, `env_http_headers={"X-API-Key"="FLYWHEEL_MCP_API_KEY"}`) {
-		t.Error("expected API key header to flow through env_http_headers")
-	}
-	if !strings.Contains(argStr, "## System Instructions") || !strings.Contains(argStr, "## Task") {
-		t.Error("expected combined system/task prompt")
-	}
-}
-
-func TestCodexDriverBuildDockerCmd(t *testing.T) {
-	d := NewCodexDriver(DriverConfig{})
-	cmd := d.BuildDockerCmd("ticket/t-9", testMCPConnection())
-
-	if !strings.Contains(cmd, "codex exec") {
-		t.Error("expected codex exec invocation in docker cmd")
-	}
-	if !strings.Contains(cmd, "--dangerously-bypass-approvals-and-sandbox") {
-		t.Error("expected sandbox bypass inside externally sandboxed Docker worker")
-	}
-	if !strings.Contains(cmd, "FLYWHEEL_MCP_API_KEY") {
-		t.Error("expected exported MCP API key env var")
-	}
-}
-
-func TestCodexDriverCredentialEnvName(t *testing.T) {
-	d := NewCodexDriver(DriverConfig{})
-	if d.CredentialEnvName() != "OPENAI_API_KEY" {
-		t.Errorf("expected OPENAI_API_KEY, got %q", d.CredentialEnvName())
-	}
-}
-
-func TestCodexDriverDefaultAllowedHosts(t *testing.T) {
-	d := NewCodexDriver(DriverConfig{})
-	hosts := strings.Join(d.DefaultAllowedHosts(), ",")
-	if !strings.Contains(hosts, "api.openai.com") {
-		t.Errorf("expected OpenAI host allowlist, got %q", hosts)
-	}
-}
-
 // --- GenericDriver Tests ---
 
 func TestGenericDriverName(t *testing.T) {
@@ -365,16 +294,6 @@ func TestLookupDriverClaude(t *testing.T) {
 	}
 }
 
-func TestLookupDriverCodex(t *testing.T) {
-	driver, err := LookupDriver("codex", DriverConfig{CLIPath: "/opt/homebrew/bin/codex"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if driver.Name() != "codex" {
-		t.Errorf("expected driver name 'codex', got %q", driver.Name())
-	}
-}
-
 func TestLookupDriverGeneric(t *testing.T) {
 	driver, err := LookupDriver("generic", DriverConfig{CLIPath: "aider"})
 	if err != nil {
@@ -393,7 +312,7 @@ func TestLookupDriverUnknown(t *testing.T) {
 	if !strings.Contains(err.Error(), "nonexistent") {
 		t.Errorf("error should mention the driver name, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "claude, codex, generic") {
+	if !strings.Contains(err.Error(), "claude, generic") {
 		t.Errorf("error should list available drivers, got: %v", err)
 	}
 }

@@ -47,7 +47,7 @@ func TestValidate_ClaudePathFound(t *testing.T) {
 	}
 }
 
-func TestValidate_CodexDriverPathFound(t *testing.T) {
+func TestValidate_GenericDriverPathFound(t *testing.T) {
 	// "sh" should exist on any Unix-like system.
 	if _, err := exec.LookPath("sh"); err != nil {
 		t.Skip("sh not found on PATH; cannot test positive case")
@@ -55,7 +55,7 @@ func TestValidate_CodexDriverPathFound(t *testing.T) {
 	cfg := &Config{
 		Dispatch: DispatchConfig{
 			Enabled:      true,
-			AgentDriver:  "codex",
+			AgentDriver:  "generic",
 			AgentCLIPath: "sh",
 		},
 	}
@@ -311,7 +311,7 @@ func TestResolveAgentAPIKey_OrchestratorOpenAIRunnerPrefersOpenAI(t *testing.T) 
 	t.Setenv("OPENAI_API_KEY", "sk-openai")
 	t.Setenv("ANTHROPIC_API_KEY", "sk-anthropic")
 
-	got := resolveAgentAPIKey("ORCHESTRATOR_AGENT_API_KEY", "openai-responses", "codex")
+	got := resolveAgentAPIKey("ORCHESTRATOR_AGENT_API_KEY", "openai-responses", "claude")
 	if got != "sk-openai" {
 		t.Fatalf("expected OPENAI_API_KEY fallback for orchestrator, got %q", got)
 	}

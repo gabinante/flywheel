@@ -58,16 +58,6 @@ The Claude Code driver. Invokes `claude --print --dangerously-skip-permissions -
 - Filters `CLAUDECODE=` and `ANTHROPIC_API_KEY=` from the parent environment.
 - Sets `CLAUDE_CODE_ENTRYPOINT=warrant-dispatch`.
 
-### `codex`
-
-The Codex driver. Invokes `codex exec` and connects to Flywheel via the
-streamable HTTP MCP endpoint at `/mcp`.
-
-- Uses `workspace-write` sandboxing in host mode and enables network access so the worker can reach Flywheel MCP.
-- Uses `--dangerously-bypass-approvals-and-sandbox` inside Docker mode because the container is already the outer sandbox.
-- Passes the Flywheel API key through `env_http_headers` as `X-API-Key`.
-- Uses `OPENAI_API_KEY` as the provider fallback when `DISPATCH_AGENT_API_KEY` is unset.
-
 ### `generic`
 
 A generic driver that delivers prompts via environment variables. Works with any agent that reads from env vars.
@@ -98,18 +88,14 @@ The agent is expected to:
 Set the runner first, then the driver when the runner is `cli` or `docker`:
 
 ```bash
-# CLI or Docker harnesses
+# CLI or Docker harnesses (default: Claude)
 DISPATCH_AGENT_RUNNER=cli
-DISPATCH_AGENT_DRIVER=codex
-DISPATCH_AGENT_CMD=/opt/homebrew/bin/codex
-
-# Optional explicit provider credential
-DISPATCH_AGENT_API_KEY=sk-...
+DISPATCH_AGENT_DRIVER=claude
 
 # API-native OpenAI Responses backend
 DISPATCH_AGENT_RUNNER=openai-responses
 OPENAI_API_KEY=sk-...
-DISPATCH_AGENT_MODEL=gpt-5.2-codex
+DISPATCH_AGENT_MODEL=gpt-4o
 
 # OpenAI-compatible backend (LiteLLM, vLLM, local gateways)
 DISPATCH_AGENT_RUNNER=openai-compatible

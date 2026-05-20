@@ -467,7 +467,7 @@ func resolveAgentAPIKey(explicitEnv, agentRunner, agentDriver string) string {
 			return v
 		}
 	}
-	if agentRunner == dispatch.RunnerOpenAIResponses || agentRunner == dispatch.RunnerOpenAICompatible || agentDriver == "codex" {
+	if agentRunner == dispatch.RunnerOpenAIResponses || agentRunner == dispatch.RunnerOpenAICompatible {
 		if v := getEnv("OPENAI_API_KEY", ""); v != "" {
 			return v
 		}

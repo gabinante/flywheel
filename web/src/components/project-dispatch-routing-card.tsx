@@ -56,7 +56,6 @@ const RUNNER_OPTIONS = [
 const DRIVER_OPTIONS = [
   { value: 'inherit', label: 'Inherit' },
   { value: 'claude', label: 'Claude' },
-  { value: 'codex', label: 'Codex' },
   { value: 'generic', label: 'Generic' },
 ] as const
 
@@ -312,7 +311,6 @@ function parseDriverValue(
 ): DispatchWorkerProfile['driver'] | undefined {
   switch (value) {
     case 'claude':
-    case 'codex':
     case 'generic':
       return value
     default:
@@ -596,7 +594,7 @@ export function ProjectDispatchRoutingCard({
           {draft.workers.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] px-4 py-5 text-sm text-muted-foreground">
               No custom workers yet. Policies can still use the default server
-              worker, or you can add explicit Claude/Codex profiles here.
+              worker, or you can add explicit Claude profiles here.
             </div>
           ) : (
             <div className="space-y-4">
@@ -678,7 +676,7 @@ export function ProjectDispatchRoutingCard({
                           onChange={(event) =>
                             updateWorker(index, { cli_path: event.target.value })
                           }
-                          placeholder="claude or codex"
+                          placeholder="claude"
                         />
                       </Label>
                       <Label>
@@ -688,7 +686,7 @@ export function ProjectDispatchRoutingCard({
                           onChange={(event) =>
                             updateWorker(index, { model: event.target.value })
                           }
-                          placeholder="gpt-5.2-codex or qwen2.5-coder"
+                          placeholder="claude-sonnet-4-6 or qwen2.5-coder"
                         />
                       </Label>
                       <Label>

@@ -85,7 +85,6 @@ type DriverEnv struct {
 // driverRegistry maps driver names to constructor functions.
 var driverRegistry = map[string]func(cfg DriverConfig) AgentDriver{
 	"claude":  func(cfg DriverConfig) AgentDriver { return NewClaudeDriver(cfg) },
-	"codex":   func(cfg DriverConfig) AgentDriver { return NewCodexDriver(cfg) },
 	"generic": func(cfg DriverConfig) AgentDriver { return NewGenericDriver(cfg) },
 }
 

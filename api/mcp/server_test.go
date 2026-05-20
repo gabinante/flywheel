@@ -313,14 +313,8 @@ func TestNewServer_AgentGuideResource(t *testing.T) {
 	if !strings.Contains(content, "Claude Code") {
 		t.Error("Agent guide should mention Claude Code")
 	}
-	if !strings.Contains(content, "Codex CLI") {
-		t.Error("Agent guide should mention Codex CLI")
-	}
 	if !strings.Contains(content, ".claude/settings.json") {
 		t.Error("Agent guide should reference .claude/settings.json")
-	}
-	if !strings.Contains(content, ".codex/config.toml") {
-		t.Error("Agent guide should reference .codex/config.toml")
 	}
 }
 

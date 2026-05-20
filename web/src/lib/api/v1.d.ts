@@ -951,7 +951,7 @@ export interface components {
             /** @enum {string} */
             runner?: "cli" | "docker" | "openai-responses" | "openai-compatible";
             /** @enum {string} */
-            driver?: "claude" | "codex" | "generic";
+            driver?: "claude" | "generic";
             /** @description Override binary path when using a CLI or Docker-backed worker. */
             cli_path?: string;
             /** @description Model override for API-native workers. */
