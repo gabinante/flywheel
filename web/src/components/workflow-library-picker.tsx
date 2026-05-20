@@ -87,7 +87,7 @@ export function WorkflowLibraryPicker({ orgId, onSelect }: Props) {
       <PopoverTrigger asChild>
         <Button variant="outline" size="xs">
           <BookOpen className="size-3.5" />
-          Load template
+          Select from library
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0" align="end">
