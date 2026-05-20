@@ -1222,6 +1222,13 @@ func escalationToGen(e *review.Escalation) generated.Escalation {
 	return out
 }
 
+// PostGateCallback handles a webhook callback that satisfies a gate condition.
+// Gate token infrastructure is not yet implemented, so all tokens return 404.
+func (s *StrictServer) PostGateCallback(_ context.Context, request generated.PostGateCallbackRequestObject) (generated.PostGateCallbackResponseObject, error) {
+	_ = request
+	return generated.PostGateCallback404Response{}, nil
+}
+
 func leaseToGen(l *queue.Lease) generated.Lease {
 	exp := l.ExpiresAt
 	return generated.Lease{

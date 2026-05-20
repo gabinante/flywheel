@@ -40,9 +40,9 @@ func (s *Store) Create(ctx context.Context, d *Definition) error {
 		return fmt.Errorf("marshal phases: %w", err)
 	}
 	_, err = s.pool.Exec(ctx,
-		`INSERT INTO workflow_definitions (id, scope, scope_id, name, description, version, phases, is_active, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		d.ID, d.Scope, d.ScopeID, d.Name, d.Description, d.Version, phasesJSON, d.IsActive, d.CreatedAt, d.UpdatedAt)
+		`INSERT INTO workflow_definitions (id, scope, scope_id, name, description, version, phases, is_active, is_library, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		d.ID, d.Scope, d.ScopeID, d.Name, d.Description, d.Version, phasesJSON, d.IsActive, d.IsLibrary, d.CreatedAt, d.UpdatedAt)
 	if err != nil {
 		return err
 	}
@@ -58,9 +58,9 @@ func (s *Store) Update(ctx context.Context, d *Definition) error {
 		return fmt.Errorf("marshal phases: %w", err)
 	}
 	cmd, err := s.pool.Exec(ctx,
-		`UPDATE workflow_definitions SET name = $1, description = $2, version = $3, phases = $4, is_active = $5, updated_at = $6
-		 WHERE id = $7`,
-		d.Name, d.Description, d.Version, phasesJSON, d.IsActive, d.UpdatedAt, d.ID)
+		`UPDATE workflow_definitions SET name = $1, description = $2, version = $3, phases = $4, is_active = $5, is_library = $6, updated_at = $7
+		 WHERE id = $8`,
+		d.Name, d.Description, d.Version, phasesJSON, d.IsActive, d.IsLibrary, d.UpdatedAt, d.ID)
 	if err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func (s *Store) Update(ctx context.Context, d *Definition) error {
 // GetByID returns a workflow definition by ID.
 func (s *Store) GetByID(ctx context.Context, id string) (*Definition, error) {
 	row := s.pool.QueryRow(ctx,
-		`SELECT id, scope, scope_id, name, description, version, phases, is_active, created_at, updated_at
+		`SELECT id, scope, scope_id, name, description, version, phases, is_active, is_library, created_at, updated_at
 		 FROM workflow_definitions WHERE id = $1`, id)
 	return s.scanDefinition(row)
 }
@@ -81,7 +81,7 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Definition, error) {
 // GetByScope returns the active workflow for a scope (system/org/project).
 func (s *Store) GetByScope(ctx context.Context, scope, scopeID string) (*Definition, error) {
 	row := s.pool.QueryRow(ctx,
-		`SELECT id, scope, scope_id, name, description, version, phases, is_active, created_at, updated_at
+		`SELECT id, scope, scope_id, name, description, version, phases, is_active, is_library, created_at, updated_at
 		 FROM workflow_definitions WHERE scope = $1 AND scope_id = $2 AND is_active = true
 		 ORDER BY updated_at DESC LIMIT 1`, scope, scopeID)
 	d, err := s.scanDefinition(row)
@@ -94,7 +94,7 @@ func (s *Store) GetByScope(ctx context.Context, scope, scopeID string) (*Definit
 // ListByScope returns all workflow definitions for a scope.
 func (s *Store) ListByScope(ctx context.Context, scope, scopeID string) ([]*Definition, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, scope, scope_id, name, description, version, phases, is_active, created_at, updated_at
+		`SELECT id, scope, scope_id, name, description, version, phases, is_active, is_library, created_at, updated_at
 		 FROM workflow_definitions WHERE scope = $1 AND scope_id = $2
 		 ORDER BY updated_at DESC`, scope, scopeID)
 	if err != nil {
@@ -178,7 +178,7 @@ func (s *Store) ListCompletions(ctx context.Context, ticketID string) ([]PhaseCo
 func (s *Store) scanDefinition(row pgx.Row) (*Definition, error) {
 	var d Definition
 	var phasesJSON []byte
-	err := row.Scan(&d.ID, &d.Scope, &d.ScopeID, &d.Name, &d.Description, &d.Version, &phasesJSON, &d.IsActive, &d.CreatedAt, &d.UpdatedAt)
+	err := row.Scan(&d.ID, &d.Scope, &d.ScopeID, &d.Name, &d.Description, &d.Version, &phasesJSON, &d.IsActive, &d.IsLibrary, &d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -189,12 +189,54 @@ func (s *Store) scanDefinition(row pgx.Row) (*Definition, error) {
 func (s *Store) scanDefinitionFromRows(rows pgx.Rows) (*Definition, error) {
 	var d Definition
 	var phasesJSON []byte
-	err := rows.Scan(&d.ID, &d.Scope, &d.ScopeID, &d.Name, &d.Description, &d.Version, &phasesJSON, &d.IsActive, &d.CreatedAt, &d.UpdatedAt)
+	err := rows.Scan(&d.ID, &d.Scope, &d.ScopeID, &d.Name, &d.Description, &d.Version, &phasesJSON, &d.IsActive, &d.IsLibrary, &d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	_ = json.Unmarshal(phasesJSON, &d.Phases)
 	return &d, nil
+}
+
+// CreateLibraryEntry inserts a new library workflow definition.
+// Library entries are org-scoped and always inactive (they don't participate in resolution).
+func (s *Store) CreateLibraryEntry(ctx context.Context, d *Definition) error {
+	d.Scope = "org"
+	d.IsLibrary = true
+	d.IsActive = false
+	return s.Create(ctx, d)
+}
+
+// ListLibrary returns all library entries for an org.
+func (s *Store) ListLibrary(ctx context.Context, orgID string) ([]*Definition, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, scope, scope_id, name, description, version, phases, is_active, is_library, created_at, updated_at
+		 FROM workflow_definitions WHERE scope = 'org' AND scope_id = $1 AND is_library = true
+		 ORDER BY name`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []*Definition
+	for rows.Next() {
+		d, err := s.scanDefinitionFromRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, d)
+	}
+	return list, rows.Err()
+}
+
+// DeleteLibraryEntry deletes a library workflow definition.
+func (s *Store) DeleteLibraryEntry(ctx context.Context, id string) error {
+	cmd, err := s.pool.Exec(ctx, `DELETE FROM workflow_definitions WHERE id = $1 AND is_library = true`, id)
+	if err != nil {
+		return err
+	}
+	if cmd.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // GetByIDAndVersion returns a definition with the phases from a specific version.

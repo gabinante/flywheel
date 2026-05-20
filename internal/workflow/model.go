@@ -39,6 +39,7 @@ type Definition struct {
 	Version     int       `json:"version"`
 	Phases      []Phase   `json:"phases"`
 	IsActive    bool      `json:"is_active"`
+	IsLibrary   bool      `json:"is_library"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }

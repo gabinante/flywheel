@@ -278,8 +278,8 @@ export function GatePhaseConfig({ phase, onChange }: PhaseConfigProps) {
   const setConditions = (next: GateCondition[]) => {
     // Write conditions and clear legacy fields
     const updated = { ...phase, config: { ...config, conditions: next } }
-    delete updated.config.requirements
-    delete updated.config.prompt
+    delete (updated.config as Record<string, unknown>).requirements
+    delete (updated.config as Record<string, unknown>).prompt
     onChange(updated)
   }
 

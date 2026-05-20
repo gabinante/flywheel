@@ -50,8 +50,10 @@ func (h *WorkflowHandler) RegisterRoutes(mux *http.ServeMux) {
 	// Workflow callback (external async phases)
 	mux.HandleFunc("POST /api/v1/workflow/callback/{token}", h.handleCallback)
 
-	// Gate callback (marks a webhook gate condition as satisfied)
-	mux.HandleFunc("POST /api/v1/gate/callback/{token}", h.handleGateCallback)
+	// Workflow library
+	mux.HandleFunc("GET /api/v1/orgs/{orgID}/workflow-library", h.listWorkflowLibrary)
+	mux.HandleFunc("POST /api/v1/orgs/{orgID}/workflow-library", h.createWorkflowLibraryEntry)
+	mux.HandleFunc("DELETE /api/v1/orgs/{orgID}/workflow-library/{id}", h.deleteWorkflowLibraryEntry)
 
 	// Prefix-free aliases for the frontend openapi-fetch client
 	mux.HandleFunc("GET /projects/{projectID}/workflow", h.getProjectWorkflow)
@@ -61,6 +63,9 @@ func (h *WorkflowHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /orgs/{orgID}/workflow", h.getOrgWorkflow)
 	mux.HandleFunc("PUT /orgs/{orgID}/workflow", h.upsertOrgWorkflow)
 	mux.HandleFunc("DELETE /orgs/{orgID}/workflow", h.deleteOrgWorkflow)
+	mux.HandleFunc("GET /orgs/{orgID}/workflow-library", h.listWorkflowLibrary)
+	mux.HandleFunc("POST /orgs/{orgID}/workflow-library", h.createWorkflowLibraryEntry)
+	mux.HandleFunc("DELETE /orgs/{orgID}/workflow-library/{id}", h.deleteWorkflowLibraryEntry)
 	mux.HandleFunc("GET /workflow/system", h.getSystemWorkflow)
 	mux.HandleFunc("PUT /workflow/system", h.upsertSystemWorkflow)
 	mux.HandleFunc("GET /workflow/templates", h.listTemplates)
@@ -257,6 +262,94 @@ func (h *WorkflowHandler) upsertSystemWorkflow(w http.ResponseWriter, r *http.Re
 
 func (h *WorkflowHandler) listTemplates(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, workflow.BuiltinTemplates())
+}
+
+func (h *WorkflowHandler) listWorkflowLibrary(w http.ResponseWriter, r *http.Request) {
+	orgID := PathParam(r, "orgID")
+
+	// Built-in templates
+	builtins := workflow.BuiltinTemplates()
+	type libraryEntry struct {
+		ID          string           `json:"id"`
+		Name        string           `json:"name"`
+		Description string           `json:"description,omitempty"`
+		Phases      []workflow.Phase `json:"phases"`
+		PhaseCount  int              `json:"phase_count"`
+		Source      string           `json:"source"`
+	}
+	var entries []libraryEntry
+	for _, b := range builtins {
+		entries = append(entries, libraryEntry{
+			ID:          "builtin:" + slugify(b.Name),
+			Name:        b.Name,
+			Description: b.Description,
+			Phases:      b.Phases,
+			PhaseCount:  len(b.Phases),
+			Source:      "builtin",
+		})
+	}
+
+	// Org library entries
+	orgEntries, err := h.Store.ListLibrary(r.Context(), orgID)
+	if err != nil {
+		WriteStructuredError(w, apierrors.MapError(err))
+		return
+	}
+	for _, e := range orgEntries {
+		entries = append(entries, libraryEntry{
+			ID:          e.ID,
+			Name:        e.Name,
+			Description: e.Description,
+			Phases:      e.Phases,
+			PhaseCount:  len(e.Phases),
+			Source:      "library",
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"entries": entries})
+}
+
+func (h *WorkflowHandler) createWorkflowLibraryEntry(w http.ResponseWriter, r *http.Request) {
+	orgID := PathParam(r, "orgID")
+	var def workflow.Definition
+	if err := json.NewDecoder(r.Body).Decode(&def); err != nil {
+		WriteStructuredError(w, apierrors.New(apierrors.CodeInvalidInput, "invalid body", false))
+		return
+	}
+	if err := validateDefinition(&def); err != nil {
+		WriteStructuredError(w, apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+		return
+	}
+	def.ScopeID = orgID
+	if err := h.Store.CreateLibraryEntry(r.Context(), &def); err != nil {
+		WriteStructuredError(w, apierrors.MapError(err))
+		return
+	}
+	writeJSON(w, http.StatusCreated, def)
+}
+
+func (h *WorkflowHandler) deleteWorkflowLibraryEntry(w http.ResponseWriter, r *http.Request) {
+	id := PathParam(r, "id")
+	if err := h.Store.DeleteLibraryEntry(r.Context(), id); err != nil {
+		WriteStructuredError(w, apierrors.MapError(err))
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func slugify(s string) string {
+	var result []byte
+	for _, c := range []byte(s) {
+		switch {
+		case c >= 'a' && c <= 'z', c >= '0' && c <= '9', c == '-':
+			result = append(result, c)
+		case c >= 'A' && c <= 'Z':
+			result = append(result, c+32)
+		case c == ' ':
+			result = append(result, '-')
+		}
+	}
+	return string(result)
 }
 
 func (h *WorkflowHandler) getTicketWorkflow(w http.ResponseWriter, r *http.Request) {

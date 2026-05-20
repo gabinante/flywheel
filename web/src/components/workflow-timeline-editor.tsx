@@ -17,6 +17,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import {
+  BookmarkPlus,
   ChevronDown,
   ChevronRight,
   GripVertical,
@@ -52,6 +53,7 @@ import {
   PHASE_TYPE_META,
   type PhaseType,
 } from './workflow-phase-config'
+import { WorkflowLibraryPicker } from './workflow-library-picker'
 
 type WorkflowDefinition = components['schemas']['WorkflowDefinition']
 type WorkflowPhase = components['schemas']['WorkflowPhase']
@@ -352,6 +354,8 @@ export function WorkflowTimelineEditor({
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [isSuggested, setIsSuggested] = useState(false)
+  const [loadedFromTemplate, setLoadedFromTemplate] = useState(false)
+  const [librarySavedAt, setLibrarySavedAt] = useState<number | null>(null)
   const [source, setSource] = useState<string | null>(null)
 
   const sensors = useSensors(
@@ -470,11 +474,34 @@ export function WorkflowTimelineEditor({
     }
     setDefinition(data as unknown as WorkflowDefinition)
     setIsSuggested(false)
+    setLoadedFromTemplate(false)
     setSource(targetScope)
     setSavedAt(Date.now())
   }, [client, projectId, orgId, name, description, phases])
 
   const save = useCallback(() => saveToScope(scope), [saveToScope, scope])
+
+  const loadFromTemplate = useCallback((tmpl: { name: string; description: string; phases: WorkflowPhase[] }) => {
+    setName(tmpl.name)
+    setDescription(tmpl.description)
+    setPhases(tmpl.phases)
+    setLoadedFromTemplate(true)
+    setIsSuggested(false)
+    setSavedAt(null)
+  }, [])
+
+  const saveToLibrary = useCallback(async () => {
+    if (!orgId) return
+    setLibrarySavedAt(null)
+    const body = { name: name || 'Delivery Pipeline', description, phases }
+    const { response } = await client.POST(
+      '/orgs/{orgID}/workflow-library' as never,
+      { params: { path: { orgID: orgId } }, body } as never,
+    )
+    if (response.ok) {
+      setLibrarySavedAt(Date.now())
+    }
+  }, [client, orgId, name, description, phases])
 
   const loopSegments = useMemo(() => computeLoopSegments(phases), [phases])
   const timelineRef = useRef<HTMLDivElement>(null)
@@ -566,6 +593,10 @@ export function WorkflowTimelineEditor({
         </div>
         <div className="flex items-center gap-2">
           {savedAt ? <span className="text-xs text-emerald-400">Saved</span> : null}
+          {librarySavedAt ? <span className="text-xs text-emerald-400">Saved to library</span> : null}
+          {orgId ? (
+            <WorkflowLibraryPicker orgId={orgId} onSelect={loadFromTemplate} />
+          ) : null}
           <Button size="xs" onClick={() => void save()} disabled={saving}>
             <Save className="size-3.5" />
             {saving ? 'Saving…' : scope === 'org' ? 'Save org default' : 'Save pipeline'}
@@ -582,6 +613,17 @@ export function WorkflowTimelineEditor({
               Set as org default
             </Button>
           ) : null}
+          {orgId && phases.length > 0 ? (
+            <Button
+              size="xs"
+              variant="outline"
+              onClick={() => void saveToLibrary()}
+              title="Save this pipeline to your organization's template library"
+            >
+              <BookmarkPlus className="size-3.5" />
+              Save to library
+            </Button>
+          ) : null}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -590,6 +632,12 @@ export function WorkflowTimelineEditor({
         {isSuggested ? (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
             This is the suggested default pipeline (Standard SDLC). Click <strong>{scope === 'org' ? 'Save org default' : 'Save pipeline'}</strong> to activate it.
+          </div>
+        ) : null}
+
+        {loadedFromTemplate ? (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
+            Loaded from template. Customize the phases below, then click <strong>{scope === 'org' ? 'Save org default' : 'Save pipeline'}</strong> to apply.
           </div>
         ) : null}
 
