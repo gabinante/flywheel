@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   LoaderCircle,
+  Search,
   Sparkles,
   TerminalSquare,
+  Wrench,
+  X,
+  Check,
 } from 'lucide-react'
 
 import { PlanMarkdown } from '@/components/plan-markdown'
@@ -16,9 +20,12 @@ import {
 } from '@/components/ui/card'
 import { useAuth } from '@/contexts/use-auth'
 import {
+  cancelOrchestratorRun,
   getOrchestratorThread,
   sendOrchestratorMessage,
+  subscribeOrchestratorEvents,
   type OrchestratorMessage,
+  type OrchestratorPhase,
   type OrchestratorRun,
   type OrchestratorRunEvent,
   type OrchestratorThread,
@@ -27,13 +34,8 @@ import { cn } from '@/lib/utils'
 
 const POLL_INTERVAL = 15_000
 const LIVE_POLL_INTERVAL = 1_200
-const GENERATION_HINT_ROTATION_MS = 2_400
-const GENERATION_HINTS = [
-  'Routing the request to the planner.',
-  'Inspecting project context and recent work.',
-  'Working through ticket and work-stream updates.',
-  'Composing the response.',
-]
+const SSE_FALLBACK_POLL_INTERVAL = 1_200
+const SSE_BACKGROUND_POLL_INTERVAL = 30_000
 
 type PendingUserMessage = {
   id: string
@@ -104,6 +106,12 @@ function normalizeThread(next: OrchestratorThread | null): OrchestratorThread | 
 
 function eventLabel(event: OrchestratorRunEvent): string {
   const payload = event.payload ?? {}
+  if (event.kind === 'tool_call' && typeof payload.tool === 'string') {
+    return `Called ${payload.tool}`
+  }
+  if (event.kind === 'phase_change' && typeof payload.phase === 'string') {
+    return payload.phase
+  }
   if (typeof payload.message === 'string' && payload.message.trim().length > 0) {
     return payload.message.trim()
   }
@@ -111,6 +119,91 @@ function eventLabel(event: OrchestratorRunEvent): string {
     return payload.text.trim()
   }
   return event.kind
+}
+
+const READ_TOOLS = new Set([
+  'get_project_context', 'list_tickets', 'get_ticket',
+  'list_work_streams', 'get_work_stream', 'list_orgs', 'list_projects',
+])
+
+const PHASE_STEPS: OrchestratorPhase[] = [
+  'queued', 'connecting', 'investigating', 'authoring', 'composing',
+]
+
+const PHASE_LABELS: Record<string, string> = {
+  queued: 'Queued',
+  connecting: 'Connecting',
+  investigating: 'Investigating',
+  planning: 'Planning',
+  authoring: 'Authoring',
+  composing: 'Composing',
+  complete: 'Complete',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+}
+
+function PhaseIndicator({ phase }: { phase?: OrchestratorPhase }) {
+  const currentIndex = PHASE_STEPS.indexOf(phase ?? 'queued')
+  return (
+    <div className="flex items-center gap-1.5">
+      {PHASE_STEPS.map((step, i) => {
+        const isComplete = i < currentIndex
+        const isCurrent = i === currentIndex
+        return (
+          <div key={step} className="flex items-center gap-1.5">
+            <div className={cn(
+              'flex size-5 items-center justify-center rounded-full border text-[10px] font-medium transition-colors',
+              isComplete && 'border-primary/40 bg-primary/20 text-primary',
+              isCurrent && 'border-primary bg-primary/30 text-primary animate-pulse',
+              !isComplete && !isCurrent && 'border-white/10 text-muted-foreground',
+            )}>
+              {isComplete ? <Check className="size-3" /> : i + 1}
+            </div>
+            <span className={cn(
+              'text-[11px] font-medium',
+              (isComplete || isCurrent) ? 'text-foreground' : 'text-muted-foreground',
+            )}>
+              {PHASE_LABELS[step] ?? step}
+            </span>
+            {i < PHASE_STEPS.length - 1 && (
+              <div className={cn(
+                'h-px w-4',
+                isComplete ? 'bg-primary/40' : 'bg-white/10',
+              )} />
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function ToolCallTimeline({ events }: { events: OrchestratorRunEvent[] }) {
+  const toolEvents = events.filter((e) => e.kind === 'tool_call' || e.kind === 'tool_result')
+  if (toolEvents.length === 0) return null
+  return (
+    <div className="max-h-40 space-y-1.5 overflow-y-auto">
+      {toolEvents.map((event) => {
+        const toolName = typeof event.payload?.tool === 'string' ? event.payload.tool : ''
+        const isRead = READ_TOOLS.has(toolName)
+        return (
+          <div key={event.id} className="flex items-center gap-2 text-xs">
+            {isRead ? (
+              <Search className="size-3 shrink-0 text-blue-400" />
+            ) : (
+              <Wrench className="size-3 shrink-0 text-amber-400" />
+            )}
+            <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-[11px] text-foreground">
+              {toolName || event.kind}
+            </code>
+            <span className="text-muted-foreground">
+              {elapsed(event.created_at)}
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 function MessageBubble({
@@ -160,16 +253,16 @@ function MessageBubble({
 function LivePlannerPanel({
   run,
   sending,
-  fallbackHint,
+  onCancel,
 }: {
   run: OrchestratorRun | null
   sending: boolean
-  fallbackHint: string
+  onCancel?: (runId: string) => void
 }) {
   const events = run?.events ?? []
   const recentEvents = events.slice(-5)
   const latestEvent = recentEvents[recentEvents.length - 1]
-  const headline = latestEvent ? eventLabel(latestEvent) : fallbackHint
+  const headline = latestEvent ? eventLabel(latestEvent) : 'Routing the request to the planner.'
   const metadata = [run?.worker_name, run?.model, run?.runner]
     .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
     .join(' · ')
@@ -195,6 +288,10 @@ function LivePlannerPanel({
             ) : null}
           </div>
 
+          {run?.phase ? (
+            <PhaseIndicator phase={run.phase} />
+          ) : null}
+
           <div className="space-y-1">
             <p className="text-sm font-medium text-foreground">
               {headline}
@@ -207,11 +304,26 @@ function LivePlannerPanel({
           </div>
         </div>
 
-        <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
-          <Sparkles className="size-3.5" />
-          Live
+        <div className="flex items-center gap-3">
+          {run && onCancel ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1 text-muted-foreground hover:text-destructive"
+              onClick={() => onCancel(run.id)}
+            >
+              <X className="size-3.5" />
+              Cancel
+            </Button>
+          ) : null}
+          <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+            <Sparkles className="size-3.5" />
+            Live
+          </div>
         </div>
       </div>
+
+      <ToolCallTimeline events={events} />
 
       <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/8">
         <div className="h-full w-2/5 rounded-full bg-primary/70 animate-pulse" />
@@ -223,7 +335,8 @@ function LivePlannerPanel({
             <span key={event.id} className="flex items-center gap-1.5">
               <span className={cn(
                 'size-1.5 rounded-full',
-                event.kind === 'error' ? 'bg-destructive' : 'bg-primary/50',
+                event.kind === 'error' ? 'bg-destructive' :
+                event.kind === 'tool_call' ? 'bg-amber-400/60' : 'bg-primary/50',
               )} />
               {eventLabel(event)}
             </span>
@@ -248,7 +361,7 @@ export function OrchestratorConsole({
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pendingMessage, setPendingMessage] = useState<PendingUserMessage | null>(null)
-  const [hintIndex, setHintIndex] = useState(0)
+  const [sseConnected, setSseConnected] = useState(false)
   const transcriptRef = useRef<HTMLDivElement | null>(null)
   const messages = thread?.messages ?? []
   const runs = thread?.runs ?? []
@@ -259,7 +372,14 @@ export function OrchestratorConsole({
     [runs],
   )
   const showLivePlanner = sending || activeRun !== null
-  const pollInterval = showLivePlanner ? LIVE_POLL_INTERVAL : POLL_INTERVAL
+
+  // Adaptive polling: fast during active runs without SSE, slow background with SSE
+  const pollInterval = useMemo(() => {
+    if (showLivePlanner) {
+      return sseConnected ? SSE_BACKGROUND_POLL_INTERVAL : SSE_FALLBACK_POLL_INTERVAL
+    }
+    return POLL_INTERVAL
+  }, [showLivePlanner, sseConnected])
 
   const applyThread = useCallback((next: OrchestratorThread | null) => {
     setThread(normalizeThread(next))
@@ -287,17 +407,46 @@ export function OrchestratorConsole({
     }
   }, [fetchThread, pollInterval, token])
 
+  // SSE connection: open when live planner is active, close when inactive.
   useEffect(() => {
-    if (!showLivePlanner) {
-      setHintIndex(0)
+    if (!showLivePlanner || !token) {
+      setSseConnected(false)
       return
     }
-    if (activeRun?.events?.length) return
-    const interval = window.setInterval(() => {
-      setHintIndex((current) => (current + 1) % GENERATION_HINTS.length)
-    }, GENERATION_HINT_ROTATION_MS)
-    return () => window.clearInterval(interval)
-  }, [activeRun?.events?.length, showLivePlanner])
+    const sub = subscribeOrchestratorEvents(
+      token,
+      projectId,
+      () => {
+        // On each event, re-fetch the full thread to stay consistent.
+        void fetchThread()
+      },
+      () => {
+        setSseConnected(false)
+      },
+    )
+    setSseConnected(true)
+    return () => {
+      sub.close()
+      setSseConnected(false)
+    }
+  }, [showLivePlanner, token, projectId, fetchThread])
+
+  // When run completes while we were sending, clear sending state.
+  useEffect(() => {
+    if (sending && !activeRun) {
+      // Check if the pending message was acknowledged (run completed).
+      const pendingAcked = isPendingMessageAcknowledged(messages, pendingMessage)
+      if (pendingAcked || messages.length > 0) {
+        // Give a small buffer for the thread to include the assistant reply.
+        const timer = window.setTimeout(() => {
+          setSending(false)
+          setPendingMessage(null)
+          onMessageComplete?.()
+        }, 300)
+        return () => window.clearTimeout(timer)
+      }
+    }
+  }, [sending, activeRun, messages, pendingMessage, onMessageComplete])
 
   const pendingAcknowledged = isPendingMessageAcknowledged(messages, pendingMessage)
   const displayMessages = useMemo(() => {
@@ -332,24 +481,33 @@ export function OrchestratorConsole({
     setDraft('')
     setSending(true)
     setError(null)
-    void fetchThread()
-    const followupFetch = window.setTimeout(() => void fetchThread(), 250)
-    const { data, error: requestError } = await sendOrchestratorMessage(token, projectId, content)
-    window.clearTimeout(followupFetch)
-    setSending(false)
+
+    const { error: requestError } = await sendOrchestratorMessage(token, projectId, content)
 
     if (requestError) {
       setError(requestError)
       setDraft(content)
       setPendingMessage(null)
+      setSending(false)
       await fetchThread()
       return
     }
 
-    applyThread(data)
+    // POST returned quickly (202). Fetch the thread to see the running state.
+    // Sending stays true until the run completes (detected by useEffect above).
+    await fetchThread()
+  }, [draft, fetchThread, projectId, sending, token])
+
+  const handleCancel = useCallback(async (runId: string) => {
+    if (!token) return
+    const { error: cancelError } = await cancelOrchestratorRun(token, projectId, runId)
+    if (cancelError) {
+      setError(cancelError)
+    }
+    await fetchThread()
+    setSending(false)
     setPendingMessage(null)
-    onMessageComplete?.()
-  }, [applyThread, draft, fetchThread, onMessageComplete, projectId, sending, token])
+  }, [fetchThread, projectId, token])
 
   return (
     <Card className="flex h-[calc(100vh-12rem)] min-h-[480px] max-h-[900px] flex-col overflow-hidden border-white/12 bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.12),transparent_32%),radial-gradient(circle_at_top_right,rgba(251,146,60,0.08),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))]">
@@ -445,7 +603,7 @@ export function OrchestratorConsole({
           <LivePlannerPanel
             run={activeRun}
             sending={sending}
-            fallbackHint={GENERATION_HINTS[hintIndex]}
+            onCancel={handleCancel}
           />
         ) : null}
 

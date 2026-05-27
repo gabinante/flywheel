@@ -19,6 +19,7 @@ var (
 	ErrMessageContentRequired = errors.New("message content is required")
 	ErrWorkerNotConfigured    = errors.New("orchestrator worker is not configured")
 	ErrOrchestratorRunFailed  = errors.New("orchestrator run failed")
+	ErrRunNotActive           = errors.New("run is not active")
 )
 
 type ConversationStore interface {
@@ -54,6 +55,11 @@ type Config struct {
 	WorkerConfig  dispatch.Config
 }
 
+type eventSubscriber struct {
+	ch        chan RunEvent
+	projectID string
+}
+
 type Service struct {
 	store    ConversationStore
 	projects ProjectGetter
@@ -62,11 +68,21 @@ type Service struct {
 	cfg      Config
 	playbook Playbook
 
+	serverCtx context.Context
+	activeRuns sync.Map // runID → context.CancelFunc
+
+	// SSE pub/sub
+	subsMu      sync.Mutex
+	subscribers map[string][]*eventSubscriber // projectID → subscribers
+
+	// run → project mapping for SSE fan-out
+	runProjects sync.Map // runID → projectID
+
 	seMu             sync.Mutex
 	seenSystemEvents map[string][]string // projectID → bounded ring of content hashes
 }
 
-func NewService(store ConversationStore, projects ProjectGetter, worker Worker, cfg Config) *Service {
+func NewService(serverCtx context.Context, store ConversationStore, projects ProjectGetter, worker Worker, cfg Config) *Service {
 	if cfg.HistoryLimit <= 0 {
 		cfg.HistoryLimit = 200
 	}
@@ -81,12 +97,14 @@ func NewService(store ConversationStore, projects ProjectGetter, worker Worker, 
 		router = dispatch.NewProjectWorkerRouter(cfg.WorkerConfig)
 	}
 	return &Service{
-		store:           store,
-		projects:        projects,
-		worker:          worker,
-		router:          router,
-		cfg:             cfg,
-		playbook:        DefaultPlaybook(),
+		store:            store,
+		projects:         projects,
+		worker:           worker,
+		router:           router,
+		cfg:              cfg,
+		playbook:         DefaultPlaybook(),
+		serverCtx:        serverCtx,
+		subscribers:      make(map[string][]*eventSubscriber),
 		seenSystemEvents: make(map[string][]string),
 	}
 }
@@ -128,6 +146,9 @@ func (s *Service) GetThread(ctx context.Context, projectID string) (*Thread, err
 	}, nil
 }
 
+// SendUserMessage creates the user message and run record, then launches the
+// worker in a background goroutine. It returns the thread immediately (run in
+// "running" state) so the HTTP request is not blocked for the worker duration.
 func (s *Service) SendUserMessage(ctx context.Context, projectID, content string) (*Thread, error) {
 	content = strings.TrimSpace(content)
 	if content == "" {
@@ -158,14 +179,19 @@ func (s *Service) SendUserMessage(ctx context.Context, projectID, content string
 		ProjectID:     projectID,
 		UserMessageID: userMsg.ID,
 		Status:        RunStatusRunning,
+		Phase:         PhaseQueued,
 		StartedAt:     time.Now().UTC(),
 	}
 	if err := s.store.CreateRun(ctx, &run); err != nil {
 		return nil, err
 	}
+	s.runProjects.Store(run.ID, projectID)
 	s.appendRunEvent(ctx, run.ID, RunEventKindStatus, map[string]any{
 		"message": "Planner run queued.",
 		"status":  string(run.Status),
+	})
+	s.appendRunEvent(ctx, run.ID, RunEventKindPhaseChange, map[string]any{
+		"phase": string(PhaseQueued),
 	})
 
 	thread, err := s.GetThread(ctx, projectID)
@@ -183,20 +209,71 @@ func (s *Service) SendUserMessage(ctx context.Context, projectID, content string
 		workDir = "."
 	}
 
-	result, selected, err := s.runOrchestratorWorker(ctx, proj, &run, projectID, systemPrompt, taskMessage, workDir)
+	// Launch worker in background goroutine detached from the HTTP context.
+	runCopy := run
+	go s.executeRun(proj, &runCopy, projectID, systemPrompt, taskMessage, workDir)
+
+	return s.GetThread(ctx, projectID)
+}
+
+// executeRun runs the orchestrator worker in the background. It uses the server
+// context (not the HTTP context) so it survives after the POST returns.
+func (s *Service) executeRun(proj *project.Project, run *Run, projectID, systemPrompt, taskMessage, workDir string) {
+	ctx, cancel := context.WithCancel(s.serverCtx)
+	s.activeRuns.Store(run.ID, cancel)
+	defer func() {
+		cancel()
+		s.activeRuns.Delete(run.ID)
+		s.runProjects.Delete(run.ID)
+		if r := recover(); r != nil {
+			run.Status = RunStatusFailed
+			run.Error = fmt.Sprintf("panic: %v", r)
+			now := time.Now().UTC()
+			run.CompletedAt = &now
+			run.Phase = PhaseFailed
+			_ = s.store.UpdateRun(context.Background(), run)
+			s.appendRunEvent(context.Background(), run.ID, RunEventKindError, map[string]any{
+				"message": run.Error,
+			})
+		}
+	}()
+
+	s.updatePhase(ctx, run, PhaseConnecting)
+
+	result, selected, err := s.runOrchestratorWorker(ctx, proj, run, projectID, systemPrompt, taskMessage, workDir)
 	s.recordUsage(ctx, selected.Config, projectID, run.ID, systemPrompt, taskMessage, result)
+
+	if ctx.Err() == context.Canceled {
+		run.Status = RunStatusCancelled
+		run.Phase = PhaseCancelled
+		now := time.Now().UTC()
+		run.CompletedAt = &now
+		run.Error = "run cancelled by user"
+		_ = s.store.UpdateRun(context.Background(), run)
+		s.appendRunEvent(context.Background(), run.ID, RunEventKindStatus, map[string]any{
+			"message": "Run cancelled.",
+			"status":  string(run.Status),
+		})
+		s.appendRunEvent(context.Background(), run.ID, RunEventKindPhaseChange, map[string]any{
+			"phase": string(PhaseCancelled),
+		})
+		return
+	}
+
 	if err != nil {
-		s.failRun(ctx, &run, selected, result, err)
-		return nil, err
+		s.failRun(ctx, run, selected, result, err)
+		return
 	}
 	if !result.Success {
 		runErr := ErrOrchestratorRunFailed
 		if strings.TrimSpace(result.Error) != "" {
 			runErr = fmt.Errorf("%w: %s", ErrOrchestratorRunFailed, strings.TrimSpace(result.Error))
 		}
-		s.failRun(ctx, &run, selected, result, runErr)
-		return nil, runErr
+		s.failRun(ctx, run, selected, result, runErr)
+		return
 	}
+
+	s.updatePhase(ctx, run, PhaseComposing)
 
 	reply := strings.TrimSpace(result.Output)
 	if reply == "" {
@@ -210,21 +287,83 @@ func (s *Service) SendUserMessage(ctx context.Context, projectID, content string
 		CreatedAt: time.Now().UTC(),
 	}
 	if err := s.store.CreateMessage(ctx, &assistantMsg); err != nil {
-		return nil, err
+		s.failRun(ctx, run, selected, result, err)
+		return
 	}
 	run.AssistantMessageID = assistantMsg.ID
 	run.Status = RunStatusCompleted
+	run.Phase = PhaseComplete
 	run.Error = ""
 	run.CompletedAt = ptrTime(assistantMsg.CreatedAt)
-	if err := s.store.UpdateRun(ctx, &run); err != nil {
-		return nil, err
+	if err := s.store.UpdateRun(ctx, run); err != nil {
+		return
 	}
 	s.appendRunEvent(ctx, run.ID, RunEventKindStatus, map[string]any{
 		"message": "Planner completed.",
 		"status":  string(run.Status),
 	})
+	s.appendRunEvent(ctx, run.ID, RunEventKindPhaseChange, map[string]any{
+		"phase": string(PhaseComplete),
+	})
+}
 
-	return s.GetThread(ctx, projectID)
+// CancelRun cancels an active orchestrator run.
+func (s *Service) CancelRun(ctx context.Context, projectID, runID string) error {
+	cancelFn, ok := s.activeRuns.Load(runID)
+	if !ok {
+		return ErrRunNotActive
+	}
+	cancelFn.(context.CancelFunc)()
+	return nil
+}
+
+// SubscribeRunEvents returns a channel that receives run events for a project
+// in real-time. The channel is closed when the context is cancelled.
+func (s *Service) SubscribeRunEvents(ctx context.Context, projectID string) <-chan RunEvent {
+	ch := make(chan RunEvent, 64)
+	sub := &eventSubscriber{ch: ch, projectID: projectID}
+	s.subsMu.Lock()
+	s.subscribers[projectID] = append(s.subscribers[projectID], sub)
+	s.subsMu.Unlock()
+	go func() {
+		<-ctx.Done()
+		s.removeSub(projectID, ch)
+		close(ch)
+	}()
+	return ch
+}
+
+func (s *Service) removeSub(projectID string, ch chan RunEvent) {
+	s.subsMu.Lock()
+	defer s.subsMu.Unlock()
+	subs := s.subscribers[projectID]
+	for i, sub := range subs {
+		if sub.ch == ch {
+			s.subscribers[projectID] = append(subs[:i], subs[i+1:]...)
+			return
+		}
+	}
+}
+
+func (s *Service) notifySubscribers(projectID string, event RunEvent) {
+	s.subsMu.Lock()
+	subs := make([]*eventSubscriber, len(s.subscribers[projectID]))
+	copy(subs, s.subscribers[projectID])
+	s.subsMu.Unlock()
+	for _, sub := range subs {
+		select {
+		case sub.ch <- event:
+		default: // drop if subscriber is slow
+		}
+	}
+}
+
+func (s *Service) updatePhase(ctx context.Context, run *Run, phase OrchestratorPhase) {
+	run.Phase = phase
+	_ = s.store.UpdateRun(ctx, run)
+	s.appendRunEvent(ctx, run.ID, RunEventKindPhaseChange, map[string]any{
+		"phase": string(phase),
+	})
 }
 
 func (s *Service) runOrchestratorWorker(ctx context.Context, proj *project.Project, run *Run, projectID, systemPrompt, taskMessage, workDir string) (*dispatch.WorkerResult, dispatch.RoutedWorker, error) {
@@ -278,7 +417,7 @@ func (s *Service) runOrchestratorWorker(ctx context.Context, proj *project.Proje
 				taskMessage,
 				workDir,
 				s.cfg.ServerURL,
-				s.traceRunOutput(run.ID),
+				s.traceRunOutput(run.ID, run),
 			)
 		} else {
 			result, err = worker.Spawn(ctx, run.ID, projectID, systemPrompt, taskMessage, workDir, s.cfg.ServerURL)
@@ -320,20 +459,66 @@ func (s *Service) resolveWorker(candidate dispatch.RoutedWorker) Worker {
 	return dispatch.NewWorker(candidate.Config)
 }
 
-func (s *Service) traceRunOutput(runID string) dispatch.WorkerOutputHandler {
+// knownToolNames are Flywheel MCP tools that appear in worker output.
+var knownToolNames = []string{
+	"create_ticket", "update_ticket", "create_work_stream", "update_work_stream",
+	"update_work_stream_plan", "get_project_context", "list_tickets", "get_ticket",
+	"list_work_streams", "get_work_stream", "list_orgs", "list_projects",
+	"update_project_context",
+}
+
+// readToolNames are tools that only read data (used for phase inference).
+var readToolNames = map[string]bool{
+	"get_project_context": true,
+	"list_tickets":        true,
+	"get_ticket":          true,
+	"list_work_streams":   true,
+	"get_work_stream":     true,
+	"list_orgs":           true,
+	"list_projects":       true,
+}
+
+func classifyWorkerOutput(stream, text string) (RunEventKind, map[string]any) {
+	trimmed := strings.TrimSpace(text)
+	for _, tool := range knownToolNames {
+		if strings.Contains(trimmed, tool) {
+			return RunEventKindToolCall, map[string]any{
+				"stream": stream, "text": trimmed, "tool": tool,
+			}
+		}
+	}
+	return RunEventKindWorkerOutput, map[string]any{
+		"stream": stream, "text": trimmed,
+	}
+}
+
+func (s *Service) traceRunOutput(runID string, run *Run) dispatch.WorkerOutputHandler {
 	return func(stream, text string) {
 		if strings.TrimSpace(text) == "" {
 			return
 		}
-		s.appendRunEvent(context.Background(), runID, RunEventKindWorkerOutput, map[string]any{
-			"stream": stream,
-			"text":   text,
-		})
+		kind, payload := classifyWorkerOutput(stream, text)
+		s.appendRunEvent(context.Background(), runID, kind, payload)
+
+		// Phase inference from tool calls.
+		if kind == RunEventKindToolCall {
+			toolName, _ := payload["tool"].(string)
+			if readToolNames[toolName] {
+				if run.Phase == PhaseConnecting || run.Phase == PhaseQueued {
+					s.updatePhase(context.Background(), run, PhaseInvestigating)
+				}
+			} else {
+				if run.Phase != PhaseAuthoring {
+					s.updatePhase(context.Background(), run, PhaseAuthoring)
+				}
+			}
+		}
 	}
 }
 
 func (s *Service) failRun(ctx context.Context, run *Run, selected dispatch.RoutedWorker, result *dispatch.WorkerResult, err error) {
 	run.Status = RunStatusFailed
+	run.Phase = PhaseFailed
 	now := time.Now().UTC()
 	run.CompletedAt = &now
 	run.Error = strings.TrimSpace(err.Error())
@@ -356,6 +541,9 @@ func (s *Service) failRun(ctx context.Context, run *Run, selected dispatch.Route
 	s.appendRunEvent(ctx, run.ID, RunEventKindError, map[string]any{
 		"message": strings.TrimSpace(err.Error()),
 	})
+	s.appendRunEvent(ctx, run.ID, RunEventKindPhaseChange, map[string]any{
+		"phase": string(PhaseFailed),
+	})
 }
 
 func (s *Service) appendRunEvent(ctx context.Context, runID string, kind RunEventKind, payload map[string]any) {
@@ -370,6 +558,11 @@ func (s *Service) appendRunEvent(ctx context.Context, runID string, kind RunEven
 		CreatedAt: time.Now().UTC(),
 	}
 	_ = s.store.AppendRunEvent(ctx, event)
+
+	// Fan out to SSE subscribers.
+	if projectID, ok := s.runProjects.Load(runID); ok {
+		s.notifySubscribers(projectID.(string), *event)
+	}
 }
 
 func (s *Service) recordUsage(ctx context.Context, workerCfg dispatch.Config, projectID, ticketID, systemPrompt, taskMessage string, result *dispatch.WorkerResult) {
@@ -466,3 +659,4 @@ func runnerNameFromConfig(cfg dispatch.Config) string {
 	}
 	return "cli"
 }
+

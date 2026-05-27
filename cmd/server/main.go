@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -168,14 +169,19 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	// during shutdown ensures goroutines stop before the pool and Redis are closed,
 	// preventing "closed pool" errors.
 	ctx, cancelServices := context.WithCancel(ctx)
-	defer cancelServices()
 
 	pool, err := db.NewPool(ctx, cfg.DB.URL)
 	if err != nil {
+		cancelServices()
 		slog.Error("db init failed", "error", err)
 		os.Exit(1)
 	}
-	defer pool.Close()
+	defer func() {
+		slog.Warn("pool.Close() called — this should only happen at shutdown",
+			"stack", string(debug.Stack()))
+		pool.Close()
+	}()
+	defer cancelServices() // LIFO: context cancelled BEFORE pool closes
 
 	// Create event bus: use Postgres durable bus by default for at-least-once delivery.
 	// Falls back to in-process bus if DURABLE_BUS=false is set.
@@ -234,12 +240,14 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 
 	redisOpts, err := redis.ParseURL(cfg.Redis.URL)
 	if err != nil {
+		cancelServices()
 		slog.Error("redis URL parse failed", "error", err)
 		os.Exit(1)
 	}
 	redisClient := redis.NewClient(redisOpts)
 	defer redisClient.Close()
 	if err := redisClient.Ping(ctx).Err(); err != nil {
+		cancelServices()
 		slog.Error("redis ping failed", "error", err)
 		os.Exit(1)
 	}
@@ -451,7 +459,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			CostSvc:              costSvc,
 		})
 	}
-	orchestratorSvc := orchestrator.NewService(orchestratorStore, projectSvc, orchestratorWorker, orchestrator.Config{
+	orchestratorSvc := orchestrator.NewService(ctx, orchestratorStore, projectSvc, orchestratorWorker, orchestrator.Config{
 		Enabled:      cfg.Orchestrator.Enabled,
 		RepoDir:      repoDir,
 		ServerURL:    cfg.Auth.BaseURL,

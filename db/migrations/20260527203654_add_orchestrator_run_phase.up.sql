@@ -1,0 +1,1 @@
+ALTER TABLE orchestrator_runs ADD COLUMN IF NOT EXISTS phase TEXT;

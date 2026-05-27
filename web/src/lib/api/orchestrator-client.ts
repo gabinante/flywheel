@@ -9,17 +9,29 @@ export type OrchestratorMessage = {
 export type OrchestratorRunEvent = {
   id: string
   run_id: string
-  kind: 'status' | 'worker_output' | 'error'
+  kind: 'status' | 'worker_output' | 'error' | 'tool_call' | 'tool_result' | 'phase_change'
   payload: Record<string, unknown>
   created_at: string
 }
+
+export type OrchestratorPhase =
+  | 'queued'
+  | 'connecting'
+  | 'investigating'
+  | 'planning'
+  | 'authoring'
+  | 'composing'
+  | 'complete'
+  | 'failed'
+  | 'cancelled'
 
 export type OrchestratorRun = {
   id: string
   project_id: string
   user_message_id: string
   assistant_message_id?: string
-  status: 'running' | 'completed' | 'failed'
+  status: 'running' | 'completed' | 'failed' | 'cancelled'
+  phase?: OrchestratorPhase
   worker_id?: string
   worker_name?: string
   runner?: string
@@ -101,4 +113,76 @@ export function sendOrchestratorMessage(
       body: JSON.stringify({ content }),
     },
   )
+}
+
+export function cancelOrchestratorRun(
+  token: string | null,
+  projectId: string,
+  runId: string,
+) {
+  return orchestratorFetch<{ status: string }>(
+    `/api/command-center/projects/${encodeURIComponent(projectId)}/orchestrator/runs/${encodeURIComponent(runId)}`,
+    token,
+    { method: 'DELETE' },
+  )
+}
+
+export function subscribeOrchestratorEvents(
+  token: string | null,
+  projectId: string,
+  onEvent: (event: OrchestratorRunEvent) => void,
+  onError?: () => void,
+): { close: () => void } {
+  const url = `/api/command-center/projects/${encodeURIComponent(projectId)}/orchestrator/events`
+  const controller = new AbortController()
+
+  async function connect() {
+    try {
+      const headers: Record<string, string> = {
+        Accept: 'text/event-stream',
+      }
+      if (token) {
+        headers.Authorization = `Bearer ${token}`
+      }
+      const res = await fetch(url, {
+        headers,
+        signal: controller.signal,
+      })
+      if (!res.ok || !res.body) {
+        onError?.()
+        return
+      }
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const event = JSON.parse(line.slice(6)) as OrchestratorRunEvent
+              onEvent(event)
+            } catch {
+              // skip malformed JSON
+            }
+          }
+        }
+      }
+    } catch {
+      if (!controller.signal.aborted) {
+        onError?.()
+      }
+    }
+  }
+
+  void connect()
+
+  return {
+    close: () => controller.abort(),
+  }
 }

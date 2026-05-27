@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	apierrors "github.com/gabinante/flywheel/internal/errors"
@@ -13,6 +14,8 @@ import (
 type OrchestratorServiceForHandler interface {
 	GetThread(ctx context.Context, projectID string) (*orchestrator.Thread, error)
 	SendUserMessage(ctx context.Context, projectID, content string) (*orchestrator.Thread, error)
+	CancelRun(ctx context.Context, projectID, runID string) error
+	SubscribeRunEvents(ctx context.Context, projectID string) <-chan orchestrator.RunEvent
 }
 
 type OrchestratorHandler struct {
@@ -70,7 +73,57 @@ func (h *OrchestratorHandler) createMessage(w http.ResponseWriter, r *http.Reque
 		}
 		return
 	}
-	writeOrchestratorJSON(w, http.StatusOK, thread)
+	writeOrchestratorJSON(w, http.StatusAccepted, thread)
+}
+
+func (h *OrchestratorHandler) cancelRun(w http.ResponseWriter, r *http.Request) {
+	if h.Service == nil {
+		writeServiceUnavailable(w, "orchestrator not enabled")
+		return
+	}
+	projectID := PathParam(r, "projectID")
+	if !EnsureProjectAccess(r.Context(), w, projectID, h.AgentStore, h.OrgSvc, h.ProjectSvc) {
+		return
+	}
+	runID := PathParam(r, "runID")
+	if err := h.Service.CancelRun(r.Context(), projectID, runID); err != nil {
+		if errors.Is(err, orchestrator.ErrRunNotActive) {
+			WriteStructuredError(w, apierrors.New(apierrors.CodeNotFound, err.Error(), false))
+		} else {
+			WriteStructuredError(w, apierrors.MapError(err))
+		}
+		return
+	}
+	writeOrchestratorJSON(w, http.StatusOK, map[string]any{"status": "cancelled"})
+}
+
+func (h *OrchestratorHandler) streamEvents(w http.ResponseWriter, r *http.Request) {
+	if h.Service == nil {
+		writeServiceUnavailable(w, "orchestrator not enabled")
+		return
+	}
+	projectID := PathParam(r, "projectID")
+	if !EnsureProjectAccess(r.Context(), w, projectID, h.AgentStore, h.OrgSvc, h.ProjectSvc) {
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	ch := h.Service.SubscribeRunEvents(r.Context(), projectID)
+	for event := range ch {
+		data, _ := json.Marshal(event)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
 }
 
 func writeServiceUnavailable(w http.ResponseWriter, message string) {

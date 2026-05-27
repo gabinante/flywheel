@@ -85,11 +85,15 @@ func (s *Store) CreateRun(ctx context.Context, run *Run) error {
 	if run.Error != "" {
 		runError = run.Error
 	}
+	var phase any
+	if run.Phase != "" {
+		phase = string(run.Phase)
+	}
 	_, err := s.pool.Exec(ctx,
 		`INSERT INTO orchestrator_runs
-		 (id, project_id, user_message_id, assistant_message_id, status, worker_id, worker_name, runner, driver, model, error, started_at, completed_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-		run.ID, run.ProjectID, run.UserMessageID, assistantMessageID, string(run.Status), workerID, workerName, runner, driver, model, runError, run.StartedAt, run.CompletedAt)
+		 (id, project_id, user_message_id, assistant_message_id, status, phase, worker_id, worker_name, runner, driver, model, error, started_at, completed_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+		run.ID, run.ProjectID, run.UserMessageID, assistantMessageID, string(run.Status), phase, workerID, workerName, runner, driver, model, runError, run.StartedAt, run.CompletedAt)
 	return err
 }
 
@@ -122,19 +126,24 @@ func (s *Store) UpdateRun(ctx context.Context, run *Run) error {
 	if run.Error != "" {
 		runError = run.Error
 	}
+	var phase any
+	if run.Phase != "" {
+		phase = string(run.Phase)
+	}
 	_, err := s.pool.Exec(ctx,
 		`UPDATE orchestrator_runs
 		 SET assistant_message_id = $2,
 		     status = $3,
-		     worker_id = $4,
-		     worker_name = $5,
-		     runner = $6,
-		     driver = $7,
-		     model = $8,
-		     error = $9,
-		     completed_at = $10
+		     phase = $4,
+		     worker_id = $5,
+		     worker_name = $6,
+		     runner = $7,
+		     driver = $8,
+		     model = $9,
+		     error = $10,
+		     completed_at = $11
 		 WHERE id = $1`,
-		run.ID, assistantMessageID, string(run.Status), workerID, workerName, runner, driver, model, runError, run.CompletedAt)
+		run.ID, assistantMessageID, string(run.Status), phase, workerID, workerName, runner, driver, model, runError, run.CompletedAt)
 	return err
 }
 
@@ -152,9 +161,9 @@ func (s *Store) ListRunsByProjectID(ctx context.Context, projectID string, limit
 		limit = 20
 	}
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, project_id, user_message_id, assistant_message_id, status, worker_id, worker_name, runner, driver, model, error, started_at, completed_at
+		`SELECT id, project_id, user_message_id, assistant_message_id, status, phase, worker_id, worker_name, runner, driver, model, error, started_at, completed_at
 		 FROM (
-		 	SELECT id, project_id, user_message_id, assistant_message_id, status, worker_id, worker_name, runner, driver, model, error, started_at, completed_at
+		 	SELECT id, project_id, user_message_id, assistant_message_id, status, phase, worker_id, worker_name, runner, driver, model, error, started_at, completed_at
 		 	FROM orchestrator_runs
 		 	WHERE project_id = $1
 		 	ORDER BY started_at DESC
@@ -171,6 +180,7 @@ func (s *Store) ListRunsByProjectID(ctx context.Context, projectID string, limit
 	for rows.Next() {
 		var run Run
 		var status string
+		var phase *string
 		var assistantMessageID *string
 		var workerID *string
 		var workerName *string
@@ -184,6 +194,7 @@ func (s *Store) ListRunsByProjectID(ctx context.Context, projectID string, limit
 			&run.UserMessageID,
 			&assistantMessageID,
 			&status,
+			&phase,
 			&workerID,
 			&workerName,
 			&runner,
@@ -196,6 +207,9 @@ func (s *Store) ListRunsByProjectID(ctx context.Context, projectID string, limit
 			return nil, err
 		}
 		run.Status = RunStatus(status)
+		if phase != nil {
+			run.Phase = OrchestratorPhase(*phase)
+		}
 		if assistantMessageID != nil {
 			run.AssistantMessageID = *assistantMessageID
 		}

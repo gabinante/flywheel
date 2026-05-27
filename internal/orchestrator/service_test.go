@@ -134,7 +134,7 @@ func (m *mockStreamWorker) SpawnStream(ctx context.Context, ticketID, projectID,
 
 func TestSendUserMessageRequiresWorker(t *testing.T) {
 	store := &mockStore{}
-	svc := NewService(store, &mockProjectGetter{
+	svc := NewService(context.Background(), store, &mockProjectGetter{
 		project: &project.Project{ID: "proj-1", RepoURL: "/tmp/repo"},
 	}, nil, Config{})
 
@@ -147,19 +147,49 @@ func TestSendUserMessageRequiresWorker(t *testing.T) {
 	}
 }
 
+// waitForRunDone polls until the run is no longer in "running" status.
+func waitForRunDone(t *testing.T, svc *Service, projectID string, timeout time.Duration) *Thread {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		thread, err := svc.GetThread(context.Background(), projectID)
+		if err != nil {
+			t.Fatalf("GetThread() error = %v", err)
+		}
+		allDone := true
+		for _, run := range thread.Runs {
+			if run.Status == RunStatusRunning {
+				allDone = false
+				break
+			}
+		}
+		if allDone {
+			return thread
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for run to complete")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 func TestSendUserMessageUsesProjectRepoWhenServiceRepoUnset(t *testing.T) {
 	store := &mockStore{}
 	worker := &mockWorker{
 		result: &dispatch.WorkerResult{Success: true, Output: "Created two tickets."},
 	}
-	svc := NewService(store, &mockProjectGetter{
+	svc := NewService(context.Background(), store, &mockProjectGetter{
 		project: &project.Project{ID: "proj-1", Name: "Test", RepoURL: "/tmp/project-repo"},
 	}, worker, Config{ServerURL: "http://localhost:8080", AgentID: "orch"})
 
-	thread, err := svc.SendUserMessage(context.Background(), "proj-1", "Add chat orchestration")
+	_, err := svc.SendUserMessage(context.Background(), "proj-1", "Add chat orchestration")
 	if err != nil {
 		t.Fatalf("SendUserMessage() error = %v", err)
 	}
+
+	// Wait for the background goroutine to complete the run.
+	thread := waitForRunDone(t, svc, "proj-1", 5*time.Second)
+
 	if worker.lastWorkDir != "/tmp/project-repo" {
 		t.Fatalf("expected worker workdir /tmp/project-repo, got %q", worker.lastWorkDir)
 	}
@@ -191,14 +221,18 @@ func TestSendUserMessageStoresRunEventsFromStreamableWorker(t *testing.T) {
 			"create_work_stream: warrant-123",
 		},
 	}
-	svc := NewService(store, &mockProjectGetter{
+	svc := NewService(context.Background(), store, &mockProjectGetter{
 		project: &project.Project{ID: "proj-1", Name: "Test", RepoURL: "/tmp/project-repo"},
 	}, worker, Config{ServerURL: "http://localhost:8080", AgentID: "orch"})
 
-	thread, err := svc.SendUserMessage(context.Background(), "proj-1", "Plan the auth feature")
+	_, err := svc.SendUserMessage(context.Background(), "proj-1", "Plan the auth feature")
 	if err != nil {
 		t.Fatalf("SendUserMessage() error = %v", err)
 	}
+
+	// Wait for the background goroutine to complete the run.
+	thread := waitForRunDone(t, svc, "proj-1", 5*time.Second)
+
 	if len(thread.Runs) != 1 {
 		t.Fatalf("expected 1 run, got %d", len(thread.Runs))
 	}
@@ -209,21 +243,21 @@ func TestSendUserMessageStoresRunEventsFromStreamableWorker(t *testing.T) {
 	if len(run.Events) < 4 {
 		t.Fatalf("expected run events to include lifecycle and worker output, got %d", len(run.Events))
 	}
-	foundOutput := false
+	foundToolCall := false
 	for _, event := range run.Events {
-		if event.Kind == RunEventKindWorkerOutput && event.Payload["text"] == "create_work_stream: warrant-123" {
-			foundOutput = true
+		if event.Kind == RunEventKindToolCall && event.Payload["tool"] == "create_work_stream" {
+			foundToolCall = true
 			break
 		}
 	}
-	if !foundOutput {
-		t.Fatalf("expected streamed worker output event, got %+v", run.Events)
+	if !foundToolCall {
+		t.Fatalf("expected tool_call event for create_work_stream, got %+v", run.Events)
 	}
 }
 
 func TestGetThreadInitializesEmptySlices(t *testing.T) {
 	store := &mockStore{}
-	svc := NewService(store, &mockProjectGetter{
+	svc := NewService(context.Background(), store, &mockProjectGetter{
 		project: &project.Project{ID: "proj-1", Name: "Test"},
 	}, nil, Config{})
 
@@ -241,7 +275,7 @@ func TestGetThreadInitializesEmptySlices(t *testing.T) {
 
 func TestInjectSystemEventDeduplicates(t *testing.T) {
 	store := &mockStore{}
-	svc := NewService(store, &mockProjectGetter{}, nil, Config{})
+	svc := NewService(context.Background(), store, &mockProjectGetter{}, nil, Config{})
 
 	ctx := context.Background()
 	if err := svc.InjectSystemEvent(ctx, "proj-1", "escalation", "ticket-1 needs input"); err != nil {
@@ -258,7 +292,7 @@ func TestInjectSystemEventDeduplicates(t *testing.T) {
 
 func TestInjectSystemEventAllowsDifferentContent(t *testing.T) {
 	store := &mockStore{}
-	svc := NewService(store, &mockProjectGetter{}, nil, Config{})
+	svc := NewService(context.Background(), store, &mockProjectGetter{}, nil, Config{})
 
 	ctx := context.Background()
 	if err := svc.InjectSystemEvent(ctx, "proj-1", "escalation", "ticket-1 needs input"); err != nil {
@@ -282,7 +316,7 @@ func TestFailRunPersistsErrorAndCompletion(t *testing.T) {
 		StartedAt: time.Now().UTC(),
 	}
 	store.runs = append(store.runs, run)
-	svc := NewService(store, &mockProjectGetter{}, nil, Config{})
+	svc := NewService(context.Background(), store, &mockProjectGetter{}, nil, Config{})
 
 	svc.failRun(context.Background(), &run, dispatch.RoutedWorker{Name: "Planner"}, &dispatch.WorkerResult{Output: "partial output"}, errors.New("boom"))
 

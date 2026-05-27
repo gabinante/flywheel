@@ -154,6 +154,8 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	if cfg.OrchestratorHandler != nil {
 		mux.HandleFunc("GET /api/command-center/projects/{projectID}/orchestrator", cfg.OrchestratorHandler.getThread)
 		mux.HandleFunc("POST /api/command-center/projects/{projectID}/orchestrator/messages", cfg.OrchestratorHandler.createMessage)
+		mux.HandleFunc("DELETE /api/command-center/projects/{projectID}/orchestrator/runs/{runID}", cfg.OrchestratorHandler.cancelRun)
+		mux.HandleFunc("GET /api/command-center/projects/{projectID}/orchestrator/events", cfg.OrchestratorHandler.streamEvents)
 	}
 	if cfg.UsageHandler != nil {
 		mux.HandleFunc("GET /api/projects/{projectID}/usage", cfg.UsageHandler.getProjectUsage)
