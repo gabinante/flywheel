@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  CheckCircle2,
   LoaderCircle,
   Search,
   Sparkles,
   TerminalSquare,
   Wrench,
   X,
+  XCircle,
   Check,
 } from 'lucide-react'
 
@@ -107,7 +109,15 @@ function normalizeThread(next: OrchestratorThread | null): OrchestratorThread | 
 function eventLabel(event: OrchestratorRunEvent): string {
   const payload = event.payload ?? {}
   if (event.kind === 'tool_call' && typeof payload.tool === 'string') {
-    return `Called ${payload.tool}`
+    return `Calling ${payload.tool}`
+  }
+  if (event.kind === 'tool_result' && typeof payload.tool === 'string') {
+    const toolName = payload.tool as string
+    const status = payload.status as string | undefined
+    const summary = typeof payload.summary === 'string' ? payload.summary : ''
+    const preview = summary.length > 80 ? summary.slice(0, 80) + '...' : summary
+    const label = status === 'error' ? `${toolName} (failed)` : toolName
+    return preview ? `${label}: ${preview}` : label
   }
   if (event.kind === 'phase_change' && typeof payload.phase === 'string') {
     return payload.phase
@@ -134,7 +144,6 @@ const PHASE_LABELS: Record<string, string> = {
   queued: 'Queued',
   connecting: 'Connecting',
   investigating: 'Investigating',
-  planning: 'Planning',
   authoring: 'Authoring',
   composing: 'Composing',
   complete: 'Complete',
@@ -178,7 +187,7 @@ function PhaseIndicator({ phase }: { phase?: OrchestratorPhase }) {
   )
 }
 
-function ToolCallTimeline({ events }: { events: OrchestratorRunEvent[] }) {
+function ToolTimeline({ events }: { events: OrchestratorRunEvent[] }) {
   const toolEvents = events.filter((e) => e.kind === 'tool_call' || e.kind === 'tool_result')
   if (toolEvents.length === 0) return null
   return (
@@ -186,9 +195,19 @@ function ToolCallTimeline({ events }: { events: OrchestratorRunEvent[] }) {
       {toolEvents.map((event) => {
         const toolName = typeof event.payload?.tool === 'string' ? event.payload.tool : ''
         const isRead = READ_TOOLS.has(toolName)
+        const isResult = event.kind === 'tool_result'
+        const isError = isResult && event.payload?.status === 'error'
+        const summary = typeof event.payload?.summary === 'string' ? event.payload.summary : ''
+        const truncatedSummary = summary.length > 80 ? summary.slice(0, 80) + '...' : summary
         return (
           <div key={event.id} className="flex items-center gap-2 text-xs">
-            {isRead ? (
+            {isResult ? (
+              isError ? (
+                <XCircle className="size-3 shrink-0 text-red-400" />
+              ) : (
+                <CheckCircle2 className="size-3 shrink-0 text-emerald-400" />
+              )
+            ) : isRead ? (
               <Search className="size-3 shrink-0 text-blue-400" />
             ) : (
               <Wrench className="size-3 shrink-0 text-amber-400" />
@@ -196,7 +215,10 @@ function ToolCallTimeline({ events }: { events: OrchestratorRunEvent[] }) {
             <code className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-[11px] text-foreground">
               {toolName || event.kind}
             </code>
-            <span className="text-muted-foreground">
+            {truncatedSummary ? (
+              <span className="truncate text-muted-foreground">{truncatedSummary}</span>
+            ) : null}
+            <span className="ml-auto text-muted-foreground">
               {elapsed(event.created_at)}
             </span>
           </div>
@@ -323,11 +345,24 @@ function LivePlannerPanel({
         </div>
       </div>
 
-      <ToolCallTimeline events={events} />
+      <ToolTimeline events={events} />
 
-      <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/8">
-        <div className="h-full w-2/5 rounded-full bg-primary/70 animate-pulse" />
-      </div>
+      {(() => {
+        const phaseIndex = PHASE_STEPS.indexOf(run?.phase ?? 'queued')
+        const progressPercent = phaseIndex < 0 ? 5 : Math.max(5, ((phaseIndex + 1) / PHASE_STEPS.length) * 100)
+        const hasPhaseData = run?.phase && PHASE_STEPS.includes(run.phase)
+        return (
+          <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/8">
+            <div
+              className={cn(
+                'h-full rounded-full bg-primary/70 transition-all duration-700 ease-out',
+                !hasPhaseData && 'animate-pulse',
+              )}
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+        )
+      })()}
 
       {recentEvents.length > 1 ? (
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -336,6 +371,7 @@ function LivePlannerPanel({
               <span className={cn(
                 'size-1.5 rounded-full',
                 event.kind === 'error' ? 'bg-destructive' :
+                event.kind === 'tool_result' ? 'bg-emerald-400/60' :
                 event.kind === 'tool_call' ? 'bg-amber-400/60' : 'bg-primary/50',
               )} />
               {eventLabel(event)}
@@ -362,6 +398,7 @@ export function OrchestratorConsole({
   const [error, setError] = useState<string | null>(null)
   const [pendingMessage, setPendingMessage] = useState<PendingUserMessage | null>(null)
   const [sseConnected, setSseConnected] = useState(false)
+  const [sseRetryKey, setSseRetryKey] = useState(0)
   const transcriptRef = useRef<HTMLDivElement | null>(null)
   const messages = thread?.messages ?? []
   const runs = thread?.runs ?? []
@@ -422,6 +459,11 @@ export function OrchestratorConsole({
       },
       () => {
         setSseConnected(false)
+        // Schedule a retry after 3s if still live
+        const retryTimer = window.setTimeout(() => {
+          setSseRetryKey((k) => k + 1)
+        }, 3000)
+        return () => window.clearTimeout(retryTimer)
       },
     )
     setSseConnected(true)
@@ -429,7 +471,7 @@ export function OrchestratorConsole({
       sub.close()
       setSseConnected(false)
     }
-  }, [showLivePlanner, token, projectId, fetchThread])
+  }, [showLivePlanner, token, projectId, fetchThread, sseRetryKey])
 
   // When run completes while we were sending, clear sending state.
   useEffect(() => {

@@ -18,7 +18,6 @@ export type OrchestratorPhase =
   | 'queued'
   | 'connecting'
   | 'investigating'
-  | 'planning'
   | 'authoring'
   | 'composing'
   | 'complete'
@@ -135,47 +134,58 @@ export function subscribeOrchestratorEvents(
 ): { close: () => void } {
   const url = `/api/command-center/projects/${encodeURIComponent(projectId)}/orchestrator/events`
   const controller = new AbortController()
+  let attempt = 0
+  const maxAttempts = 5
+  const maxDelay = 10_000
 
   async function connect() {
-    try {
-      const headers: Record<string, string> = {
-        Accept: 'text/event-stream',
-      }
-      if (token) {
-        headers.Authorization = `Bearer ${token}`
-      }
-      const res = await fetch(url, {
-        headers,
-        signal: controller.signal,
-      })
-      if (!res.ok || !res.body) {
-        onError?.()
-        return
-      }
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
+    while (attempt < maxAttempts && !controller.signal.aborted) {
+      try {
+        const headers: Record<string, string> = {
+          Accept: 'text/event-stream',
+        }
+        if (token) {
+          headers.Authorization = `Bearer ${token}`
+        }
+        const res = await fetch(url, {
+          headers,
+          signal: controller.signal,
+        })
+        if (!res.ok || !res.body) {
+          throw new Error(`HTTP ${res.status}`)
+        }
+        attempt = 0 // reset on successful connection
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const event = JSON.parse(line.slice(6)) as OrchestratorRunEvent
-              onEvent(event)
-            } catch {
-              // skip malformed JSON
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const event = JSON.parse(line.slice(6)) as OrchestratorRunEvent
+                onEvent(event)
+              } catch {
+                // skip malformed JSON
+              }
             }
           }
         }
-      }
-    } catch {
-      if (!controller.signal.aborted) {
-        onError?.()
+        // Stream ended naturally (server closed) — reconnect
+      } catch {
+        if (controller.signal.aborted) return
+        attempt++
+        if (attempt >= maxAttempts) {
+          onError?.()
+          return
+        }
+        const delay = Math.min(1000 * 2 ** (attempt - 1), maxDelay)
+        await new Promise((r) => setTimeout(r, delay))
       }
     }
   }

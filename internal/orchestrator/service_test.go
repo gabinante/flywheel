@@ -120,12 +120,21 @@ func (m *mockWorker) Spawn(_ context.Context, ticketID, projectID, systemPrompt,
 	return m.result, nil
 }
 
+type streamOutput struct {
+	stream string
+	text   string
+}
+
 type mockStreamWorker struct {
 	mockWorker
-	outputs []string
+	outputs       []string       // legacy: all emitted as "stdout"
+	streamOutputs []streamOutput // stream-aware tuples
 }
 
 func (m *mockStreamWorker) SpawnStream(ctx context.Context, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL string, onOutput dispatch.WorkerOutputHandler) (*dispatch.WorkerResult, error) {
+	for _, so := range m.streamOutputs {
+		onOutput(so.stream, so.text)
+	}
 	for _, output := range m.outputs {
 		onOutput("stdout", output)
 	}
@@ -216,9 +225,9 @@ func TestSendUserMessageStoresRunEventsFromStreamableWorker(t *testing.T) {
 		mockWorker: mockWorker{
 			result: &dispatch.WorkerResult{Success: true, Output: "Created a work stream and two tickets."},
 		},
-		outputs: []string{
-			"inspect_project: ok",
-			"create_work_stream: warrant-123",
+		streamOutputs: []streamOutput{
+			{stream: "tool_call", text: "create_work_stream"},
+			{stream: "tool_result", text: "create_work_stream: warrant-123"},
 		},
 	}
 	svc := NewService(context.Background(), store, &mockProjectGetter{
@@ -244,14 +253,20 @@ func TestSendUserMessageStoresRunEventsFromStreamableWorker(t *testing.T) {
 		t.Fatalf("expected run events to include lifecycle and worker output, got %d", len(run.Events))
 	}
 	foundToolCall := false
+	foundToolResult := false
 	for _, event := range run.Events {
 		if event.Kind == RunEventKindToolCall && event.Payload["tool"] == "create_work_stream" {
 			foundToolCall = true
-			break
+		}
+		if event.Kind == RunEventKindToolResult && event.Payload["tool"] == "create_work_stream" {
+			foundToolResult = true
 		}
 	}
 	if !foundToolCall {
 		t.Fatalf("expected tool_call event for create_work_stream, got %+v", run.Events)
+	}
+	if !foundToolResult {
+		t.Fatalf("expected tool_result event for create_work_stream, got %+v", run.Events)
 	}
 }
 
@@ -304,6 +319,132 @@ func TestInjectSystemEventAllowsDifferentContent(t *testing.T) {
 
 	if len(store.messages) != 2 {
 		t.Fatalf("expected 2 messages (different content), got %d", len(store.messages))
+	}
+}
+
+func TestClassifyWorkerOutput(t *testing.T) {
+	tests := []struct {
+		name       string
+		stream     string
+		text       string
+		wantKind   RunEventKind
+		wantTool   string
+		wantStatus string
+	}{
+		{
+			name:     "tool_call stream",
+			stream:   "tool_call",
+			text:     "create_work_stream",
+			wantKind: RunEventKindToolCall,
+			wantTool: "create_work_stream",
+		},
+		{
+			name:       "tool_result stream success",
+			stream:     "tool_result",
+			text:       "create_work_stream: warrant-123",
+			wantKind:   RunEventKindToolResult,
+			wantTool:   "create_work_stream",
+			wantStatus: "success",
+		},
+		{
+			name:       "tool_result stream error",
+			stream:     "tool_result",
+			text:       "create_ticket failed: validation error",
+			wantKind:   RunEventKindToolResult,
+			wantTool:   "create_ticket",
+			wantStatus: "error",
+		},
+		{
+			name:     "stdout with known tool name (heuristic)",
+			stream:   "stdout",
+			text:     "create_work_stream: warrant-123",
+			wantKind: RunEventKindToolCall,
+			wantTool: "create_work_stream",
+		},
+		{
+			name:     "stdout without tool name",
+			stream:   "stdout",
+			text:     "some random output",
+			wantKind: RunEventKindWorkerOutput,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			kind, payload := classifyWorkerOutput(tt.stream, tt.text)
+			if kind != tt.wantKind {
+				t.Fatalf("kind = %q, want %q", kind, tt.wantKind)
+			}
+			if tt.wantTool != "" {
+				if got, _ := payload["tool"].(string); got != tt.wantTool {
+					t.Fatalf("tool = %q, want %q", got, tt.wantTool)
+				}
+			}
+			if tt.wantStatus != "" {
+				if got, _ := payload["status"].(string); got != tt.wantStatus {
+					t.Fatalf("status = %q, want %q", got, tt.wantStatus)
+				}
+			}
+		})
+	}
+}
+
+func TestParseToolResult(t *testing.T) {
+	tests := []struct {
+		name       string
+		text       string
+		wantTool   string
+		wantSum    string
+		wantStatus string
+	}{
+		{
+			name:       "success result",
+			text:       "create_work_stream: warrant-123",
+			wantTool:   "create_work_stream",
+			wantSum:    "warrant-123",
+			wantStatus: "success",
+		},
+		{
+			name:       "error result",
+			text:       "create_ticket failed: validation error",
+			wantTool:   "create_ticket",
+			wantSum:    "validation error",
+			wantStatus: "error",
+		},
+		{
+			name:       "no separator",
+			text:       "some_tool",
+			wantTool:   "some_tool",
+			wantSum:    "",
+			wantStatus: "success",
+		},
+		{
+			name:       "status result with colon",
+			text:       "list_tickets: status=completed",
+			wantTool:   "list_tickets",
+			wantSum:    "status=completed",
+			wantStatus: "success",
+		},
+		{
+			name:       "status result without colon",
+			text:       "list_tickets status=completed",
+			wantTool:   "list_tickets status=completed",
+			wantSum:    "",
+			wantStatus: "success",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tool, summary, status := parseToolResult(tt.text)
+			if tool != tt.wantTool {
+				t.Fatalf("tool = %q, want %q", tool, tt.wantTool)
+			}
+			if summary != tt.wantSum {
+				t.Fatalf("summary = %q, want %q", summary, tt.wantSum)
+			}
+			if status != tt.wantStatus {
+				t.Fatalf("status = %q, want %q", status, tt.wantStatus)
+			}
+		})
 	}
 }
 

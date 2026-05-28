@@ -307,8 +307,13 @@ func (s *Service) executeRun(proj *project.Project, run *Run, projectID, systemP
 	})
 }
 
-// CancelRun cancels an active orchestrator run.
+// CancelRun cancels an active orchestrator run. It validates the run belongs
+// to the given project before allowing cancellation.
 func (s *Service) CancelRun(ctx context.Context, projectID, runID string) error {
+	storedProjectID, ok := s.runProjects.Load(runID)
+	if !ok || storedProjectID.(string) != projectID {
+		return ErrRunNotActive
+	}
 	cancelFn, ok := s.activeRuns.Load(runID)
 	if !ok {
 		return ErrRunNotActive
@@ -480,6 +485,21 @@ var readToolNames = map[string]bool{
 
 func classifyWorkerOutput(stream, text string) (RunEventKind, map[string]any) {
 	trimmed := strings.TrimSpace(text)
+	// Semantic stream markers from OpenAI runners (fast path).
+	switch stream {
+	case "tool_call":
+		tool := trimmed
+		if tool == "" {
+			tool = "unknown"
+		}
+		return RunEventKindToolCall, map[string]any{"tool": tool}
+	case "tool_result":
+		tool, summary, status := parseToolResult(trimmed)
+		return RunEventKindToolResult, map[string]any{
+			"tool": tool, "summary": truncateText(summary, 500), "status": status,
+		}
+	}
+	// Fallback heuristic for CLI/Docker workers.
 	for _, tool := range knownToolNames {
 		if strings.Contains(trimmed, tool) {
 			return RunEventKindToolCall, map[string]any{
@@ -492,6 +512,31 @@ func classifyWorkerOutput(stream, text string) (RunEventKind, map[string]any) {
 	}
 }
 
+// parseToolResult splits "name: output" and detects "name failed: error" pattern.
+func parseToolResult(text string) (tool, summary, status string) {
+	status = "success"
+	if idx := strings.Index(text, " failed: "); idx >= 0 {
+		tool = strings.TrimSpace(text[:idx])
+		summary = strings.TrimSpace(text[idx+len(" failed: "):])
+		status = "error"
+		return
+	}
+	if idx := strings.Index(text, ": "); idx >= 0 {
+		tool = strings.TrimSpace(text[:idx])
+		summary = strings.TrimSpace(text[idx+2:])
+		return
+	}
+	tool = text
+	return
+}
+
+func truncateText(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
 func (s *Service) traceRunOutput(runID string, run *Run) dispatch.WorkerOutputHandler {
 	return func(stream, text string) {
 		if strings.TrimSpace(text) == "" {
@@ -500,8 +545,8 @@ func (s *Service) traceRunOutput(runID string, run *Run) dispatch.WorkerOutputHa
 		kind, payload := classifyWorkerOutput(stream, text)
 		s.appendRunEvent(context.Background(), runID, kind, payload)
 
-		// Phase inference from tool calls.
-		if kind == RunEventKindToolCall {
+		// Phase inference from tool calls and results.
+		if kind == RunEventKindToolCall || kind == RunEventKindToolResult {
 			toolName, _ := payload["tool"].(string)
 			if readToolNames[toolName] {
 				if run.Phase == PhaseConnecting || run.Phase == PhaseQueued {

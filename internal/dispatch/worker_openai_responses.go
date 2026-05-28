@@ -101,9 +101,12 @@ func (w *OpenAIResponsesWorker) SpawnStream(ctx context.Context, ticketID, proje
 		}
 		nextInput := make([]openAIResponsesFunctionCallOutput, 0, len(calls))
 		for _, call := range calls {
+			if onOutput != nil {
+				onOutput("tool_call", call.Name)
+			}
 			output := executeOpenAIWorkspaceTool(ctx, workDir, call)
 			if onOutput != nil {
-				onOutput("stdout", summarizeOpenAIToolCall(call.Name, output))
+				onOutput("tool_result", summarizeOpenAIToolCall(call.Name, output))
 			}
 			nextInput = append(nextInput, openAIResponsesFunctionCallOutput{
 				Type:   "function_call_output",
@@ -368,11 +371,11 @@ func emitOpenAIResponsesToolOutput(resp *openAIResponsesResponse, onOutput Worke
 		}
 		switch {
 		case strings.TrimSpace(item.Error) != "":
-			onOutput("stderr", fmt.Sprintf("%s failed: %s", name, strings.TrimSpace(item.Error)))
+			onOutput("tool_result", fmt.Sprintf("%s failed: %s", name, strings.TrimSpace(item.Error)))
 		case strings.TrimSpace(item.Output) != "":
-			onOutput("stdout", fmt.Sprintf("%s: %s", name, strings.TrimSpace(item.Output)))
+			onOutput("tool_result", fmt.Sprintf("%s: %s", name, strings.TrimSpace(item.Output)))
 		case strings.TrimSpace(item.Status) != "":
-			onOutput("stdout", fmt.Sprintf("%s status=%s", name, strings.TrimSpace(item.Status)))
+			onOutput("tool_result", fmt.Sprintf("%s status=%s", name, strings.TrimSpace(item.Status)))
 		}
 	}
 }

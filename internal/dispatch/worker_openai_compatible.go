@@ -129,11 +129,14 @@ func (w *OpenAICompatibleWorker) SpawnStream(ctx context.Context, ticketID, proj
 		}
 
 		for _, toolCall := range assistant.ToolCalls {
+			if onOutput != nil {
+				onOutput("tool_call", toolCall.Function.Name)
+			}
 			output := executeOpenAIChatToolCall(ctx, workDir, bridge, toolCall)
 			summary := summarizeOpenAIToolCall(toolCall.Function.Name, output)
 			toolLog = append(toolLog, summary)
 			if onOutput != nil && strings.TrimSpace(summary) != "" {
-				onOutput("stdout", summary)
+				onOutput("tool_result", summary)
 			}
 			messages = append(messages, openAIChatMessage{
 				Role:       "tool",
