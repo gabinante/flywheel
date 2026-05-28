@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -48,8 +49,22 @@ type PostgresBus struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	// Last processed sequence for polling fallback.
-	lastSeq int64
+	// Last processed sequence for polling fallback. Accessed concurrently from
+	// Start, pollUndelivered, and deliverByID.
+	lastSeq atomic.Int64
+}
+
+// storeMaxSeq advances lastSeq to seq if seq is larger, atomically.
+func (b *PostgresBus) storeMaxSeq(seq int64) {
+	for {
+		cur := b.lastSeq.Load()
+		if seq <= cur {
+			return
+		}
+		if b.lastSeq.CompareAndSwap(cur, seq) {
+			return
+		}
+	}
 }
 
 type subscriberEntry struct {
@@ -168,7 +183,7 @@ func (b *PostgresBus) Start(ctx context.Context) error {
 		return fmt.Errorf("get max sequence: %w", err)
 	}
 	if maxSeq != nil {
-		b.lastSeq = *maxSeq
+		b.lastSeq.Store(*maxSeq)
 	}
 
 	// Start LISTEN/NOTIFY listener.
@@ -270,7 +285,7 @@ func (b *PostgresBus) pollUndelivered() {
 		WHERE sequence > $1
 		ORDER BY entity_key, sequence
 		LIMIT 100
-	`, b.lastSeq)
+	`, b.lastSeq.Load())
 	if err != nil {
 		if b.ctx.Err() == nil {
 			slog.Error("poll failed", "error", err)
@@ -309,9 +324,7 @@ func (b *PostgresBus) pollUndelivered() {
 
 		b.deliverToSubscribers(b.ctx, event)
 
-		if seq > b.lastSeq {
-			b.lastSeq = seq
-		}
+		b.storeMaxSeq(seq)
 	}
 }
 
@@ -352,9 +365,7 @@ func (b *PostgresBus) deliverByID(ctx context.Context, eventID string) {
 	b.deliverToSubscribers(ctx, event)
 
 	// Update lastSeq for poll dedup.
-	if seq > b.lastSeq {
-		b.lastSeq = seq
-	}
+	b.storeMaxSeq(seq)
 }
 
 // deliverToSubscribers fans out an event to all matching handlers.
@@ -396,13 +407,31 @@ func (b *PostgresBus) deliverOne(ctx context.Context, event Event, subscriberID 
 		`, event.ID, subscriberID)
 	}
 
-	// Call the handler.
-	handler(ctx, event)
+	// Call the handler, recovering from panics so one bad handler cannot kill
+	// the delivery goroutine (listenLoop/pollLoop). On panic we skip the ack so
+	// the event is redelivered on a later poll.
+	if panicked := b.callHandler(ctx, handler, event, subscriberID); panicked {
+		return
+	}
 
 	// Auto-ack after successful delivery (handler didn't panic).
 	if event.ID != "" {
 		_ = b.Ack(ctx, event.ID, subscriberID)
 	}
+}
+
+// callHandler invokes handler and reports whether it panicked.
+func (b *PostgresBus) callHandler(ctx context.Context, handler HandlerFn, event Event, subscriberID string) (panicked bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			panicked = true
+			slog.Error("event handler panicked",
+				"event_id", event.ID, "event_type", event.Type,
+				"subscriber", subscriberID, "panic", r)
+		}
+	}()
+	handler(ctx, event)
+	return false
 }
 
 // pruneLoop removes old fully-acked events periodically.

@@ -227,7 +227,7 @@ func (d *Dispatcher) Start(ctx context.Context) {
 		_ = d.durableBus.SubscribePattern("ticket.approved", "dispatcher:done", func(_ context.Context, e events.Event) {
 			d.handleTicketDone(ctx, e)
 		})
-		_ = d.durableBus.SubscribePattern("tests.failed", "dispatcher:tests-failed", func(_ context.Context, e events.Event) {
+		_ = d.durableBus.SubscribePattern(events.EventTestsFailed, "dispatcher:tests-failed", func(_ context.Context, e events.Event) {
 			d.handleTestsFailed(ctx, e)
 		})
 		_ = d.durableBus.SubscribePattern("ticket.rolled_back", "dispatcher:rolled-back", func(_ context.Context, e events.Event) {
@@ -873,8 +873,11 @@ func (d *Dispatcher) tryDispatch(ctx context.Context, t *ticket.Ticket) {
 			slog.Error("dispatch: get deps failed", "ticket", t.ID, "error", err)
 			return
 		}
+		// Require deps to be closed, matching guardDependenciesMet (the claim
+		// guard). Accepting "validated" here only spawns a worker that then
+		// fails its self-claim, churning retries.
 		for _, dep := range deps {
-			if dep.State != ticket.StateClosed && dep.State != ticket.StateValidated {
+			if dep.State != ticket.StateClosed {
 				return
 			}
 		}
