@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	apierrors "github.com/gabinante/flywheel/internal/errors"
 	"github.com/gabinante/flywheel/internal/orchestrator"
@@ -119,10 +120,23 @@ func (h *OrchestratorHandler) streamEvents(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("X-Accel-Buffering", "no")
 
 	ch := h.Service.SubscribeRunEvents(r.Context(), projectID)
-	for event := range ch {
-		data, _ := json.Marshal(event)
-		fmt.Fprintf(w, "data: %s\n\n", data)
-		flusher.Flush()
+	ticker := time.NewTicker(20 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case event, ok := <-ch:
+			if !ok {
+				return
+			}
+			data, _ := json.Marshal(event)
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		case <-ticker.C:
+			fmt.Fprintf(w, ": keepalive\n\n")
+			flusher.Flush()
+		case <-r.Context().Done():
+			return
+		}
 	}
 }
 

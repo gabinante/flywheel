@@ -276,7 +276,11 @@ func (d *Dispatcher) Start(ctx context.Context) {
 	slog.Info("dispatch started", "max_workers", d.cfg.MaxWorkers, "worktree_dir", d.cfg.WorktreeDir, "project", d.cfg.ProjectID, "durable", d.durableBus != nil)
 
 	// Scan for existing pending tickets on startup.
-	go d.reconcile(ctx)
+	d.wg.Add(1)
+	go func() {
+		defer d.wg.Done()
+		d.reconcile(ctx)
+	}()
 
 	// Periodic reconciliation: retry validated tickets with pending CI, pick up
 	// any tickets that fell through the cracks between events.
