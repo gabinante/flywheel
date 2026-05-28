@@ -17,8 +17,10 @@ type mockOrchestratorService struct {
 	thread        *orchestrator.Thread
 	getErr        error
 	sendErr       error
+	cancelErr     error
 	lastProjectID string
 	lastContent   string
+	lastRunID     string
 }
 
 func (m *mockOrchestratorService) GetThread(_ context.Context, projectID string) (*orchestrator.Thread, error) {
@@ -30,6 +32,19 @@ func (m *mockOrchestratorService) SendUserMessage(_ context.Context, projectID, 
 	m.lastProjectID = projectID
 	m.lastContent = content
 	return m.thread, m.sendErr
+}
+
+func (m *mockOrchestratorService) CancelRun(_ context.Context, projectID, runID string) error {
+	m.lastProjectID = projectID
+	m.lastRunID = runID
+	return m.cancelErr
+}
+
+func (m *mockOrchestratorService) SubscribeRunEvents(_ context.Context, projectID string) <-chan orchestrator.RunEvent {
+	m.lastProjectID = projectID
+	ch := make(chan orchestrator.RunEvent)
+	close(ch)
+	return ch
 }
 
 func authWithAgent(agentID string) func(http.Handler) http.Handler {
@@ -122,8 +137,8 @@ func TestOrchestratorHandlerCreateMessageOK(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "http://test/api/command-center/projects/proj-1/orchestrator/messages", body)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d body=%s", w.Code, w.Body.String())
 	}
 	if service.lastProjectID != "proj-1" || service.lastContent != "Ship the feature." {
 		t.Fatalf("unexpected service call: project=%q content=%q", service.lastProjectID, service.lastContent)

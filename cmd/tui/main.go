@@ -2500,7 +2500,7 @@ func parseGitNoteDetail(commitSHA, body string) *gitNoteDetail {
 
 func loadTrace(api *client.ClientWithResponses, ticketID string) tea.Cmd {
 	return func() tea.Msg {
-		rsp, err := api.GetTraceWithResponse(context.Background(), ticketID)
+		rsp, err := api.GetTraceWithResponse(context.Background(), ticketID, nil)
 		if err != nil {
 			return traceMsg{ticketID: ticketID, err: err.Error()}
 		}
