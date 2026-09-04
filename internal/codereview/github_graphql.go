@@ -54,7 +54,7 @@ const prSearchQuery = `query($q: String!, $n: Int!) {
         labels(first: 10) { nodes { name } }
         commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
         latestReviews(first: 20) { nodes { author { login } state submittedAt } }
-        reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } ... on Team { name } } } }
+        reviewRequests(first: 30) { nodes { requestedReviewer { ... on User { login } ... on Team { name } } } }
       }
     }
   }

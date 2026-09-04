@@ -110,9 +110,9 @@ export function MyReviewsPage() {
         <>
           <section className="space-y-2">
             <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              Requested from me directly · {data.requested.filter((p) => p.request_kind !== 'team').length}
+              Requested from me directly · {data.requested.filter((p) => p.request_kind === 'direct').length}
             </h2>
-            {data.requested.filter((p) => p.request_kind !== 'team').length === 0 && <p className="text-sm text-muted-foreground">Nobody is waiting on you personally.</p>}
+            {data.requested.filter((p) => p.request_kind === 'direct').length === 0 && <p className="text-sm text-muted-foreground">Nobody is waiting on you personally.</p>}
             {data.requested
               .filter((p) => p.request_kind !== 'team')
               .map((pr) => (
@@ -121,9 +121,9 @@ export function MyReviewsPage() {
           </section>
           <section className="space-y-2">
             <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              Requested via a team I'm on · {data.requested.filter((p) => p.request_kind === 'team').length}
+              Requested via a team I'm on · {data.requested.filter((p) => p.request_kind !== 'direct').length}
             </h2>
-            {data.requested.filter((p) => p.request_kind === 'team').length === 0 && <p className="text-sm text-muted-foreground">No team requests.</p>}
+            {data.requested.filter((p) => p.request_kind !== 'direct').length === 0 && <p className="text-sm text-muted-foreground">No team requests.</p>}
             {data.requested
               .filter((p) => p.request_kind === 'team')
               .map((pr) => (

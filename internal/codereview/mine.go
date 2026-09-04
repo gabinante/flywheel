@@ -346,13 +346,18 @@ func (s *Service) MyReviewsOverview(ctx context.Context, force bool) (*MyReviews
 
 func (s *Service) fetchMyReviews(ctx context.Context) (*MyReviews, error) {
 	login, _ := s.gh.Login(ctx)
-	var requested, reviewed []PRDetail
-	var reqErr, revErr error
+	var requested, direct, reviewed []PRDetail
+	var reqErr, dirErr, revErr error
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
 	go func() {
 		defer wg.Done()
 		requested, reqErr = s.gh.SearchPRs(ctx, "is:pr is:open review-requested:@me archived:false sort:updated-desc", 100)
+	}()
+	go func() {
+		// GitHub's own notion of "asked for me personally" — authoritative, unlike scanning reviewRequests.
+		defer wg.Done()
+		direct, dirErr = s.gh.SearchPRs(ctx, "is:pr is:open user-review-requested:@me archived:false sort:updated-desc", 100)
 	}()
 	go func() {
 		defer wg.Done()
@@ -365,9 +370,22 @@ func (s *Service) fetchMyReviews(ctx context.Context) (*MyReviews, error) {
 	if revErr != nil {
 		return nil, revErr
 	}
+	directKeys := map[string]bool{}
+	if dirErr == nil {
+		for _, p := range direct {
+			directKeys[prKey(p.Repo, p.Number)] = true
+		}
+	}
 	inRequested := map[string]bool{}
 	for _, p := range requested {
 		inRequested[prKey(p.Repo, p.Number)] = true
+	}
+	// Make sure every directly-requested PR is in the requested list even if the broad search capped out.
+	for _, p := range direct {
+		if !inRequested[prKey(p.Repo, p.Number)] {
+			requested = append(requested, p)
+			inRequested[prKey(p.Repo, p.Number)] = true
+		}
 	}
 	var onlyReviewed []PRDetail
 	for _, p := range reviewed {
@@ -376,6 +394,18 @@ func (s *Service) fetchMyReviews(ctx context.Context) (*MyReviews, error) {
 		}
 	}
 	res := &MyReviews{Login: login, FetchedAt: time.Now(), Requested: s.enrich(ctx, login, requested), Reviewed: s.enrich(ctx, login, onlyReviewed)}
+	for i := range res.Requested {
+		c := &res.Requested[i]
+		if dirErr == nil {
+			if directKeys[prKey(c.Repo, c.Number)] {
+				c.RequestKind, c.ReviewRequestedFromMe = "direct", true
+			} else {
+				c.RequestKind = "team"
+			}
+		} else if c.RequestKind == "" {
+			c.RequestKind = "team"
+		}
+	}
 	s.mine.mu.Lock()
 	s.mine.reviews, s.mine.revAt = res, res.FetchedAt
 	s.mine.mu.Unlock()
