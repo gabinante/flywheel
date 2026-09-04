@@ -3,7 +3,10 @@ package sessions
 import (
 	"context"
 	"errors"
+	"github.com/gabinante/flywheel/internal/harness"
 	"log/slog"
+	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -21,6 +24,7 @@ type Config struct {
 type Service struct {
 	store  *Store
 	cfg    Config
+	runner Continuer
 	claude *claudeCollector
 	codex  *codexCollector
 
@@ -169,3 +173,47 @@ func (s *Service) Interval() time.Duration { return s.cfg.Interval }
 
 // Enabled reports whether ingestion is on.
 func (s *Service) Enabled() bool { return s.cfg.Enabled }
+
+// Continuer runs a harness turn (set by main to the shared harness runner).
+type Continuer interface {
+	Run(ctx context.Context, spec harness.Spec) (*harness.Result, error)
+}
+
+// SetRunner installs the harness runner used to continue sessions.
+func (s *Service) SetRunner(r Continuer) { s.runner = r }
+
+// Continue resumes a tracked session with a new message in its working directory and
+// returns the agent's reply. The harness appends to its own session store, so the next
+// ingestion pass picks up the new turns.
+func (s *Service) Continue(ctx context.Context, id, message string) (string, error) {
+	if s.runner == nil {
+		return "", errors.New("session continuation is not configured")
+	}
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return "", errors.New("message is required")
+	}
+	sess, err := s.store.Get(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if sess == nil {
+		return "", errors.New("session not found")
+	}
+	kind := harness.Codex
+	if sess.Harness == HarnessClaudeCode {
+		kind = harness.ClaudeCode
+	}
+	workDir := sess.CWD
+	if st, err := os.Stat(workDir); err != nil || !st.IsDir() {
+		workDir, _ = os.UserHomeDir()
+	}
+	res, err := s.runner.Run(ctx, harness.Spec{
+		Harness: kind, WorkDir: workDir, Prompt: message, Sandbox: harness.SandboxFull, Timeout: 30 * time.Minute, Resume: sess.ExternalID,
+	})
+	if err != nil && (res == nil || strings.TrimSpace(res.Output) == "") {
+		return "", err
+	}
+	go func() { _ = s.RunOnce(context.WithoutCancel(ctx)) }() // pick up the new turns
+	return strings.TrimSpace(res.Output), nil
+}

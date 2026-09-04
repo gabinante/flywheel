@@ -234,6 +234,7 @@ func run(ctx context.Context, cfg *config.Config) {
 
 	// Code review: PR-keyed reviews by a local harness, posted through the operator's gh CLI.
 	harnessRunner := harness.New(eff.RunnerConfig())
+	sessionsSvc.SetRunner(harnessRunner)
 	reviewCfg, feedbackCfg := eff.ReviewConfig()
 	reviewCfg.ReviewTimeout, feedbackCfg.Timeout = cfg.Review.Timeout, cfg.Feedback.Timeout
 	codeReviewSvc := codereview.New(codereview.NewStore(pool), codereview.NewGitHub(""), harnessRunner, sessionsSvc, bus, reviewCfg)

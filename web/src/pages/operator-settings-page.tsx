@@ -102,9 +102,10 @@ export function OperatorSettingsPage() {
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [err, setErr] = useState<string | null>(null)
-  const [params] = useSearchParams()
-  const initial = params.get('section')
-  const [section, setSection] = useState<SectionID>(SECTIONS.some((s) => s.id === initial) ? (initial as SectionID) : 'linear')
+  const [params, setParams] = useSearchParams()
+  const requested = params.get('section')
+  const section: SectionID = SECTIONS.some((s) => s.id === requested) ? (requested as SectionID) : 'linear'
+  const setSection = (id: SectionID) => setParams(id === 'linear' ? {} : { section: id }, { replace: true })
   const [linearStatus, setLinearStatus] = useState<LinearStatus | null>(null)
   const [reviewStatus, setReviewStatus] = useState<CodeReviewStatus | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
@@ -204,7 +205,7 @@ export function OperatorSettingsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1500px] space-y-6 p-6 xl:px-10">
+    <div className="w-full space-y-6 p-6 xl:px-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold">
@@ -226,7 +227,7 @@ export function OperatorSettingsPage() {
         </div>
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-[240px_minmax(0,1fr)]">
+      <div className="grid gap-8 lg:grid-cols-[260px_minmax(0,1fr)]">
         <nav className="space-y-1">
           {SECTIONS.map((s) => {
             const Icon = s.icon

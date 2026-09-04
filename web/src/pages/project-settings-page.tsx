@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import {
   ArrowRight,
   Check,
@@ -533,6 +533,7 @@ export function ProjectSettingsPage() {
     (entry) => entry.id === selectedSection,
   )
 
+  if (section === 'workers') return <Navigate to="/settings?section=workers" replace />
   if (!orgId || !projectId) {
     return <p className="text-sm text-destructive">Missing route params.</p>
   }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, Copy, ExternalLink, GitBranch } from 'lucide-react'
 
+import { AgentConversation, type ConversationMessage } from '@/components/agent-conversation'
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -35,11 +36,38 @@ function Meta({ label, value, mono }: { label: string; value: string | number | 
   )
 }
 
+function ContinueSession({ sessionId, harness, onReplied }: { sessionId: string; harness: string; onReplied: () => void }) {
+  const { client } = useAuth()
+  const [messages, setMessages] = useState<ConversationMessage[]>([])
+  const send = async (text: string) => {
+    const mine: ConversationMessage = { id: `u-${Date.now()}`, role: 'user', content: text, created_at: new Date().toISOString() }
+    setMessages((prev) => [...prev, mine])
+    const { data, error, response } = await client.POST('/sessions/{sessionID}/continue', { params: { path: { sessionID: sessionId } }, body: { message: text } })
+    if (!response.ok || !data) {
+      setMessages((prev) => prev.filter((m) => m.id !== mine.id))
+      return formatApiError(error)
+    }
+    setMessages((prev) => [...prev, { id: `a-${Date.now()}`, role: 'assistant', content: data.reply, created_at: new Date().toISOString() }])
+    onReplied()
+    return null
+  }
+  return (
+    <AgentConversation
+      title={`Continue this session (${harness === 'codex' ? 'Codex' : 'Claude Code'})`}
+      description="Sends a new message into the same harness session, in its working directory, with full permissions. New turns show up in the transcript after the next ingestion pass."
+      messages={messages}
+      onSend={send}
+      emptyHint="Pick up where this session left off."
+    />
+  )
+}
+
 export function SessionDetailPage() {
   const { client } = useAuth()
   const { sessionId } = useParams<{ sessionId: string }>()
   const { base, projectId, orgSlug, projectSlug } = useProjectPaths()
   const projectLabel = useProjectBreadcrumbLabel(projectId)
+  const [reloadTick, setReloadTick] = useState(0)
   const [detail, setDetail] = useState<SessionDetail | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -60,7 +88,7 @@ export function SessionDetailPage() {
     return () => {
       cancelled = true
     }
-  }, [client, sessionId])
+  }, [client, sessionId, reloadTick])
 
   const s = detail?.session
 
@@ -138,6 +166,8 @@ export function SessionDetailPage() {
               </div>
             )}
           </Card>
+
+          <ContinueSession sessionId={s.id} harness={s.harness} onReplied={() => setReloadTick((t) => t + 1)} />
 
           {s.links.length > 0 && (
             <Card className="border-white/10 bg-white/5 backdrop-blur-md">

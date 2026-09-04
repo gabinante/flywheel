@@ -712,6 +712,16 @@ type CodeReviewListResponse struct {
 	Total    int                 `json:"total"`
 }
 
+// CodeReviewMessage defines model for CodeReviewMessage.
+type CodeReviewMessage struct {
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"created_at"`
+	Id        string    `json:"id"`
+	ReviewId  string    `json:"review_id"`
+	Role      string    `json:"role"`
+	SessionId *string   `json:"session_id,omitempty"`
+}
+
 // CodeReviewRequest defines model for CodeReviewRequest.
 type CodeReviewRequest struct {
 	Attempt       int                 `json:"attempt"`
@@ -1698,6 +1708,11 @@ type ListFeedbackRoundsParams struct {
 	Limit *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// AskCodeReviewJSONBody defines parameters for AskCodeReview.
+type AskCodeReviewJSONBody struct {
+	Message string `json:"message"`
+}
+
 // GetMyPullRequestsParams defines parameters for GetMyPullRequests.
 type GetMyPullRequestsParams struct {
 	Refresh *bool `form:"refresh,omitempty" json:"refresh,omitempty"`
@@ -1792,6 +1807,11 @@ type ListSessionsParamsOrigin string
 // ListSessionsParamsStatus defines parameters for ListSessions.
 type ListSessionsParamsStatus string
 
+// ContinueSessionJSONBody defines parameters for ContinueSession.
+type ContinueSessionJSONBody struct {
+	Message string `json:"message"`
+}
+
 // ReleaseLeaseJSONBody defines parameters for ReleaseLease.
 type ReleaseLeaseJSONBody struct {
 	LeaseToken *string `json:"lease_token,omitempty"`
@@ -1819,6 +1839,9 @@ type CreateCodeReviewsJSONRequestBody = CreateCodeReviewRequest
 
 // SetFeedbackRoundStateJSONRequestBody defines body for SetFeedbackRoundState for application/json ContentType.
 type SetFeedbackRoundStateJSONRequestBody = SetFeedbackRoundStateRequest
+
+// AskCodeReviewJSONRequestBody defines body for AskCodeReview for application/json ContentType.
+type AskCodeReviewJSONRequestBody AskCodeReviewJSONBody
 
 // UpdateLayoutJSONRequestBody defines body for UpdateLayout for application/json ContentType.
 type UpdateLayoutJSONRequestBody = Layout
@@ -1855,6 +1878,9 @@ type UpdateWorkStreamJSONRequestBody = UpdateWorkStreamRequest
 
 // PostWeeklyRoundupJSONRequestBody defines body for PostWeeklyRoundup for application/json ContentType.
 type PostWeeklyRoundupJSONRequestBody = PostReportRequest
+
+// ContinueSessionJSONRequestBody defines body for ContinueSession for application/json ContentType.
+type ContinueSessionJSONRequestBody ContinueSessionJSONBody
 
 // CreateSessionLinkJSONRequestBody defines body for CreateSessionLink for application/json ContentType.
 type CreateSessionLinkJSONRequestBody = CreateSessionLinkRequest
@@ -1912,6 +1938,12 @@ type ServerInterface interface {
 	// CloseCodeReview Stop watching a PR
 	// (POST /code-reviews/{reviewID}/close)
 	CloseCodeReview(w http.ResponseWriter, r *http.Request, reviewID string)
+	// ListCodeReviewMessages Conversation with the agent that performed the review
+	// (GET /code-reviews/{reviewID}/messages)
+	ListCodeReviewMessages(w http.ResponseWriter, r *http.Request, reviewID string)
+	// AskCodeReview Ask the reviewing agent a question (resumes its session); may take a minute or two
+	// (POST /code-reviews/{reviewID}/messages)
+	AskCodeReview(w http.ResponseWriter, r *http.Request, reviewID string)
 	// RerunCodeReview Queue another review attempt
 	// (POST /code-reviews/{reviewID}/rerun)
 	RerunCodeReview(w http.ResponseWriter, r *http.Request, reviewID string)
@@ -2038,6 +2070,9 @@ type ServerInterface interface {
 	// GetSession Session detail with prompts, links, and subagent children
 	// (GET /sessions/{sessionID})
 	GetSession(w http.ResponseWriter, r *http.Request, sessionID string)
+	// ContinueSession Send a new message to a tracked harness session (resumes it in its working directory)
+	// (POST /sessions/{sessionID}/continue)
+	ContinueSession(w http.ResponseWriter, r *http.Request, sessionID string)
 	// CreateSessionLink Link a session to a PR, Linear issue, ticket, or review
 	// (POST /sessions/{sessionID}/links)
 	CreateSessionLink(w http.ResponseWriter, r *http.Request, sessionID string)
@@ -2355,6 +2390,58 @@ func (siw *ServerInterfaceWrapper) CloseCodeReview(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CloseCodeReview(w, r, reviewID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCodeReviewMessages operation middleware
+func (siw *ServerInterfaceWrapper) ListCodeReviewMessages(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reviewID" -------------
+	var reviewID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reviewID", r.PathValue("reviewID"), &reviewID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCodeReviewMessages(w, r, reviewID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AskCodeReview operation middleware
+func (siw *ServerInterfaceWrapper) AskCodeReview(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reviewID" -------------
+	var reviewID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reviewID", r.PathValue("reviewID"), &reviewID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AskCodeReview(w, r, reviewID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3617,6 +3704,32 @@ func (siw *ServerInterfaceWrapper) GetSession(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// ContinueSession operation middleware
+func (siw *ServerInterfaceWrapper) ContinueSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "sessionID" -------------
+	var sessionID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionID", r.PathValue("sessionID"), &sessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ContinueSession(w, r, sessionID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateSessionLink operation middleware
 func (siw *ServerInterfaceWrapper) CreateSessionLink(w http.ResponseWriter, r *http.Request) {
 
@@ -4169,6 +4282,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/layout", wrapper.GetLayout)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/me/layout", wrapper.UpdateLayout)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/harnesses/status", wrapper.GetHarnessStatus)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/code-reviews/{reviewID}/messages", wrapper.ListCodeReviewMessages)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/code-reviews/{reviewID}/messages", wrapper.AskCodeReview)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/sessions/{sessionID}/continue", wrapper.ContinueSession)
 
 	return m
 }
@@ -4569,6 +4685,97 @@ func (response CloseCodeReview401JSONResponse) VisitCloseCodeReviewResponse(w ht
 type CloseCodeReview404JSONResponse StructuredError
 
 func (response CloseCodeReview404JSONResponse) VisitCloseCodeReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCodeReviewMessagesRequestObject struct {
+	ReviewID string `json:"reviewID"`
+}
+
+type ListCodeReviewMessagesResponseObject interface {
+	VisitListCodeReviewMessagesResponse(w http.ResponseWriter) error
+}
+
+type ListCodeReviewMessages200JSONResponse struct {
+	Messages []CodeReviewMessage `json:"messages"`
+}
+
+func (response ListCodeReviewMessages200JSONResponse) VisitListCodeReviewMessagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCodeReviewMessages404JSONResponse StructuredError
+
+func (response ListCodeReviewMessages404JSONResponse) VisitListCodeReviewMessagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AskCodeReviewRequestObject struct {
+	ReviewID string `json:"reviewID"`
+	Body     *AskCodeReviewJSONRequestBody
+}
+
+type AskCodeReviewResponseObject interface {
+	VisitAskCodeReviewResponse(w http.ResponseWriter) error
+}
+
+type AskCodeReview200JSONResponse struct {
+	Messages []CodeReviewMessage `json:"messages"`
+}
+
+func (response AskCodeReview200JSONResponse) VisitAskCodeReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AskCodeReview400JSONResponse StructuredError
+
+func (response AskCodeReview400JSONResponse) VisitAskCodeReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AskCodeReview404JSONResponse StructuredError
+
+func (response AskCodeReview404JSONResponse) VisitAskCodeReviewResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -6411,6 +6618,59 @@ func (response GetSession404JSONResponse) VisitGetSessionResponse(w http.Respons
 	return err
 }
 
+type ContinueSessionRequestObject struct {
+	SessionID string `json:"sessionID"`
+	Body      *ContinueSessionJSONRequestBody
+}
+
+type ContinueSessionResponseObject interface {
+	VisitContinueSessionResponse(w http.ResponseWriter) error
+}
+
+type ContinueSession200JSONResponse struct {
+	Reply string `json:"reply"`
+}
+
+func (response ContinueSession200JSONResponse) VisitContinueSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ContinueSession400JSONResponse StructuredError
+
+func (response ContinueSession400JSONResponse) VisitContinueSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ContinueSession404JSONResponse StructuredError
+
+func (response ContinueSession404JSONResponse) VisitContinueSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateSessionLinkRequestObject struct {
 	SessionID string `json:"sessionID"`
 	Body      *CreateSessionLinkJSONRequestBody
@@ -7022,6 +7282,12 @@ type StrictServerInterface interface {
 	// CloseCodeReview Stop watching a PR
 	// (POST /code-reviews/{reviewID}/close)
 	CloseCodeReview(ctx context.Context, request CloseCodeReviewRequestObject) (CloseCodeReviewResponseObject, error)
+	// ListCodeReviewMessages Conversation with the agent that performed the review
+	// (GET /code-reviews/{reviewID}/messages)
+	ListCodeReviewMessages(ctx context.Context, request ListCodeReviewMessagesRequestObject) (ListCodeReviewMessagesResponseObject, error)
+	// AskCodeReview Ask the reviewing agent a question (resumes its session); may take a minute or two
+	// (POST /code-reviews/{reviewID}/messages)
+	AskCodeReview(ctx context.Context, request AskCodeReviewRequestObject) (AskCodeReviewResponseObject, error)
 	// RerunCodeReview Queue another review attempt
 	// (POST /code-reviews/{reviewID}/rerun)
 	RerunCodeReview(ctx context.Context, request RerunCodeReviewRequestObject) (RerunCodeReviewResponseObject, error)
@@ -7148,6 +7414,9 @@ type StrictServerInterface interface {
 	// GetSession Session detail with prompts, links, and subagent children
 	// (GET /sessions/{sessionID})
 	GetSession(ctx context.Context, request GetSessionRequestObject) (GetSessionResponseObject, error)
+	// ContinueSession Send a new message to a tracked harness session (resumes it in its working directory)
+	// (POST /sessions/{sessionID}/continue)
+	ContinueSession(ctx context.Context, request ContinueSessionRequestObject) (ContinueSessionResponseObject, error)
 	// CreateSessionLink Link a session to a PR, Linear issue, ticket, or review
 	// (POST /sessions/{sessionID}/links)
 	CreateSessionLink(ctx context.Context, request CreateSessionLinkRequestObject) (CreateSessionLinkResponseObject, error)
@@ -7475,6 +7744,65 @@ func (sh *strictHandler) CloseCodeReview(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CloseCodeReviewResponseObject); ok {
 		if err := validResponse.VisitCloseCodeReviewResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListCodeReviewMessages operation middleware
+func (sh *strictHandler) ListCodeReviewMessages(w http.ResponseWriter, r *http.Request, reviewID string) {
+	var request ListCodeReviewMessagesRequestObject
+
+	request.ReviewID = reviewID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCodeReviewMessages(ctx, request.(ListCodeReviewMessagesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCodeReviewMessages")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListCodeReviewMessagesResponseObject); ok {
+		if err := validResponse.VisitListCodeReviewMessagesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AskCodeReview operation middleware
+func (sh *strictHandler) AskCodeReview(w http.ResponseWriter, r *http.Request, reviewID string) {
+	var request AskCodeReviewRequestObject
+
+	request.ReviewID = reviewID
+
+	var body AskCodeReviewJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AskCodeReview(ctx, request.(AskCodeReviewRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AskCodeReview")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AskCodeReviewResponseObject); ok {
+		if err := validResponse.VisitAskCodeReviewResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -8641,6 +8969,39 @@ func (sh *strictHandler) GetSession(w http.ResponseWriter, r *http.Request, sess
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetSessionResponseObject); ok {
 		if err := validResponse.VisitGetSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ContinueSession operation middleware
+func (sh *strictHandler) ContinueSession(w http.ResponseWriter, r *http.Request, sessionID string) {
+	var request ContinueSessionRequestObject
+
+	request.SessionID = sessionID
+
+	var body ContinueSessionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ContinueSession(ctx, request.(ContinueSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ContinueSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ContinueSessionResponseObject); ok {
+		if err := validResponse.VisitContinueSessionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

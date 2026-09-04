@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LogOut,
   FolderKanban,
+  ServerCog,
   Settings,
   TerminalSquare,
   Ticket,
@@ -37,6 +38,15 @@ type NavItem = {
   children?: NavItem[]
 }
 
+/** currentPath is pathname + search; plain matches ignore the query, section links require it. */
+function isActive(item: { href: string; match?: string }, currentPath: string): boolean {
+  const pathOnly = currentPath.split('?')[0]
+  const target = item.match ?? item.href
+  if (target.includes('?')) return currentPath === target || currentPath.startsWith(target + '&')
+  if (item.match) return pathOnly.startsWith(item.match)
+  return pathOnly === item.href
+}
+
 function formatBadgeCount(count: number): string {
   return count > 9 ? '9+' : String(count)
 }
@@ -60,9 +70,7 @@ function NavSection({
         </span>
       )}
       {items.map((item) => {
-        const active = item.match
-          ? currentPath.startsWith(item.match)
-          : currentPath === item.href
+        const active = isActive(item, currentPath)
         return (
           <div key={item.href} className="flex flex-col gap-0.5">
             <Link
@@ -93,9 +101,7 @@ function NavSection({
             {expanded && item.children && item.children.length > 0 ? (
               <div className="ml-5 flex flex-col gap-0.5 border-l border-sidebar-border/70 pl-2">
                 {item.children.map((child) => {
-                  const childActive = child.match
-                    ? currentPath.startsWith(child.match)
-                    : currentPath === child.href
+                  const childActive = isActive(child, currentPath)
                   return (
                     <Link
                       key={child.href}
@@ -180,12 +186,6 @@ export function LeftSidebar() {
               match: `${projectBase}/settings/dispatch`,
             },
             {
-              label: 'Workers and roles',
-              icon: Settings,
-              href: `${projectBase}/settings/workers`,
-              match: `${projectBase}/settings/workers`,
-            },
-            {
               label: 'Workflow stages',
               icon: Settings,
               href: `${projectBase}/settings/workflow`,
@@ -196,7 +196,7 @@ export function LeftSidebar() {
       ]
     : []
 
-  const currentPath = location.pathname
+  const currentPath = location.pathname + location.search
 
   return (
     <aside
@@ -297,6 +297,7 @@ export function LeftSidebar() {
               { label: 'My Reviews', icon: ClipboardCheck, href: '/my/reviews', match: '/my/reviews' },
               { label: 'Scheduled actions', icon: CalendarClock, href: '/schedule', match: '/schedule' },
               { label: 'Workflows', icon: Workflow, href: '/workflows', match: '/workflows' },
+              { label: 'Workers & roles', icon: ServerCog, href: '/settings?section=workers', match: '/settings?section=workers' },
             ]}
             expanded={isExpanded}
             currentPath={currentPath}
@@ -311,7 +312,7 @@ export function LeftSidebar() {
             to="/settings"
             className={cn(
               'group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
-              location.pathname.startsWith('/settings') && 'bg-sidebar-accent/60 text-sidebar-foreground',
+              location.pathname.startsWith('/settings') && !location.search.includes('section=workers') && 'bg-sidebar-accent/60 text-sidebar-foreground',
               !isExpanded && 'justify-center px-0',
             )}
             title={isExpanded ? undefined : 'Settings'}

@@ -711,6 +711,16 @@ type CodeReviewListResponse struct {
 	Total    int                 `json:"total"`
 }
 
+// CodeReviewMessage defines model for CodeReviewMessage.
+type CodeReviewMessage struct {
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"created_at"`
+	Id        string    `json:"id"`
+	ReviewId  string    `json:"review_id"`
+	Role      string    `json:"role"`
+	SessionId *string   `json:"session_id,omitempty"`
+}
+
 // CodeReviewRequest defines model for CodeReviewRequest.
 type CodeReviewRequest struct {
 	Attempt       int                 `json:"attempt"`
@@ -1697,6 +1707,11 @@ type ListFeedbackRoundsParams struct {
 	Limit *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// AskCodeReviewJSONBody defines parameters for AskCodeReview.
+type AskCodeReviewJSONBody struct {
+	Message string `json:"message"`
+}
+
 // GetMyPullRequestsParams defines parameters for GetMyPullRequests.
 type GetMyPullRequestsParams struct {
 	Refresh *bool `form:"refresh,omitempty" json:"refresh,omitempty"`
@@ -1791,6 +1806,11 @@ type ListSessionsParamsOrigin string
 // ListSessionsParamsStatus defines parameters for ListSessions.
 type ListSessionsParamsStatus string
 
+// ContinueSessionJSONBody defines parameters for ContinueSession.
+type ContinueSessionJSONBody struct {
+	Message string `json:"message"`
+}
+
 // ReleaseLeaseJSONBody defines parameters for ReleaseLease.
 type ReleaseLeaseJSONBody struct {
 	LeaseToken *string `json:"lease_token,omitempty"`
@@ -1818,6 +1838,9 @@ type CreateCodeReviewsJSONRequestBody = CreateCodeReviewRequest
 
 // SetFeedbackRoundStateJSONRequestBody defines body for SetFeedbackRoundState for application/json ContentType.
 type SetFeedbackRoundStateJSONRequestBody = SetFeedbackRoundStateRequest
+
+// AskCodeReviewJSONRequestBody defines body for AskCodeReview for application/json ContentType.
+type AskCodeReviewJSONRequestBody AskCodeReviewJSONBody
 
 // UpdateLayoutJSONRequestBody defines body for UpdateLayout for application/json ContentType.
 type UpdateLayoutJSONRequestBody = Layout
@@ -1854,6 +1877,9 @@ type UpdateWorkStreamJSONRequestBody = UpdateWorkStreamRequest
 
 // PostWeeklyRoundupJSONRequestBody defines body for PostWeeklyRoundup for application/json ContentType.
 type PostWeeklyRoundupJSONRequestBody = PostReportRequest
+
+// ContinueSessionJSONRequestBody defines body for ContinueSession for application/json ContentType.
+type ContinueSessionJSONRequestBody ContinueSessionJSONBody
 
 // CreateSessionLinkJSONRequestBody defines body for CreateSessionLink for application/json ContentType.
 type CreateSessionLinkJSONRequestBody = CreateSessionLinkRequest
@@ -2027,6 +2053,25 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /code-reviews/{reviewID}/close (the `CloseCodeReview` operationId).
 	CloseCodeReview(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListCodeReviewMessages Conversation with the agent that performed the review
+	//
+	// Corresponds with GET /code-reviews/{reviewID}/messages (the `ListCodeReviewMessages` operationId).
+	ListCodeReviewMessages(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AskCodeReviewWithBody Ask the reviewing agent a question (resumes its session); may take a minute or two
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /code-reviews/{reviewID}/messages (the `AskCodeReview` operationId).
+	AskCodeReviewWithBody(ctx context.Context, reviewID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AskCodeReview Ask the reviewing agent a question (resumes its session); may take a minute or two
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /code-reviews/{reviewID}/messages (the `AskCodeReview` operationId).
+	AskCodeReview(ctx context.Context, reviewID string, body AskCodeReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RerunCodeReview Queue another review attempt
 	//
@@ -2309,6 +2354,20 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /sessions/{sessionID} (the `GetSession` operationId).
 	GetSession(ctx context.Context, sessionID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ContinueSessionWithBody Send a new message to a tracked harness session (resumes it in its working directory)
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /sessions/{sessionID}/continue (the `ContinueSession` operationId).
+	ContinueSessionWithBody(ctx context.Context, sessionID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ContinueSession Send a new message to a tracked harness session (resumes it in its working directory)
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /sessions/{sessionID}/continue (the `ContinueSession` operationId).
+	ContinueSession(ctx context.Context, sessionID string, body ContinueSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateSessionLinkWithBody Link a session to a PR, Linear issue, ticket, or review
 	//
@@ -2607,6 +2666,55 @@ func (c *Client) GetCodeReview(ctx context.Context, reviewID string, reqEditors 
 // Corresponds with POST /code-reviews/{reviewID}/close (the `CloseCodeReview` operationId).
 func (c *Client) CloseCodeReview(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCloseCodeReviewRequest(c.Server, reviewID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListCodeReviewMessages Conversation with the agent that performed the review
+//
+// Corresponds with GET /code-reviews/{reviewID}/messages (the `ListCodeReviewMessages` operationId).
+func (c *Client) ListCodeReviewMessages(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCodeReviewMessagesRequest(c.Server, reviewID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AskCodeReviewWithBody Ask the reviewing agent a question (resumes its session); may take a minute or two
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /code-reviews/{reviewID}/messages (the `AskCodeReview` operationId).
+func (c *Client) AskCodeReviewWithBody(ctx context.Context, reviewID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAskCodeReviewRequestWithBody(c.Server, reviewID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AskCodeReview Ask the reviewing agent a question (resumes its session); may take a minute or two
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /code-reviews/{reviewID}/messages (the `AskCodeReview` operationId).
+func (c *Client) AskCodeReview(ctx context.Context, reviewID string, body AskCodeReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAskCodeReviewRequest(c.Server, reviewID, body)
 	if err != nil {
 		return nil, err
 	}
@@ -3439,6 +3547,40 @@ func (c *Client) GetSession(ctx context.Context, sessionID string, reqEditors ..
 	return c.Client.Do(req)
 }
 
+// ContinueSessionWithBody Send a new message to a tracked harness session (resumes it in its working directory)
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /sessions/{sessionID}/continue (the `ContinueSession` operationId).
+func (c *Client) ContinueSessionWithBody(ctx context.Context, sessionID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewContinueSessionRequestWithBody(c.Server, sessionID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ContinueSession Send a new message to a tracked harness session (resumes it in its working directory)
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /sessions/{sessionID}/continue (the `ContinueSession` operationId).
+func (c *Client) ContinueSession(ctx context.Context, sessionID string, body ContinueSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewContinueSessionRequest(c.Server, sessionID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // CreateSessionLinkWithBody Link a session to a PR, Linear issue, ticket, or review
 //
 // Takes any type of body and a specified content type.
@@ -4188,6 +4330,87 @@ func NewCloseCodeReviewRequest(server string, reviewID string) (*http.Request, e
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewListCodeReviewMessagesRequest constructs an http.Request for the ListCodeReviewMessages method
+func NewListCodeReviewMessagesRequest(server string, reviewID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewID", reviewID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/code-reviews/%s/messages", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAskCodeReviewRequest calls the generic AskCodeReview builder with application/json body
+func NewAskCodeReviewRequest(server string, reviewID string, body AskCodeReviewJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAskCodeReviewRequestWithBody(server, reviewID, "application/json", bodyReader)
+}
+
+// NewAskCodeReviewRequestWithBody constructs an http.Request for the AskCodeReview method, with any body, and a specified content type
+func NewAskCodeReviewRequestWithBody(server string, reviewID string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewID", reviewID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/code-reviews/%s/messages", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -6097,6 +6320,53 @@ func NewGetSessionRequest(server string, sessionID string) (*http.Request, error
 	return req, nil
 }
 
+// NewContinueSessionRequest calls the generic ContinueSession builder with application/json body
+func NewContinueSessionRequest(server string, sessionID string, body ContinueSessionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewContinueSessionRequestWithBody(server, sessionID, "application/json", bodyReader)
+}
+
+// NewContinueSessionRequestWithBody constructs an http.Request for the ContinueSession method, with any body, and a specified content type
+func NewContinueSessionRequestWithBody(server string, sessionID string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "sessionID", sessionID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sessions/%s/continue", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewCreateSessionLinkRequest calls the generic CreateSessionLink builder with application/json body
 func NewCreateSessionLinkRequest(server string, sessionID string, body CreateSessionLinkJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -6843,6 +7113,27 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /code-reviews/{reviewID}/close (the `CloseCodeReview` operationId).
 	CloseCodeReviewWithResponse(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*CloseCodeReviewResponse, error)
 
+	// ListCodeReviewMessagesWithResponse Conversation with the agent that performed the review
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /code-reviews/{reviewID}/messages (the `ListCodeReviewMessages` operationId).
+	ListCodeReviewMessagesWithResponse(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*ListCodeReviewMessagesResponse, error)
+
+	// AskCodeReviewWithBodyWithResponse Ask the reviewing agent a question (resumes its session); may take a minute or two
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /code-reviews/{reviewID}/messages (the `AskCodeReview` operationId).
+	AskCodeReviewWithBodyWithResponse(ctx context.Context, reviewID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AskCodeReviewResponse, error)
+
+	// AskCodeReviewWithResponse Ask the reviewing agent a question (resumes its session); may take a minute or two
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /code-reviews/{reviewID}/messages (the `AskCodeReview` operationId).
+	AskCodeReviewWithResponse(ctx context.Context, reviewID string, body AskCodeReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*AskCodeReviewResponse, error)
+
 	// RerunCodeReviewWithResponse Queue another review attempt
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -7194,6 +7485,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /sessions/{sessionID} (the `GetSession` operationId).
 	GetSessionWithResponse(ctx context.Context, sessionID string, reqEditors ...RequestEditorFn) (*GetSessionResponse, error)
+
+	// ContinueSessionWithBodyWithResponse Send a new message to a tracked harness session (resumes it in its working directory)
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /sessions/{sessionID}/continue (the `ContinueSession` operationId).
+	ContinueSessionWithBodyWithResponse(ctx context.Context, sessionID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ContinueSessionResponse, error)
+
+	// ContinueSessionWithResponse Send a new message to a tracked harness session (resumes it in its working directory)
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /sessions/{sessionID}/continue (the `ContinueSession` operationId).
+	ContinueSessionWithResponse(ctx context.Context, sessionID string, body ContinueSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*ContinueSessionResponse, error)
 
 	// CreateSessionLinkWithBodyWithResponse Link a session to a PR, Linear issue, ticket, or review
 	//
@@ -7797,6 +8102,117 @@ func (r CloseCodeReviewResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r CloseCodeReviewResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListCodeReviewMessagesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Messages []CodeReviewMessage `json:"messages"`
+	}
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListCodeReviewMessagesResponse) GetJSON200() *struct {
+	Messages []CodeReviewMessage `json:"messages"`
+} {
+	return r.JSON200
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListCodeReviewMessagesResponse) GetJSON404() *StructuredError {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r ListCodeReviewMessagesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCodeReviewMessagesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCodeReviewMessagesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListCodeReviewMessagesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type AskCodeReviewResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Messages []CodeReviewMessage `json:"messages"`
+	}
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *StructuredError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r AskCodeReviewResponse) GetJSON200() *struct {
+	Messages []CodeReviewMessage `json:"messages"`
+} {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r AskCodeReviewResponse) GetJSON400() *StructuredError {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r AskCodeReviewResponse) GetJSON404() *StructuredError {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r AskCodeReviewResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AskCodeReviewResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AskCodeReviewResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AskCodeReviewResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -9970,6 +10386,65 @@ func (r GetSessionResponse) ContentType() string {
 	return ""
 }
 
+type ContinueSessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Reply string `json:"reply"`
+	}
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *StructuredError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ContinueSessionResponse) GetJSON200() *struct {
+	Reply string `json:"reply"`
+} {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ContinueSessionResponse) GetJSON400() *StructuredError {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ContinueSessionResponse) GetJSON404() *StructuredError {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r ContinueSessionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ContinueSessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ContinueSessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ContinueSessionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type CreateSessionLinkResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -10778,6 +11253,45 @@ func (c *ClientWithResponses) CloseCodeReviewWithResponse(ctx context.Context, r
 	return ParseCloseCodeReviewResponse(rsp)
 }
 
+// ListCodeReviewMessagesWithResponse Conversation with the agent that performed the review
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /code-reviews/{reviewID}/messages (the `ListCodeReviewMessages` operationId).
+func (c *ClientWithResponses) ListCodeReviewMessagesWithResponse(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*ListCodeReviewMessagesResponse, error) {
+	rsp, err := c.ListCodeReviewMessages(ctx, reviewID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCodeReviewMessagesResponse(rsp)
+}
+
+// AskCodeReviewWithBodyWithResponse Ask the reviewing agent a question (resumes its session); may take a minute or two
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /code-reviews/{reviewID}/messages (the `AskCodeReview` operationId).
+func (c *ClientWithResponses) AskCodeReviewWithBodyWithResponse(ctx context.Context, reviewID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AskCodeReviewResponse, error) {
+	rsp, err := c.AskCodeReviewWithBody(ctx, reviewID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAskCodeReviewResponse(rsp)
+}
+
+// AskCodeReviewWithResponse Ask the reviewing agent a question (resumes its session); may take a minute or two
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /code-reviews/{reviewID}/messages (the `AskCodeReview` operationId).
+func (c *ClientWithResponses) AskCodeReviewWithResponse(ctx context.Context, reviewID string, body AskCodeReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*AskCodeReviewResponse, error) {
+	rsp, err := c.AskCodeReview(ctx, reviewID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAskCodeReviewResponse(rsp)
+}
+
 // RerunCodeReviewWithResponse Queue another review attempt
 //
 // Returns a wrapper object for the known response body format(s).
@@ -11454,6 +11968,32 @@ func (c *ClientWithResponses) GetSessionWithResponse(ctx context.Context, sessio
 	return ParseGetSessionResponse(rsp)
 }
 
+// ContinueSessionWithBodyWithResponse Send a new message to a tracked harness session (resumes it in its working directory)
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /sessions/{sessionID}/continue (the `ContinueSession` operationId).
+func (c *ClientWithResponses) ContinueSessionWithBodyWithResponse(ctx context.Context, sessionID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ContinueSessionResponse, error) {
+	rsp, err := c.ContinueSessionWithBody(ctx, sessionID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseContinueSessionResponse(rsp)
+}
+
+// ContinueSessionWithResponse Send a new message to a tracked harness session (resumes it in its working directory)
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /sessions/{sessionID}/continue (the `ContinueSession` operationId).
+func (c *ClientWithResponses) ContinueSessionWithResponse(ctx context.Context, sessionID string, body ContinueSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*ContinueSessionResponse, error) {
+	rsp, err := c.ContinueSession(ctx, sessionID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseContinueSessionResponse(rsp)
+}
+
 // CreateSessionLinkWithBodyWithResponse Link a session to a PR, Linear issue, ticket, or review
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -12044,6 +12584,83 @@ func ParseCloseCodeReviewResponse(rsp *http.Response) (*CloseCodeReviewResponse,
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListCodeReviewMessagesResponse parses an HTTP response from a ListCodeReviewMessagesWithResponse call
+func ParseListCodeReviewMessagesResponse(rsp *http.Response) (*ListCodeReviewMessagesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCodeReviewMessagesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Messages []CodeReviewMessage `json:"messages"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAskCodeReviewResponse parses an HTTP response from a AskCodeReviewWithResponse call
+func ParseAskCodeReviewResponse(rsp *http.Response) (*AskCodeReviewResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AskCodeReviewResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Messages []CodeReviewMessage `json:"messages"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest StructuredError
@@ -13579,6 +14196,48 @@ func ParseGetSessionResponse(rsp *http.Response) (*GetSessionResponse, error) {
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseContinueSessionResponse parses an HTTP response from a ContinueSessionWithResponse call
+func ParseContinueSessionResponse(rsp *http.Response) (*ContinueSessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ContinueSessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Reply string `json:"reply"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest StructuredError

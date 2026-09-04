@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, ExternalLink, RefreshCw, XCircle } from 'lucide-react'
 
+import { AgentConversation, type ConversationMessage } from '@/components/agent-conversation'
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -20,6 +21,43 @@ function Meta({ label, value }: { label: string; value?: string | number | null 
       <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
       <span className="truncate text-sm">{value === undefined || value === null || value === '' ? '—' : value}</span>
     </div>
+  )
+}
+
+function ReviewConversation({ reviewId, harness }: { reviewId: string; harness: string }) {
+  const { client } = useAuth()
+  const [messages, setMessages] = useState<ConversationMessage[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    void client.GET('/code-reviews/{reviewID}/messages', { params: { path: { reviewID: reviewId } } }).then(({ data }) => {
+      if (!cancelled && data) setMessages(data.messages)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [client, reviewId])
+
+  const send = async (text: string) => {
+    const optimistic: ConversationMessage = { id: `tmp-${Date.now()}`, role: 'user', content: text, created_at: new Date().toISOString() }
+    setMessages((prev) => [...prev, optimistic])
+    const { data, error, response } = await client.POST('/code-reviews/{reviewID}/messages', { params: { path: { reviewID: reviewId } }, body: { message: text } })
+    if (!response.ok || !data) {
+      setMessages((prev) => prev.filter((m) => m.id !== optimistic.id))
+      return formatApiError(error)
+    }
+    setMessages((prev) => [...prev.filter((m) => m.id !== optimistic.id), ...data.messages])
+    return null
+  }
+
+  return (
+    <AgentConversation
+      title={`Talk to the reviewer (${harness === 'codex' ? 'Codex' : 'Claude Code'})`}
+      description="Interrogate the review: ask why something was flagged, what it would take to fix, or tell the agent to post a comment or reply on the PR. It resumes its own review session with the PR checked out."
+      messages={messages}
+      onSend={send}
+      emptyHint="Nothing asked yet. Try: “Why is finding 2 a P1?” or “Post finding 1 as an inline comment.”"
+    />
   )
 }
 
@@ -151,6 +189,8 @@ export function CodeReviewDetailPage() {
               </CardContent>
             </Card>
           )}
+
+          <ReviewConversation reviewId={r.id} harness={r.harness} />
 
           <Card className="border-white/10 bg-white/5 backdrop-blur-md">
             <CardHeader className="py-3">

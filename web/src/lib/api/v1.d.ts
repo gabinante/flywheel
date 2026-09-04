@@ -855,6 +855,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/code-reviews/{reviewID}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Conversation with the agent that performed the review */
+        get: operations["ListCodeReviewMessages"];
+        put?: never;
+        /** Ask the reviewing agent a question (resumes its session); may take a minute or two */
+        post: operations["AskCodeReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sessions/{sessionID}/continue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a new message to a tracked harness session (resumes it in its working directory) */
+        post: operations["ContinueSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1789,6 +1824,15 @@ export interface components {
             detail?: string;
             login_command: string;
             checked_at: string;
+        };
+        CodeReviewMessage: {
+            id: string;
+            review_id: string;
+            role: string;
+            content: string;
+            session_id?: string;
+            /** Format: date-time */
+            created_at: string;
         };
     };
     responses: never;
@@ -4229,6 +4273,135 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    ListCodeReviewMessages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reviewID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        messages: components["schemas"]["CodeReviewMessage"][];
+                    };
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    AskCodeReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reviewID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    message: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The stored user turn and the agent's reply */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        messages: components["schemas"]["CodeReviewMessage"][];
+                    };
+                };
+            };
+            /** @description Run failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    ContinueSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    message: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The agent's reply */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        reply: string;
+                    };
+                };
+            };
+            /** @description Run failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -43,6 +43,10 @@ func ParseKind(s string) (Kind, error) {
 const (
 	SandboxReadOnly       = "read-only"
 	SandboxWorkspaceWrite = "workspace-write"
+	// SandboxFull lets the agent act on the operator's behalf (network, gh, pushes): Codex
+	// danger-full-access, Claude --dangerously-skip-permissions. Used for conversations the
+	// operator drives interactively.
+	SandboxFull = "danger-full-access"
 )
 
 // MCPServer is an MCP endpoint to expose to the agent.
@@ -66,6 +70,7 @@ type Spec struct {
 	MCP          []MCPServer     // optional MCP servers (Codex: replaces the user's configured servers for this run)
 	Binary       string          // override executable
 	Env          []string        // extra KEY=VALUE entries
+	Resume       string          // resume this harness session (Codex thread id / Claude session id) instead of starting fresh
 }
 
 // Result is the normalized outcome.
@@ -191,7 +196,11 @@ func (r *CLIRunner) runCodex(ctx context.Context, spec Spec) (*Result, error) {
 	}
 	defer os.RemoveAll(tmp)
 	lastPath := filepath.Join(tmp, "last.txt")
-	args := []string{"exec", "--json", "-s", spec.Sandbox, "-c", "approval_policy=never", "-o", lastPath}
+	args := []string{"exec"}
+	if spec.Resume != "" {
+		args = append(args, "resume", spec.Resume)
+	}
+	args = append(args, "--json", "-s", spec.Sandbox, "-c", "approval_policy=never", "-o", lastPath)
 	if spec.WorkDir != "" {
 		args = append(args, "-C", spec.WorkDir)
 	}
@@ -313,7 +322,12 @@ func (r *CLIRunner) runClaude(ctx context.Context, spec Spec) (*Result, error) {
 		bin = r.conf().ClaudeBin
 	}
 	args := []string{"-p", "--output-format", "json"}
+	if spec.Resume != "" {
+		args = append(args, "--resume", spec.Resume)
+	}
 	switch spec.Sandbox {
+	case SandboxFull:
+		args = append(args, "--dangerously-skip-permissions")
 	case SandboxWorkspaceWrite:
 		args = append(args, "--permission-mode", "acceptEdits")
 	default:

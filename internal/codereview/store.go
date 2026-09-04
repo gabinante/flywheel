@@ -447,3 +447,52 @@ func (s *Store) SaveOverview(ctx context.Context, key string, raw []byte, at tim
 		ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, fetched_at = EXCLUDED.fetched_at`, key, raw, at)
 	return err
 }
+
+// Message is one turn in the conversation with the reviewing agent.
+type Message struct {
+	ID        string    `json:"id"`
+	ReviewID  string    `json:"review_id"`
+	Role      string    `json:"role"`
+	Content   string    `json:"content"`
+	SessionID string    `json:"session_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// ListMessages returns the conversation for a review, oldest first.
+func (s *Store) ListMessages(ctx context.Context, reviewID string) ([]Message, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id, review_id, role, content, session_id, created_at FROM code_review_messages WHERE review_id = $1 ORDER BY created_at`, reviewID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Message{}
+	for rows.Next() {
+		var m Message
+		if err := rows.Scan(&m.ID, &m.ReviewID, &m.Role, &m.Content, &m.SessionID, &m.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// AddMessage appends a turn.
+func (s *Store) AddMessage(ctx context.Context, m *Message) error {
+	if m.ID == "" {
+		m.ID = newID()
+	}
+	if m.CreatedAt.IsZero() {
+		m.CreatedAt = time.Now()
+	}
+	_, err := s.pool.Exec(ctx, `INSERT INTO code_review_messages (id, review_id, role, content, session_id, created_at) VALUES ($1,$2,$3,$4,$5,$6)`,
+		m.ID, m.ReviewID, m.Role, m.Content, m.SessionID, m.CreatedAt)
+	return err
+}
+
+// SetSession records the harness session a review's conversation continues.
+func (s *Store) SetSession(ctx context.Context, reviewID, sessionID, externalID string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE code_review_requests SET session_id = COALESCE(NULLIF($2,''), session_id), session_external_id = COALESCE(NULLIF($3,''), session_external_id), updated_at = now() WHERE id = $1`, reviewID, sessionID, externalID)
+	return err
+}
+
+func newID() string { return uuid.Must(uuid.NewV7()).String() }

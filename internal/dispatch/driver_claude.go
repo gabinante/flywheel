@@ -61,12 +61,11 @@ func (d *ClaudeDriver) Env(_, _ string, _ mcpConnection, _ string) DriverEnv {
 	}
 }
 
-// ResolveCredential attempts to read the Claude Code OAuth access token from
-// the macOS keychain. Falls back to the static API key.
+// ResolveCredential returns only an explicitly configured API key. The Claude Code
+// CLI manages its own claude.ai login; injecting the keychain OAuth token as
+// ANTHROPIC_API_KEY made the CLI treat it as an API key and fail ("ANTHROPIC_API_KEY
+// ... takes precedence over your claude.ai login").
 func (d *ClaudeDriver) ResolveCredential(staticKey string) string {
-	if token := readClaudeOAuthToken(); token != "" {
-		return token
-	}
 	return staticKey
 }
 
