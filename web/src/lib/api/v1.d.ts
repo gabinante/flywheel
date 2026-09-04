@@ -838,6 +838,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/harnesses/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether each harness CLI is installed and signed in */
+        get: operations["GetHarnessStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -987,6 +1004,8 @@ export interface components {
             /** @description Environment variable that holds the provider credential for this worker profile. */
             credential_env_var?: string;
             args?: string[];
+            /** @description Base prompt prepended for this worker */
+            system_prompt?: string;
         };
         DispatchRolePolicy: {
             /**
@@ -1553,6 +1572,8 @@ export interface components {
         };
         ReviewSettings: {
             enabled: boolean;
+            /** @description Worker role from the shared library that performs reviews; empty = use harness/model/effort */
+            role_id?: string;
             harness: string;
             model: string;
             reasoning_effort: string;
@@ -1565,6 +1586,8 @@ export interface components {
             repo_root: string;
         };
         FeedbackSettings: {
+            /** @description Worker role from the shared library that addresses feedback; empty = use harness/model/effort */
+            role_id?: string;
             harness: string;
             model: string;
             reasoning_effort: string;
@@ -1603,6 +1626,7 @@ export interface components {
             worker_key_set: boolean;
         };
         OperatorSettings: {
+            workers: components["schemas"]["DispatchConfig"];
             harnesses: components["schemas"]["HarnessSettings"];
             dispatch: components["schemas"]["DispatchSettings"];
             linear: components["schemas"]["LinearSettings"];
@@ -1622,6 +1646,7 @@ export interface components {
             sync_interval_seconds: number;
         };
         UpdateOperatorSettingsRequest: {
+            workers?: components["schemas"]["DispatchConfig"];
             harnesses?: components["schemas"]["HarnessSettings"];
             dispatch?: components["schemas"]["DispatchSettings"];
             linear: components["schemas"]["UpdateLinearSettings"];
@@ -1752,6 +1777,18 @@ export interface components {
         };
         Layout: {
             project_sections: components["schemas"]["ProjectSection"][];
+        };
+        HarnessStatus: {
+            harness: string;
+            bin: string;
+            resolved_path?: string;
+            installed: boolean;
+            version?: string;
+            logged_in: boolean;
+            account?: string;
+            detail?: string;
+            login_command: string;
+            checked_at: string;
         };
     };
     responses: never;
@@ -4157,6 +4194,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Layout"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    GetHarnessStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["HarnessStatus"][];
+                    };
                 };
             };
             /** @description Unauthorized */

@@ -16,11 +16,12 @@ import (
 
 // FeedbackConfig controls the address-feedback workflow on the operator's own PRs.
 type FeedbackConfig struct {
-	Harness     string // claude (default) or codex
-	Model       string
-	Effort      string
-	AutoAddress bool          // dispatch automatically when a review lands; otherwise wait for the operator
-	Timeout     time.Duration // default 45m
+	PromptPrefix string // worker base prompt prepended to the feedback system prompt
+	Harness      string // claude (default) or codex
+	Model        string
+	Effort       string
+	AutoAddress  bool          // dispatch automatically when a review lands; otherwise wait for the operator
+	Timeout      time.Duration // default 45m
 }
 
 // FeedbackSystemPrompt is the operator's "address feedback on the PR" instruction, generalized.
@@ -108,7 +109,7 @@ func (s *Service) runAddressFeedback(ctx context.Context, round *FeedbackRound) 
 	started := time.Now()
 	res, runErr := s.runner.Run(ctx, harness.Spec{
 		Harness: kind, Model: fb.Model, Effort: fb.Effort, WorkDir: wt,
-		SystemPrompt: FeedbackSystemPrompt, Prompt: prompt, Sandbox: harness.SandboxWorkspaceWrite, Timeout: fb.Timeout,
+		SystemPrompt: withPrefix(fb.PromptPrefix, FeedbackSystemPrompt), Prompt: prompt, Sandbox: harness.SandboxWorkspaceWrite, Timeout: fb.Timeout,
 	})
 	sessionID := ""
 	if s.sessions != nil && res != nil && res.ExternalSessionID != "" {
@@ -172,4 +173,12 @@ func (w *Workspaces) PrepareBranch(ctx context.Context, repo, branch string, num
 		}
 	}
 	return wt, nil
+}
+
+// withPrefix prepends a worker's base prompt to a service system prompt.
+func withPrefix(prefix, base string) string {
+	if strings.TrimSpace(prefix) == "" {
+		return base
+	}
+	return strings.TrimSpace(prefix) + "\n\n" + base
 }

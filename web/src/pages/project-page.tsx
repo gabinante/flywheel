@@ -12,7 +12,6 @@ import {
 } from 'lucide-react'
 
 import { DispatchDashboard } from '@/components/dispatch-dashboard'
-import { ProjectDispatchRoutingCard } from '@/components/project-dispatch-routing-card'
 import { ProjectLinearLinkChip } from '@/components/project-linear-link'
 import { WorkflowTimelineEditor } from '@/components/workflow-timeline-editor'
 import { Badge } from '@/components/ui/badge'
@@ -425,11 +424,6 @@ export function ProjectPage() {
 
       <WorkflowTimelineEditor projectId={projectId} orgId={orgId} />
 
-      <ProjectDispatchRoutingCard
-        projectId={projectId}
-        project={project}
-        onProjectChange={setProject}
-      />
 
       <section>
         <h2 className="mb-3 text-sm font-medium text-muted-foreground">

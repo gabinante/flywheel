@@ -2,6 +2,8 @@ package rest
 
 import (
 	"context"
+	"encoding/json"
+	"github.com/gabinante/flywheel/internal/project"
 	"strings"
 
 	"github.com/gabinante/flywheel/api/generated"
@@ -21,16 +23,17 @@ func settingsToGen(s settings.Settings, saved bool) generated.OperatorSettings {
 			ProjectIds: ids, DefaultTeamKey: s.Linear.DefaultTeamKey, SyncIntervalSeconds: s.Linear.SyncIntervalSeconds,
 		},
 		Review: generated.ReviewSettings{
-			Enabled: s.Review.Enabled, Harness: s.Review.Harness, Model: s.Review.Model, ReasoningEffort: s.Review.ReasoningEffort,
+			Enabled: s.Review.Enabled, RoleId: optStr(s.Review.RoleID), Harness: s.Review.Harness, Model: s.Review.Model, ReasoningEffort: s.Review.ReasoningEffort,
 			Publish: s.Review.Publish, WatchRequested: s.Review.WatchRequested, WatchAuthored: s.Review.WatchAuthored, SkipDrafts: s.Review.SkipDrafts,
 			MaxConcurrent: s.Review.MaxConcurrent, PollIntervalSeconds: s.Review.PollIntervalSeconds, RepoRoot: s.Review.RepoRoot,
 		},
-		Feedback: generated.FeedbackSettings{Harness: s.Feedback.Harness, Model: s.Feedback.Model, ReasoningEffort: s.Feedback.ReasoningEffort, AutoAddress: s.Feedback.AutoAddress},
+		Feedback: generated.FeedbackSettings{RoleId: optStr(s.Feedback.RoleID), Harness: s.Feedback.Harness, Model: s.Feedback.Model, ReasoningEffort: s.Feedback.ReasoningEffort, AutoAddress: s.Feedback.AutoAddress},
 		Report: generated.ReportSettings{
 			ProjectUpdatesEnabled: s.Report.ProjectUpdatesEnabled, ProjectUpdateIntervalHours: s.Report.ProjectUpdateIntervalHours,
 			WeeklyEnabled: s.Report.WeeklyEnabled, WeeklyDay: s.Report.WeeklyDay, WeeklyHour: s.Report.WeeklyHour,
 			RoundupDocumentId: s.Report.RoundupDocumentID, RoundupProjectId: s.Report.RoundupProjectID, DefaultHealth: s.Report.DefaultHealth,
 		},
+		Workers: dispatchConfigToGen(s.Workers),
 		Harnesses: generated.HarnessSettings{
 			Claude: generated.HarnessDefaults{Bin: s.Harness.Claude.Bin, Model: s.Harness.Claude.Model, ReasoningEffort: s.Harness.Claude.ReasoningEffort},
 			Codex:  generated.HarnessDefaults{Bin: s.Harness.Codex.Bin, Model: s.Harness.Codex.Model, ReasoningEffort: s.Harness.Codex.ReasoningEffort},
@@ -79,13 +82,13 @@ func (s *StrictServer) UpdateOperatorSettings(ctx context.Context, req generated
 			DefaultTeamKey: strings.TrimSpace(b.Linear.DefaultTeamKey), SyncIntervalSeconds: b.Linear.SyncIntervalSeconds,
 		},
 		Review: settings.ReviewSettings{
-			Enabled: b.Review.Enabled, Harness: strings.ToLower(strings.TrimSpace(b.Review.Harness)), Model: strings.TrimSpace(b.Review.Model),
+			Enabled: b.Review.Enabled, RoleID: derefStr(b.Review.RoleId), Harness: strings.ToLower(strings.TrimSpace(b.Review.Harness)), Model: strings.TrimSpace(b.Review.Model),
 			ReasoningEffort: strings.TrimSpace(b.Review.ReasoningEffort), Publish: b.Review.Publish, WatchRequested: b.Review.WatchRequested,
 			WatchAuthored: b.Review.WatchAuthored, SkipDrafts: b.Review.SkipDrafts, MaxConcurrent: b.Review.MaxConcurrent,
 			PollIntervalSeconds: b.Review.PollIntervalSeconds, RepoRoot: strings.TrimSpace(b.Review.RepoRoot),
 		},
 		Feedback: settings.FeedbackSettings{
-			Harness: strings.ToLower(strings.TrimSpace(b.Feedback.Harness)), Model: strings.TrimSpace(b.Feedback.Model),
+			RoleID: derefStr(b.Feedback.RoleId), Harness: strings.ToLower(strings.TrimSpace(b.Feedback.Harness)), Model: strings.TrimSpace(b.Feedback.Model),
 			ReasoningEffort: strings.TrimSpace(b.Feedback.ReasoningEffort), AutoAddress: b.Feedback.AutoAddress,
 		},
 		Report: settings.ReportSettings{
@@ -96,6 +99,10 @@ func (s *StrictServer) UpdateOperatorSettings(ctx context.Context, req generated
 		},
 	}
 	next.Layout = cur.Layout // the settings page never edits the layout
+	next.Workers = cur.Workers
+	if b.Workers != nil {
+		next.Workers = dispatchConfigFromGen(*b.Workers)
+	}
 	next.Harness = cur.Harness
 	if b.Harnesses != nil {
 		next.Harness = settings.HarnessSettings{
@@ -135,4 +142,34 @@ func cleanList(in []string) []string {
 		}
 	}
 	return out
+}
+
+func optStr(v string) *string {
+	if v == "" {
+		return nil
+	}
+	return &v
+}
+
+func derefStr(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return strings.TrimSpace(*v)
+}
+
+// dispatchConfigToGen / dispatchConfigFromGen round-trip through JSON: the generated
+// type mirrors the domain type's json tags.
+func dispatchConfigToGen(c project.DispatchConfig) generated.DispatchConfig {
+	var out generated.DispatchConfig
+	raw, _ := json.Marshal(c.Normalized())
+	_ = json.Unmarshal(raw, &out)
+	return out
+}
+
+func dispatchConfigFromGen(c generated.DispatchConfig) project.DispatchConfig {
+	var out project.DispatchConfig
+	raw, _ := json.Marshal(c)
+	_ = json.Unmarshal(raw, &out)
+	return out.Normalized()
 }

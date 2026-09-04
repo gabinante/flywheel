@@ -127,7 +127,8 @@ type Config struct {
 	AgentReasoningEffort string   // API-native reasoning effort
 	AgentAPIBaseURL      string   // API-native base URL
 	AgentAPIKey          string
-	ScanLimit            int // max tickets per scan phase (default 50, 0 = unlimited)
+	AgentSystemPrompt    string // worker profile base prompt, prepended to the role prompt
+	ScanLimit            int    // max tickets per scan phase (default 50, 0 = unlimited)
 	TraceSvc             TraceAppender
 }
 
@@ -218,6 +219,7 @@ type Runtime struct {
 	Effort     string
 	ClaudePath string
 	CodexPath  string
+	Workers    project.DispatchConfig // shared worker library
 }
 
 // Apply updates the runtime worker configuration: concurrency, the default
@@ -244,7 +246,7 @@ func (d *Dispatcher) Apply(rt Runtime) {
 	cfg := d.cfg
 	d.mu.Unlock()
 	worker := NewWorker(cfg)
-	router := NewProjectWorkerRouter(cfg)
+	router := NewProjectWorkerRouterWithGlobal(cfg, rt.Workers)
 	d.mu.Lock()
 	d.worker = worker
 	d.workerRouter = router
@@ -1654,6 +1656,10 @@ func (d *Dispatcher) spawnWorker(ctx context.Context, proj *project.Project, tic
 	var lastWorker RoutedWorker
 	for index, candidate := range candidates {
 		worker := d.resolveWorker(candidate)
+		sp := systemPrompt
+		if p := strings.TrimSpace(candidate.Config.AgentSystemPrompt); p != "" {
+			sp = p + "\n\n" + systemPrompt // worker profile base prompt first
+		}
 		if worker == nil {
 			lastErr = fmt.Errorf("worker %s is not configured", candidate.ID)
 			lastWorker = candidate
@@ -1679,7 +1685,7 @@ func (d *Dispatcher) spawnWorker(ctx context.Context, proj *project.Project, tic
 				ctx,
 				ticketID,
 				projectID,
-				systemPrompt,
+				sp,
 				taskMessage,
 				workDir,
 				d.cfg.ServerURL,
@@ -1687,7 +1693,7 @@ func (d *Dispatcher) spawnWorker(ctx context.Context, proj *project.Project, tic
 			)
 			waitForTrace()
 		} else {
-			result, err = worker.Spawn(ctx, ticketID, projectID, systemPrompt, taskMessage, workDir, d.cfg.ServerURL)
+			result, err = worker.Spawn(ctx, ticketID, projectID, sp, taskMessage, workDir, d.cfg.ServerURL)
 		}
 		if err == nil && result != nil && result.Success {
 			return result, candidate, nil

@@ -51,6 +51,8 @@ func (h *WorkflowHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/workflow/callback/{token}", h.handleCallback)
 
 	// Workflow library
+	mux.HandleFunc("GET /api/v1/workflows/{id}", h.getWorkflowByID)
+	mux.HandleFunc("PUT /api/v1/workflows/{id}", h.updateWorkflowByID)
 	mux.HandleFunc("GET /api/v1/orgs/{orgID}/workflow-library", h.listWorkflowLibrary)
 	mux.HandleFunc("POST /api/v1/orgs/{orgID}/workflow-library", h.createWorkflowLibraryEntry)
 	mux.HandleFunc("DELETE /api/v1/orgs/{orgID}/workflow-library/{id}", h.deleteWorkflowLibraryEntry)
@@ -335,6 +337,48 @@ func (h *WorkflowHandler) deleteWorkflowLibraryEntry(w http.ResponseWriter, r *h
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// getWorkflowByID returns any stored definition (library entry, org or project default).
+func (h *WorkflowHandler) getWorkflowByID(w http.ResponseWriter, r *http.Request) {
+	def, err := h.Store.GetByID(r.Context(), PathParam(r, "id"))
+	if err != nil {
+		WriteStructuredError(w, apierrors.MapError(err))
+		return
+	}
+	if def == nil {
+		WriteStructuredError(w, apierrors.New(apierrors.CodeNotFound, "workflow not found", false))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"workflow": def, "source": def.Scope})
+}
+
+// updateWorkflowByID edits a stored definition's name, description and phases (new version).
+func (h *WorkflowHandler) updateWorkflowByID(w http.ResponseWriter, r *http.Request) {
+	def, err := h.Store.GetByID(r.Context(), PathParam(r, "id"))
+	if err != nil {
+		WriteStructuredError(w, apierrors.MapError(err))
+		return
+	}
+	if def == nil {
+		WriteStructuredError(w, apierrors.New(apierrors.CodeNotFound, "workflow not found", false))
+		return
+	}
+	var in workflow.Definition
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		WriteStructuredError(w, apierrors.New(apierrors.CodeInvalidInput, "invalid body", false))
+		return
+	}
+	if err := validateDefinition(&in); err != nil {
+		WriteStructuredError(w, apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+		return
+	}
+	def.Name, def.Description, def.Phases = in.Name, in.Description, in.Phases
+	if err := h.Store.Update(r.Context(), def); err != nil {
+		WriteStructuredError(w, apierrors.MapError(err))
+		return
+	}
+	writeJSON(w, http.StatusOK, def)
 }
 
 func slugify(s string) string {

@@ -23,6 +23,7 @@ type RoutedWorker struct {
 }
 
 type ProjectWorkerRouter struct {
+	global  project.DispatchConfig // shared library (operator settings); projects overlay it
 	base    Config
 	counter uint64
 }
@@ -31,10 +32,58 @@ func NewProjectWorkerRouter(base Config) *ProjectWorkerRouter {
 	return &ProjectWorkerRouter{base: base}
 }
 
+// NewProjectWorkerRouterWithGlobal returns a router whose candidates come from the
+// shared worker library overlaid with each project's own dispatch config.
+func NewProjectWorkerRouterWithGlobal(base Config, global project.DispatchConfig) *ProjectWorkerRouter {
+	return &ProjectWorkerRouter{base: base, global: global.Normalized()}
+}
+
+// MergeDispatchConfig overlays a project's dispatch config on the shared library:
+// workers and roles by id (project wins), policies by role key (project wins when set).
+func MergeDispatchConfig(global, proj project.DispatchConfig) project.DispatchConfig {
+	g, p := global.Normalized(), proj.Normalized()
+	out := project.DispatchConfig{MaxActiveWorkers: p.MaxActiveWorkers, GitPolicy: p.GitPolicy}
+	seen := map[string]int{}
+	for _, w := range g.Workers {
+		seen[w.ID] = len(out.Workers)
+		out.Workers = append(out.Workers, w)
+	}
+	for _, w := range p.Workers {
+		if i, ok := seen[w.ID]; ok {
+			out.Workers[i] = w
+		} else {
+			seen[w.ID] = len(out.Workers)
+			out.Workers = append(out.Workers, w)
+		}
+	}
+	roleSeen := map[string]int{}
+	for _, r := range g.Roles {
+		roleSeen[r.ID] = len(out.Roles)
+		out.Roles = append(out.Roles, r)
+	}
+	for _, r := range p.Roles {
+		if i, ok := roleSeen[r.ID]; ok {
+			out.Roles[i] = r
+		} else {
+			out.Roles = append(out.Roles, r)
+		}
+	}
+	out.Policies = map[string]project.DispatchRolePolicy{}
+	for k, v := range g.Policies {
+		out.Policies[k] = v
+	}
+	for k, v := range p.Policies {
+		if len(v.WorkerIDs) > 0 {
+			out.Policies[k] = v
+		}
+	}
+	return out.Normalized()
+}
+
 func (r *ProjectWorkerRouter) Candidates(proj *project.Project, role string) []RoutedWorker {
-	cfg := project.DispatchConfig{}.Normalized()
+	cfg := r.global.Normalized()
 	if proj != nil {
-		cfg = proj.DispatchConfig.Normalized()
+		cfg = MergeDispatchConfig(r.global, proj.DispatchConfig)
 	}
 
 	policies := make(map[string]project.DispatchRolePolicy, len(cfg.Policies))
@@ -118,6 +167,9 @@ func (r *ProjectWorkerRouter) profileWorker(profile project.DispatchWorkerProfil
 	}
 	if len(profile.Args) > 0 {
 		cfg.AgentArgs = append([]string{}, profile.Args...)
+	}
+	if strings.TrimSpace(profile.SystemPrompt) != "" {
+		cfg.AgentSystemPrompt = strings.TrimSpace(profile.SystemPrompt)
 	}
 	if resolvedKey := resolveWorkerCredential(cfg, profile.CredentialEnvVar); resolvedKey != "" {
 		cfg.AgentAPIKey = resolvedKey

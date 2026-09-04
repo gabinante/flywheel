@@ -16,6 +16,7 @@ import { OperatorSettingsPage } from '@/pages/operator-settings-page'
 import { MyPRsPage } from '@/pages/my-prs-page'
 import { MyReviewsPage } from '@/pages/my-reviews-page'
 import { SchedulePage } from '@/pages/schedule-page'
+import { WorkflowsPage, WorkflowEditorPage } from '@/pages/workflows-page'
 import { ProjectsPage } from '@/pages/projects-page'
 import { TicketsPage } from '@/pages/tickets-page'
 import { TicketDetailPage } from '@/pages/ticket-detail-page'
@@ -141,6 +142,8 @@ export default function App() {
                   <Route path="/my/prs" element={<MyPRsPage />} />
                   <Route path="/my/reviews" element={<MyReviewsPage />} />
                   <Route path="/schedule" element={<SchedulePage />} />
+                  <Route path="/workflows" element={<WorkflowsPage />} />
+                  <Route path="/workflows/:id" element={<WorkflowEditorPage />} />
                   <Route
                     path="/orgs/:orgId/projects"
                     element={<ProjectsPage />}

@@ -51,6 +51,7 @@ type DispatchWorkerProfile struct {
 	APIBaseURL       string   `json:"api_base_url,omitempty"`
 	CredentialEnvVar string   `json:"credential_env_var,omitempty"`
 	Args             []string `json:"args,omitempty"`
+	SystemPrompt     string   `json:"system_prompt,omitempty"` // base prompt prepended for this worker
 }
 
 type DispatchRolePolicy struct {

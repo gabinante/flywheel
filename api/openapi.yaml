@@ -1852,6 +1852,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StructuredError'
+  /harnesses/status:
+    get:
+      operationId: GetHarnessStatus
+      summary: Whether each harness CLI is installed and signed in
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/HarnessStatus'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
 components:
   securitySchemes:
     BearerAuth:
@@ -2113,6 +2136,9 @@ components:
           type: array
           items:
             type: string
+        system_prompt:
+          type: string
+          description: Base prompt prepended for this worker
     DispatchRolePolicy:
       type: object
       properties:
@@ -3162,6 +3188,9 @@ components:
       properties:
         enabled:
           type: boolean
+        role_id:
+          type: string
+          description: Worker role from the shared library that performs reviews; empty = use harness/model/effort
         harness:
           type: string
         model:
@@ -3186,6 +3215,9 @@ components:
       type: object
       required: [harness, model, reasoning_effort, auto_address]
       properties:
+        role_id:
+          type: string
+          description: Worker role from the shared library that addresses feedback; empty = use harness/model/effort
         harness:
           type: string
         model:
@@ -3256,8 +3288,10 @@ components:
           description: Whether workers have a Flywheel API key for MCP (minted automatically)
     OperatorSettings:
       type: object
-      required: [linear, review, feedback, report, dispatch, harnesses, saved]
+      required: [linear, review, feedback, report, dispatch, harnesses, workers, saved]
       properties:
+        workers:
+          $ref: '#/components/schemas/DispatchConfig'
         harnesses:
           $ref: '#/components/schemas/HarnessSettings'
         dispatch:
@@ -3296,6 +3330,8 @@ components:
       type: object
       required: [linear, review, feedback, report]
       properties:
+        workers:
+          $ref: '#/components/schemas/DispatchConfig'
         harnesses:
           $ref: '#/components/schemas/HarnessSettings'
         dispatch:
@@ -3562,3 +3598,27 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ProjectSection'
+    HarnessStatus:
+      type: object
+      required: [harness, bin, installed, logged_in, login_command, checked_at]
+      properties:
+        harness:
+          type: string
+        bin:
+          type: string
+        resolved_path:
+          type: string
+        installed:
+          type: boolean
+        version:
+          type: string
+        logged_in:
+          type: boolean
+        account:
+          type: string
+        detail:
+          type: string
+        login_command:
+          type: string
+        checked_at:
+          type: string

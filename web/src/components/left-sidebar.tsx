@@ -144,12 +144,6 @@ export function LeftSidebar() {
           match: `${projectBase}/tickets`,
         },
         {
-          label: 'Reviews',
-          icon: ClipboardCheck,
-          href: `${projectBase}/reviews`,
-          match: `${projectBase}/reviews`,
-        },
-        {
           label: 'Code Reviews',
           icon: GitPullRequest,
           href: `${projectBase}/code-reviews`,
@@ -302,6 +296,7 @@ export function LeftSidebar() {
               { label: 'My PRs', icon: GitPullRequest, href: '/my/prs', match: '/my/prs' },
               { label: 'My Reviews', icon: ClipboardCheck, href: '/my/reviews', match: '/my/reviews' },
               { label: 'Scheduled actions', icon: CalendarClock, href: '/schedule', match: '/schedule' },
+              { label: 'Workflows', icon: Workflow, href: '/workflows', match: '/workflows' },
             ]}
             expanded={isExpanded}
             currentPath={currentPath}

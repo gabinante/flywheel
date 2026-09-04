@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Activity, Bot, Cpu, FileText, GitPullRequest, KeyRound, MessageSquareReply, Save, Settings as SettingsIcon } from 'lucide-react'
+import { Activity, Bot, Cpu, FileText, GitPullRequest, KeyRound, MessageSquareReply, Save, ServerCog, Settings as SettingsIcon } from 'lucide-react'
+
+import { DispatchRoutingEditor } from '@/components/dispatch-routing-editor'
+import { ROLE_OPTIONS } from '@/lib/dispatch-roles'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -18,11 +21,13 @@ type UpdateRequest = components['schemas']['UpdateOperatorSettingsRequest']
 type LinearStatus = components['schemas']['LinearStatus']
 type CodeReviewStatus = components['schemas']['CodeReviewStatus']
 type Project = components['schemas']['Project']
+type HarnessStatus = components['schemas']['HarnessStatus']
 
-type SectionID = 'models' | 'dispatch' | 'linear' | 'review' | 'feedback' | 'reports'
+type SectionID = 'models' | 'workers' | 'dispatch' | 'linear' | 'review' | 'feedback' | 'reports'
 
 const SECTIONS: Array<{ id: SectionID; label: string; description: string; icon: React.ComponentType<{ className?: string }> }> = [
   { id: 'models', label: 'Models & harnesses', description: 'Claude Code and Codex binaries and the default model and effort each uses.', icon: Cpu },
+  { id: 'workers', label: 'Workers & roles', description: 'Shared worker profiles, roles, and which worker each role routes to. Projects inherit these.', icon: ServerCog },
   { id: 'dispatch', label: 'Dispatch', description: 'Whether tickets are picked up by implementation workers, and which harness runs them.', icon: Bot },
   { id: 'linear', label: 'Linear', description: 'Personal API key and sync of the projects you lead.', icon: KeyRound },
   { id: 'review', label: 'Code review', description: 'Harness, publishing, and the review-requested / re-review watchers.', icon: GitPullRequest },
@@ -58,6 +63,7 @@ function toRequest(s: OperatorSettings, apiKey: string, clearKey: boolean): Upda
     report: s.report,
     dispatch: s.dispatch,
     harnesses: s.harnesses,
+    workers: s.workers,
   }
 }
 
@@ -102,6 +108,14 @@ export function OperatorSettingsPage() {
   const [linearStatus, setLinearStatus] = useState<LinearStatus | null>(null)
   const [reviewStatus, setReviewStatus] = useState<CodeReviewStatus | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
+  const [harnessStatus, setHarnessStatus] = useState<HarnessStatus[] | null>(null)
+  const [checkingHarness, setCheckingHarness] = useState(false)
+  const loadHarnessStatus = useCallback(async () => {
+    setCheckingHarness(true)
+    const { data } = await client.GET('/harnesses/status')
+    setCheckingHarness(false)
+    if (data) setHarnessStatus(data.items)
+  }, [client])
 
   const loadStatus = useCallback(() => {
     void client.GET('/linear/status').then(({ data }) => setLinearStatus(data ?? null))
@@ -129,10 +143,11 @@ export function OperatorSettingsPage() {
       if (!cancelled) setProjects(lists.flat())
     })
     loadStatus()
+    void Promise.resolve().then(() => loadHarnessStatus())
     return () => {
       cancelled = true
     }
-  }, [client, loadStatus])
+  }, [client, loadStatus, loadHarnessStatus])
 
   const update = <K extends keyof OperatorSettings>(key: K, patch: Partial<OperatorSettings[K]>) => {
     setSettings((prev) => (prev ? { ...prev, [key]: { ...(prev[key] as object), ...patch } } : prev))
@@ -173,6 +188,20 @@ export function OperatorSettingsPage() {
 
   const { linear, review, feedback, report, dispatch, harnesses } = settings
   const harnessDefault = (h: string) => (h === 'codex' ? harnesses.codex : harnesses.claude)
+  const roleOptions = [
+    { value: 'none', label: 'None — use the harness settings below' },
+    ...ROLE_OPTIONS.map((r) => ({ value: r.key, label: `${r.label} (built-in)` })),
+    ...(settings.workers.roles ?? []).map((r) => ({ value: r.id ?? '', label: r.name || r.id || 'Unnamed role' })),
+  ]
+  const roleWorkerSummary = (roleId: string | undefined) => {
+    if (!roleId) return null
+    const w = settings.workers
+    const policy = w.policies?.[roleId]
+    const ids = policy?.worker_ids?.length ? policy.worker_ids : (w.workers ?? []).filter((x) => x.enabled !== false).map((x) => x.id ?? '').slice(0, 1)
+    const first = (w.workers ?? []).find((x) => x.id === ids[0] && x.enabled !== false)
+    if (!first) return 'No enabled worker routes to this role yet — add one under Workers & roles.'
+    return `Routes to “${first.name || first.id}”: ${[first.driver, first.model, first.reasoning_effort].filter(Boolean).join(' / ') || 'harness defaults'}${first.system_prompt ? ' · has a base prompt' : ''}.`
+  }
 
   return (
     <div className="mx-auto w-full max-w-[1500px] space-y-6 p-6 xl:px-10">
@@ -236,16 +265,44 @@ export function OperatorSettingsPage() {
                 {(['claude', 'codex'] as const).map((h) => {
                   const d = harnesses[h]
                   const label = h === 'claude' ? 'Claude Code' : 'Codex'
+                  const hs = harnessStatus?.find((x) => x.harness === h)
                   return (
                     <div key={h} className="space-y-3 rounded-xl border border-white/5 bg-white/[0.02] p-4">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-medium">{label}</span>
+                        {hs ? (
+                          <StatusBadge
+                            ok={hs.installed && hs.logged_in}
+                            okLabel={`signed in${hs.account ? ` · ${hs.account}` : ''}${hs.version ? ` · ${hs.version}` : ''}`}
+                            offLabel={!hs.installed ? 'not installed' : 'not signed in'}
+                          />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">checking…</span>
+                        )}
+                        {hs?.detail && <span className="text-xs text-muted-foreground">{hs.detail}</span>}
+                        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" disabled={checkingHarness} onClick={() => loadHarnessStatus()}>
+                          Re-check
+                        </Button>
                         <span className="text-xs text-muted-foreground">
                           used by{' '}
                           {[review.harness === h && 'code review', feedback.harness === h && 'PR feedback', dispatch.driver === h && 'dispatch'].filter(Boolean).join(', ') ||
                             'nothing yet'}
                         </span>
                       </div>
+                      {hs && (!hs.installed || !hs.logged_in) && (
+                        <div className="rounded-lg border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-xs text-amber-100/90">
+                          {!hs.installed ? (
+                            <>
+                              Flywheel cannot find <code>{hs.bin}</code>. Install the CLI or set its absolute path below.
+                            </>
+                          ) : (
+                            <>
+                              Sign in from a terminal, then re-check: <code className="rounded bg-black/30 px-1.5 py-0.5">{hs.login_command}</code>. The
+                              harness keeps its own credentials; Flywheel never stores model provider keys.
+                            </>
+                          )}
+                        </div>
+                      )}
                       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                         <Field label="Executable" htmlFor={`${h}-bin`} hint={h === 'claude' ? 'e.g. claude, or an absolute path' : 'e.g. codex, or an absolute path'}>
                           <Input id={`${h}-bin`} value={d.bin} onChange={(e) => update('harnesses', { [h]: { ...d, bin: e.target.value } })} />
@@ -268,6 +325,20 @@ export function OperatorSettingsPage() {
                 })}
               </CardContent>
             </Card>
+          )}
+
+          {section === 'workers' && (
+            <DispatchRoutingEditor
+              initial={settings.workers}
+              onSave={async (cfg) => {
+                const { data, error, response } = await client.PUT('/settings', { body: toRequest({ ...settings, workers: cfg }, apiKey, clearKey) })
+                if (!response.ok || !data) return formatApiError(error)
+                setSettings(data)
+                setApiKey('')
+                setClearKey(false)
+                return null
+              }}
+            />
           )}
 
           {section === 'dispatch' && (
@@ -430,7 +501,10 @@ export function OperatorSettingsPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <Toggle id="review-enabled" label="Code review enabled" checked={review.enabled} onChange={(v) => update('review', { enabled: v })} />
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <Field label="Reviewer role" htmlFor="review-role" hint={roleWorkerSummary(review.role_id) ?? 'Pick a role from Workers & roles so reviews use that worker’s harness, model, effort and base prompt.'}>
+                  <StyledSelect className="h-9 w-full min-w-0" id="review-role" value={review.role_id || 'none'} onValueChange={(v) => update('review', { role_id: v === 'none' ? '' : v })} options={roleOptions} />
+                </Field>
+                <div className={`grid gap-4 sm:grid-cols-2 xl:grid-cols-3 ${review.role_id ? 'opacity-50' : ''}`}>
                   <Field label="Harness" htmlFor="review-harness">
                     <StyledSelect className="h-9 w-full min-w-0" id="review-harness" value={review.harness} onValueChange={(v) => update('review', { harness: v })} options={HARNESSES} />
                   </Field>
@@ -511,7 +585,10 @@ export function OperatorSettingsPage() {
                   checked={feedback.auto_address}
                   onChange={(v) => update('feedback', { auto_address: v })}
                 />
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <Field label="Feedback role" htmlFor="feedback-role" hint={roleWorkerSummary(feedback.role_id) ?? 'Pick a role from Workers & roles so feedback is addressed by that worker.'}>
+                  <StyledSelect className="h-9 w-full min-w-0" id="feedback-role" value={feedback.role_id || 'none'} onValueChange={(v) => update('feedback', { role_id: v === 'none' ? '' : v })} options={roleOptions} />
+                </Field>
+                <div className={`grid gap-4 sm:grid-cols-2 xl:grid-cols-3 ${feedback.role_id ? 'opacity-50' : ''}`}>
                   <Field label="Harness" htmlFor="feedback-harness">
                     <StyledSelect className="h-9 w-full min-w-0" id="feedback-harness" value={feedback.harness} onValueChange={(v) => update('feedback', { harness: v })} options={HARNESSES} />
                   </Field>

@@ -276,10 +276,28 @@ func run(ctx context.Context, cfg *config.Config) {
 		SettingsSvc:   settingsSvc,
 		ScheduleSvc:   scheduleSvc,
 		RepoSvc:       repoSvc,
+		HarnessRunner: harnessRunner,
 		AgentStore:    agentStore,
 	}
 
 	repoDir, _ := os.Getwd()
+	dcfg := eff.Dispatch
+	drt := eff.DispatchRuntime()
+	if dcfg.WorkerAPIKey == "" {
+		// Workers reach Flywheel's MCP endpoint with this key. Mint one once and keep it in settings.
+		if _, key, err := agentSvc.RegisterAgent(ctx, "dispatch-worker", agent.TypeClaude); err == nil && key != "" {
+			next := settingsSvc.Current()
+			next.Dispatch.WorkerAPIKey = key
+			if saved, err := settingsSvc.Update(ctx, next); err == nil {
+				eff, dcfg, drt = saved, saved.Dispatch, saved.DispatchRuntime()
+				slog.Info("dispatch: minted worker API key (agent dispatch-worker)")
+			} else {
+				slog.Warn("dispatch: could not persist worker API key", "error", err)
+			}
+		} else if err != nil {
+			slog.Warn("dispatch: could not mint worker API key", "error", err)
+		}
+	}
 	orchestratorWorkerCfg := dispatch.Config{
 		ClaudePath:           cfg.Dispatch.ClaudePath,
 		AgentRunner:          cfg.Orchestrator.AgentRunner,
@@ -287,7 +305,7 @@ func run(ctx context.Context, cfg *config.Config) {
 		AgentCLIPath:         cfg.Orchestrator.AgentCLIPath,
 		AgentModel:           cfg.Orchestrator.AgentModel,
 		AgentReasoningEffort: cfg.Orchestrator.AgentReasoningEffort,
-		APIKey:               cfg.Dispatch.APIKey,
+		APIKey:               firstNonEmpty(cfg.Dispatch.APIKey, dcfg.WorkerAPIKey),
 		AgentAPIKey:          cfg.Orchestrator.AgentAPIKey,
 		RepoDir:              repoDir,
 	}
@@ -349,23 +367,6 @@ func run(ctx context.Context, cfg *config.Config) {
 
 	// Dispatcher: background workers for tickets in agent phases. Always constructed;
 	// whether it picks up tickets is an operator setting applied live.
-	dcfg := eff.Dispatch
-	drt := eff.DispatchRuntime()
-	if dcfg.WorkerAPIKey == "" {
-		// Workers reach Flywheel's MCP endpoint with this key. Mint one once and keep it in settings.
-		if _, key, err := agentSvc.RegisterAgent(ctx, "dispatch-worker", agent.TypeClaude); err == nil && key != "" {
-			next := settingsSvc.Current()
-			next.Dispatch.WorkerAPIKey = key
-			if saved, err := settingsSvc.Update(ctx, next); err == nil {
-				eff, dcfg, drt = saved, saved.Dispatch, saved.DispatchRuntime()
-				slog.Info("dispatch: minted worker API key (agent dispatch-worker)")
-			} else {
-				slog.Warn("dispatch: could not persist worker API key", "error", err)
-			}
-		} else if err != nil {
-			slog.Warn("dispatch: could not mint worker API key", "error", err)
-		}
-	}
 	dispatcher := dispatch.New(dispatch.Config{
 		MaxWorkers:           drt.MaxWorkers,
 		ClaudePath:           drt.ClaudePath,
@@ -394,6 +395,7 @@ func run(ctx context.Context, cfg *config.Config) {
 	dispatcher.SetCheckerRegistry(checkerRegistry)
 	dispatcher.SetOutputPatcher(ticketStore)
 	dispatcher.SetWorkflowPhaseUpdater(ticketStore)
+	dispatcher.Apply(drt) // installs the shared worker library into the router
 	dispatcher.SetEnabled(dcfg.Enabled)
 	dispatcher.Start(ctx)
 	settingsSvc.OnChange(func(next settings.Settings) {

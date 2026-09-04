@@ -904,6 +904,9 @@ type DispatchWorkerProfile struct {
 	// ReasoningEffort Reasoning effort override for API-native workers.
 	ReasoningEffort *string                      `json:"reasoning_effort,omitempty"`
 	Runner          *DispatchWorkerProfileRunner `json:"runner,omitempty"`
+
+	// SystemPrompt Base prompt prepended for this worker
+	SystemPrompt *string `json:"system_prompt,omitempty"`
 }
 
 // DispatchWorkerProfileDriver defines model for DispatchWorkerProfile.Driver.
@@ -995,6 +998,9 @@ type FeedbackSettings struct {
 	Harness         string `json:"harness"`
 	Model           string `json:"model"`
 	ReasoningEffort string `json:"reasoning_effort"`
+
+	// RoleId Worker role from the shared library that addresses feedback; empty = use harness/model/effort
+	RoleId *string `json:"role_id,omitempty"`
 }
 
 // HarnessDefaults defines model for HarnessDefaults.
@@ -1011,6 +1017,20 @@ type HarnessDefaults struct {
 type HarnessSettings struct {
 	Claude HarnessDefaults `json:"claude"`
 	Codex  HarnessDefaults `json:"codex"`
+}
+
+// HarnessStatus defines model for HarnessStatus.
+type HarnessStatus struct {
+	Account      *string `json:"account,omitempty"`
+	Bin          string  `json:"bin"`
+	CheckedAt    string  `json:"checked_at"`
+	Detail       *string `json:"detail,omitempty"`
+	Harness      string  `json:"harness"`
+	Installed    bool    `json:"installed"`
+	LoggedIn     bool    `json:"logged_in"`
+	LoginCommand string  `json:"login_command"`
+	ResolvedPath *string `json:"resolved_path,omitempty"`
+	Version      *string `json:"version,omitempty"`
 }
 
 // Layout defines model for Layout.
@@ -1119,7 +1139,8 @@ type OperatorSettings struct {
 	Review    ReviewSettings   `json:"review"`
 
 	// Saved False until settings were saved from the UI (values come from the environment)
-	Saved bool `json:"saved"`
+	Saved   bool           `json:"saved"`
+	Workers DispatchConfig `json:"workers"`
 }
 
 // Org defines model for Org.
@@ -1314,9 +1335,12 @@ type ReviewSettings struct {
 	Publish             bool   `json:"publish"`
 	ReasoningEffort     string `json:"reasoning_effort"`
 	RepoRoot            string `json:"repo_root"`
-	SkipDrafts          bool   `json:"skip_drafts"`
-	WatchAuthored       bool   `json:"watch_authored"`
-	WatchRequested      bool   `json:"watch_requested"`
+
+	// RoleId Worker role from the shared library that performs reviews; empty = use harness/model/effort
+	RoleId         *string `json:"role_id,omitempty"`
+	SkipDrafts     bool    `json:"skip_drafts"`
+	WatchAuthored  bool    `json:"watch_authored"`
+	WatchRequested bool    `json:"watch_requested"`
 }
 
 // ReviewerState defines model for ReviewerState.
@@ -1576,6 +1600,7 @@ type UpdateOperatorSettingsRequest struct {
 	Linear    UpdateLinearSettings `json:"linear"`
 	Report    ReportSettings       `json:"report"`
 	Review    ReviewSettings       `json:"review"`
+	Workers   *DispatchConfig      `json:"workers,omitempty"`
 }
 
 // UpdateProjectRequest defines model for UpdateProjectRequest.
@@ -2007,6 +2032,11 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /code-reviews/{reviewID}/rerun (the `RerunCodeReview` operationId).
 	RerunCodeReview(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetHarnessStatus Whether each harness CLI is installed and signed in
+	//
+	// Corresponds with GET /harnesses/status (the `GetHarnessStatus` operationId).
+	GetHarnessStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetHealthz Liveness/readiness
 	//
@@ -2592,6 +2622,21 @@ func (c *Client) CloseCodeReview(ctx context.Context, reviewID string, reqEditor
 // Corresponds with POST /code-reviews/{reviewID}/rerun (the `RerunCodeReview` operationId).
 func (c *Client) RerunCodeReview(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRerunCodeReviewRequest(c.Server, reviewID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetHarnessStatus Whether each harness CLI is installed and signed in
+//
+// Corresponds with GET /harnesses/status (the `GetHarnessStatus` operationId).
+func (c *Client) GetHarnessStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetHarnessStatusRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -4174,6 +4219,33 @@ func NewRerunCodeReviewRequest(server string, reviewID string) (*http.Request, e
 	}
 
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetHarnessStatusRequest constructs an http.Request for the GetHarnessStatus method
+func NewGetHarnessStatusRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/harnesses/status")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -6778,6 +6850,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /code-reviews/{reviewID}/rerun (the `RerunCodeReview` operationId).
 	RerunCodeReviewWithResponse(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*RerunCodeReviewResponse, error)
 
+	// GetHarnessStatusWithResponse Whether each harness CLI is installed and signed in
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /harnesses/status (the `GetHarnessStatus` operationId).
+	GetHarnessStatusWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHarnessStatusResponse, error)
+
 	// GetHealthzWithResponse Liveness/readiness
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -7773,6 +7852,58 @@ func (r RerunCodeReviewResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r RerunCodeReviewResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetHarnessStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Items []HarnessStatus `json:"items"`
+	}
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetHarnessStatusResponse) GetJSON200() *struct {
+	Items []HarnessStatus `json:"items"`
+} {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetHarnessStatusResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r GetHarnessStatusResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetHarnessStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetHarnessStatusResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetHarnessStatusResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -10660,6 +10791,19 @@ func (c *ClientWithResponses) RerunCodeReviewWithResponse(ctx context.Context, r
 	return ParseRerunCodeReviewResponse(rsp)
 }
 
+// GetHarnessStatusWithResponse Whether each harness CLI is installed and signed in
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /harnesses/status (the `GetHarnessStatus` operationId).
+func (c *ClientWithResponses) GetHarnessStatusWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHarnessStatusResponse, error) {
+	rsp, err := c.GetHarnessStatus(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetHarnessStatusResponse(rsp)
+}
+
 // GetHealthzWithResponse Liveness/readiness
 //
 // Returns a wrapper object for the known response body format(s).
@@ -11947,6 +12091,41 @@ func ParseRerunCodeReviewResponse(rsp *http.Response) (*RerunCodeReviewResponse,
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetHarnessStatusResponse parses an HTTP response from a GetHarnessStatusWithResponse call
+func ParseGetHarnessStatusResponse(rsp *http.Response) (*GetHarnessStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetHarnessStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Items []HarnessStatus `json:"items"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
 
 	}
 

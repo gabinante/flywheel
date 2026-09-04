@@ -905,6 +905,9 @@ type DispatchWorkerProfile struct {
 	// ReasoningEffort Reasoning effort override for API-native workers.
 	ReasoningEffort *string                      `json:"reasoning_effort,omitempty"`
 	Runner          *DispatchWorkerProfileRunner `json:"runner,omitempty"`
+
+	// SystemPrompt Base prompt prepended for this worker
+	SystemPrompt *string `json:"system_prompt,omitempty"`
 }
 
 // DispatchWorkerProfileDriver defines model for DispatchWorkerProfile.Driver.
@@ -996,6 +999,9 @@ type FeedbackSettings struct {
 	Harness         string `json:"harness"`
 	Model           string `json:"model"`
 	ReasoningEffort string `json:"reasoning_effort"`
+
+	// RoleId Worker role from the shared library that addresses feedback; empty = use harness/model/effort
+	RoleId *string `json:"role_id,omitempty"`
 }
 
 // HarnessDefaults defines model for HarnessDefaults.
@@ -1012,6 +1018,20 @@ type HarnessDefaults struct {
 type HarnessSettings struct {
 	Claude HarnessDefaults `json:"claude"`
 	Codex  HarnessDefaults `json:"codex"`
+}
+
+// HarnessStatus defines model for HarnessStatus.
+type HarnessStatus struct {
+	Account      *string `json:"account,omitempty"`
+	Bin          string  `json:"bin"`
+	CheckedAt    string  `json:"checked_at"`
+	Detail       *string `json:"detail,omitempty"`
+	Harness      string  `json:"harness"`
+	Installed    bool    `json:"installed"`
+	LoggedIn     bool    `json:"logged_in"`
+	LoginCommand string  `json:"login_command"`
+	ResolvedPath *string `json:"resolved_path,omitempty"`
+	Version      *string `json:"version,omitempty"`
 }
 
 // Layout defines model for Layout.
@@ -1120,7 +1140,8 @@ type OperatorSettings struct {
 	Review    ReviewSettings   `json:"review"`
 
 	// Saved False until settings were saved from the UI (values come from the environment)
-	Saved bool `json:"saved"`
+	Saved   bool           `json:"saved"`
+	Workers DispatchConfig `json:"workers"`
 }
 
 // Org defines model for Org.
@@ -1315,9 +1336,12 @@ type ReviewSettings struct {
 	Publish             bool   `json:"publish"`
 	ReasoningEffort     string `json:"reasoning_effort"`
 	RepoRoot            string `json:"repo_root"`
-	SkipDrafts          bool   `json:"skip_drafts"`
-	WatchAuthored       bool   `json:"watch_authored"`
-	WatchRequested      bool   `json:"watch_requested"`
+
+	// RoleId Worker role from the shared library that performs reviews; empty = use harness/model/effort
+	RoleId         *string `json:"role_id,omitempty"`
+	SkipDrafts     bool    `json:"skip_drafts"`
+	WatchAuthored  bool    `json:"watch_authored"`
+	WatchRequested bool    `json:"watch_requested"`
 }
 
 // ReviewerState defines model for ReviewerState.
@@ -1577,6 +1601,7 @@ type UpdateOperatorSettingsRequest struct {
 	Linear    UpdateLinearSettings `json:"linear"`
 	Report    ReportSettings       `json:"report"`
 	Review    ReviewSettings       `json:"review"`
+	Workers   *DispatchConfig      `json:"workers,omitempty"`
 }
 
 // UpdateProjectRequest defines model for UpdateProjectRequest.
@@ -1890,6 +1915,9 @@ type ServerInterface interface {
 	// RerunCodeReview Queue another review attempt
 	// (POST /code-reviews/{reviewID}/rerun)
 	RerunCodeReview(w http.ResponseWriter, r *http.Request, reviewID string)
+	// GetHarnessStatus Whether each harness CLI is installed and signed in
+	// (GET /harnesses/status)
+	GetHarnessStatus(w http.ResponseWriter, r *http.Request)
 	// GetHealthz Liveness/readiness
 	// (GET /healthz)
 	GetHealthz(w http.ResponseWriter, r *http.Request)
@@ -2353,6 +2381,20 @@ func (siw *ServerInterfaceWrapper) RerunCodeReview(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RerunCodeReview(w, r, reviewID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetHarnessStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetHarnessStatus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetHarnessStatus(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4126,6 +4168,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/schedule/{actionID}/run", wrapper.RunScheduledAction)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/layout", wrapper.GetLayout)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/me/layout", wrapper.UpdateLayout)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/harnesses/status", wrapper.GetHarnessStatus)
 
 	return m
 }
@@ -4583,6 +4626,43 @@ func (response RerunCodeReview404JSONResponse) VisitRerunCodeReviewResponse(w ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHarnessStatusRequestObject struct {
+}
+
+type GetHarnessStatusResponseObject interface {
+	VisitGetHarnessStatusResponse(w http.ResponseWriter) error
+}
+
+type GetHarnessStatus200JSONResponse struct {
+	Items []HarnessStatus `json:"items"`
+}
+
+func (response GetHarnessStatus200JSONResponse) VisitGetHarnessStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHarnessStatus401JSONResponse StructuredError
+
+func (response GetHarnessStatus401JSONResponse) VisitGetHarnessStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -6945,6 +7025,9 @@ type StrictServerInterface interface {
 	// RerunCodeReview Queue another review attempt
 	// (POST /code-reviews/{reviewID}/rerun)
 	RerunCodeReview(ctx context.Context, request RerunCodeReviewRequestObject) (RerunCodeReviewResponseObject, error)
+	// GetHarnessStatus Whether each harness CLI is installed and signed in
+	// (GET /harnesses/status)
+	GetHarnessStatus(ctx context.Context, request GetHarnessStatusRequestObject) (GetHarnessStatusResponseObject, error)
 	// GetHealthz Liveness/readiness
 	// (GET /healthz)
 	GetHealthz(ctx context.Context, request GetHealthzRequestObject) (GetHealthzResponseObject, error)
@@ -7418,6 +7501,30 @@ func (sh *strictHandler) RerunCodeReview(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RerunCodeReviewResponseObject); ok {
 		if err := validResponse.VisitRerunCodeReviewResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetHarnessStatus operation middleware
+func (sh *strictHandler) GetHarnessStatus(w http.ResponseWriter, r *http.Request) {
+	var request GetHarnessStatusRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetHarnessStatus(ctx, request.(GetHarnessStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetHarnessStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetHarnessStatusResponseObject); ok {
+		if err := validResponse.VisitGetHarnessStatusResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

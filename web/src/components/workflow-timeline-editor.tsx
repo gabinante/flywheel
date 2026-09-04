@@ -338,10 +338,18 @@ export function WorkflowTimelineEditor({
   projectId,
   orgId,
   scope = 'project',
+  definitionId,
+  template,
+  onCreated,
 }: {
   projectId?: string
   orgId?: string
   scope?: 'project' | 'org'
+  /** Edit one stored definition (library entry) by id instead of a scope's active workflow. */
+  definitionId?: string
+  /** Start from a template; saving creates a new library entry and calls onCreated. */
+  template?: { name: string; description?: string; phases: WorkflowPhase[] }
+  onCreated?: (id: string) => void
 }) {
   const { client } = useAuth()
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(null)
@@ -366,12 +374,28 @@ export function WorkflowTimelineEditor({
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const endpoint = scope === 'org'
-        ? '/orgs/{orgID}/workflow'
-        : '/projects/{projectID}/workflow'
-      const pathParams = scope === 'org'
-        ? { orgID: orgId }
-        : { projectID: projectId }
+      await Promise.resolve()
+      if (cancelled) return
+      if (template) {
+        setLoading(false)
+        setPhases(template.phases)
+        setName(template.name)
+        setDescription(template.description ?? '')
+        setLoadedFromTemplate(true)
+        setIsSuggested(false)
+        setSource(null)
+        return
+      }
+      const endpoint = definitionId
+        ? '/workflows/{id}'
+        : scope === 'org'
+          ? '/orgs/{orgID}/workflow'
+          : '/projects/{projectID}/workflow'
+      const pathParams = definitionId
+        ? { id: definitionId }
+        : scope === 'org'
+          ? { orgID: orgId }
+          : { projectID: projectId }
       const { data, response } = await client.GET(
         endpoint as never,
         { params: { path: pathParams } } as never,
@@ -405,7 +429,7 @@ export function WorkflowTimelineEditor({
       }
     })()
     return () => { cancelled = true }
-  }, [client, projectId, orgId, scope])
+  }, [client, projectId, orgId, scope, definitionId, template])
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event
@@ -453,12 +477,34 @@ export function WorkflowTimelineEditor({
       phases,
     }
 
-    const endpoint = targetScope === 'org'
-      ? '/orgs/{orgID}/workflow'
-      : '/projects/{projectID}/workflow'
-    const pathParams = targetScope === 'org'
-      ? { orgID: orgId }
-      : { projectID: projectId }
+    if (template && orgId) {
+      // Templates are read-only: saving creates a library entry.
+      const { data, error: apiError, response } = await client.POST(
+        '/orgs/{orgID}/workflow-library' as never,
+        { params: { path: { orgID: orgId } }, body } as never,
+      )
+      setSaving(false)
+      if (!response.ok) {
+        setError(formatApiError(apiError))
+        return
+      }
+      const created = data as unknown as WorkflowDefinition
+      setDefinition(created)
+      setLoadedFromTemplate(false)
+      setSavedAt(Date.now())
+      if (created?.id) onCreated?.(created.id)
+      return
+    }
+    const endpoint = definitionId
+      ? '/workflows/{id}'
+      : targetScope === 'org'
+        ? '/orgs/{orgID}/workflow'
+        : '/projects/{projectID}/workflow'
+    const pathParams = definitionId
+      ? { id: definitionId }
+      : targetScope === 'org'
+        ? { orgID: orgId }
+        : { projectID: projectId }
 
     const { data, error: apiError, response } = await client.PUT(
       endpoint as never,
@@ -477,7 +523,7 @@ export function WorkflowTimelineEditor({
     setLoadedFromTemplate(false)
     setSource(targetScope)
     setSavedAt(Date.now())
-  }, [client, projectId, orgId, name, description, phases])
+  }, [client, projectId, orgId, name, description, phases, definitionId, template, onCreated])
 
   const save = useCallback(() => saveToScope(scope), [saveToScope, scope])
 

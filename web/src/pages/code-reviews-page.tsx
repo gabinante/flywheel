@@ -201,8 +201,39 @@ export function CodeReviewsPage() {
   const [dryRun, setDryRun] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [tick, setTick] = useState(0)
+  const [projectRepos, setProjectRepos] = useState<Set<string> | null>(null)
 
   const refresh = useCallback(() => setTick((t) => t + 1), [])
+
+  // Inside a project, scope the queue and feedback to that project's repositories.
+  useEffect(() => {
+    if (!projectId) return
+    let cancelled = false
+    void Promise.all([
+      client.GET('/projects/{projectID}', { params: { path: { projectID: projectId } } }),
+      client.GET('/projects/{projectID}/repositories' as never, { params: { path: { projectID: projectId } } } as never),
+    ]).then(([p, r]) => {
+      if (cancelled) return
+      const repos = new Set<string>()
+      const add = (u?: string) => {
+        const m = (u ?? '').match(/github\.com[:/]([^/]+\/[^/.]+)/i)
+        if (m) repos.add(m[1].toLowerCase())
+      }
+      add((p.data as { repo_url?: string } | undefined)?.repo_url)
+      const list = (r.data as unknown as Array<{ repo_url?: string }> | { repositories?: Array<{ repo_url?: string }> } | undefined)
+      const arr = Array.isArray(list) ? list : list?.repositories ?? []
+      for (const repo of arr) add(repo.repo_url)
+      setProjectRepos(repos)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [client, projectId])
+
+  const inProject = useCallback(
+    (repo: string) => !projectId || !projectRepos || projectRepos.size === 0 || projectRepos.has(repo.toLowerCase()),
+    [projectId, projectRepos],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -218,17 +249,17 @@ export function CodeReviewsPage() {
         setRequests((prev) => prev ?? [])
       } else {
         setErr(null)
-        setRequests(list.data.requests)
+        setRequests(list.data.requests.filter((r) => inProject(r.repo)))
       }
       if (st.response.ok && st.data) setStatus(st.data)
-      if (fb.response.ok && fb.data) setFeedback(fb.data.rounds.filter((r) => r.state === 'new' || r.state === 'dispatched'))
+      if (fb.response.ok && fb.data) setFeedback(fb.data.rounds.filter((r) => (r.state === 'new' || r.state === 'dispatched') && inProject(r.repo)))
     })
     const t = setInterval(refresh, 10_000)
     return () => {
       cancelled = true
       clearInterval(t)
     }
-  }, [client, state, tick, refresh])
+  }, [client, state, tick, refresh, inProject])
 
   const submit = async () => {
     if (!text.trim()) return

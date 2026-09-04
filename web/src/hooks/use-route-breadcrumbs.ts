@@ -32,6 +32,8 @@ export function useRouteBreadcrumbs(): BreadcrumbItem[] {
     if (path === '/my/prs') return [{ label: 'My PRs' }]
     if (path === '/my/reviews') return [{ label: 'My Reviews' }]
     if (path === '/schedule') return [{ label: 'Scheduled actions' }]
+    if (path === '/workflows') return [{ label: 'Workflows' }]
+    if (path.startsWith('/workflows/')) return [{ label: 'Workflows', href: '/workflows' }, { label: path.endsWith('/org') ? 'Org default' : path.endsWith('/new') ? 'New from template' : 'Edit' }]
     // Settings (operator-level)
     if (path.startsWith('/settings')) {
       crumbs.push({ label: 'Settings' })

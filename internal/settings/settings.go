@@ -21,18 +21,74 @@ import (
 	"github.com/gabinante/flywheel/internal/dispatch"
 	"github.com/gabinante/flywheel/internal/harness"
 	"github.com/gabinante/flywheel/internal/linear"
+	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/report"
 )
 
 // Settings is the complete operator configuration.
 type Settings struct {
-	Linear   LinearSettings   `json:"linear"`
-	Review   ReviewSettings   `json:"review"`
-	Feedback FeedbackSettings `json:"feedback"`
-	Report   ReportSettings   `json:"report"`
-	Dispatch DispatchSettings `json:"dispatch"`
-	Harness  HarnessSettings  `json:"harnesses"`
-	Layout   LayoutSettings   `json:"layout"` // UI arrangement (not shown on the settings page)
+	Linear   LinearSettings         `json:"linear"`
+	Review   ReviewSettings         `json:"review"`
+	Feedback FeedbackSettings       `json:"feedback"`
+	Report   ReportSettings         `json:"report"`
+	Dispatch DispatchSettings       `json:"dispatch"`
+	Harness  HarnessSettings        `json:"harnesses"`
+	Workers  project.DispatchConfig `json:"workers"` // shared worker profiles, roles and routing policies
+	Layout   LayoutSettings         `json:"layout"`  // UI arrangement (not shown on the settings page)
+}
+
+// ResolvedWorker is what a role resolves to for a single-turn service (review, feedback).
+type ResolvedWorker struct {
+	WorkerID     string
+	WorkerName   string
+	Harness      string // claude | codex
+	Model        string
+	Effort       string
+	SystemPrompt string
+}
+
+// ResolveRole picks the worker a role routes to in the shared library: the role's
+// policy in order, else the first enabled worker. ok is false when nothing matches.
+func (s Settings) ResolveRole(roleID string) (ResolvedWorker, bool) {
+	roleID = strings.ToLower(strings.TrimSpace(roleID))
+	if roleID == "" {
+		return ResolvedWorker{}, false
+	}
+	cfg := s.Workers.Normalized()
+	byID := map[string]project.DispatchWorkerProfile{}
+	for _, w := range cfg.Workers {
+		if w.Enabled {
+			byID[w.ID] = w
+		}
+	}
+	var candidates []project.DispatchWorkerProfile
+	for key, pol := range cfg.Policies {
+		if strings.ToLower(strings.TrimSpace(key)) != roleID {
+			continue
+		}
+		for _, id := range pol.WorkerIDs {
+			if w, ok := byID[strings.TrimSpace(id)]; ok {
+				candidates = append(candidates, w)
+			}
+		}
+	}
+	if len(candidates) == 0 {
+		for _, w := range cfg.Workers {
+			if w.Enabled {
+				candidates = append(candidates, w)
+				break
+			}
+		}
+	}
+	if len(candidates) == 0 {
+		return ResolvedWorker{}, false
+	}
+	w := candidates[0]
+	h := strings.ToLower(w.Driver)
+	if h != "claude" && h != "codex" {
+		h = ""
+	}
+	return ResolvedWorker{WorkerID: w.ID, WorkerName: w.Name, Harness: h, Model: w.Model, Effort: w.ReasoningEffort, SystemPrompt: w.SystemPrompt}, true
 }
 
 // HarnessSettings holds per-harness binaries and default model/effort. Review,
@@ -112,6 +168,7 @@ type LinearSettings struct {
 // ReviewSettings configures PR-keyed code review.
 type ReviewSettings struct {
 	Enabled             bool   `json:"enabled"`
+	RoleID              string `json:"role_id"` // worker role from the shared library; empty = use harness/model/effort below
 	Harness             string `json:"harness"`
 	Model               string `json:"model"`
 	ReasoningEffort     string `json:"reasoning_effort"`
@@ -126,6 +183,7 @@ type ReviewSettings struct {
 
 // FeedbackSettings configures the address-feedback workflow.
 type FeedbackSettings struct {
+	RoleID          string `json:"role_id"` // worker role from the shared library; empty = use harness/model/effort below
 	Harness         string `json:"harness"`
 	Model           string `json:"model"`
 	ReasoningEffort string `json:"reasoning_effort"`
@@ -223,6 +281,7 @@ func (s *Settings) Normalize() {
 	if s.Dispatch.Driver == "" {
 		s.Dispatch.Driver = "claude"
 	}
+	s.Workers = s.Workers.Normalized()
 	if s.Layout.ProjectSections == nil {
 		s.Layout.ProjectSections = []ProjectSection{}
 	}
@@ -246,15 +305,29 @@ func (s Settings) LinearConfig() (string, linear.Config) {
 // ReviewConfig converts to the code review service's configs, filling blank
 // model/effort from the harness defaults.
 func (s Settings) ReviewConfig() (codereview.Config, codereview.FeedbackConfig) {
-	rm, re := s.Harness.Resolve(s.Review.Harness, s.Review.Model, s.Review.ReasoningEffort)
-	fm, fe := s.Harness.Resolve(s.Feedback.Harness, s.Feedback.Model, s.Feedback.ReasoningEffort)
+	rh, rmodel, reffort, rprompt := s.Review.Harness, s.Review.Model, s.Review.ReasoningEffort, ""
+	if w, ok := s.ResolveRole(s.Review.RoleID); ok {
+		if w.Harness != "" {
+			rh = w.Harness
+		}
+		rmodel, reffort, rprompt = w.Model, w.Effort, w.SystemPrompt
+	}
+	fh, fmodel, feffort, fprompt := s.Feedback.Harness, s.Feedback.Model, s.Feedback.ReasoningEffort, ""
+	if w, ok := s.ResolveRole(s.Feedback.RoleID); ok {
+		if w.Harness != "" {
+			fh = w.Harness
+		}
+		fmodel, feffort, fprompt = w.Model, w.Effort, w.SystemPrompt
+	}
+	rm, re := s.Harness.Resolve(rh, rmodel, reffort)
+	fm, fe := s.Harness.Resolve(fh, fmodel, feffort)
 	return codereview.Config{
-			Enabled: s.Review.Enabled, Harness: s.Review.Harness, Model: rm, Effort: re,
+			Enabled: s.Review.Enabled, Harness: rh, Model: rm, Effort: re, PromptPrefix: rprompt,
 			Publish: s.Review.Publish, PollInterval: time.Duration(s.Review.PollIntervalSeconds) * time.Second,
 			MaxConcurrent: s.Review.MaxConcurrent, RepoRoot: s.Review.RepoRoot, WatchRequested: s.Review.WatchRequested,
 			WatchAuthored: s.Review.WatchAuthored, SkipDrafts: s.Review.SkipDrafts,
 		}, codereview.FeedbackConfig{
-			Harness: s.Feedback.Harness, Model: fm, Effort: fe, AutoAddress: s.Feedback.AutoAddress,
+			Harness: fh, Model: fm, Effort: fe, AutoAddress: s.Feedback.AutoAddress, PromptPrefix: fprompt,
 		}
 }
 
@@ -264,7 +337,7 @@ func (s Settings) DispatchRuntime() dispatch.Runtime {
 	m, e := s.Harness.Resolve(s.Dispatch.Driver, s.Dispatch.Model, s.Dispatch.ReasoningEffort)
 	return dispatch.Runtime{
 		Enabled: s.Dispatch.Enabled, MaxWorkers: s.Dispatch.MaxWorkers, Driver: s.Dispatch.Driver, Model: m, Effort: e,
-		ClaudePath: s.Harness.Claude.Bin, CodexPath: s.Harness.Codex.Bin,
+		ClaudePath: s.Harness.Claude.Bin, CodexPath: s.Harness.Codex.Bin, Workers: s.Workers.Normalized(),
 	}
 }
 

@@ -25,6 +25,7 @@ const (
 
 // Config controls the review service.
 type Config struct {
+	PromptPrefix     string // worker base prompt prepended to the review system prompt
 	Enabled          bool
 	Harness          string // codex | claude
 	Model            string
@@ -403,7 +404,7 @@ func (s *Service) process(ctx context.Context, req *Request) {
 	started := time.Now()
 	res, runErr := s.runner.Run(ctx, harness.Spec{
 		Harness: kind, Model: req.Model, Effort: req.ReasoningEffort, WorkDir: wt,
-		SystemPrompt: ReviewSystemPrompt, Prompt: prompt, OutputSchema: FindingsSchema,
+		SystemPrompt: withPrefix(cfg.PromptPrefix, ReviewSystemPrompt), Prompt: prompt, OutputSchema: FindingsSchema,
 		Sandbox: harness.SandboxReadOnly, Timeout: cfg.ReviewTimeout,
 	})
 	s.recordSession(ctx, req, pr, kind, res, prompt, started)

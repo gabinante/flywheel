@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ArrowLeftRight, Plus, Save, Trash2 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
@@ -21,11 +21,9 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { useAuth } from '@/contexts/use-auth'
-import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
+import { ROLE_OPTIONS } from '@/lib/dispatch-roles'
 
-type Project = components['schemas']['Project']
 type DispatchConfig = components['schemas']['DispatchConfig']
 type DispatchWorkerRole = components['schemas']['DispatchWorkerRole']
 type DispatchWorkerProfile = components['schemas']['DispatchWorkerProfile']
@@ -72,43 +70,6 @@ const BASE_TYPE_OPTIONS = [
   { value: 'investigator', label: 'Investigation' },
 ] as const
 
-const ROLE_OPTIONS = [
-  {
-    key: 'orchestrator',
-    label: 'Command Center',
-    description: 'Conversation planning and ticket creation in the orchestrator.',
-  },
-  {
-    key: 'planner',
-    label: 'Planning',
-    description: 'Ticket planning and investigation before implementation starts.',
-  },
-  {
-    key: 'executor',
-    label: 'Implementation',
-    description: 'Main code-writing workers for claimed and executing tickets.',
-  },
-  {
-    key: 'validator',
-    label: 'Review',
-    description: 'PR review, validation, and acceptance decisions.',
-  },
-  {
-    key: 'deployer',
-    label: 'Deployment',
-    description: 'Deployment and post-merge operational work.',
-  },
-  {
-    key: 'investigator',
-    label: 'Investigation',
-    description: 'Read-only investigation subagents.',
-  },
-  {
-    key: 'conflict_resolver',
-    label: 'Conflict Resolution',
-    description: 'Merge/rebase resolution when auto-merge hits conflicts.',
-  },
-] as const
 
 type RoleOption = {
   key: string
@@ -325,26 +286,32 @@ type WorkerOption = {
   description: string
 }
 
-export function ProjectDispatchRoutingCard({
-  projectId,
-  project,
-  onProjectChange,
+/**
+ * Worker profiles, roles and routing policies. Bound to the shared library in
+ * operator settings (Settings → Workers & roles); projects overlay it.
+ */
+export function DispatchRoutingEditor({
+  initial,
+  onSave,
+  title = 'Workers & roles',
+  description = 'Worker profiles (harness, model, effort, base prompt), the roles the dispatcher and reviewers fill, and which workers each role routes to.',
 }: {
-  projectId: string
-  project: Project
-  onProjectChange: (project: Project) => void
+  initial: DispatchConfig | undefined
+  onSave: (config: DispatchConfig) => Promise<string | null>
+  title?: string
+  description?: string
 }) {
-  const { client } = useAuth()
-  const [draft, setDraft] = useState<DispatchConfigDraft>(() =>
-    normalizeDispatchConfig(project.dispatch_config),
-  )
+  const [draft, setDraft] = useState<DispatchConfigDraft>(() => normalizeDispatchConfig(initial))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
-
-  useEffect(() => {
-    setDraft(normalizeDispatchConfig(project.dispatch_config))
-  }, [project.dispatch_config])
+  const initialKey = JSON.stringify(initial ?? null)
+  const [seenKey, setSeenKey] = useState(initialKey)
+  if (seenKey !== initialKey) {
+    // Parent handed us a new config (e.g. after a save elsewhere): adopt it.
+    setSeenKey(initialKey)
+    setDraft(normalizeDispatchConfig(initial))
+  }
 
   const workerOptions = useMemo<WorkerOption[]>(
     () => [
@@ -529,19 +496,12 @@ export function ProjectDispatchRoutingCard({
     setSaving(true)
     setError(null)
     setSavedAt(null)
-    const { data, error: apiError, response } = await client.PATCH(
-      '/projects/{projectID}',
-      {
-        params: { path: { projectID: projectId } },
-        body: { dispatch_config: serializeDispatchConfig(draft) },
-      },
-    )
-    if (!response.ok || !data) {
-      setError(formatApiError(apiError))
+    const err = await onSave(serializeDispatchConfig(draft))
+    if (err) {
+      setError(err)
       setSaving(false)
       return
     }
-    onProjectChange(data)
     setSavedAt(Date.now())
     setSaving(false)
   }
@@ -551,10 +511,8 @@ export function ProjectDispatchRoutingCard({
       <CardHeader className="gap-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-1.5">
-            <CardTitle className="text-sm">Worker settings</CardTitle>
-            <CardDescription>
-              Set project worker capacity, runtime profiles, and role routing.
-            </CardDescription>
+            <CardTitle className="text-sm">{title}</CardTitle>
+            <CardDescription>{description}</CardDescription>
           </div>
           <div className="flex items-center gap-2">
             {savedAt ? (
@@ -699,6 +657,15 @@ export function ProjectDispatchRoutingCard({
                             })
                           }
                           placeholder="medium or xhigh"
+                        />
+                      </Label>
+                      <Label className="md:col-span-2 xl:col-span-4">
+                        Base prompt
+                        <Textarea
+                          value={worker.system_prompt ?? ''}
+                          onChange={(event) => updateWorker(index, { system_prompt: event.target.value })}
+                          placeholder="Standing instructions for this worker, prepended to every role prompt (review recipe, house style, what to never do…)"
+                          rows={3}
                         />
                       </Label>
                       <Label>

@@ -10,7 +10,6 @@ import {
   Link2,
   Monitor,
   Save,
-  ServerCog,
   Settings,
   SlidersHorizontal,
   Workflow,
@@ -21,7 +20,6 @@ import { ProjectBasePromptCard } from '@/components/project-base-prompt-card'
 import { ProjectLinearCard } from '@/components/project-linear-card'
 import { ProjectReportsCard } from '@/components/project-reports-card'
 import { ProjectMergeCard } from '@/components/project-merge-card'
-import { ProjectDispatchRoutingCard } from '@/components/project-dispatch-routing-card'
 import { WorkflowTimelineEditor } from '@/components/workflow-timeline-editor'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -43,7 +41,7 @@ import type { components } from '@/lib/api/v1'
 
 type Project = components['schemas']['Project']
 
-type SettingsSectionID = 'dispatch' | 'workers' | 'workflow' | 'prompts' | 'linear' | 'reports' | 'merge'
+type SettingsSectionID = 'dispatch' | 'workflow' | 'prompts' | 'linear' | 'reports' | 'merge'
 
 const SETTINGS_SECTIONS: Array<{
   id: SettingsSectionID
@@ -62,12 +60,6 @@ const SETTINGS_SECTIONS: Array<{
     label: 'Server-side dispatch',
     description: 'Enable or pause automatic server-side ticket pickup. Users can still claim tickets via local Claude Code + MCP when disabled.',
     icon: SlidersHorizontal,
-  },
-  {
-    id: 'workers',
-    label: 'Workers and roles',
-    description: 'Configure worker capacity, executor profiles, role routing, and custom roles.',
-    icon: ServerCog,
   },
   {
     id: 'workflow',
@@ -617,13 +609,6 @@ export function ProjectSettingsPage() {
             />
           ) : null}
 
-          {selectedSection === 'workers' ? (
-            <ProjectDispatchRoutingCard
-              projectId={projectId}
-              project={project}
-              onProjectChange={setProject}
-            />
-          ) : null}
 
           {selectedSection === 'workflow' ? (
             <WorkflowTimelineEditor projectId={projectId} orgId={orgId} />

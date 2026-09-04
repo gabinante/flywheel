@@ -15,6 +15,7 @@ import (
 	"github.com/gabinante/flywheel/internal/codereview"
 	apierrors "github.com/gabinante/flywheel/internal/errors"
 	"github.com/gabinante/flywheel/internal/execution"
+	"github.com/gabinante/flywheel/internal/harness"
 	"github.com/gabinante/flywheel/internal/linear"
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/project"
@@ -45,6 +46,7 @@ type StrictServer struct {
 	SettingsSvc   *settings.Service   // nil-safe: settings endpoints error when nil
 	ScheduleSvc   *schedule.Service   // nil-safe: schedule endpoints error when nil
 	RepoSvc       *project.RepositoryService
+	HarnessRunner *harness.CLIRunner // nil-safe: harness status errors when nil
 	AgentStore    agent.AgentStore
 }
 
