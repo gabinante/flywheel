@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -50,47 +51,35 @@ func (s *Service) Ask(ctx context.Context, reviewID, message string) (*Message, 
 	}
 	defer s.ws.Remove(ctx, req.Repo, wt)
 
-	prompt := message
 	resume := req.SessionExternalID
+	prompt := message
 	if resume == "" {
-		// No session to continue: rebuild the context from what we stored.
-		history, _ := s.store.ListMessages(ctx, req.ID)
-		var b strings.Builder
-		fmt.Fprintf(&b, "Pull request: %s#%d — %s (%s)\nHead: %s\nYour verdict: %s\nYour summary: %s\n", req.Repo, req.Number, req.Title, req.URL, req.HeadSHA, req.Verdict, req.Summary)
-		if findings, err := s.store.ListFindings(ctx, req.ID, req.Attempt); err == nil && len(findings) > 0 {
-			b.WriteString("Your findings:\n")
-			for _, f := range findings {
-				fmt.Fprintf(&b, "- [%s] %s:%d %s — %s\n", f.Severity, f.Path, f.Line, f.Title, f.Body)
-			}
-		}
-		if len(history) > 1 {
-			b.WriteString("\nConversation so far:\n")
-			for _, m := range history[:len(history)-1] {
-				fmt.Fprintf(&b, "%s: %s\n", m.Role, m.Content)
-			}
-		}
-		b.WriteString("\nOperator: " + message)
-		prompt = b.String()
+		prompt = s.recapPrompt(ctx, req, message)
 	}
-
-	res, runErr := s.runner.Run(ctx, harness.Spec{
+	spec := harness.Spec{
 		Harness: kind, Model: firstNonEmpty(req.Model, cfg.Model), Effort: firstNonEmpty(req.ReasoningEffort, cfg.Effort), WorkDir: wt,
 		SystemPrompt: AskSystemPrompt, Prompt: prompt, Sandbox: harness.SandboxFull, Timeout: 20 * time.Minute, Resume: resume,
-	})
+	}
+	res, runErr := s.runner.Run(ctx, spec)
+	if runErr != nil && (res == nil || strings.TrimSpace(res.Output) == "") && resume != "" {
+		// The old session may be gone (pruned, different machine). Forget it and retry once
+		// with the review recap as context.
+		slog.Warn("codereview: resume failed, retrying fresh", "review", req.ID, "session", resume, "error", runErr, "stderr", tail(resStderr(res), 400))
+		_ = s.store.ClearSession(ctx, req.ID)
+		spec.Resume = ""
+		spec.Prompt = s.recapPrompt(ctx, req, message)
+		res, runErr = s.runner.Run(ctx, spec)
+	}
 	if runErr != nil && (res == nil || strings.TrimSpace(res.Output) == "") {
-		if resume != "" {
-			// The old session may be gone (different machine, pruned). Retry fresh once.
-			req.SessionExternalID = ""
-			_ = s.store.SetSession(ctx, req.ID, "", "")
-			return s.retryAskFresh(ctx, req, userMsg, message)
-		}
-		return userMsg, nil, runErr
+		return userMsg, nil, fmt.Errorf("%w: %s", runErr, tail(resStderr(res), 600))
 	}
 	reply := &Message{ReviewID: req.ID, Role: "assistant", Content: strings.TrimSpace(res.Output)}
 	if res.ExternalSessionID != "" {
 		reply.SessionID = res.ExternalSessionID
 		_ = s.store.SetSession(ctx, req.ID, "", res.ExternalSessionID)
-		s.recordAskSession(ctx, req, kind, res, wt)
+		if res.ExternalSessionID != resume {
+			s.recordAskSession(ctx, req, kind, res, wt)
+		}
 	}
 	if err := s.store.AddMessage(ctx, reply); err != nil {
 		return userMsg, nil, err
@@ -98,10 +87,25 @@ func (s *Service) Ask(ctx context.Context, reviewID, message string) (*Message, 
 	return userMsg, reply, nil
 }
 
-func (s *Service) retryAskFresh(ctx context.Context, req *Request, userMsg *Message, message string) (*Message, *Message, error) {
-	// Drop the user message we already stored to avoid duplicating it, then re-run.
-	_, _ = s.store.pool.Exec(ctx, `DELETE FROM code_review_messages WHERE id = $1`, userMsg.ID)
-	return s.Ask(ctx, req.ID, message)
+// recapPrompt rebuilds the review context for a fresh session (nothing to resume).
+func (s *Service) recapPrompt(ctx context.Context, req *Request, message string) string {
+	history, _ := s.store.ListMessages(ctx, req.ID)
+	var b strings.Builder
+	fmt.Fprintf(&b, "Pull request: %s#%d — %s (%s)\nHead: %s\nYour verdict: %s\nYour summary: %s\n", req.Repo, req.Number, req.Title, req.URL, req.HeadSHA, req.Verdict, req.Summary)
+	if findings, err := s.store.ListFindings(ctx, req.ID, req.Attempt); err == nil && len(findings) > 0 {
+		b.WriteString("Your findings:\n")
+		for _, f := range findings {
+			fmt.Fprintf(&b, "- [%s] %s:%d %s — %s\n", f.Severity, f.Path, f.Line, f.Title, f.Body)
+		}
+	}
+	if len(history) > 1 {
+		b.WriteString("\nConversation so far:\n")
+		for _, m := range history[:len(history)-1] {
+			fmt.Fprintf(&b, "%s: %s\n", m.Role, m.Content)
+		}
+	}
+	b.WriteString("\nOperator: " + message)
+	return b.String()
 }
 
 func (s *Service) recordAskSession(ctx context.Context, req *Request, kind harness.Kind, res *harness.Result, wt string) {
@@ -126,4 +130,19 @@ func (s *Service) recordAskSession(ctx context.Context, req *Request, kind harne
 // Messages returns the conversation on a review.
 func (s *Service) Messages(ctx context.Context, reviewID string) ([]Message, error) {
 	return s.store.ListMessages(ctx, reviewID)
+}
+
+func resStderr(r *harness.Result) string {
+	if r == nil {
+		return ""
+	}
+	return r.Stderr
+}
+
+func tail(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if len(s) <= n {
+		return s
+	}
+	return "…" + s[len(s)-n:]
 }

@@ -496,3 +496,9 @@ func (s *Store) SetSession(ctx context.Context, reviewID, sessionID, externalID 
 }
 
 func newID() string { return uuid.Must(uuid.NewV7()).String() }
+
+// ClearSession forgets the harness session attached to a review (it can no longer be resumed).
+func (s *Store) ClearSession(ctx context.Context, reviewID string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE code_review_requests SET session_external_id = '', updated_at = now() WHERE id = $1`, reviewID)
+	return err
+}

@@ -198,11 +198,14 @@ func (r *CLIRunner) runCodex(ctx context.Context, spec Spec) (*Result, error) {
 	lastPath := filepath.Join(tmp, "last.txt")
 	args := []string{"exec"}
 	if spec.Resume != "" {
-		args = append(args, "resume", spec.Resume)
-	}
-	args = append(args, "--json", "-s", spec.Sandbox, "-c", "approval_policy=never", "-o", lastPath)
-	if spec.WorkDir != "" {
-		args = append(args, "-C", spec.WorkDir)
+		// `codex exec resume` accepts -c/-m/--json/-o/--output-schema but not -s or -C:
+		// the sandbox goes through config and the working directory through cmd.Dir.
+		args = append(args, "resume", spec.Resume, "--json", "-c", "sandbox_mode="+tomlString(spec.Sandbox), "-c", "approval_policy=never", "-o", lastPath, "--skip-git-repo-check")
+	} else {
+		args = append(args, "--json", "-s", spec.Sandbox, "-c", "approval_policy=never", "-o", lastPath)
+		if spec.WorkDir != "" {
+			args = append(args, "-C", spec.WorkDir)
+		}
 	}
 	if spec.Model != "" {
 		args = append(args, "-m", spec.Model)
@@ -236,6 +239,9 @@ func (r *CLIRunner) runCodex(ctx context.Context, spec Spec) (*Result, error) {
 	cmd := exec.CommandContext(cctx, bin, args...)
 	cmd.Stdin = strings.NewReader(fullPrompt(spec))
 	cmd.Env = append(os.Environ(), spec.Env...)
+	if spec.WorkDir != "" {
+		cmd.Dir = spec.WorkDir
+	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	stdout, err := cmd.StdoutPipe()
@@ -246,7 +252,7 @@ func (r *CLIRunner) runCodex(ctx context.Context, spec Spec) (*Result, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("harness: start codex: %w", err)
 	}
-	res := &Result{Harness: Codex, Command: bin + " " + strings.Join(args, " "), Model: spec.Model}
+	res := &Result{Harness: Codex, Command: bin + " " + strings.Join(args, " "), Model: spec.Model, ExternalSessionID: spec.Resume}
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 1<<20), 64<<20)
 	var lastErr string

@@ -101,7 +101,7 @@ export function SessionDetailPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex h-[calc(100vh-7.5rem)] min-h-[32rem] flex-col gap-4">
       <p className="text-xs text-muted-foreground">
         <OrgProjectCrumbs orgId={orgSlug} projectId={projectSlug} projectLabel={projectLabel} />
         <span className="px-1">/</span>
@@ -120,7 +120,7 @@ export function SessionDetailPage() {
       {err && <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{err}</div>}
 
       {s && (
-        <>
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
           <header className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center gap-2">
               <span className={cn('inline-block size-2 rounded-full', STATUS_DOT[s.status] ?? STATUS_DOT.ended)} />
@@ -167,88 +167,90 @@ export function SessionDetailPage() {
             )}
           </Card>
 
-          <ContinueSession sessionId={s.id} harness={s.harness} onReplied={() => setReloadTick((t) => t + 1)} />
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+            {s.links.length > 0 && (
+              <Card className="border-white/10 bg-white/5 backdrop-blur-md">
+                <CardHeader className="py-3">
+                  <CardTitle className="text-sm">Linked</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-wrap gap-2 pt-0">
+                  {s.links.map((l) => {
+                    const href = linkHref(l)
+                    const inner = (
+                      <>
+                        <span className="text-[10px] uppercase text-muted-foreground">{l.kind.replace('_', ' ')}</span>
+                        <span className="font-mono text-xs">{l.ref}</span>
+                        {href && <ExternalLink className="size-3 text-muted-foreground" />}
+                      </>
+                    )
+                    const cls = 'inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1'
+                    return href ? (
+                      <a key={`${l.kind}:${l.ref}`} href={href} target="_blank" rel="noreferrer" className={cn(cls, 'hover:bg-white/[0.08]')}>
+                        {inner}
+                      </a>
+                    ) : (
+                      <span key={`${l.kind}:${l.ref}`} className={cls}>
+                        {inner}
+                      </span>
+                    )
+                  })}
+                </CardContent>
+              </Card>
+            )}
 
-          {s.links.length > 0 && (
             <Card className="border-white/10 bg-white/5 backdrop-blur-md">
               <CardHeader className="py-3">
-                <CardTitle className="text-sm">Linked</CardTitle>
+                <CardTitle className="text-sm">Prompts ({detail.prompts.length})</CardTitle>
               </CardHeader>
-              <CardContent className="flex flex-wrap gap-2 pt-0">
-                {s.links.map((l) => {
-                  const href = linkHref(l)
-                  const inner = (
-                    <>
-                      <span className="text-[10px] uppercase text-muted-foreground">{l.kind.replace('_', ' ')}</span>
-                      <span className="font-mono text-xs">{l.ref}</span>
-                      {href && <ExternalLink className="size-3 text-muted-foreground" />}
-                    </>
-                  )
-                  const cls = 'inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1'
-                  return href ? (
-                    <a key={`${l.kind}:${l.ref}`} href={href} target="_blank" rel="noreferrer" className={cn(cls, 'hover:bg-white/[0.08]')}>
-                      {inner}
-                    </a>
-                  ) : (
-                    <span key={`${l.kind}:${l.ref}`} className={cls}>
-                      {inner}
-                    </span>
-                  )
-                })}
-              </CardContent>
-            </Card>
-          )}
-
-          <Card className="border-white/10 bg-white/5 backdrop-blur-md">
-            <CardHeader className="py-3">
-              <CardTitle className="text-sm">Prompts ({detail.prompts.length})</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3 pt-0">
-              {detail.prompts.length === 0 && (
-                <p className="text-xs italic text-muted-foreground">No operator prompts captured for this session.</p>
-              )}
-              {detail.prompts.map((p) => (
-                <div key={p.seq} className="rounded-lg border border-white/10 bg-black/20 p-3">
-                  <div className="mb-1 flex items-center gap-2 text-[10px] uppercase tracking-wide text-muted-foreground">
-                    <span>{p.role}</span>
-                    <span>#{p.seq}</span>
-                    <span className="ml-auto normal-case">{new Date(p.ts).toLocaleString()}</span>
+              <CardContent className="flex flex-col gap-3 pt-0">
+                {detail.prompts.length === 0 && (
+                  <p className="text-xs italic text-muted-foreground">No operator prompts captured for this session.</p>
+                )}
+                {detail.prompts.map((p) => (
+                  <div key={p.seq} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                    <div className="mb-1 flex items-center gap-2 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      <span>{p.role}</span>
+                      <span>#{p.seq}</span>
+                      <span className="ml-auto normal-case">{new Date(p.ts).toLocaleString()}</span>
+                    </div>
+                    <pre className="whitespace-pre-wrap break-words font-sans text-sm text-foreground/90">{p.text}</pre>
                   </div>
-                  <pre className="whitespace-pre-wrap break-words font-sans text-sm text-foreground/90">{p.text}</pre>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          {detail.children.length > 0 && (
-            <Card className="border-white/10 bg-white/5 backdrop-blur-md">
-              <CardHeader className="py-3">
-                <CardTitle className="text-sm">Subagents ({detail.children.length})</CardTitle>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-2 pt-0">
-                {detail.children.map((c) => (
-                  <Link
-                    key={c.id}
-                    to={`${base}/sessions/${c.id}`}
-                    className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm hover:bg-white/[0.06]"
-                  >
-                    <span className={cn('size-2 rounded-full', STATUS_DOT[c.status] ?? STATUS_DOT.ended)} />
-                    <span className="truncate">{c.title || c.first_prompt || c.external_id}</span>
-                    <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-                      {c.branch && (
-                        <span className="inline-flex items-center gap-1">
-                          <GitBranch className="size-3" />
-                          {c.branch}
-                        </span>
-                      )}
-                      {relativeTime(c.last_activity_at)}
-                    </span>
-                  </Link>
                 ))}
               </CardContent>
             </Card>
-          )}
-        </>
+
+            {detail.children.length > 0 && (
+              <Card className="border-white/10 bg-white/5 backdrop-blur-md">
+                <CardHeader className="py-3">
+                  <CardTitle className="text-sm">Subagents ({detail.children.length})</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-2 pt-0">
+                  {detail.children.map((c) => (
+                    <Link
+                      key={c.id}
+                      to={`${base}/sessions/${c.id}`}
+                      className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm hover:bg-white/[0.06]"
+                    >
+                      <span className={cn('size-2 rounded-full', STATUS_DOT[c.status] ?? STATUS_DOT.ended)} />
+                      <span className="truncate">{c.title || c.first_prompt || c.external_id}</span>
+                      <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+                        {c.branch && (
+                          <span className="inline-flex items-center gap-1">
+                            <GitBranch className="size-3" />
+                            {c.branch}
+                          </span>
+                        )}
+                        {relativeTime(c.last_activity_at)}
+                      </span>
+                    </Link>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          <ContinueSession sessionId={s.id} harness={s.harness} onReplied={() => setReloadTick((t) => t + 1)} />
+        </div>
       )}
     </div>
   )
