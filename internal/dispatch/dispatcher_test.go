@@ -743,7 +743,13 @@ func TestSpawnDuplicatePrevented(t *testing.T) {
 
 	// Second spawn of same ticket should be rejected (already in active).
 	d.spawn(ctx, tk)
-	time.Sleep(200 * time.Millisecond) // wait past the 100ms startup delay in runWorker
+	// Wait for the first worker to be invoked (repo resolution plus the 100ms
+	// startup delay make a fixed sleep flaky), then give a duplicate time to appear.
+	deadline := time.Now().Add(5 * time.Second)
+	for worker.callCount() < 1 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	time.Sleep(150 * time.Millisecond)
 
 	// Only 1 call should have been made.
 	if worker.callCount() != 1 {
