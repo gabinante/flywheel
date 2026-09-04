@@ -20,7 +20,7 @@ func (h *WorkerConfigHandler) getConfig(w http.ResponseWriter, r *http.Request) 
 	}
 	baseURL := h.BaseURL
 	if baseURL == "" {
-		baseURL = "http://localhost:8080"
+		baseURL = "http://localhost:8090"
 	}
 
 	// Build the MCP config that a user would paste into their Claude Code settings.

@@ -1,6 +1,8 @@
 .PHONY: run run-mcp migrate migrate-create migrate-down test generate docker-up docker-down build build-flywheel-git build-flywheel-mcp web-build varlock-validate install setup-local dev dev-infra dev-stop preflight
 
 VARLOCK := ./scripts/varlock
+# Local server port. Non-default so it never collides with other local dev stacks (joinera uses 8080/5432/6379).
+PORT ?= 8090
 
 generate:
 	go generate ./api/...
@@ -20,7 +22,7 @@ varlock-validate:
 
 # For Docker Compose, migrations run in the server container. Use this for hosted/non-Docker deploys.
 migrate:
-	migrate -path db/migrations -database "$${DATABASE_URL:-postgres://warrant:warrant@localhost:5433/warrant?sslmode=disable}" up
+	migrate -path db/migrations -database "$${DATABASE_URL:-postgres://flywheel:flywheel@localhost:5439/flywheel?sslmode=disable}" up
 
 build-flywheel-git:
 	go build -o flywheel-git ./cmd/flywheel-git
@@ -35,7 +37,7 @@ migrate-create:
 	echo "Created db/migrations/$${ts}_$${name}.{up,down}.sql"
 
 migrate-down:
-	migrate -path db/migrations -database "$${DATABASE_URL:-postgres://warrant:warrant@localhost:5433/warrant?sslmode=disable}" down 1
+	migrate -path db/migrations -database "$${DATABASE_URL:-postgres://flywheel:flywheel@localhost:5439/flywheel?sslmode=disable}" down 1
 
 test:
 	go test $$(go list ./... | grep -v 'node_modules')
@@ -61,9 +63,9 @@ preflight:
 	@bash scripts/dev-preflight.sh
 
 # Start dev: preflight, infra (Postgres+Redis), migrations, then native Go server.
-# Re-runnable: kills existing server on :8080 before starting fresh.
+# Re-runnable: kills existing server on :$(PORT) before starting fresh.
 dev: preflight dev-infra
-	@lsof -ti:8080 | xargs kill 2>/dev/null || true
+	@lsof -ti:$(PORT) | xargs kill 2>/dev/null || true
 	@sleep 1
 	@$(MAKE) migrate 2>/dev/null || true
 	$(VARLOCK) run -- go run ./cmd/server
@@ -72,7 +74,7 @@ dev: preflight dev-infra
 dev-infra:
 	@docker compose up -d postgres redis
 	@printf "Waiting for Postgres..."
-	@until docker compose exec -T postgres pg_isready -U warrant -d warrant >/dev/null 2>&1; do printf "."; sleep 1; done
+	@until docker compose exec -T postgres pg_isready -U flywheel -d flywheel >/dev/null 2>&1; do printf "."; sleep 1; done
 	@echo " ready."
 	@printf "Waiting for Redis..."
 	@until docker compose exec -T redis redis-cli ping 2>/dev/null | grep -q PONG; do printf "."; sleep 1; done
@@ -80,7 +82,7 @@ dev-infra:
 
 # Stop the dev server without stopping infra.
 dev-stop:
-	@lsof -ti:8080 | xargs kill 2>/dev/null || true
+	@lsof -ti:$(PORT) | xargs kill 2>/dev/null || true
 	@echo "Server stopped."
 
 # ─── Claude Code Local Setup ─────────────────────────────────────────────────

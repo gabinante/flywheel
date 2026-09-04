@@ -25,7 +25,7 @@ import (
 // are never logged. See scripts/varlock and .env.schema for details.
 func Load() *Config {
 	loadEnvFile(".env")
-	port := getEnv("PORT", "8080")
+	port := getEnv("PORT", "8090")
 	baseURL := getEnv("BASE_URL", "http://localhost:"+port)
 	agentRunner := getEnv("DISPATCH_AGENT_RUNNER", "")
 	dockerEnabled := getEnvBool("DISPATCH_DOCKER_ENABLED", false)
@@ -120,10 +120,10 @@ func Load() *Config {
 			WebDevProxyURL: getEnv("WEB_DEV_PROXY_URL", ""),
 		},
 		DB: DBConfig{
-			URL: getEnv("DATABASE_URL", "postgres://flywheel:flywheel@localhost:5433/flywheel?sslmode=disable"),
+			URL: getEnv("DATABASE_URL", "postgres://flywheel:flywheel@localhost:5439/flywheel?sslmode=disable"),
 		},
 		Redis: RedisConfig{
-			URL: getEnv("REDIS_URL", "redis://localhost:6379/0"),
+			URL: getEnv("REDIS_URL", "redis://localhost:6389/0"),
 		},
 		Queue: QueueConfig{
 			LeaseTTLMinutes: getEnvInt("LEASE_TTL_MINUTES", 10),

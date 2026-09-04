@@ -4,7 +4,7 @@ info:
   description: REST API for Flywheel ticketing (orgs, projects, tickets, reviews, queue).
   version: 0.1.0
 servers:
-  - url: http://localhost:8080
+  - url: http://localhost:8090
     description: Local
 paths:
   /healthz:

@@ -13,7 +13,7 @@ Use this flow when working on tickets via Flywheel. Your identity is tied to you
 
 Flywheel MCP auto-connects when the server is running. Three connection methods:
 
-**1. Claude Code:** The project ships .claude/settings.json with the MCP server pre-configured. Start the Flywheel server (make run or docker compose up), then open Claude Code in the project — it connects automatically via http://localhost:8080/mcp.
+**1. Claude Code:** The project ships .claude/settings.json with the MCP server pre-configured. Start the Flywheel server (make run or docker compose up), then open Claude Code in the project — it connects automatically via http://localhost:8090/mcp.
 
 **2. Cursor / other MCP clients:** Copy .flywheel-mcp-config.json to your IDE's MCP config location. Update the X-API-Key header with your agent's API key (from the Flywheel web UI or /agents endpoint).
 

@@ -46,7 +46,7 @@ Add to `~/.claude/.mcp.json`:
 {
   "mcpServers": {
     "flywheel": {
-      "url": "http://localhost:8080/mcp",
+      "url": "http://localhost:8090/mcp",
       "headers": { "X-API-Key": "<DISPATCH_API_KEY from .env>" }
     }
   }
@@ -61,10 +61,10 @@ After restarting the server (`make dev`), MCP clients reconnect automatically. I
 
 ## OAuth and local URL rule
 
-- Treat `http://localhost:8080` as the canonical local origin.
-- GitHub OAuth callback is `http://localhost:8080/auth/github/callback`.
+- Treat `http://localhost:8090` as the canonical local origin.
+- GitHub OAuth callback is `http://localhost:8090/auth/github/callback`.
 - `127.0.0.1` vs `localhost` matters for OAuth redirects and cookies.
-- If you want HMR while keeping the app origin on `:8080`, run Vite separately and start the Go server with `WEB_DEV_PROXY_URL=http://127.0.0.1:5173`.
+- If you want HMR while keeping the app origin on `:8090`, run Vite separately and start the Go server with `WEB_DEV_PROXY_URL=http://127.0.0.1:5173`.
 
 ## Current platform rules
 

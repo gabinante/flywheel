@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "warrant": {
-      "url": "http://localhost:8080/mcp",
+      "url": "http://localhost:8090/mcp",
       "headers": {
         "X-API-Key": "wf_YOUR_API_KEY_HERE"
       }

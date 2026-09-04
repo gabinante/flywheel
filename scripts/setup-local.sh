@@ -5,7 +5,7 @@ set -euo pipefail
 # Builds/starts the server, provisions an agent API key, installs the MCP
 # proxy, and configures Claude Code -- all idempotent and safe to re-run.
 
-FLYWHEEL_URL="${FLYWHEEL_URL:-http://localhost:8080}"
+FLYWHEEL_URL="${FLYWHEEL_URL:-http://localhost:8090}"
 CONFIG_ENV="$HOME/.warrant/data/config.env"
 PROXY_SRC="$(cd "$(dirname "$0")" && pwd)/flywheel-mcp-proxy"
 PROXY_DST="$HOME/.local/bin/flywheel-mcp-proxy"

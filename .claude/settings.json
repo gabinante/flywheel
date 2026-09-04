@@ -6,7 +6,7 @@
   },
   "mcpServers": {
     "flywheel": {
-      "url": "http://localhost:8080/mcp",
+      "url": "http://localhost:8090/mcp",
       "headers": {}
     }
   }

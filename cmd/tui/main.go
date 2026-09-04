@@ -1,5 +1,5 @@
 // TUI client for Flywheel. Uses the generated REST client.
-// Optional: FLYWHEEL_BASE_URL (default http://localhost:8080).
+// Optional: FLYWHEEL_BASE_URL (default http://localhost:8090).
 // On start: log in with GitHub (browser), then select an org. No JWT or org ID required in env.
 // Token is cached in ~/.config/flywheel/token (or platform config dir) with 0600 permissions.
 package main
@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	baseURLDefault = "http://localhost:8080"
+	baseURLDefault = "http://localhost:8090"
 )
 
 // tokenCachePath returns the path to the token cache file.

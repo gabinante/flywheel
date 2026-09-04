@@ -18,7 +18,7 @@ More detail on flows: [docs/interacting.md](docs/interacting.md).
 
 You need **Docker** with the **Compose v2 plugin**, and a [GitHub OAuth app](https://github.com/settings/developers) if you want sign-in. Local callback URL:
 
-`http://localhost:8080/auth/github/callback`
+`http://localhost:8090/auth/github/callback`
 
 **Option A — setup script** (creates `.env`, asks for secrets when possible, starts the stack):
 
@@ -42,9 +42,9 @@ Builds the server, provisions an agent API key, installs the MCP proxy, and conf
 
 ## After it’s running
 
-- **Health:** `curl -s http://localhost:8080/healthz` should print `ok`.
-- **Browser:** [http://localhost:8080/](http://localhost:8080/) — the SPA uses hash routes (`/#/…`) so paths like `/orgs` stay the REST API.
-- **MCP:** `http://localhost:8080/mcp` — see [docs/cursor-mcp.md](docs/cursor-mcp.md).
+- **Health:** `curl -s http://localhost:8090/healthz` should print `ok`.
+- **Browser:** [http://localhost:8090/](http://localhost:8090/) — the SPA uses hash routes (`/#/…`) so paths like `/orgs` stay the REST API.
+- **MCP:** `http://localhost:8090/mcp` — see [docs/cursor-mcp.md](docs/cursor-mcp.md).
 
 If you leave GitHub OAuth empty, sign-in is off and some endpoints return 401.
 
@@ -54,7 +54,7 @@ If you leave GitHub OAuth empty, sign-in is off and some endpoints return 401.
 cd web && npm install && npm run dev
 ```
 
-Vite defaults to port **5173** and proxies API calls to `127.0.0.1:8080` (change with `VITE_API_PROXY` if your API isn’t there). If you want to keep browsing through **`http://localhost:8080`** while still getting HMR, set `WEB_DEV_PROXY_URL=http://127.0.0.1:5173` before starting the Go server; it will reverse-proxy frontend requests to Vite while keeping API routes local. After editing `api/openapi.yaml`, run `npm run gen:api` in `web/`. To run the Go server with a production UI build: `make web-build` first.
+Vite defaults to port **5173** and proxies API calls to `127.0.0.1:8090` (change with `VITE_API_PROXY` if your API isn’t there). If you want to keep browsing through **`http://localhost:8090`** while still getting HMR, set `WEB_DEV_PROXY_URL=http://127.0.0.1:5173` before starting the Go server; it will reverse-proxy frontend requests to Vite while keeping API routes local. After editing `api/openapi.yaml`, run `npm run gen:api` in `web/`. To run the Go server with a production UI build: `make web-build` first.
 
 ## Binary releases
 
