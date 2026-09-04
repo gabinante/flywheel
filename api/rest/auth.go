@@ -60,6 +60,10 @@ func (h *AuthHandler) githubRedirect(w http.ResponseWriter, r *http.Request) {
 		WriteStructuredError(w, apierrors.New(apierrors.CodeInternal, "auth misconfigured: BASE_URL required", false))
 		return
 	}
+	if h.AuthConfig.DevBypass {
+		h.devLogin(w, r)
+		return
+	}
 	if h.AuthConfig.ClientID == "" {
 		slog.Error("auth: GITHUB_CLIENT_ID not set")
 		WriteStructuredError(w, apierrors.New(apierrors.CodeInternal, "auth misconfigured: GITHUB_CLIENT_ID required", false))
@@ -107,6 +111,48 @@ func isSafeRedirectURI(uri string) bool {
 	}
 	host := u.Hostname()
 	return host == "localhost" || host == "127.0.0.1"
+}
+
+// devLogin signs in a fixed local user without contacting GitHub. Only
+// reachable when AUTH_DEV_BYPASS is set; never enable outside local dev.
+func (h *AuthHandler) devLogin(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	u, agent, err := h.Provisioner.Provision(ctx, &auth.GitHubUser{
+		ID:    -1,
+		Login: "dev",
+		Name:  "Local Dev",
+		Email: "dev@localhost",
+	})
+	if err != nil {
+		WriteStructuredError(w, apierrors.New(apierrors.CodeInternal, "provision failed: "+err.Error(), false))
+		return
+	}
+	if h.OrgSvc != nil {
+		if err := h.OrgSvc.EnsureDefaultOrgForUser(ctx, u.ID, u.Email); err != nil {
+			slog.Error("auth ensure default org failed", "user", u.ID, "error", err)
+		}
+	}
+	jwtStr, err := auth.IssueJWT(h.JWTSecret, agent.ID, h.JWTExpiry)
+	if err != nil {
+		WriteStructuredError(w, apierrors.New(apierrors.CodeInternal, "jwt failed", false))
+		return
+	}
+	// TUI/local app parity with githubCallback: honor ?redirect_uri=... for localhost callbacks.
+	if redirectURI := r.URL.Query().Get("redirect_uri"); redirectURI != "" && isSafeRedirectURI(redirectURI) {
+		target, _ := url.Parse(redirectURI)
+		q := target.Query()
+		q.Set("token", jwtStr)
+		target.RawQuery = q.Encode()
+		http.Redirect(w, r, target.String(), http.StatusTemporaryRedirect)
+		return
+	}
+	if h.AuthConfig.SuccessRedirectURL != "" && redirectWithJWTFragment(w, r, h.AuthConfig.SuccessRedirectURL, jwtStr) {
+		return
+	}
+	if redirectWithJWTFragment(w, r, h.AuthConfig.BaseURL+"/", jwtStr) {
+		return
+	}
+	WriteStructuredError(w, apierrors.New(apierrors.CodeInternal, "auth misconfigured: BASE_URL required", false))
 }
 
 func (h *AuthHandler) githubCallback(w http.ResponseWriter, r *http.Request) {

@@ -27,6 +27,7 @@ type Config struct {
 	BaseURL            string
 	RedirectPath       string // e.g. /auth/github/callback
 	SuccessRedirectURL string // optional; if set, callback redirects here with #token=... (fragment)
+	DevBypass          bool   // AUTH_DEV_BYPASS: skip GitHub and sign in a fixed local user. Local dev only.
 }
 
 // OAuth2 returns the oauth2.Config for GitHub (used for ExchangeCode).

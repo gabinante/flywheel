@@ -493,7 +493,10 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 	var oauthHandler *rest.OAuthHandler
 	var mcpHandler http.Handler
 	var mcpSSEHandler http.Handler
-	if cfg.Auth.GitHubClientID != "" && cfg.Auth.JWTSecret != "" {
+	if (cfg.Auth.GitHubClientID != "" || cfg.Auth.DevBypass) && cfg.Auth.JWTSecret != "" {
+		if cfg.Auth.DevBypass {
+			slog.Warn("auth: AUTH_DEV_BYPASS enabled — sign-in issues a local dev identity without GitHub. Local dev only.")
+		}
 		authMiddleware = rest.AuthMiddleware(cfg.Auth.JWTSecret, agentSvc)
 		authCfg := auth.Config{
 			ClientID:           cfg.Auth.GitHubClientID,
@@ -501,6 +504,7 @@ func runPostgres(ctx context.Context, cfg *config.Config) {
 			BaseURL:            cfg.Auth.BaseURL,
 			RedirectPath:       "/auth/github/callback",
 			SuccessRedirectURL: cfg.Auth.SuccessRedirectURL,
+			DevBypass:          cfg.Auth.DevBypass,
 		}
 		provisioner := &auth.Provisioner{UserStore: userStore, AgentStore: agentStore}
 		oauthStore := auth.NewOAuthStore(redisClient)

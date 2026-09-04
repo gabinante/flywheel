@@ -35,7 +35,6 @@ import {
 import { cn } from '@/lib/utils'
 
 const POLL_INTERVAL = 15_000
-const LIVE_POLL_INTERVAL = 1_200
 const SSE_FALLBACK_POLL_INTERVAL = 1_200
 const SSE_BACKGROUND_POLL_INTERVAL = 30_000
 

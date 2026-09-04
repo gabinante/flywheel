@@ -135,6 +135,7 @@ func Load() *Config {
 			BaseURL:            baseURL,
 			SuccessRedirectURL: getEnv("AUTH_SUCCESS_REDIRECT_URL", ""),
 			JWTSecret:          getEnv("JWT_SECRET", ""),
+			DevBypass:          getEnvBool("AUTH_DEV_BYPASS", false),
 		},
 		Findings: FindingsConfig{
 			WeaviateURL:        getEnv("WEAVIATE_URL", ""),
@@ -365,6 +366,7 @@ type AuthConfig struct {
 	BaseURL            string
 	SuccessRedirectURL string
 	JWTSecret          string
+	DevBypass          bool // AUTH_DEV_BYPASS: sign in a fixed local user without GitHub. Local dev only.
 }
 
 type DBConfig struct {
