@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 var webUIReverseProxyFactory = func(target *url.URL) http.Handler {
@@ -18,30 +19,35 @@ var webUIReverseProxyFactory = func(target *url.URL) http.Handler {
 // by more specific API routes are reverse-proxied to the Vite dev server so
 // HMR works through the main Flywheel origin. The SPA uses browser-history
 // routing, so a catch-all serves index.html for any unmatched GET request.
-func MountWebUI(mux *http.ServeMux, distDir, devProxyURL string) {
+//
+// It returns the handler that serves the SPA shell (or nil when the UI is not
+// mounted) so the router can also route browser document navigations to it —
+// see WebUINavigation.
+func MountWebUI(mux *http.ServeMux, distDir, devProxyURL string) http.Handler {
 	if devProxyURL != "" {
 		target, err := url.Parse(devProxyURL)
 		if err != nil {
 			slog.Error("web UI: invalid dev proxy URL", "url", devProxyURL, "error", err)
 		} else {
 			slog.Info("web UI: proxying frontend requests", "target", target.String())
-			mux.Handle("GET /", webUIReverseProxyFactory(target))
-			return
+			proxy := webUIReverseProxyFactory(target)
+			mux.Handle("GET /", proxy)
+			return proxy
 		}
 	}
 
 	if distDir == "" {
-		return
+		return nil
 	}
 	abs, err := filepath.Abs(distDir)
 	if err != nil {
 		slog.Error("web UI: resolve dist path failed", "path", distDir, "error", err)
-		return
+		return nil
 	}
 	index := filepath.Join(abs, "index.html")
 	if _, err := os.Stat(index); err != nil {
 		slog.Info("web UI: skip mount, index.html not found", "path", index, "error", err)
-		return
+		return nil
 	}
 
 	assetsDir := filepath.Join(abs, "assets")
@@ -51,13 +57,57 @@ func MountWebUI(mux *http.ServeMux, distDir, devProxyURL string) {
 	// SPA fallback: serve index.html for any unmatched GET so the React
 	// router can handle client-side routes like /orgs/:orgId/projects/...
 	// Skip paths with file extensions (missing assets, source maps, etc.).
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+	spa := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if ext := filepath.Ext(r.URL.Path); ext != "" && ext != ".html" {
 			http.NotFound(w, r)
 			return
 		}
 		http.ServeFile(w, r, index)
 	})
+	mux.Handle("GET /", spa)
+	return spa
+}
+
+// webUIReservedPrefixes are never treated as SPA routes, even for document requests.
+var webUIReservedPrefixes = []string{"/api/", "/assets/", "/auth/", "/mcp", "/sse", "/metrics", "/healthz", "/readyz", "/worker-config"}
+
+// WebUINavigation routes browser document navigations (GET with an Accept header
+// that asks for text/html) to the SPA shell before the API router sees them.
+// Several client-side routes share a path with a REST resource — /settings,
+// /orgs, /sessions, /code-reviews — and without this a hard reload of those
+// pages would return the API's JSON instead of the app.
+func WebUINavigation(spa http.Handler, next http.Handler) http.Handler {
+	if spa == nil {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && isDocumentRequest(r) && !isReservedWebUIPath(r.URL.Path) {
+			if ext := filepath.Ext(r.URL.Path); ext == "" || ext == ".html" {
+				spa.ServeHTTP(w, r)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func isDocumentRequest(r *http.Request) bool {
+	if r.Header.Get("Authorization") != "" {
+		return false // API clients authenticate; browsers navigating do not.
+	}
+	if dest := r.Header.Get("Sec-Fetch-Dest"); dest != "" {
+		return dest == "document"
+	}
+	return strings.Contains(r.Header.Get("Accept"), "text/html")
+}
+
+func isReservedWebUIPath(p string) bool {
+	for _, prefix := range webUIReservedPrefixes {
+		if strings.HasPrefix(p, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func newWebUIReverseProxy(target *url.URL) *httputil.ReverseProxy {

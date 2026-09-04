@@ -92,7 +92,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	})
 	_ = generated.HandlerWithOptions(strictHandler, generated.StdHTTPServerOptions{BaseRouter: mux})
 
-	MountWebUI(mux, cfg.WebDist, cfg.WebDevProxyURL)
+	spa := MountWebUI(mux, cfg.WebDist, cfg.WebDevProxyURL)
 
 	// Auth routes (when configured)
 	// Local operator sign-in: issues a JWT for the single local identity.
@@ -136,7 +136,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		mux.HandleFunc("GET /worker-config", cfg.WorkerConfigHandler.getConfig)
 	}
 
-	h := http.Handler(mux)
+	h := WebUINavigation(spa, mux)
 	h = middleware.Recoverer(h)
 	h = middleware.Metrics(h)
 	h = middleware.Logger(h)

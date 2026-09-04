@@ -172,3 +172,57 @@ func TestNewWebUIReverseProxy_targetsViteAndPreservesOriginalHost(t *testing.T) 
 		t.Fatalf("body %q", rec.Body.String())
 	}
 }
+
+func TestWebUINavigation_prefersSPAForDocumentRequests(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html>app</html>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /settings", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"code":"unauthorized"}`))
+	})
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
+	spa := MountWebUI(mux, dir, "")
+	if spa == nil {
+		t.Fatal("expected SPA handler")
+	}
+	h := WebUINavigation(spa, mux)
+
+	cases := []struct {
+		name     string
+		headers  map[string]string
+		wantHTML bool
+	}{
+		{"browser navigation", map[string]string{"Accept": "text/html,application/xhtml+xml", "Sec-Fetch-Dest": "document"}, true},
+		{"accept only", map[string]string{"Accept": "text/html"}, true},
+		{"fetch with token", map[string]string{"Accept": "text/html", "Authorization": "Bearer x"}, false},
+		{"api client", map[string]string{"Accept": "application/json"}, false},
+		{"no accept", nil, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/settings", nil)
+			for k, v := range tc.headers {
+				req.Header.Set(k, v)
+			}
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			gotHTML := strings.Contains(rec.Body.String(), "<html>")
+			if gotHTML != tc.wantHTML {
+				t.Fatalf("html=%v want %v (status %d body %q)", gotHTML, tc.wantHTML, rec.Code, rec.Body.String())
+			}
+		})
+	}
+
+	// Reserved and asset paths never go to the SPA.
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("Accept", "text/html")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if strings.Contains(rec.Body.String(), "<html>") {
+		t.Fatal("reserved path served the SPA")
+	}
+}
