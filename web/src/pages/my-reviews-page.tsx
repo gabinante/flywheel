@@ -109,11 +109,26 @@ export function MyReviewsPage() {
       {data && (
         <>
           <section className="space-y-2">
-            <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Requested from me · {data.requested.length}</h2>
-            {data.requested.length === 0 && <p className="text-sm text-muted-foreground">Nobody is waiting on you.</p>}
-            {data.requested.map((pr) => (
-              <PRCardRow key={`${pr.repo}#${pr.number}`} pr={pr} showAuthor extra={actions(pr)} />
-            ))}
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              Requested from me directly · {data.requested.filter((p) => p.request_kind !== 'team').length}
+            </h2>
+            {data.requested.filter((p) => p.request_kind !== 'team').length === 0 && <p className="text-sm text-muted-foreground">Nobody is waiting on you personally.</p>}
+            {data.requested
+              .filter((p) => p.request_kind !== 'team')
+              .map((pr) => (
+                <PRCardRow key={`${pr.repo}#${pr.number}`} pr={pr} showAuthor extra={actions(pr)} />
+              ))}
+          </section>
+          <section className="space-y-2">
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              Requested via a team I'm on · {data.requested.filter((p) => p.request_kind === 'team').length}
+            </h2>
+            {data.requested.filter((p) => p.request_kind === 'team').length === 0 && <p className="text-sm text-muted-foreground">No team requests.</p>}
+            {data.requested
+              .filter((p) => p.request_kind === 'team')
+              .map((pr) => (
+                <PRCardRow key={`${pr.repo}#${pr.number}`} pr={pr} showAuthor extra={actions(pr)} />
+              ))}
           </section>
           <section className="space-y-2">
             <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Reviewed by me, still open · {data.reviewed.length}</h2>

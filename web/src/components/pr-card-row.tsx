@@ -80,6 +80,10 @@ export function PRCardRow({ pr, extra, showAuthor }: { pr: PullRequestCard; extr
                 {r.login} {reviewStateLabel(r.state)}
               </span>
             ))}
+          {pr.request_kind === 'direct' && <Badge variant="outline" className="border-sky-400/30 text-[11px] font-normal text-sky-200">requested you</Badge>}
+          {pr.request_kind === 'team' && (
+            <Badge variant="outline" className="text-[11px] font-normal text-muted-foreground">via team {pr.requested_teams.join(', ')}</Badge>
+          )}
           {pr.requested_reviewers.length > 0 && (
             <span className="text-[11px] text-muted-foreground">awaiting {pr.requested_reviewers.join(', ')}</span>
           )}

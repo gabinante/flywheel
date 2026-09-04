@@ -33,6 +33,7 @@ type PRDetail struct {
 	Labels             []string        `json:"labels"`
 	Reviews            []ReviewerState `json:"reviews"` // latest review per reviewer
 	RequestedReviewers []string        `json:"requested_reviewers"`
+	RequestedTeams     []string        `json:"requested_teams"`
 }
 
 // ReviewerState is the latest review by one reviewer.
@@ -178,8 +179,11 @@ func (g *GitHub) SearchPRs(ctx context.Context, query string, limit int) ([]PRDe
 			d.Reviews = append(d.Reviews, rs)
 		}
 		for _, r := range n.ReviewRequests.Nodes {
-			if name := firstNonEmpty(r.RequestedReviewer.Login, r.RequestedReviewer.Name); name != "" {
-				d.RequestedReviewers = append(d.RequestedReviewers, name)
+			switch {
+			case r.RequestedReviewer.Login != "":
+				d.RequestedReviewers = append(d.RequestedReviewers, r.RequestedReviewer.Login)
+			case r.RequestedReviewer.Name != "":
+				d.RequestedTeams = append(d.RequestedTeams, r.RequestedReviewer.Name)
 			}
 		}
 		res = append(res, d)

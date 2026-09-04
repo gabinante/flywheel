@@ -13,7 +13,7 @@ func prCardToGen(c codereview.PRCard) generated.PullRequestCard {
 		Repo: c.Repo, Number: c.Number, Title: c.Title, Url: c.URL, Author: c.Author, IsDraft: c.IsDraft, State: c.State,
 		HeadRef: c.HeadRef, BaseRef: c.BaseRef, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, MergedAt: c.MergedAt,
 		ReviewDecision: c.ReviewDecision, Checks: c.Checks, Mergeable: c.Mergeable, Additions: c.Additions, Deletions: c.Deletions,
-		ChangedFiles: c.ChangedFiles, Labels: nonNil(c.Labels), RequestedReviewers: nonNil(c.RequestedReviewers),
+		ChangedFiles: c.ChangedFiles, Labels: nonNil(c.Labels), RequestedReviewers: nonNil(c.RequestedReviewers), RequestedTeams: nonNil(c.RequestedTeams), RequestKind: c.RequestKind,
 		MyReviewState: c.MyReviewState, ReviewRequestedFromMe: c.ReviewRequestedFromMe, LinearRefs: nonNil(c.LinearRefs), Sessions: c.Sessions,
 		Reviews: []generated.ReviewerState{},
 	}

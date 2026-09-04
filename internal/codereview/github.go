@@ -111,6 +111,12 @@ func (g *GitHub) SearchReviewRequested(ctx context.Context) ([]PRSummary, error)
 	return g.search(ctx, "--review-requested=@me")
 }
 
+// SearchReviewRequestedDirect lists open PRs where the operator personally (not via a
+// team) is requested for review.
+func (g *GitHub) SearchReviewRequestedDirect(ctx context.Context) ([]PRSummary, error) {
+	return g.search(ctx, "user-review-requested:@me")
+}
+
 // SearchAuthoredOpen lists the operator's open PRs.
 func (g *GitHub) SearchAuthoredOpen(ctx context.Context) ([]PRSummary, error) {
 	return g.search(ctx, "--author=@me")
@@ -118,25 +124,26 @@ func (g *GitHub) SearchAuthoredOpen(ctx context.Context) ([]PRSummary, error) {
 
 // PR is the detail view of a pull request.
 type PR struct {
-	Repo           string
-	Number         int
-	Title          string
-	Body           string
-	Author         string
-	BaseRef        string
-	HeadRef        string
-	HeadSHA        string
-	URL            string
-	State          string // OPEN, CLOSED, MERGED
-	IsDraft        bool
-	ReviewDecision string
-	MyReviewState  string // latest review by the operator: APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED, or ""
+	Repo            string
+	Number          int
+	Title           string
+	Body            string
+	Author          string
+	BaseRef         string
+	HeadRef         string
+	HeadSHA         string
+	URL             string
+	State           string // OPEN, CLOSED, MERGED
+	IsDraft         bool
+	ReviewDecision  string
+	MyReviewState   string    // latest review by the operator: APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED, or ""
+	HeadCommittedAt time.Time // time of the newest commit on the branch (zero when unknown)
 }
 
 // ViewPR fetches PR details. login is used to find the operator's latest review state.
 func (g *GitHub) ViewPR(ctx context.Context, repo string, number int, login string) (*PR, error) {
 	out, err := g.run(ctx, nil, "pr", "view", strconv.Itoa(number), "--repo", repo, "--json",
-		"number,title,body,author,baseRefName,headRefName,headRefOid,url,state,isDraft,reviewDecision,latestReviews")
+		"number,title,body,author,baseRefName,headRefName,headRefOid,url,state,isDraft,reviewDecision,latestReviews,commits")
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +158,10 @@ func (g *GitHub) ViewPR(ctx context.Context, repo string, number int, login stri
 		State       string `json:"state"`
 		IsDraft     bool   `json:"isDraft"`
 		ReviewDec   string `json:"reviewDecision"`
-		Author      struct {
+		Commits     []struct {
+			CommittedDate string `json:"committedDate"`
+		} `json:"commits"`
+		Author struct {
 			Login string `json:"login"`
 		} `json:"author"`
 		LatestReviews []struct {
@@ -169,6 +179,11 @@ func (g *GitHub) ViewPR(ctx context.Context, repo string, number int, login stri
 	for _, r := range v.LatestReviews {
 		if strings.EqualFold(r.Author.Login, login) {
 			pr.MyReviewState = r.State
+		}
+	}
+	for _, c := range v.Commits {
+		if t, err := time.Parse(time.RFC3339, c.CommittedDate); err == nil && t.After(pr.HeadCommittedAt) {
+			pr.HeadCommittedAt = t
 		}
 	}
 	return pr, nil

@@ -1641,6 +1641,12 @@ export interface components {
         };
         ReviewSettings: {
             enabled: boolean;
+            /** @description all = review-requested:@me including team requests; direct = only PRs that ask for you personally */
+            watch_scope: string;
+            /** @description After new commits, wait until the branch has been quiet this long before re-reviewing */
+            re_review_quiet_minutes: number;
+            /** @description Never post more than one re-review per PR within this window */
+            re_review_min_gap_minutes: number;
             /** @description Worker role from the shared library that performs reviews; empty = use harness/model/effort */
             role_id?: string;
             harness: string;
@@ -1780,6 +1786,9 @@ export interface components {
             labels: string[];
             reviews: components["schemas"]["ReviewerState"][];
             requested_reviewers: string[];
+            requested_teams: string[];
+            /** @description direct (you were asked personally), team (a team you belong to was asked), or empty */
+            request_kind: string;
             my_review_state: string;
             review_requested_from_me: boolean;
             linear_refs: string[];

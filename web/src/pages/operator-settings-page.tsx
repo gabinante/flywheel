@@ -537,10 +537,26 @@ export function OperatorSettingsPage() {
                 <Toggle
                   id="review-watch-requested"
                   label="Watch review-requested:@me"
-                  hint="Queue a review for every open PR that requests your review, and re-review watched PRs on new commits or when your review is dismissed."
+                  hint="Queue a review for open PRs that request your review, and re-review watched PRs on new commits or when a human dismisses your review."
                   checked={review.watch_requested}
                   onChange={(v) => update('review', { watch_requested: v })}
                 />
+                <Field
+                  label="Which requests"
+                  htmlFor="review-scope"
+                  hint="GitHub's review-requested:@me includes PRs that ask for a team you belong to. Direct-only limits the watcher to PRs that name you."
+                >
+                  <StyledSelect
+                    className="h-9 w-full max-w-md min-w-0"
+                    id="review-scope"
+                    value={review.watch_scope || 'all'}
+                    onValueChange={(v) => update('review', { watch_scope: v })}
+                    options={[
+                      { value: 'all', label: 'Requests to me or to my teams' },
+                      { value: 'direct', label: 'Only requests that name me directly' },
+                    ]}
+                  />
+                </Field>
                 <Toggle
                   id="review-watch-authored"
                   label="Watch feedback on my PRs"
@@ -555,6 +571,12 @@ export function OperatorSettingsPage() {
                   </Field>
                   <Field label="Poll interval (seconds)" htmlFor="review-poll" hint="Applies from the next scheduled tick.">
                     <Input id="review-poll" type="number" min={30} value={review.poll_interval_seconds} onChange={(e) => update('review', { poll_interval_seconds: Number(e.target.value) || 120 })} />
+                  </Field>
+                  <Field label="Re-review quiet period (min)" htmlFor="review-quiet" hint="After new commits, wait until the branch has been quiet this long so a burst of pushes gets one re-review. Findings already posted are never reposted.">
+                    <Input id="review-quiet" type="number" min={1} value={review.re_review_quiet_minutes} onChange={(e) => update('review', { re_review_quiet_minutes: Number(e.target.value) || 5 })} />
+                  </Field>
+                  <Field label="Min gap between re-reviews (min)" htmlFor="review-gap" hint="At most one re-review per PR in this window. 0 = no limit.">
+                    <Input id="review-gap" type="number" min={0} value={review.re_review_min_gap_minutes} onChange={(e) => update('review', { re_review_min_gap_minutes: Math.max(0, Number(e.target.value) || 0) })} />
                   </Field>
                   <Field label="Repo root" htmlFor="review-root" hint="Primary checkouts live here; review worktrees go in <repo>-worktrees/.">
                     <Input id="review-root" value={review.repo_root} onChange={(e) => update('review', { repo_root: e.target.value })} />

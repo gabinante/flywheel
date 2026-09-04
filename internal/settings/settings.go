@@ -168,18 +168,21 @@ type LinearSettings struct {
 
 // ReviewSettings configures PR-keyed code review.
 type ReviewSettings struct {
-	Enabled             bool   `json:"enabled"`
-	RoleID              string `json:"role_id"` // worker role from the shared library; empty = use harness/model/effort below
-	Harness             string `json:"harness"`
-	Model               string `json:"model"`
-	ReasoningEffort     string `json:"reasoning_effort"`
-	Publish             bool   `json:"publish"`
-	WatchRequested      bool   `json:"watch_requested"`
-	WatchAuthored       bool   `json:"watch_authored"`
-	SkipDrafts          bool   `json:"skip_drafts"`
-	MaxConcurrent       int    `json:"max_concurrent"`
-	PollIntervalSeconds int    `json:"poll_interval_seconds"`
-	RepoRoot            string `json:"repo_root"`
+	Enabled               bool   `json:"enabled"`
+	RoleID                string `json:"role_id"` // worker role from the shared library; empty = use harness/model/effort below
+	Harness               string `json:"harness"`
+	Model                 string `json:"model"`
+	ReasoningEffort       string `json:"reasoning_effort"`
+	Publish               bool   `json:"publish"`
+	WatchRequested        bool   `json:"watch_requested"`
+	WatchAuthored         bool   `json:"watch_authored"`
+	SkipDrafts            bool   `json:"skip_drafts"`
+	MaxConcurrent         int    `json:"max_concurrent"`
+	PollIntervalSeconds   int    `json:"poll_interval_seconds"`
+	RepoRoot              string `json:"repo_root"`
+	ReReviewQuietMinutes  int    `json:"re_review_quiet_minutes"`   // wait for the branch to be quiet this long before re-reviewing new commits
+	ReReviewMinGapMinutes int    `json:"re_review_min_gap_minutes"` // at most one re-review per PR in this window
+	WatchScope            string `json:"watch_scope"`               // all | direct
 }
 
 // FeedbackSettings configures the address-feedback workflow.
@@ -251,6 +254,15 @@ func (s *Settings) Normalize() {
 	}
 	if s.Review.PollIntervalSeconds < 30 {
 		s.Review.PollIntervalSeconds = 120
+	}
+	if s.Review.ReReviewQuietMinutes <= 0 {
+		s.Review.ReReviewQuietMinutes = 5
+	}
+	if s.Review.ReReviewMinGapMinutes < 0 {
+		s.Review.ReReviewMinGapMinutes = 0
+	}
+	if s.Review.WatchScope != "direct" {
+		s.Review.WatchScope = "all"
 	}
 	if s.Feedback.Harness == "" {
 		s.Feedback.Harness = "claude"
@@ -330,6 +342,8 @@ func (s Settings) ReviewConfig() (codereview.Config, codereview.FeedbackConfig) 
 			Publish: s.Review.Publish, PollInterval: time.Duration(s.Review.PollIntervalSeconds) * time.Second,
 			MaxConcurrent: s.Review.MaxConcurrent, RepoRoot: s.Review.RepoRoot, WatchRequested: s.Review.WatchRequested,
 			WatchAuthored: s.Review.WatchAuthored, SkipDrafts: s.Review.SkipDrafts,
+			ReReviewQuiet: time.Duration(s.Review.ReReviewQuietMinutes) * time.Minute, ReReviewMinGap: time.Duration(s.Review.ReReviewMinGapMinutes) * time.Minute,
+			WatchScope: s.Review.WatchScope,
 		}, codereview.FeedbackConfig{
 			Harness: fh, Model: fm, Effort: fe, AutoAddress: s.Feedback.AutoAddress, PromptPrefix: fprompt,
 		}

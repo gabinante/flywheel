@@ -20,6 +20,7 @@ type PRCard struct {
 	PRDetail
 	MyReviewState         string          `json:"my_review_state"`
 	ReviewRequestedFromMe bool            `json:"review_requested_from_me"`
+	RequestKind           string          `json:"request_kind"` // direct | team | ""
 	LinearRefs            []string        `json:"linear_refs"`
 	Sessions              int             `json:"sessions"`
 	Review                *Request        `json:"review,omitempty"`
@@ -436,6 +437,12 @@ func (s *Service) enrich(ctx context.Context, login string, prs []PRDetail) []PR
 			if login != "" && strings.EqualFold(r, login) {
 				c.ReviewRequestedFromMe = true
 			}
+		}
+		switch {
+		case c.ReviewRequestedFromMe:
+			c.RequestKind = "direct"
+		case len(p.RequestedTeams) > 0:
+			c.RequestKind = "team"
 		}
 		if req, err := s.store.GetByRepoNumber(ctx, p.Repo, p.Number); err == nil && req != nil {
 			c.Review = req

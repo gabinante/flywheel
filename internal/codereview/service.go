@@ -41,6 +41,9 @@ type Config struct {
 	ReviewTimeout    time.Duration // per review (default 30m)
 	SkipDrafts       bool
 	FeedbackLookback time.Duration // reviews older than this at first sight are recorded as ignored (default 48h)
+	ReReviewQuiet    time.Duration // after new commits, wait until the branch has been quiet this long (default 5m)
+	ReReviewMinGap   time.Duration // never post more than one re-review per PR within this window (0 = no limit)
+	WatchScope       string        // "all" (default) = review-requested:@me incl. teams; "direct" = only PRs that ask for the operator personally
 }
 
 // Service runs the review queue and the GitHub watchers.
@@ -116,6 +119,15 @@ func normalizeConfig(cfg Config) Config {
 	}
 	if cfg.FeedbackLookback <= 0 {
 		cfg.FeedbackLookback = 48 * time.Hour
+	}
+	if cfg.ReReviewQuiet <= 0 {
+		cfg.ReReviewQuiet = 5 * time.Minute
+	}
+	if cfg.ReReviewMinGap < 0 {
+		cfg.ReReviewMinGap = 0
+	}
+	if cfg.WatchScope == "" {
+		cfg.WatchScope = "all"
 	}
 	if cfg.Harness == "" {
 		cfg.Harness = "codex"
@@ -430,7 +442,7 @@ func (s *Service) process(ctx context.Context, req *Request) {
 		findings[i].Attempt = req.Attempt
 	}
 	req.Summary = summary
-	req.Verdict = Verdict(findings)
+	req.Verdict = Verdict(findings) // repeats still count: an unaddressed P1 keeps blocking
 	req.State = StatePublishing
 	_ = s.store.Update(ctx, req)
 	if err := s.store.ReplaceFindings(ctx, req.ID, req.Attempt, findings); err != nil {
@@ -438,7 +450,27 @@ func (s *Service) process(ctx context.Context, req *Request) {
 		return
 	}
 
+	// On a re-review, findings already posted last time are not posted again: they are
+	// recorded as repeats and summarized in one line instead.
+	isReReview := req.Origin == OriginReReview && req.LastReviewedHeadSHA != "" && req.LastReviewedHeadSHA != req.HeadSHA
+	repeats := 0
+	if isReReview && len(prior) > 0 {
+		var fresh []Finding
+		for _, f := range findings {
+			if isRepeatFinding(f, prior) {
+				repeats++
+				_ = s.store.UpdateFindingStatus(ctx, f.ID, "repeat", 0)
+				continue
+			}
+			fresh = append(fresh, f)
+		}
+		findings = fresh
+	}
+
 	body, inline, inBody := ComposeReview(summary, findings, diffIdx)
+	if isReReview {
+		body = reReviewBody(req.LastReviewedHeadSHA, req.HeadSHA, summary, findings, repeats, body)
+	}
 	reviewedAt := time.Now()
 	req.ReviewedAt = &reviewedAt
 	req.LastReviewedHeadSHA = req.HeadSHA
@@ -562,7 +594,13 @@ func (s *Service) recordSession(ctx context.Context, req *Request, pr *PR, kind 
 // pollRequested queues PRs where the operator's review is requested.
 func (s *Service) pollRequested(ctx context.Context) error {
 	cfg := s.conf()
-	prs, err := s.gh.SearchReviewRequested(ctx)
+	var prs []PRSummary
+	var err error
+	if cfg.WatchScope == "direct" {
+		prs, err = s.gh.SearchReviewRequestedDirect(ctx)
+	} else {
+		prs, err = s.gh.SearchReviewRequested(ctx)
+	}
 	if err != nil {
 		return err
 	}
@@ -608,18 +646,41 @@ func (s *Service) pollWatching(ctx context.Context) error {
 			_ = s.store.Update(ctx, r)
 			continue
 		}
-		requeue := ""
+		// Decide whether this PR deserves another review. GitHub dismisses stale approvals on
+		// every push, so "dismissed" alone is not a signal; only a dismissal with the head
+		// unchanged (a human did it) counts. New commits are re-reviewed once the branch has
+		// been quiet for a while and no sooner than the minimum gap since the last review.
+		requeue, hold := "", ""
+		headChanged := r.LastReviewedHeadSHA != "" && pr.HeadSHA != r.LastReviewedHeadSHA
+		sinceLast := time.Duration(0)
+		if r.ReviewedAt != nil {
+			sinceLast = now.Sub(*r.ReviewedAt)
+		}
 		switch {
 		case r.LastReviewedHeadSHA == "" && !pr.IsDraft:
 			requeue = "ready for review"
-		case r.LastReviewedHeadSHA != "" && pr.HeadSHA != r.LastReviewedHeadSHA:
-			requeue = "new commits"
-		case r.MyReviewState != "" && pr.MyReviewState == "DISMISSED":
-			requeue = "review dismissed"
+		case headChanged:
+			quietFor := time.Duration(0)
+			if !pr.HeadCommittedAt.IsZero() {
+				quietFor = now.Sub(pr.HeadCommittedAt)
+			}
+			switch {
+			case !pr.HeadCommittedAt.IsZero() && quietFor < cfg.ReReviewQuiet:
+				hold = fmt.Sprintf("new commits, branch quiet for %s (< %s)", quietFor.Round(time.Minute), cfg.ReReviewQuiet)
+			case cfg.ReReviewMinGap > 0 && r.ReviewedAt != nil && sinceLast < cfg.ReReviewMinGap:
+				hold = fmt.Sprintf("new commits, last review %s ago (< %s)", sinceLast.Round(time.Minute), cfg.ReReviewMinGap)
+			default:
+				requeue = "new commits"
+			}
+		case !headChanged && pr.MyReviewState == "DISMISSED" && r.MyReviewState != "DISMISSED" && r.MyReviewState != "":
+			requeue = "review dismissed by a human"
 		}
 		r.MyReviewState = pr.MyReviewState
 		r.HeadSHA = pr.HeadSHA
 		_ = s.store.Update(ctx, r)
+		if hold != "" {
+			slog.Debug("codereview: holding re-review", "pr", r.Ref(), "why", hold)
+		}
 		if requeue != "" && !(pr.IsDraft && cfg.SkipDrafts) {
 			slog.Info("codereview: re-queuing", "pr", r.Ref(), "reason", requeue)
 			_ = s.store.Requeue(ctx, r.ID, OriginReReview)
@@ -801,4 +862,40 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// reReviewBody makes a follow-up review read like one: it says what changed since the
+// last look and, when nothing new was found, keeps the body short instead of restating
+// the original summary.
+func reReviewBody(prevSHA, newSHA, summary string, fresh []Finding, repeats int, full string) string {
+	head := fmt.Sprintf("**Re-review** — new commits since my last look (`%s` → `%s`).", short(prevSHA), short(newSHA))
+	still := ""
+	if repeats > 0 {
+		still = fmt.Sprintf(" %d earlier finding%s still open (not reposted).", repeats, plural(repeats))
+	}
+	if len(fresh) == 0 {
+		return head + " No new findings." + still + "\n\n_reviewed by Flywheel_"
+	}
+	return head + still + "\n\n" + full
+}
+
+// isRepeatFinding reports whether f restates a finding from the previous round.
+func isRepeatFinding(f Finding, prior []Finding) bool {
+	norm := func(v string) string { return strings.ToLower(strings.TrimSpace(v)) }
+	for _, p := range prior {
+		if norm(p.Path) != norm(f.Path) {
+			continue
+		}
+		if norm(p.Title) == norm(f.Title) || norm(p.Body) == norm(f.Body) {
+			return true
+		}
+	}
+	return false
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }

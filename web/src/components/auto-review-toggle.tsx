@@ -75,7 +75,8 @@ export function AutoReviewToggle() {
             ) : (
               <span>records a dry run in Flywheel only</span>
             )}
-            . Watched PRs are re-reviewed on new commits or when your review is dismissed.{' '}
+            . Picks up {r.watch_scope === 'direct' ? 'only PRs that request you directly' : 'PRs that request you or a team you belong to'}; watched PRs are
+            re-reviewed on new commits without reposting earlier findings.{' '}
             <Link to="/settings?section=review" className="inline-flex items-center gap-1 underline">
               <SettingsIcon className="size-3" />
               all review settings

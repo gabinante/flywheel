@@ -1263,24 +1263,28 @@ type PromptDefinition struct {
 
 // PullRequestCard defines model for PullRequestCard.
 type PullRequestCard struct {
-	Additions             int                `json:"additions"`
-	Author                string             `json:"author"`
-	BaseRef               string             `json:"base_ref"`
-	ChangedFiles          int                `json:"changed_files"`
-	Checks                string             `json:"checks"`
-	CreatedAt             time.Time          `json:"created_at"`
-	Deletions             int                `json:"deletions"`
-	Feedback              *FeedbackDigest    `json:"feedback,omitempty"`
-	HeadRef               string             `json:"head_ref"`
-	IsDraft               bool               `json:"is_draft"`
-	Labels                []string           `json:"labels"`
-	LinearRefs            []string           `json:"linear_refs"`
-	Mergeable             string             `json:"mergeable"`
-	MergedAt              *time.Time         `json:"merged_at,omitempty"`
-	MyReviewState         string             `json:"my_review_state"`
-	Number                int                `json:"number"`
-	Repo                  string             `json:"repo"`
+	Additions     int             `json:"additions"`
+	Author        string          `json:"author"`
+	BaseRef       string          `json:"base_ref"`
+	ChangedFiles  int             `json:"changed_files"`
+	Checks        string          `json:"checks"`
+	CreatedAt     time.Time       `json:"created_at"`
+	Deletions     int             `json:"deletions"`
+	Feedback      *FeedbackDigest `json:"feedback,omitempty"`
+	HeadRef       string          `json:"head_ref"`
+	IsDraft       bool            `json:"is_draft"`
+	Labels        []string        `json:"labels"`
+	LinearRefs    []string        `json:"linear_refs"`
+	Mergeable     string          `json:"mergeable"`
+	MergedAt      *time.Time      `json:"merged_at,omitempty"`
+	MyReviewState string          `json:"my_review_state"`
+	Number        int             `json:"number"`
+	Repo          string          `json:"repo"`
+
+	// RequestKind direct (you were asked personally), team (a team you belong to was asked), or empty
+	RequestKind           string             `json:"request_kind"`
 	RequestedReviewers    []string           `json:"requested_reviewers"`
+	RequestedTeams        []string           `json:"requested_teams"`
 	Review                *CodeReviewRequest `json:"review,omitempty"`
 	ReviewDecision        string             `json:"review_decision"`
 	ReviewRequestedFromMe bool               `json:"review_requested_from_me"`
@@ -1357,14 +1361,23 @@ type ReviewSettings struct {
 	Model               string `json:"model"`
 	PollIntervalSeconds int    `json:"poll_interval_seconds"`
 	Publish             bool   `json:"publish"`
-	ReasoningEffort     string `json:"reasoning_effort"`
-	RepoRoot            string `json:"repo_root"`
+
+	// ReReviewMinGapMinutes Never post more than one re-review per PR within this window
+	ReReviewMinGapMinutes int `json:"re_review_min_gap_minutes"`
+
+	// ReReviewQuietMinutes After new commits, wait until the branch has been quiet this long before re-reviewing
+	ReReviewQuietMinutes int    `json:"re_review_quiet_minutes"`
+	ReasoningEffort      string `json:"reasoning_effort"`
+	RepoRoot             string `json:"repo_root"`
 
 	// RoleId Worker role from the shared library that performs reviews; empty = use harness/model/effort
 	RoleId         *string `json:"role_id,omitempty"`
 	SkipDrafts     bool    `json:"skip_drafts"`
 	WatchAuthored  bool    `json:"watch_authored"`
 	WatchRequested bool    `json:"watch_requested"`
+
+	// WatchScope all = review-requested:@me including team requests; direct = only PRs that ask for you personally
+	WatchScope string `json:"watch_scope"`
 }
 
 // ReviewerState defines model for ReviewerState.

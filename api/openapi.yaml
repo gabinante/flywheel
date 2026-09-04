@@ -3356,10 +3356,19 @@ components:
           type: integer
     ReviewSettings:
       type: object
-      required: [enabled, harness, model, reasoning_effort, publish, watch_requested, watch_authored, skip_drafts, max_concurrent, poll_interval_seconds, repo_root]
+      required: [enabled, harness, model, reasoning_effort, publish, watch_requested, watch_authored, skip_drafts, max_concurrent, poll_interval_seconds, repo_root, re_review_quiet_minutes, re_review_min_gap_minutes, watch_scope]
       properties:
         enabled:
           type: boolean
+        watch_scope:
+          type: string
+          description: all = review-requested:@me including team requests; direct = only PRs that ask for you personally
+        re_review_quiet_minutes:
+          type: integer
+          description: After new commits, wait until the branch has been quiet this long before re-reviewing
+        re_review_min_gap_minutes:
+          type: integer
+          description: Never post more than one re-review per PR within this window
         role_id:
           type: string
           description: Worker role from the shared library that performs reviews; empty = use harness/model/effort
@@ -3577,7 +3586,7 @@ components:
           type: string
     PullRequestCard:
       type: object
-      required: [repo, number, title, url, author, is_draft, state, head_ref, base_ref, created_at, updated_at, review_decision, checks, mergeable, additions, deletions, changed_files, labels, reviews, requested_reviewers, my_review_state, review_requested_from_me, linear_refs, sessions]
+      required: [repo, number, title, url, author, is_draft, state, head_ref, base_ref, created_at, updated_at, review_decision, checks, mergeable, additions, deletions, changed_files, labels, reviews, requested_reviewers, requested_teams, request_kind, my_review_state, review_requested_from_me, linear_refs, sessions]
       properties:
         repo:
           type: string
@@ -3630,6 +3639,13 @@ components:
           type: array
           items:
             type: string
+        requested_teams:
+          type: array
+          items:
+            type: string
+        request_kind:
+          type: string
+          description: direct (you were asked personally), team (a team you belong to was asked), or empty
         my_review_state:
           type: string
         review_requested_from_me:
