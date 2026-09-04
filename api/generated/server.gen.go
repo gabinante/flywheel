@@ -984,6 +984,11 @@ type FeedbackSettings struct {
 	ReasoningEffort string `json:"reasoning_effort"`
 }
 
+// Layout defines model for Layout.
+type Layout struct {
+	ProjectSections []ProjectSection `json:"project_sections"`
+}
+
 // Lease defines model for Lease.
 type Lease struct {
 	AgentId   *string    `json:"agent_id,omitempty"`
@@ -1165,6 +1170,21 @@ type ProjectMergeResult struct {
 	WorkStreamsMoved int            `json:"work_streams_moved"`
 }
 
+// ProjectPullRequests defines model for ProjectPullRequests.
+type ProjectPullRequests struct {
+	FetchedAt time.Time         `json:"fetched_at"`
+	Items     []PullRequestCard `json:"items"`
+	Login     string            `json:"login"`
+}
+
+// ProjectSection defines model for ProjectSection.
+type ProjectSection struct {
+	Collapsed  bool     `json:"collapsed"`
+	Id         string   `json:"id"`
+	Name       string   `json:"name"`
+	ProjectIds []string `json:"project_ids"`
+}
+
 // PullRequestCard defines model for PullRequestCard.
 type PullRequestCard struct {
 	Additions             int                `json:"additions"`
@@ -1191,9 +1211,16 @@ type PullRequestCard struct {
 	Reviews               []ReviewerState    `json:"reviews"`
 	Sessions              int                `json:"sessions"`
 	State                 string             `json:"state"`
-	Title                 string             `json:"title"`
-	UpdatedAt             time.Time          `json:"updated_at"`
-	Url                   string             `json:"url"`
+
+	// TicketId Flywheel ticket this PR is linked to (project views only)
+	TicketId *string `json:"ticket_id,omitempty"`
+
+	// TicketIdentifier Linear identifier of the linked ticket, when known
+	TicketIdentifier *string   `json:"ticket_identifier,omitempty"`
+	TicketTitle      *string   `json:"ticket_title,omitempty"`
+	Title            string    `json:"title"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	Url              string    `json:"url"`
 }
 
 // RenewLeaseRequest defines model for RenewLeaseRequest.
@@ -1637,6 +1664,11 @@ type ListProjectsByOrgParams struct {
 // ListProjectsByOrgParamsStatus defines parameters for ListProjectsByOrg.
 type ListProjectsByOrgParamsStatus string
 
+// ListProjectPullRequestsParams defines parameters for ListProjectPullRequests.
+type ListProjectPullRequestsParams struct {
+	Refresh *bool `form:"refresh,omitempty" json:"refresh,omitempty"`
+}
+
 // ListTicketsParams defines parameters for ListTickets.
 type ListTicketsParams struct {
 	// WorkStreamId Filter by work stream.
@@ -1728,6 +1760,9 @@ type CreateCodeReviewsJSONRequestBody = CreateCodeReviewRequest
 
 // SetFeedbackRoundStateJSONRequestBody defines body for SetFeedbackRoundState for application/json ContentType.
 type SetFeedbackRoundStateJSONRequestBody = SetFeedbackRoundStateRequest
+
+// UpdateLayoutJSONRequestBody defines body for UpdateLayout for application/json ContentType.
+type UpdateLayoutJSONRequestBody = Layout
 
 // CreateOrgJSONRequestBody defines body for CreateOrg for application/json ContentType.
 type CreateOrgJSONRequestBody = CreateOrgRequest
@@ -1827,6 +1862,12 @@ type ServerInterface interface {
 	// GetLinearStatus Health of the Linear sync and the linked projects
 	// (GET /linear/status)
 	GetLinearStatus(w http.ResponseWriter, r *http.Request)
+	// GetLayout The operator's UI arrangement (project sections)
+	// (GET /me/layout)
+	GetLayout(w http.ResponseWriter, r *http.Request)
+	// UpdateLayout Replace the operator's UI arrangement
+	// (PUT /me/layout)
+	UpdateLayout(w http.ResponseWriter, r *http.Request)
 	// GetMyPullRequests The operator's open pull requests across all repos (plus merges from the last 7 days)
 	// (GET /me/prs)
 	GetMyPullRequests(w http.ResponseWriter, r *http.Request, params GetMyPullRequestsParams)
@@ -1878,6 +1919,9 @@ type ServerInterface interface {
 	// MergeProject Merge this project into another project and delete it
 	// (POST /projects/{projectID}/merge)
 	MergeProject(w http.ResponseWriter, r *http.Request, projectID string)
+	// ListProjectPullRequests Pull requests in the project's repositories — the operator's open PRs and any PR linked to a ticket
+	// (GET /projects/{projectID}/prs)
+	ListProjectPullRequests(w http.ResponseWriter, r *http.Request, projectID string, params ListProjectPullRequestsParams)
 
 	// (POST /projects/{projectID}/queue/claim)
 	ClaimTicket(w http.ResponseWriter, r *http.Request, projectID string)
@@ -2303,6 +2347,34 @@ func (siw *ServerInterfaceWrapper) GetLinearStatus(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetLinearStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetLayout operation middleware
+func (siw *ServerInterfaceWrapper) GetLayout(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetLayout(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateLayout operation middleware
+func (siw *ServerInterfaceWrapper) UpdateLayout(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateLayout(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2746,6 +2818,48 @@ func (siw *ServerInterfaceWrapper) MergeProject(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.MergeProject(w, r, projectID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListProjectPullRequests operation middleware
+func (siw *ServerInterfaceWrapper) ListProjectPullRequests(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectID" -------------
+	var projectID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectID", r.PathValue("projectID"), &projectID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectID", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListProjectPullRequestsParams
+
+	// ------------- Optional query parameter "refresh" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "refresh", r.URL.Query(), &params.Refresh, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "refresh"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "refresh", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListProjectPullRequests(w, r, projectID, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3930,6 +4044,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/projects/{projectID}/work-streams", wrapper.CreateWorkStream)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectID}/work-streams/{workStreamID}", wrapper.GetWorkStream)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/projects/{projectID}/work-streams/{workStreamID}", wrapper.UpdateWorkStream)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectID}/prs", wrapper.ListProjectPullRequests)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectID}/tickets", wrapper.ListTickets)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/projects/{projectID}/tickets", wrapper.CreateTicket)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tickets/{ticketID}", wrapper.GetTicket)
@@ -3975,6 +4090,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/reviews", wrapper.GetMyReviews)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/schedule", wrapper.ListScheduledActions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/schedule/{actionID}/run", wrapper.RunScheduledAction)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/layout", wrapper.GetLayout)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/me/layout", wrapper.UpdateLayout)
 
 	return m
 }
@@ -4475,6 +4592,77 @@ func (response GetLinearStatus200JSONResponse) VisitGetLinearStatusResponse(w ht
 type GetLinearStatus401JSONResponse StructuredError
 
 func (response GetLinearStatus401JSONResponse) VisitGetLinearStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLayoutRequestObject struct {
+}
+
+type GetLayoutResponseObject interface {
+	VisitGetLayoutResponse(w http.ResponseWriter) error
+}
+
+type GetLayout200JSONResponse Layout
+
+func (response GetLayout200JSONResponse) VisitGetLayoutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLayout401JSONResponse StructuredError
+
+func (response GetLayout401JSONResponse) VisitGetLayoutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateLayoutRequestObject struct {
+	Body *UpdateLayoutJSONRequestBody
+}
+
+type UpdateLayoutResponseObject interface {
+	VisitUpdateLayoutResponse(w http.ResponseWriter) error
+}
+
+type UpdateLayout200JSONResponse Layout
+
+func (response UpdateLayout200JSONResponse) VisitUpdateLayoutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateLayout401JSONResponse StructuredError
+
+func (response UpdateLayout401JSONResponse) VisitUpdateLayoutResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -5189,6 +5377,43 @@ func (response MergeProject409JSONResponse) VisitMergeProjectResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjectPullRequestsRequestObject struct {
+	ProjectID string `json:"projectID"`
+	Params    ListProjectPullRequestsParams
+}
+
+type ListProjectPullRequestsResponseObject interface {
+	VisitListProjectPullRequestsResponse(w http.ResponseWriter) error
+}
+
+type ListProjectPullRequests200JSONResponse ProjectPullRequests
+
+func (response ListProjectPullRequests200JSONResponse) VisitListProjectPullRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjectPullRequests404JSONResponse StructuredError
+
+func (response ListProjectPullRequests404JSONResponse) VisitListProjectPullRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -6692,6 +6917,12 @@ type StrictServerInterface interface {
 	// GetLinearStatus Health of the Linear sync and the linked projects
 	// (GET /linear/status)
 	GetLinearStatus(ctx context.Context, request GetLinearStatusRequestObject) (GetLinearStatusResponseObject, error)
+	// GetLayout The operator's UI arrangement (project sections)
+	// (GET /me/layout)
+	GetLayout(ctx context.Context, request GetLayoutRequestObject) (GetLayoutResponseObject, error)
+	// UpdateLayout Replace the operator's UI arrangement
+	// (PUT /me/layout)
+	UpdateLayout(ctx context.Context, request UpdateLayoutRequestObject) (UpdateLayoutResponseObject, error)
 	// GetMyPullRequests The operator's open pull requests across all repos (plus merges from the last 7 days)
 	// (GET /me/prs)
 	GetMyPullRequests(ctx context.Context, request GetMyPullRequestsRequestObject) (GetMyPullRequestsResponseObject, error)
@@ -6743,6 +6974,9 @@ type StrictServerInterface interface {
 	// MergeProject Merge this project into another project and delete it
 	// (POST /projects/{projectID}/merge)
 	MergeProject(ctx context.Context, request MergeProjectRequestObject) (MergeProjectResponseObject, error)
+	// ListProjectPullRequests Pull requests in the project's repositories — the operator's open PRs and any PR linked to a ticket
+	// (GET /projects/{projectID}/prs)
+	ListProjectPullRequests(ctx context.Context, request ListProjectPullRequestsRequestObject) (ListProjectPullRequestsResponseObject, error)
 
 	// (POST /projects/{projectID}/queue/claim)
 	ClaimTicket(ctx context.Context, request ClaimTicketRequestObject) (ClaimTicketResponseObject, error)
@@ -7198,6 +7432,61 @@ func (sh *strictHandler) GetLinearStatus(w http.ResponseWriter, r *http.Request)
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetLinearStatusResponseObject); ok {
 		if err := validResponse.VisitGetLinearStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetLayout operation middleware
+func (sh *strictHandler) GetLayout(w http.ResponseWriter, r *http.Request) {
+	var request GetLayoutRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetLayout(ctx, request.(GetLayoutRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetLayout")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetLayoutResponseObject); ok {
+		if err := validResponse.VisitGetLayoutResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateLayout operation middleware
+func (sh *strictHandler) UpdateLayout(w http.ResponseWriter, r *http.Request) {
+	var request UpdateLayoutRequestObject
+
+	var body UpdateLayoutJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateLayout(ctx, request.(UpdateLayoutRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateLayout")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateLayoutResponseObject); ok {
+		if err := validResponse.VisitUpdateLayoutResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -7670,6 +7959,33 @@ func (sh *strictHandler) MergeProject(w http.ResponseWriter, r *http.Request, pr
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(MergeProjectResponseObject); ok {
 		if err := validResponse.VisitMergeProjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListProjectPullRequests operation middleware
+func (sh *strictHandler) ListProjectPullRequests(w http.ResponseWriter, r *http.Request, projectID string, params ListProjectPullRequestsParams) {
+	var request ListProjectPullRequestsRequestObject
+
+	request.ProjectID = projectID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListProjectPullRequests(ctx, request.(ListProjectPullRequestsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListProjectPullRequests")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListProjectPullRequestsResponseObject); ok {
+		if err := validResponse.VisitListProjectPullRequestsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

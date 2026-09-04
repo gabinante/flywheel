@@ -44,6 +44,7 @@ type StrictServer struct {
 	ReportSvc     *report.Service     // nil-safe: report endpoints error when nil
 	SettingsSvc   *settings.Service   // nil-safe: settings endpoints error when nil
 	ScheduleSvc   *schedule.Service   // nil-safe: schedule endpoints error when nil
+	RepoSvc       *project.RepositoryService
 	AgentStore    agent.AgentStore
 }
 

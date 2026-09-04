@@ -983,6 +983,11 @@ type FeedbackSettings struct {
 	ReasoningEffort string `json:"reasoning_effort"`
 }
 
+// Layout defines model for Layout.
+type Layout struct {
+	ProjectSections []ProjectSection `json:"project_sections"`
+}
+
 // Lease defines model for Lease.
 type Lease struct {
 	AgentId   *string    `json:"agent_id,omitempty"`
@@ -1164,6 +1169,21 @@ type ProjectMergeResult struct {
 	WorkStreamsMoved int            `json:"work_streams_moved"`
 }
 
+// ProjectPullRequests defines model for ProjectPullRequests.
+type ProjectPullRequests struct {
+	FetchedAt time.Time         `json:"fetched_at"`
+	Items     []PullRequestCard `json:"items"`
+	Login     string            `json:"login"`
+}
+
+// ProjectSection defines model for ProjectSection.
+type ProjectSection struct {
+	Collapsed  bool     `json:"collapsed"`
+	Id         string   `json:"id"`
+	Name       string   `json:"name"`
+	ProjectIds []string `json:"project_ids"`
+}
+
 // PullRequestCard defines model for PullRequestCard.
 type PullRequestCard struct {
 	Additions             int                `json:"additions"`
@@ -1190,9 +1210,16 @@ type PullRequestCard struct {
 	Reviews               []ReviewerState    `json:"reviews"`
 	Sessions              int                `json:"sessions"`
 	State                 string             `json:"state"`
-	Title                 string             `json:"title"`
-	UpdatedAt             time.Time          `json:"updated_at"`
-	Url                   string             `json:"url"`
+
+	// TicketId Flywheel ticket this PR is linked to (project views only)
+	TicketId *string `json:"ticket_id,omitempty"`
+
+	// TicketIdentifier Linear identifier of the linked ticket, when known
+	TicketIdentifier *string   `json:"ticket_identifier,omitempty"`
+	TicketTitle      *string   `json:"ticket_title,omitempty"`
+	Title            string    `json:"title"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	Url              string    `json:"url"`
 }
 
 // RenewLeaseRequest defines model for RenewLeaseRequest.
@@ -1636,6 +1663,11 @@ type ListProjectsByOrgParams struct {
 // ListProjectsByOrgParamsStatus defines parameters for ListProjectsByOrg.
 type ListProjectsByOrgParamsStatus string
 
+// ListProjectPullRequestsParams defines parameters for ListProjectPullRequests.
+type ListProjectPullRequestsParams struct {
+	Refresh *bool `form:"refresh,omitempty" json:"refresh,omitempty"`
+}
+
 // ListTicketsParams defines parameters for ListTickets.
 type ListTicketsParams struct {
 	// WorkStreamId Filter by work stream.
@@ -1727,6 +1759,9 @@ type CreateCodeReviewsJSONRequestBody = CreateCodeReviewRequest
 
 // SetFeedbackRoundStateJSONRequestBody defines body for SetFeedbackRoundState for application/json ContentType.
 type SetFeedbackRoundStateJSONRequestBody = SetFeedbackRoundStateRequest
+
+// UpdateLayoutJSONRequestBody defines body for UpdateLayout for application/json ContentType.
+type UpdateLayoutJSONRequestBody = Layout
 
 // CreateOrgJSONRequestBody defines body for CreateOrg for application/json ContentType.
 type CreateOrgJSONRequestBody = CreateOrgRequest
@@ -1949,6 +1984,25 @@ type ClientInterface interface {
 	// Corresponds with GET /linear/status (the `GetLinearStatus` operationId).
 	GetLinearStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetLayout The operator's UI arrangement (project sections)
+	//
+	// Corresponds with GET /me/layout (the `GetLayout` operationId).
+	GetLayout(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateLayoutWithBody Replace the operator's UI arrangement
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /me/layout (the `UpdateLayout` operationId).
+	UpdateLayoutWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateLayout Replace the operator's UI arrangement
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /me/layout (the `UpdateLayout` operationId).
+	UpdateLayout(ctx context.Context, body UpdateLayoutJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetMyPullRequests The operator's open pull requests across all repos (plus merges from the last 7 days)
 	//
 	// Corresponds with GET /me/prs (the `GetMyPullRequests` operationId).
@@ -2074,6 +2128,11 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /projects/{projectID}/merge (the `MergeProject` operationId).
 	MergeProject(ctx context.Context, projectID string, body MergeProjectJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListProjectPullRequests Pull requests in the project's repositories — the operator's open PRs and any PR linked to a ticket
+	//
+	// Corresponds with GET /projects/{projectID}/prs (the `ListProjectPullRequests` operationId).
+	ListProjectPullRequests(ctx context.Context, projectID string, params *ListProjectPullRequestsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ClaimTicketWithBody performs a POST /projects/{projectID}/queue/claim (the `ClaimTicket` operationId) request,
 	// with any type of body and a specified content type.
@@ -2539,6 +2598,55 @@ func (c *Client) GetLinearStatus(ctx context.Context, reqEditors ...RequestEdito
 	return c.Client.Do(req)
 }
 
+// GetLayout The operator's UI arrangement (project sections)
+//
+// Corresponds with GET /me/layout (the `GetLayout` operationId).
+func (c *Client) GetLayout(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetLayoutRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateLayoutWithBody Replace the operator's UI arrangement
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /me/layout (the `UpdateLayout` operationId).
+func (c *Client) UpdateLayoutWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateLayoutRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateLayout Replace the operator's UI arrangement
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /me/layout (the `UpdateLayout` operationId).
+func (c *Client) UpdateLayout(ctx context.Context, body UpdateLayoutJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateLayoutRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetMyPullRequests The operator's open pull requests across all repos (plus merges from the last 7 days)
 //
 // Corresponds with GET /me/prs (the `GetMyPullRequests` operationId).
@@ -2875,6 +2983,21 @@ func (c *Client) MergeProjectWithBody(ctx context.Context, projectID string, con
 // Corresponds with POST /projects/{projectID}/merge (the `MergeProject` operationId).
 func (c *Client) MergeProject(ctx context.Context, projectID string, body MergeProjectJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewMergeProjectRequest(c.Server, projectID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListProjectPullRequests Pull requests in the project's repositories — the operator's open PRs and any PR linked to a ticket
+//
+// Corresponds with GET /projects/{projectID}/prs (the `ListProjectPullRequests` operationId).
+func (c *Client) ListProjectPullRequests(ctx context.Context, projectID string, params *ListProjectPullRequestsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListProjectPullRequestsRequest(c.Server, projectID, params)
 	if err != nil {
 		return nil, err
 	}
@@ -4078,6 +4201,73 @@ func NewGetLinearStatusRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewGetLayoutRequest constructs an http.Request for the GetLayout method
+func NewGetLayoutRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/me/layout")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateLayoutRequest calls the generic UpdateLayout builder with application/json body
+func NewUpdateLayoutRequest(server string, body UpdateLayoutJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateLayoutRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewUpdateLayoutRequestWithBody constructs an http.Request for the UpdateLayout method, with any body, and a specified content type
+func NewUpdateLayoutRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/me/layout")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetMyPullRequestsRequest constructs an http.Request for the GetMyPullRequests method
 func NewGetMyPullRequestsRequest(server string, params *GetMyPullRequestsParams) (*http.Request, error) {
 	var err error
@@ -4783,6 +4973,67 @@ func NewMergeProjectRequestWithBody(server string, projectID string, contentType
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListProjectPullRequestsRequest constructs an http.Request for the ListProjectPullRequests method
+func NewListProjectPullRequestsRequest(server string, projectID string, params *ListProjectPullRequestsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "projectID", projectID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/projects/%s/prs", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Refresh != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "refresh", *params.Refresh, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -6507,6 +6758,27 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /linear/status (the `GetLinearStatus` operationId).
 	GetLinearStatusWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetLinearStatusResponse, error)
 
+	// GetLayoutWithResponse The operator's UI arrangement (project sections)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /me/layout (the `GetLayout` operationId).
+	GetLayoutWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetLayoutResponse, error)
+
+	// UpdateLayoutWithBodyWithResponse Replace the operator's UI arrangement
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /me/layout (the `UpdateLayout` operationId).
+	UpdateLayoutWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateLayoutResponse, error)
+
+	// UpdateLayoutWithResponse Replace the operator's UI arrangement
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /me/layout (the `UpdateLayout` operationId).
+	UpdateLayoutWithResponse(ctx context.Context, body UpdateLayoutJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateLayoutResponse, error)
+
 	// GetMyPullRequestsWithResponse The operator's open pull requests across all repos (plus merges from the last 7 days)
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -6658,6 +6930,13 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /projects/{projectID}/merge (the `MergeProject` operationId).
 	MergeProjectWithResponse(ctx context.Context, projectID string, body MergeProjectJSONRequestBody, reqEditors ...RequestEditorFn) (*MergeProjectResponse, error)
+
+	// ListProjectPullRequestsWithResponse Pull requests in the project's repositories — the operator's open PRs and any PR linked to a ticket
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /projects/{projectID}/prs (the `ListProjectPullRequests` operationId).
+	ListProjectPullRequestsWithResponse(ctx context.Context, projectID string, params *ListProjectPullRequestsParams, reqEditors ...RequestEditorFn) (*ListProjectPullRequestsResponse, error)
 
 	// ClaimTicketWithBodyWithResponse performs a POST /projects/{projectID}/queue/claim (the `ClaimTicket` operationId) request,
 	// with any type of body and a specified content type.
@@ -7548,6 +7827,102 @@ func (r GetLinearStatusResponse) ContentType() string {
 	return ""
 }
 
+type GetLayoutResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Layout
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetLayoutResponse) GetJSON200() *Layout {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetLayoutResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r GetLayoutResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetLayoutResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetLayoutResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetLayoutResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateLayoutResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Layout
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateLayoutResponse) GetJSON200() *Layout {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r UpdateLayoutResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateLayoutResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateLayoutResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateLayoutResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateLayoutResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetMyPullRequestsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -8400,6 +8775,54 @@ func (r MergeProjectResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r MergeProjectResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListProjectPullRequestsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ProjectPullRequests
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListProjectPullRequestsResponse) GetJSON200() *ProjectPullRequests {
+	return r.JSON200
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListProjectPullRequestsResponse) GetJSON404() *StructuredError {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r ListProjectPullRequestsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListProjectPullRequestsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListProjectPullRequestsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListProjectPullRequestsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -10229,6 +10652,45 @@ func (c *ClientWithResponses) GetLinearStatusWithResponse(ctx context.Context, r
 	return ParseGetLinearStatusResponse(rsp)
 }
 
+// GetLayoutWithResponse The operator's UI arrangement (project sections)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /me/layout (the `GetLayout` operationId).
+func (c *ClientWithResponses) GetLayoutWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetLayoutResponse, error) {
+	rsp, err := c.GetLayout(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetLayoutResponse(rsp)
+}
+
+// UpdateLayoutWithBodyWithResponse Replace the operator's UI arrangement
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /me/layout (the `UpdateLayout` operationId).
+func (c *ClientWithResponses) UpdateLayoutWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateLayoutResponse, error) {
+	rsp, err := c.UpdateLayoutWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateLayoutResponse(rsp)
+}
+
+// UpdateLayoutWithResponse Replace the operator's UI arrangement
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /me/layout (the `UpdateLayout` operationId).
+func (c *ClientWithResponses) UpdateLayoutWithResponse(ctx context.Context, body UpdateLayoutJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateLayoutResponse, error) {
+	rsp, err := c.UpdateLayout(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateLayoutResponse(rsp)
+}
+
 // GetMyPullRequestsWithResponse The operator's open pull requests across all repos (plus merges from the last 7 days)
 //
 // Returns a wrapper object for the known response body format(s).
@@ -10511,6 +10973,19 @@ func (c *ClientWithResponses) MergeProjectWithResponse(ctx context.Context, proj
 		return nil, err
 	}
 	return ParseMergeProjectResponse(rsp)
+}
+
+// ListProjectPullRequestsWithResponse Pull requests in the project's repositories — the operator's open PRs and any PR linked to a ticket
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /projects/{projectID}/prs (the `ListProjectPullRequests` operationId).
+func (c *ClientWithResponses) ListProjectPullRequestsWithResponse(ctx context.Context, projectID string, params *ListProjectPullRequestsParams, reqEditors ...RequestEditorFn) (*ListProjectPullRequestsResponse, error) {
+	rsp, err := c.ListProjectPullRequests(ctx, projectID, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListProjectPullRequestsResponse(rsp)
 }
 
 // ClaimTicketWithBodyWithResponse performs a POST /projects/{projectID}/queue/claim (the `ClaimTicket` operationId) request,
@@ -11493,6 +11968,72 @@ func ParseGetLinearStatusResponse(rsp *http.Response) (*GetLinearStatusResponse,
 	return response, nil
 }
 
+// ParseGetLayoutResponse parses an HTTP response from a GetLayoutWithResponse call
+func ParseGetLayoutResponse(rsp *http.Response) (*GetLayoutResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetLayoutResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Layout
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateLayoutResponse parses an HTTP response from a UpdateLayoutWithResponse call
+func ParseUpdateLayoutResponse(rsp *http.Response) (*UpdateLayoutResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateLayoutResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Layout
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetMyPullRequestsResponse parses an HTTP response from a GetMyPullRequestsWithResponse call
 func ParseGetMyPullRequestsResponse(rsp *http.Response) (*GetMyPullRequestsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -12093,6 +12634,39 @@ func ParseMergeProjectResponse(rsp *http.Response) (*MergeProjectResponse, error
 			return nil, err
 		}
 		response.JSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListProjectPullRequestsResponse parses an HTTP response from a ListProjectPullRequestsWithResponse call
+func ParseListProjectPullRequestsResponse(rsp *http.Response) (*ListProjectPullRequestsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListProjectPullRequestsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProjectPullRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	}
 

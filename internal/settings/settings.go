@@ -28,6 +28,20 @@ type Settings struct {
 	Review   ReviewSettings   `json:"review"`
 	Feedback FeedbackSettings `json:"feedback"`
 	Report   ReportSettings   `json:"report"`
+	Layout   LayoutSettings   `json:"layout"` // UI arrangement (not shown on the settings page)
+}
+
+// LayoutSettings holds the operator's UI arrangement.
+type LayoutSettings struct {
+	ProjectSections []ProjectSection `json:"project_sections"`
+}
+
+// ProjectSection is a named, ordered group of projects on the projects page.
+type ProjectSection struct {
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	ProjectIDs []string `json:"project_ids"`
+	Collapsed  bool     `json:"collapsed"`
 }
 
 // LinearSettings configures the ticket store.
@@ -127,6 +141,14 @@ func (s *Settings) Normalize() {
 	}
 	if s.Linear.ProjectIDs == nil {
 		s.Linear.ProjectIDs = []string{}
+	}
+	if s.Layout.ProjectSections == nil {
+		s.Layout.ProjectSections = []ProjectSection{}
+	}
+	for i := range s.Layout.ProjectSections {
+		if s.Layout.ProjectSections[i].ProjectIDs == nil {
+			s.Layout.ProjectSections[i].ProjectIDs = []string{}
+		}
 	}
 }
 
@@ -281,6 +303,17 @@ func (s *Service) Update(ctx context.Context, next Settings) (Settings, error) {
 	slog.Info("settings: updated", "linear_enabled", next.Linear.Enabled && next.Linear.APIKey != "", "review_publish", next.Review.Publish,
 		"review_watch_requested", next.Review.WatchRequested, "feedback_auto", next.Feedback.AutoAddress)
 	return next, nil
+}
+
+// UpdateLayout replaces only the UI layout, leaving the operational settings untouched.
+func (s *Service) UpdateLayout(ctx context.Context, layout LayoutSettings) (LayoutSettings, error) {
+	next := s.Current()
+	next.Layout = layout
+	saved, err := s.Update(ctx, next)
+	if err != nil {
+		return LayoutSettings{}, err
+	}
+	return saved.Layout, nil
 }
 
 func validate(s Settings) error {

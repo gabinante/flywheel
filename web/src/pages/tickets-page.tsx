@@ -31,6 +31,7 @@ import { TicketsPageSkeleton } from '@/components/ui/skeleton'
 import { formatApiError } from '@/lib/api/client'
 import { cn } from '@/lib/utils'
 import type { components } from '@/lib/api/v1'
+import { PRCardRow, type PullRequestCard } from '@/components/pr-card-row'
 
 type Ticket = components['schemas']['Ticket']
 type TicketState = NonNullable<Ticket['state']>
@@ -383,6 +384,7 @@ export function TicketsPage() {
   const { client } = useAuth()
   const workStreamFilter = searchParams.get('work_stream_id') ?? ''
   const [allTickets, setAllTickets] = useState<Ticket[] | null>(null)
+  const [prs, setPrs] = useState<PullRequestCard[]>([])
   const [streams, setStreams] = useState<WorkStream[] | null>(null)
   const [streamsErr, setStreamsErr] = useState<string | null>(null)
   const [category, setCategory] = useState<CategoryId>('open')
@@ -469,6 +471,31 @@ export function TicketsPage() {
     const allowed = statesInCategory(category)
     return allowed ?? ALL_STATES
   }, [category])
+
+  useEffect(() => {
+    if (!projectId) return
+    let cancelled = false
+    void client
+      .GET('/projects/{projectID}/prs', { params: { path: { projectID: projectId } } })
+      .then(({ data, response }) => {
+        if (!cancelled && response.ok && data) setPrs(data.items)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [client, projectId])
+
+  const prsByTicket = useMemo(() => {
+    const m = new Map<string, PullRequestCard[]>()
+    for (const pr of prs) {
+      if (!pr.ticket_id) continue
+      const list = m.get(pr.ticket_id) ?? []
+      list.push(pr)
+      m.set(pr.ticket_id, list)
+    }
+    return m
+  }, [prs])
+  const unlinkedPrs = useMemo(() => prs.filter((pr) => !pr.ticket_id && pr.state === 'OPEN'), [prs])
 
   const tickets = useMemo(() => {
     if (!allTickets) return null
@@ -623,13 +650,16 @@ export function TicketsPage() {
           ) : null}
           <span className="px-1">/</span>
           <span className="text-foreground" aria-current="page">
-            Tickets
+            Tickets &amp; PRs
           </span>
         </p>
         <div className="flex items-baseline gap-3">
-          <h1 className="text-xl font-semibold tracking-tight">Tickets</h1>
-          {tickets.length > 0 ? (
-            <span className="text-sm text-muted-foreground">{tickets.length} ticket{tickets.length === 1 ? '' : 's'}</span>
+          <h1 className="text-xl font-semibold tracking-tight">Tickets &amp; PRs</h1>
+          {tickets.length > 0 || prs.length > 0 ? (
+            <span className="text-sm text-muted-foreground">
+              {tickets.length} ticket{tickets.length === 1 ? '' : 's'}
+              {prs.length > 0 ? ` · ${prs.length} PR${prs.length === 1 ? '' : 's'}` : ''}
+            </span>
           ) : null}
         </div>
       </div>
@@ -703,6 +733,18 @@ export function TicketsPage() {
         </div>
       ) : null}
 
+      {/* PRs in this project's repos that are not tied to a ticket */}
+      {unlinkedPrs.length > 0 ? (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+            Open PRs without a ticket · {unlinkedPrs.length}
+          </h2>
+          {unlinkedPrs.map((pr) => (
+            <PRCardRow key={`${pr.repo}#${pr.number}`} pr={pr} />
+          ))}
+        </section>
+      ) : null}
+
       {/* Ticket list */}
       {tickets.length > 0 ? (
         <ul ref={listRef} className="flex flex-col gap-2" role="listbox" aria-label="Tickets">
@@ -716,6 +758,13 @@ export function TicketsPage() {
                 isSelected={idx === selectedIndex}
                 onMouseEnter={() => setSelectedIndex(idx)}
               />
+              {(prsByTicket.get(t.id ?? '') ?? []).length > 0 ? (
+                <div className="ml-6 mt-1 flex flex-col gap-1 border-l border-white/10 pl-3">
+                  {(prsByTicket.get(t.id ?? '') ?? []).map((pr) => (
+                    <PRCardRow key={`${pr.repo}#${pr.number}`} pr={pr} />
+                  ))}
+                </div>
+              ) : null}
             </li>
           ))}
         </ul>

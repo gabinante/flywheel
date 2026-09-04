@@ -12,34 +12,34 @@ import (
 // PRDetail is a rich search row from the GraphQL search API — enough to render a
 // cross-repo PR list without one request per PR.
 type PRDetail struct {
-	Repo               string
-	Number             int
-	Title              string
-	URL                string
-	Author             string
-	IsDraft            bool
-	State              string // OPEN, CLOSED, MERGED
-	HeadRef            string
-	BaseRef            string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-	MergedAt           *time.Time
-	ReviewDecision     string // APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED, ""
-	Checks             string // SUCCESS, FAILURE, PENDING, ERROR, EXPECTED, ""
-	Mergeable          string // not fetched (expensive); kept for the API shape
-	Additions          int    // not fetched (expensive); kept for the API shape
-	Deletions          int
-	ChangedFiles       int
-	Labels             []string
-	Reviews            []ReviewerState // latest review per reviewer
-	RequestedReviewers []string
+	Repo               string          `json:"repo"`
+	Number             int             `json:"number"`
+	Title              string          `json:"title"`
+	URL                string          `json:"url"`
+	Author             string          `json:"author"`
+	IsDraft            bool            `json:"is_draft"`
+	State              string          `json:"state"` // OPEN, CLOSED, MERGED
+	HeadRef            string          `json:"head_ref"`
+	BaseRef            string          `json:"base_ref"`
+	CreatedAt          time.Time       `json:"created_at"`
+	UpdatedAt          time.Time       `json:"updated_at"`
+	MergedAt           *time.Time      `json:"merged_at"`
+	ReviewDecision     string          `json:"review_decision"` // APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED, ""
+	Checks             string          `json:"checks"`          // SUCCESS, FAILURE, PENDING, ERROR, EXPECTED, ""
+	Mergeable          string          `json:"mergeable"`       // not fetched (expensive); kept for the API shape
+	Additions          int             `json:"additions"`       // not fetched (expensive); kept for the API shape
+	Deletions          int             `json:"deletions"`
+	ChangedFiles       int             `json:"changed_files"`
+	Labels             []string        `json:"labels"`
+	Reviews            []ReviewerState `json:"reviews"` // latest review per reviewer
+	RequestedReviewers []string        `json:"requested_reviewers"`
 }
 
 // ReviewerState is the latest review by one reviewer.
 type ReviewerState struct {
-	Login       string
-	State       string
-	SubmittedAt *time.Time
+	Login       string     `json:"login"`
+	State       string     `json:"state"`
+	SubmittedAt *time.Time `json:"submitted_at,omitempty"`
 }
 
 const prSearchQuery = `query($q: String!, $n: Int!) {

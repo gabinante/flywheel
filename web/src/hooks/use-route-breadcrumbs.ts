@@ -61,10 +61,10 @@ export function useRouteBreadcrumbs(): BreadcrumbItem[] {
           crumbs.push({ label: projectLabel, href: projectPath })
           const ticketsPath = `${projectPath}/tickets`
           if (ticketId) {
-            crumbs.push({ label: 'Tickets', href: ticketsPath })
+            crumbs.push({ label: 'Tickets & PRs', href: ticketsPath })
             crumbs.push({ label: ticketId })
           } else {
-            crumbs.push({ label: 'Tickets' })
+            crumbs.push({ label: 'Tickets & PRs' })
           }
           return crumbs
         }

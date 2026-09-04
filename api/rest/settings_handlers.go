@@ -87,6 +87,7 @@ func (s *StrictServer) UpdateOperatorSettings(ctx context.Context, req generated
 			DefaultHealth: strings.TrimSpace(b.Report.DefaultHealth),
 		},
 	}
+	next.Layout = cur.Layout // the settings page never edits the layout
 	if b.Linear.ClearApiKey != nil && *b.Linear.ClearApiKey {
 		next.Linear.APIKey = ""
 	}

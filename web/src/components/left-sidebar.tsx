@@ -138,7 +138,7 @@ export function LeftSidebar() {
           badgeCount: escalationCount,
         },
         {
-          label: 'Tickets',
+          label: 'Tickets & PRs',
           icon: Ticket,
           href: `${projectBase}/tickets`,
           match: `${projectBase}/tickets`,

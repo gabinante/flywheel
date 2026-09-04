@@ -2,7 +2,9 @@ package codereview
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"sort"
 	"strings"
@@ -22,6 +24,9 @@ type PRCard struct {
 	Sessions              int             `json:"sessions"`
 	Review                *Request        `json:"review,omitempty"`
 	Feedback              *FeedbackDigest `json:"feedback,omitempty"`
+	TicketID              string          `json:"ticket_id,omitempty"` // set by project views
+	TicketTitle           string          `json:"ticket_title,omitempty"`
+	TicketIdentifier      string          `json:"ticket_identifier,omitempty"`
 }
 
 // FeedbackDigest summarizes feedback rounds observed on a PR.
@@ -51,28 +56,241 @@ type MyReviews struct {
 	Reviewed  []PRCard  `json:"reviewed"`  // open PRs the operator has reviewed
 }
 
-const mineCacheTTL = 45 * time.Second
+// Overviews are served from the last snapshot (memory, then Postgres) and refreshed in
+// the background: a stale answer now beats a 10s wait on GitHub search.
+const (
+	mineCacheTTL     = 3 * time.Minute // how old a snapshot may be before a refresh is kicked off
+	mineRefreshEvery = 3 * time.Minute // background refresh cadence for My PRs / My Reviews
+)
 
 type mineCache struct {
-	mu      sync.Mutex
-	prs     *MyPullRequests
-	reviews *MyReviews
-	prsAt   time.Time
-	revAt   time.Time
+	mu         sync.Mutex
+	prs        *MyPullRequests
+	reviews    *MyReviews
+	prsAt      time.Time
+	revAt      time.Time
+	projects   map[string]projectPRsEntry // key: sorted repo list
+	refreshing map[string]bool            // in-flight background refreshes by key
+	loaded     bool                       // snapshots restored from Postgres
 }
+
+type projectPRsEntry struct {
+	at    time.Time
+	login string
+	cards []PRCard
+}
+
+// ProjectPRs returns PRs in the given repos: every open PR plus anything updated in
+// the last 14 days (so freshly merged work still shows next to its ticket). Callers
+// decide which of them matter (the operator's own, or ones linked to a ticket).
+func (s *Service) ProjectPRs(ctx context.Context, repos []string, force bool) (string, []PRCard, error) {
+	if len(repos) == 0 {
+		return "", []PRCard{}, nil
+	}
+	sorted := append([]string{}, repos...)
+	sort.Strings(sorted)
+	key := strings.Join(sorted, ",")
+	if !force {
+		s.mine.mu.Lock()
+		e, ok := s.mine.projects[key]
+		s.mine.mu.Unlock()
+		if !ok {
+			if raw, at, err := s.store.LoadOverview(ctx, "project:"+key); err == nil && raw != nil {
+				var v projectPRsSnapshot
+				if json.Unmarshal(raw, &v) == nil {
+					e, ok = projectPRsEntry{at: at, login: v.Login, cards: v.Cards}, true
+					s.mine.mu.Lock()
+					if s.mine.projects == nil {
+						s.mine.projects = map[string]projectPRsEntry{}
+					}
+					s.mine.projects[key] = e
+					s.mine.mu.Unlock()
+				}
+			}
+		}
+		if ok {
+			if time.Since(e.at) >= mineCacheTTL && s.beginRefresh("project:"+key) {
+				go func() {
+					defer s.endRefresh("project:" + key)
+					if _, _, err := s.ProjectPRs(context.WithoutCancel(ctx), repos, true); err != nil {
+						slog.Warn("codereview: refresh project prs failed", "error", err)
+					}
+				}()
+			}
+			return e.login, e.cards, nil
+		}
+	}
+
+	login, _ := s.gh.Login(ctx)
+	var scope strings.Builder
+	for _, r := range sorted {
+		scope.WriteString(" repo:" + r)
+	}
+	since := time.Now().AddDate(0, 0, -14).Format("2006-01-02")
+	var open, recent []PRDetail
+	var openErr error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		open, openErr = s.gh.SearchPRs(ctx, "is:pr is:open archived:false sort:updated-desc"+scope.String(), 100)
+	}()
+	go func() {
+		defer wg.Done()
+		recent, _ = s.gh.SearchPRs(ctx, fmt.Sprintf("is:pr archived:false updated:>=%s sort:updated-desc%s", since, scope.String()), 100) // best effort
+	}()
+	wg.Wait()
+	if openErr != nil {
+		return login, nil, openErr
+	}
+	seen := map[string]bool{}
+	var all []PRDetail
+	for _, p := range append(open, recent...) {
+		if k := prKey(p.Repo, p.Number); !seen[k] {
+			seen[k] = true
+			all = append(all, p)
+		}
+	}
+	cards := s.enrich(ctx, login, all)
+	s.mine.mu.Lock()
+	if s.mine.projects == nil {
+		s.mine.projects = map[string]projectPRsEntry{}
+	}
+	now := time.Now()
+	s.mine.projects[key] = projectPRsEntry{at: now, login: login, cards: cards}
+	s.mine.mu.Unlock()
+	s.persistOverview(ctx, "project:"+key, projectPRsSnapshot{Login: login, Cards: cards}, now)
+	return login, cards, nil
+}
+
+type projectPRsSnapshot struct {
+	Login string   `json:"login"`
+	Cards []PRCard `json:"cards"`
+}
+
+// LinearRefsIn extracts Linear-style identifiers (KEY-123) from text.
+func LinearRefsIn(text string) []string { return linearRefs(text) }
 
 var linearRefRE = regexp.MustCompile(`\b([A-Z][A-Z0-9]{1,9})-(\d{1,6})\b`)
 
-// MyPRs returns the operator's open PRs (and recent merges) across every repo.
-func (s *Service) MyPRs(ctx context.Context, force bool) (*MyPullRequests, error) {
+// restoreOverviews loads the last snapshots from Postgres once per process.
+func (s *Service) restoreOverviews(ctx context.Context) {
 	s.mine.mu.Lock()
-	if !force && s.mine.prs != nil && time.Since(s.mine.prsAt) < mineCacheTTL {
-		out := *s.mine.prs
+	if s.mine.loaded {
 		s.mine.mu.Unlock()
-		return &out, nil
+		return
 	}
+	s.mine.loaded = true
 	s.mine.mu.Unlock()
+	if raw, at, err := s.store.LoadOverview(ctx, "my_prs"); err == nil && raw != nil {
+		var v MyPullRequests
+		if json.Unmarshal(raw, &v) == nil {
+			s.mine.mu.Lock()
+			if s.mine.prs == nil {
+				s.mine.prs, s.mine.prsAt = &v, at
+			}
+			s.mine.mu.Unlock()
+		}
+	}
+	if raw, at, err := s.store.LoadOverview(ctx, "my_reviews"); err == nil && raw != nil {
+		var v MyReviews
+		if json.Unmarshal(raw, &v) == nil {
+			s.mine.mu.Lock()
+			if s.mine.reviews == nil {
+				s.mine.reviews, s.mine.revAt = &v, at
+			}
+			s.mine.mu.Unlock()
+		}
+	}
+}
 
+func (s *Service) persistOverview(ctx context.Context, key string, v any, at time.Time) {
+	if raw, err := json.Marshal(v); err == nil {
+		if err := s.store.SaveOverview(ctx, key, raw, at); err != nil {
+			slog.Warn("codereview: persist overview failed", "key", key, "error", err)
+		}
+	}
+}
+
+// beginRefresh marks a background refresh for key; false when one is already running.
+func (s *Service) beginRefresh(key string) bool {
+	s.mine.mu.Lock()
+	defer s.mine.mu.Unlock()
+	if s.mine.refreshing == nil {
+		s.mine.refreshing = map[string]bool{}
+	}
+	if s.mine.refreshing[key] {
+		return false
+	}
+	s.mine.refreshing[key] = true
+	return true
+}
+
+func (s *Service) endRefresh(key string) {
+	s.mine.mu.Lock()
+	delete(s.mine.refreshing, key)
+	s.mine.mu.Unlock()
+}
+
+// StartOverviewRefresh keeps My PRs and My Reviews warm in the background.
+func (s *Service) StartOverviewRefresh(ctx context.Context) {
+	go func() {
+		s.restoreOverviews(ctx)
+		refresh := func() {
+			if _, err := s.fetchMyPRs(ctx); err != nil {
+				slog.Warn("codereview: refresh my prs failed", "error", err)
+			}
+			if _, err := s.fetchMyReviews(ctx); err != nil {
+				slog.Warn("codereview: refresh my reviews failed", "error", err)
+			}
+		}
+		// Warm up shortly after boot, then on a cadence.
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(20 * time.Second):
+		}
+		refresh()
+		t := time.NewTicker(mineRefreshEvery)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				refresh()
+			}
+		}
+	}()
+}
+
+// MyPRs returns the operator's open PRs (and recent merges) across every repo. It
+// answers from the last snapshot and refreshes in the background when that is stale;
+// force waits for a fresh fetch.
+func (s *Service) MyPRs(ctx context.Context, force bool) (*MyPullRequests, error) {
+	s.restoreOverviews(ctx)
+	if !force {
+		s.mine.mu.Lock()
+		cached, at := s.mine.prs, s.mine.prsAt
+		s.mine.mu.Unlock()
+		if cached != nil {
+			if time.Since(at) >= mineCacheTTL && s.beginRefresh("my_prs") {
+				go func() {
+					defer s.endRefresh("my_prs")
+					if _, err := s.fetchMyPRs(context.WithoutCancel(ctx)); err != nil {
+						slog.Warn("codereview: refresh my prs failed", "error", err)
+					}
+				}()
+			}
+			out := *cached
+			return &out, nil
+		}
+	}
+	return s.fetchMyPRs(ctx)
+}
+
+// fetchMyPRs asks GitHub now and stores the snapshot.
+func (s *Service) fetchMyPRs(ctx context.Context) (*MyPullRequests, error) {
 	login, _ := s.gh.Login(ctx)
 	since := time.Now().AddDate(0, 0, -7).Format("2006-01-02")
 	var open, merged []PRDetail
@@ -93,22 +311,39 @@ func (s *Service) MyPRs(ctx context.Context, force bool) (*MyPullRequests, error
 	}
 	res := &MyPullRequests{Login: login, FetchedAt: time.Now(), Open: s.enrich(ctx, login, open), Merged: s.enrich(ctx, login, merged)}
 	s.mine.mu.Lock()
-	s.mine.prs, s.mine.prsAt = res, time.Now()
+	s.mine.prs, s.mine.prsAt = res, res.FetchedAt
 	s.mine.mu.Unlock()
-	return res, nil
+	s.persistOverview(ctx, "my_prs", res, res.FetchedAt)
+	out := *res
+	return &out, nil
 }
 
 // MyReviewsOverview returns open PRs that ask for the operator's review or that the
-// operator has reviewed, with Flywheel's queue state attached.
+// operator has reviewed, with Flywheel's queue state attached. Same snapshot semantics
+// as MyPRs.
 func (s *Service) MyReviewsOverview(ctx context.Context, force bool) (*MyReviews, error) {
-	s.mine.mu.Lock()
-	if !force && s.mine.reviews != nil && time.Since(s.mine.revAt) < mineCacheTTL {
-		out := *s.mine.reviews
+	s.restoreOverviews(ctx)
+	if !force {
+		s.mine.mu.Lock()
+		cached, at := s.mine.reviews, s.mine.revAt
 		s.mine.mu.Unlock()
-		return &out, nil
+		if cached != nil {
+			if time.Since(at) >= mineCacheTTL && s.beginRefresh("my_reviews") {
+				go func() {
+					defer s.endRefresh("my_reviews")
+					if _, err := s.fetchMyReviews(context.WithoutCancel(ctx)); err != nil {
+						slog.Warn("codereview: refresh my reviews failed", "error", err)
+					}
+				}()
+			}
+			out := *cached
+			return &out, nil
+		}
 	}
-	s.mine.mu.Unlock()
+	return s.fetchMyReviews(ctx)
+}
 
+func (s *Service) fetchMyReviews(ctx context.Context) (*MyReviews, error) {
 	login, _ := s.gh.Login(ctx)
 	var requested, reviewed []PRDetail
 	var reqErr, revErr error
@@ -141,15 +376,17 @@ func (s *Service) MyReviewsOverview(ctx context.Context, force bool) (*MyReviews
 	}
 	res := &MyReviews{Login: login, FetchedAt: time.Now(), Requested: s.enrich(ctx, login, requested), Reviewed: s.enrich(ctx, login, onlyReviewed)}
 	s.mine.mu.Lock()
-	s.mine.reviews, s.mine.revAt = res, time.Now()
+	s.mine.reviews, s.mine.revAt = res, res.FetchedAt
 	s.mine.mu.Unlock()
-	return res, nil
+	s.persistOverview(ctx, "my_reviews", res, res.FetchedAt)
+	out := *res
+	return &out, nil
 }
 
 // InvalidateMine drops the cached overviews (called after actions that change them).
 func (s *Service) InvalidateMine() {
 	s.mine.mu.Lock()
-	s.mine.prs, s.mine.reviews = nil, nil
+	s.mine.prs, s.mine.reviews, s.mine.projects = nil, nil, nil
 	s.mine.mu.Unlock()
 }
 

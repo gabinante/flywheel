@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -15,6 +15,8 @@ import {
 } from 'lucide-react'
 
 import { StaggerItem, StaggerList } from '@/components/stagger-list'
+import { ItemControls, LayoutToolbar, SectionHeader } from '@/components/project-sections'
+import { UNSECTIONED, layoutOps, pruneLayout, useArranged, useProjectLayout } from '@/lib/project-layout'
 import { Badge } from '@/components/ui/badge'
 import {
   Card,
@@ -227,6 +229,10 @@ export function ProjectsPage() {
   const [stats, setStats] = useState<Record<string, ProjectStats>>({})
   const [statsLoading, setStatsLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
+  const { layout, update: updateLayout } = useProjectLayout()
+  const [customizing, setCustomizing] = useState(false)
+  const projectItems = useMemo(() => (projects ?? []).map((p) => ({ id: p.id ?? '', p })), [projects])
+  const arranged = useArranged(projectItems, layout)
 
   useEffect(() => {
     if (!orgId) return
@@ -377,17 +383,18 @@ export function ProjectsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        <p className="text-muted-foreground text-xs">
-          <Link to="/orgs" className="hover:underline">
-            Organizations
-          </Link>
-          <span className="px-1">/</span>
-        </p>
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold tracking-tight">
             Projects{orgName ? ` — ${orgName}` : ''}
           </h1>
           <div className="flex items-center gap-2">
+            {layout && projects.length > 0 && (
+              <LayoutToolbar
+                customizing={customizing}
+                onToggle={() => setCustomizing((v) => !v)}
+                onAdd={(name) => updateLayout(layoutOps.addSection(layout, name))}
+              />
+            )}
             <Link
               to={`/orgs/${orgParam}/projects/new`}
               className="inline-flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20 hover:border-primary/30"
@@ -401,8 +408,24 @@ export function ProjectsPage() {
       {projects.length === 0 ? (
         <EmptyProjectsState orgId={orgParam ?? orgId ?? ''} />
       ) : (
+        <div className="flex flex-col gap-6">
+          {arranged.map(({ section, items }, sIdx) => (
+            <section key={section.id} className="flex flex-col gap-3">
+              <SectionHeader
+                section={section}
+                index={sIdx}
+                total={arranged.length}
+                customizing={customizing}
+                count={items.length}
+                onChange={(patch) => layout && section.id !== UNSECTIONED && updateLayout(layoutOps.patchSection(layout, section.id, patch))}
+                onMove={(dir) => layout && updateLayout(layoutOps.moveSection(layout, section.id, dir))}
+                onDelete={() => layout && updateLayout(layoutOps.deleteSection(layout, section.id))}
+              />
+              {section.collapsed ? null : items.length === 0 && customizing ? (
+                <p className="text-xs text-muted-foreground">Empty section — move projects here with “Move to”.</p>
+              ) : (
         <StaggerList className="flex flex-col gap-4">
-          {projects.map((p) => {
+          {items.map(({ p }, pIdx) => {
             const name = p.name ?? p.slug ?? p.id ?? ''
             const id = p.id ?? ''
             const projectStats = stats[id]
@@ -510,6 +533,26 @@ export function ProjectsPage() {
                             disabled={isDispatchToggling}
                           />
                         </div>
+                        {customizing && layout ? (
+                          <ItemControls
+                            sections={layout.project_sections}
+                            currentSectionId={section.id}
+                            index={pIdx}
+                            total={items.length}
+                            onMoveWithin={(dir) =>
+                              updateLayout(
+                                layoutOps.moveWithin(
+                                  pruneLayout(layout, new Set(projectItems.map((i) => i.id))),
+                                  section.id,
+                                  items.map((i) => i.id),
+                                  pIdx,
+                                  dir,
+                                ),
+                              )
+                            }
+                            onMoveTo={(sectionId) => updateLayout(layoutOps.moveTo(layout, id, sectionId, []))}
+                          />
+                        ) : null}
                         <Link
                           to={`/orgs/${orgParam}/projects/${p.slug ?? id}/settings`}
                           className="rounded-lg p-1.5 text-muted-foreground/60 transition-colors hover:bg-white/10 hover:text-foreground"
@@ -526,6 +569,10 @@ export function ProjectsPage() {
             )
           })}
         </StaggerList>
+              )}
+            </section>
+          ))}
+        </div>
       )}
     </div>
   )

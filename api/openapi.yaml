@@ -429,6 +429,33 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StructuredError'
+  /projects/{projectID}/prs:
+    get:
+      operationId: ListProjectPullRequests
+      summary: Pull requests in the project's repositories — the operator's open PRs and any PR linked to a ticket
+      parameters:
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: refresh
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectPullRequests'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
   /projects/{projectID}/tickets:
     get:
       operationId: ListTickets
@@ -1782,6 +1809,45 @@ paths:
                 $ref: '#/components/schemas/StructuredError'
         "404":
           description: Unknown action
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /me/layout:
+    get:
+      operationId: GetLayout
+      summary: The operator's UI arrangement (project sections)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Layout'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+    put:
+      operationId: UpdateLayout
+      summary: Replace the operator's UI arrangement
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Layout'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Layout'
+        "401":
+          description: Unauthorized
           content:
             application/json:
               schema:
@@ -3322,6 +3388,27 @@ components:
           $ref: '#/components/schemas/CodeReviewRequest'
         feedback:
           $ref: '#/components/schemas/FeedbackDigest'
+        ticket_id:
+          type: string
+          description: Flywheel ticket this PR is linked to (project views only)
+        ticket_title:
+          type: string
+        ticket_identifier:
+          type: string
+          description: Linear identifier of the linked ticket, when known
+    ProjectPullRequests:
+      type: object
+      required: [login, fetched_at, items]
+      properties:
+        login:
+          type: string
+        fetched_at:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PullRequestCard'
     MyPullRequests:
       type: object
       required: [login, fetched_at, open, merged]
@@ -3405,3 +3492,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ScheduledAction'
+    ProjectSection:
+      type: object
+      required: [id, name, project_ids, collapsed]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        project_ids:
+          type: array
+          items:
+            type: string
+        collapsed:
+          type: boolean
+    Layout:
+      type: object
+      required: [project_sections]
+      properties:
+        project_sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectSection'

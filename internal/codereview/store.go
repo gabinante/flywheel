@@ -2,6 +2,7 @@ package codereview
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -424,4 +425,25 @@ func (s *Store) UpdateFeedbackRoundsByPR(ctx context.Context, repo string, numbe
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
+}
+
+// LoadOverview returns a persisted overview snapshot (nil when none).
+func (s *Store) LoadOverview(ctx context.Context, key string) ([]byte, time.Time, error) {
+	var raw []byte
+	var at time.Time
+	err := s.pool.QueryRow(ctx, `SELECT data, fetched_at FROM overview_cache WHERE key = $1`, key).Scan(&raw, &at)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, time.Time{}, nil
+		}
+		return nil, time.Time{}, err
+	}
+	return raw, at, nil
+}
+
+// SaveOverview upserts an overview snapshot.
+func (s *Store) SaveOverview(ctx context.Context, key string, raw []byte, at time.Time) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO overview_cache (key, data, fetched_at) VALUES ($1, $2, $3)
+		ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, fetched_at = EXCLUDED.fetched_at`, key, raw, at)
+	return err
 }

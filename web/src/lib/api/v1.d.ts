@@ -177,6 +177,23 @@ export interface paths {
         patch: operations["UpdateWorkStream"];
         trace?: never;
     };
+    "/projects/{projectID}/prs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pull requests in the project's repositories — the operator's open PRs and any PR linked to a ticket */
+        get: operations["ListProjectPullRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{projectID}/tickets": {
         parameters: {
             query?: never;
@@ -797,6 +814,24 @@ export interface paths {
         put?: never;
         /** Run a scheduled action now */
         post: operations["RunScheduledAction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/layout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The operator's UI arrangement (project sections) */
+        get: operations["GetLayout"];
+        /** Replace the operator's UI arrangement */
+        put: operations["UpdateLayout"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1631,6 +1666,17 @@ export interface components {
             sessions: number;
             review?: components["schemas"]["CodeReviewRequest"];
             feedback?: components["schemas"]["FeedbackDigest"];
+            /** @description Flywheel ticket this PR is linked to (project views only) */
+            ticket_id?: string;
+            ticket_title?: string;
+            /** @description Linear identifier of the linked ticket, when known */
+            ticket_identifier?: string;
+        };
+        ProjectPullRequests: {
+            login: string;
+            /** Format: date-time */
+            fetched_at: string;
+            items: components["schemas"]["PullRequestCard"][];
         };
         MyPullRequests: {
             login: string;
@@ -1671,6 +1717,15 @@ export interface components {
             /** Format: date-time */
             now: string;
             items: components["schemas"]["ScheduledAction"][];
+        };
+        ProjectSection: {
+            id: string;
+            name: string;
+            project_ids: string[];
+            collapsed: boolean;
+        };
+        Layout: {
+            project_sections: components["schemas"]["ProjectSection"][];
         };
     };
     responses: never;
@@ -2214,6 +2269,39 @@ export interface operations {
             };
             /** @description Internal error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    ListProjectPullRequests: {
+        parameters: {
+            query?: {
+                refresh?: boolean;
+            };
+            header?: never;
+            path: {
+                projectID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPullRequests"];
+                };
+            };
+            /** @description Not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3985,6 +4073,68 @@ export interface operations {
             };
             /** @description Unknown action */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    GetLayout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Layout"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    UpdateLayout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Layout"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Layout"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -243,6 +243,7 @@ func run(ctx context.Context, cfg *config.Config) {
 	codeReviewSvc := codereview.New(codereview.NewStore(pool), codereview.NewGitHub(""), harnessRunner, sessionsSvc, bus, reviewCfg)
 	codeReviewSvc.SetFeedbackConfig(feedbackCfg)
 	codeReviewSvc.Start(ctx)
+	codeReviewSvc.StartOverviewRefresh(ctx)
 
 	// Reports: Linear project status updates and the weekly roundup.
 	reportSvc := report.New(report.Deps{
@@ -277,6 +278,7 @@ func run(ctx context.Context, cfg *config.Config) {
 		ReportSvc:     reportSvc,
 		SettingsSvc:   settingsSvc,
 		ScheduleSvc:   scheduleSvc,
+		RepoSvc:       repoSvc,
 		AgentStore:    agentStore,
 	}
 
