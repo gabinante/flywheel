@@ -3,9 +3,9 @@ package mcp
 import (
 	"context"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	apierrors "github.com/gabinante/flywheel/internal/errors"
 	"github.com/gabinante/flywheel/internal/workflow"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func registerWorkflowTools(s *mcp.Server, b *Backend, wrap wrapFn) {

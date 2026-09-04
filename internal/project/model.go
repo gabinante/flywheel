@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/gabinante/flywheel/internal/plan"
 )
 
 // Project is a project under an org (e.g. "hubble-backend").
@@ -31,7 +29,7 @@ type DispatchConfig struct {
 	Roles            []DispatchWorkerRole          `json:"roles,omitempty"`
 	Workers          []DispatchWorkerProfile       `json:"workers,omitempty"`
 	Policies         map[string]DispatchRolePolicy `json:"policies,omitempty"`
-	GitPolicy        *plan.GitPolicy               `json:"git_policy,omitempty"`
+	GitPolicy        *GitPolicy                    `json:"git_policy,omitempty"`
 }
 
 type DispatchWorkerRole struct {
@@ -191,4 +189,26 @@ type ContextPack struct {
 type FileRef struct {
 	Path    string `json:"path"`
 	Snippet string `json:"snippet,omitempty"`
+}
+
+// GitPolicy configures how dispatched work maps onto git: branch naming, PR
+// requirements, and merge behavior. Stored in the project's dispatch config.
+type GitPolicy struct {
+	BranchPrefix     string `json:"branch_prefix"`      // prefix for ticket branches (default "ticket/")
+	BaseBranch       string `json:"base_branch"`        // PR target branch (default "main")
+	RequirePR        bool   `json:"require_pr"`         // require a PR before merge
+	RequireReview    bool   `json:"require_review"`     // require PR review before merge
+	RequireCI        bool   `json:"require_ci"`         // require CI to pass before merge
+	AutoMerge        bool   `json:"auto_merge"`         // merge automatically when checks pass
+	CommitTagPattern string `json:"commit_tag_pattern"` // commit tag pattern (default "ticket/{ticket_id}")
+}
+
+// BranchNameForTicket returns the branch name for a ticket using BranchPrefix
+// (default "ticket/").
+func (g *GitPolicy) BranchNameForTicket(ticketID string) string {
+	prefix := "ticket/"
+	if g != nil && g.BranchPrefix != "" {
+		prefix = g.BranchPrefix
+	}
+	return prefix + ticketID
 }

@@ -53,37 +53,6 @@ func TestClaudeDriverBuildCLIArgs(t *testing.T) {
 	}
 }
 
-func TestClaudeDriverBuildDockerCmd(t *testing.T) {
-	d := NewClaudeDriver(DriverConfig{})
-	cmd := d.BuildDockerCmd("ticket/t-1", testMCPConnection())
-
-	if !strings.Contains(cmd, "git clone /repo /workspace") {
-		t.Error("expected git clone in docker cmd")
-	}
-	if !strings.Contains(cmd, "git checkout -b ticket/t-1") {
-		t.Error("expected branch checkout in docker cmd")
-	}
-	if !strings.Contains(cmd, "claude --print --dangerously-skip-permissions") {
-		t.Error("expected claude CLI invocation in docker cmd")
-	}
-	if !strings.Contains(cmd, "/tmp/system-prompt.txt") {
-		t.Error("expected system prompt file reference")
-	}
-	if !strings.Contains(cmd, "/tmp/task-prompt.txt") {
-		t.Error("expected task prompt file reference")
-	}
-	if !strings.Contains(cmd, "/tmp/mcp-config.json") {
-		t.Error("expected MCP config file reference")
-	}
-}
-
-func TestClaudeDriverDockerImage(t *testing.T) {
-	d := NewClaudeDriver(DriverConfig{})
-	if d.DockerImage() != "" {
-		t.Errorf("expected empty docker image (use default), got %q", d.DockerImage())
-	}
-}
-
 func TestClaudeDriverFormatPrompt(t *testing.T) {
 	d := NewClaudeDriver(DriverConfig{})
 	input := "# System Prompt\n\nBe helpful."
@@ -137,20 +106,6 @@ func TestClaudeDriverDefaultAllowedHosts(t *testing.T) {
 	}
 }
 
-func TestClaudeDriverExtraDockerArgs(t *testing.T) {
-	d := NewClaudeDriver(DriverConfig{})
-	args := d.ExtraDockerArgs()
-	if len(args) != 2 {
-		t.Fatalf("expected 2 extra docker args (-v and path), got %d", len(args))
-	}
-	if args[0] != "-v" {
-		t.Errorf("expected first arg to be '-v', got %q", args[0])
-	}
-	if !strings.Contains(args[1], ".claude:delegated") {
-		t.Errorf("expected .claude volume mount, got %q", args[1])
-	}
-}
-
 // --- GenericDriver Tests ---
 
 func TestGenericDriverName(t *testing.T) {
@@ -179,49 +134,6 @@ func TestGenericDriverBuildCLIArgs(t *testing.T) {
 	}
 	if args[0] != "--mode" || args[1] != "headless" {
 		t.Errorf("expected extra args [--mode headless], got %v", args)
-	}
-}
-
-func TestGenericDriverBuildDockerCmd(t *testing.T) {
-	d := NewGenericDriver(DriverConfig{CLIPath: "opencode"})
-	cmd := d.BuildDockerCmd("ticket/t-2", testMCPConnection())
-
-	if !strings.Contains(cmd, "git clone /repo /workspace") {
-		t.Error("expected git clone in docker cmd")
-	}
-	if !strings.Contains(cmd, "git checkout -b ticket/t-2") {
-		t.Error("expected branch checkout in docker cmd")
-	}
-	if !strings.Contains(cmd, "FLYWHEEL_SYSTEM_PROMPT") {
-		t.Error("expected FLYWHEEL_SYSTEM_PROMPT export in docker cmd")
-	}
-	if !strings.Contains(cmd, "WARRANT_SYSTEM_PROMPT") {
-		t.Error("expected WARRANT_SYSTEM_PROMPT export in docker cmd")
-	}
-	if !strings.Contains(cmd, "FLYWHEEL_MCP_URL") {
-		t.Error("expected FLYWHEEL_MCP_URL export in docker cmd")
-	}
-	if !strings.Contains(cmd, "opencode") {
-		t.Error("expected agent command in docker cmd")
-	}
-}
-
-func TestGenericDriverBuildDockerCmdWithArgs(t *testing.T) {
-	d := NewGenericDriver(DriverConfig{
-		CLIPath:   "aider",
-		ExtraArgs: []string{"--yes", "--no-git"},
-	})
-
-	cmd := d.BuildDockerCmd("ticket/t-3", testMCPConnection())
-	if !strings.Contains(cmd, "aider --yes --no-git") {
-		t.Errorf("expected 'aider --yes --no-git' in docker cmd, got:\n%s", cmd)
-	}
-}
-
-func TestGenericDriverDockerImage(t *testing.T) {
-	d := NewGenericDriver(DriverConfig{})
-	if d.DockerImage() != "" {
-		t.Errorf("expected empty docker image (use default), got %q", d.DockerImage())
 	}
 }
 
@@ -272,13 +184,6 @@ func TestGenericDriverDefaultAllowedHosts(t *testing.T) {
 	d := NewGenericDriver(DriverConfig{})
 	if len(d.DefaultAllowedHosts()) != 0 {
 		t.Errorf("expected no default allowed hosts, got %v", d.DefaultAllowedHosts())
-	}
-}
-
-func TestGenericDriverExtraDockerArgs(t *testing.T) {
-	d := NewGenericDriver(DriverConfig{})
-	if len(d.ExtraDockerArgs()) != 0 {
-		t.Error("GenericDriver should return no extra docker args")
 	}
 }
 

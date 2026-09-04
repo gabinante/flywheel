@@ -513,22 +513,22 @@ func TestRunTypedWorker(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	cfg := Config{
-		MaxWorkers:    5,
-		DockerEnabled: true,
-		WorktreeDir:   tmpDir,
-		ServerURL:     "http://localhost:8080",
-		AgentID:       "agent-test",
+		MaxWorkers:  5,
+		WorktreeDir: tmpDir,
+		ServerURL:   "http://localhost:8080",
+		AgentID:     "agent-test",
 	}
 
 	bus := events.NewInProcessBus()
 	clones := NewMultiRepoCloneManager(filepath.Join(tmpDir, ".clones"))
 	d := &Dispatcher{
-		cfg:      cfg,
-		bus:      bus,
-		tickets:  tg,
-		projects: pg,
-		worker:   worker,
-		clones:   clones,
+		skipWorktrees: true,
+		cfg:           cfg,
+		bus:           bus,
+		tickets:       tg,
+		projects:      pg,
+		worker:        worker,
+		clones:        clones,
 		worktrees: &WorktreeManager{
 			BaseDir: tmpDir,
 		},
@@ -641,7 +641,7 @@ func TestAssembleTypedWorkerPrompt_ProgressBlockBeforeObjective(t *testing.T) {
 		Type:     ticket.TypeTask,
 		Priority: 1,
 		Objective: ticket.Objective{
-			Description:    "Fix the broken feature",
+			Description:     "Fix the broken feature",
 			SuccessCriteria: []string{"Tests pass"},
 		},
 		Context: ticket.TicketContext{

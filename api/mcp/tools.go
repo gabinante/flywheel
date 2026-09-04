@@ -8,23 +8,18 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/gabinante/flywheel/api/rest"
 	"github.com/gabinante/flywheel/internal/auth"
-	"github.com/gabinante/flywheel/internal/claims"
 	apierrors "github.com/gabinante/flywheel/internal/errors"
 	"github.com/gabinante/flywheel/internal/execution"
-	"github.com/gabinante/flywheel/internal/gitnotes"
-	investigationPkg "github.com/gabinante/flywheel/internal/investigation"
-	"github.com/gabinante/flywheel/internal/notification"
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
 	"github.com/gabinante/flywheel/internal/review"
 	"github.com/gabinante/flywheel/internal/ticket"
 	"github.com/gabinante/flywheel/internal/workstream"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 type sessionContextKey struct{}
@@ -52,40 +47,40 @@ const (
 // for the coordinator role regardless of what external content may instruct.
 var ToolScopeRegistry = map[string]ToolScope{
 	// Read-only tools (no confirmation needed)
-	"list_orgs":             ToolScopeRead,
-	"list_projects":         ToolScopeRead,
-	"get_project_context":   ToolScopeRead,
-	"list_tickets":          ToolScopeRead,
-	"get_ticket":            ToolScopeRead,
-	"list_work_streams":     ToolScopeRead,
-	"get_work_stream":       ToolScopeRead,
-	"list_pending_reviews":  ToolScopeRead,
-	"get_trace":             ToolScopeRead,
+	"list_orgs":               ToolScopeRead,
+	"list_projects":           ToolScopeRead,
+	"get_project_context":     ToolScopeRead,
+	"list_tickets":            ToolScopeRead,
+	"get_ticket":              ToolScopeRead,
+	"list_work_streams":       ToolScopeRead,
+	"get_work_stream":         ToolScopeRead,
+	"list_pending_reviews":    ToolScopeRead,
+	"get_trace":               ToolScopeRead,
 	"flywheel_show_git_notes": ToolScopeRead,
 	"flywheel_log_git_notes":  ToolScopeRead,
 	"flywheel_diff_git_notes": ToolScopeRead,
 
 	// Write tools — internal Flywheel state only (allowed for coordinator)
-	"create_project":           ToolScopeWriteInternal,
-	"update_project_context":   ToolScopeWriteInternal,
-	"update_project_status":    ToolScopeWriteInternal,
-	"create_ticket":            ToolScopeWriteInternal,
-	"update_ticket":            ToolScopeWriteInternal,
-	"create_work_stream":       ToolScopeWriteInternal,
-	"update_work_stream":       ToolScopeWriteInternal,
-	"update_work_stream_plan":  ToolScopeWriteInternal,
+	"create_project":          ToolScopeWriteInternal,
+	"update_project_context":  ToolScopeWriteInternal,
+	"update_project_status":   ToolScopeWriteInternal,
+	"create_ticket":           ToolScopeWriteInternal,
+	"update_ticket":           ToolScopeWriteInternal,
+	"create_work_stream":      ToolScopeWriteInternal,
+	"update_work_stream":      ToolScopeWriteInternal,
+	"update_work_stream_plan": ToolScopeWriteInternal,
 
 	// Write tools — worker lifecycle (internal but role-scoped)
-	"claim_ticket":    ToolScopeWriteInternal,
-	"start_ticket":    ToolScopeWriteInternal,
-	"log_step":        ToolScopeWriteInternal,
-	"submit_ticket":   ToolScopeWriteInternal,
-	"escalate_ticket": ToolScopeWriteInternal,
-	"renew_lease":     ToolScopeWriteInternal,
+	"claim_ticket":        ToolScopeWriteInternal,
+	"start_ticket":        ToolScopeWriteInternal,
+	"log_step":            ToolScopeWriteInternal,
+	"submit_ticket":       ToolScopeWriteInternal,
+	"escalate_ticket":     ToolScopeWriteInternal,
+	"renew_lease":         ToolScopeWriteInternal,
 	"force_release_lease": ToolScopeWriteInternal,
 
 	// Write tools — external side effects (require human confirmation)
-	"flywheel_add_git_note":  ToolScopeWriteExternal,
+	"flywheel_add_git_note":   ToolScopeWriteExternal,
 	"flywheel_sync_git_notes": ToolScopeWriteExternal,
 
 	// Cancel — coordinators can cancel tickets
@@ -151,11 +146,11 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 	mcp.AddTool(s, &mcp.Tool{Name: "create_project", Description: "Create a project in your default (first) organization. Use for initiatives, epics, or any work container. You do not pass org_id; the project is created in an org you belong to. Optionally seed from a project template: pass template_id to include all its workstreams, or template_id + work_stream_template_ids to select a subset.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"name":                      map[string]any{"type": "string", "description": "Project name"},
-			"slug":                      map[string]any{"type": "string", "description": "URL-friendly slug (optional, auto-generated if omitted)"},
-			"agent_id":                  map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
-			"template_id":               map[string]any{"type": "string", "description": "Project template ID to seed workstreams and tickets from (optional). Use list_project_templates to see available templates."},
-			"work_stream_template_ids":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Specific workstream template IDs to include (optional). If omitted with template_id, all template workstreams are included."},
+			"name":                     map[string]any{"type": "string", "description": "Project name"},
+			"slug":                     map[string]any{"type": "string", "description": "URL-friendly slug (optional, auto-generated if omitted)"},
+			"agent_id":                 map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+			"template_id":              map[string]any{"type": "string", "description": "Project template ID to seed workstreams and tickets from (optional). Use list_project_templates to see available templates."},
+			"work_stream_template_ids": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Specific workstream template IDs to include (optional). If omitted with template_id, all template workstreams are included."},
 		},
 		"required":             []string{"name"},
 		"additionalProperties": false,
@@ -386,16 +381,6 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"required":             []string{"ticket_id"},
 		"additionalProperties": false,
 	}}, wrap(forceReleaseLeaseHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "rollback_ticket", Description: "Initiate a stage-specific rollback for a ticket. Behavior depends on the ticket's current lifecycle stage:\n- Executing: discard worktree, release claims, return to draft for re-planning.\n- Awaiting validation / Validated (pre-deploy): revert diff, release claims, return to draft.\n- Deploying / Observing (post-deploy): redeploy previous version, release claims. For production: auto-creates an incident ticket.\n- Closed (post-observation): creates a new rollback ticket for structural code revert (original stays closed).\nRollback is not available from draft, specced, planning, or awaiting_input states.", InputSchema: map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"ticket_id": map[string]any{"type": "string", "description": "Ticket ID to roll back"},
-			"reason":    map[string]any{"type": "string", "description": "Reason for the rollback"},
-			"agent_id":  map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
-		},
-		"required":             []string{"ticket_id", "reason"},
-		"additionalProperties": false,
-	}}, wrap(rollbackTicketHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "list_pending_reviews", Description: "List tickets in awaiting_validation for a project. Use this when the user asks 'what needs my review?' or 'show pending reviews'. Returns full tickets so you can summarize them in chat; use get_trace(ticket_id) to show execution steps for each.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -413,23 +398,6 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"required":             []string{"ticket_id"},
 		"additionalProperties": false,
 	}}, wrap(getTraceHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "dispatch_investigation", Description: "Dispatch a scoped investigation to a subagent. The coordinator uses this to gather facts before designing tickets. Returns structured findings: claims with file:line citations, negative space (what was NOT found), and open questions. Investigations are read-only, one level deep (subagents cannot dispatch further investigations), and token-budget constrained. Use during the 'investigate' phase of coordinator workflow.", InputSchema: map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"project_id":       map[string]any{"type": "string", "description": "Project ID"},
-			"question":         map[string]any{"type": "string", "description": "The specific research question to investigate"},
-			"files":            map[string]any{"type": "string", "description": "JSON array of file glob patterns to scope the investigation (optional)"},
-			"symbols":          map[string]any{"type": "string", "description": "JSON array of symbol names to investigate (optional)"},
-			"packages":         map[string]any{"type": "string", "description": "JSON array of package/directory paths to scope (optional)"},
-			"exclude_files":    map[string]any{"type": "string", "description": "JSON array of file patterns to exclude (optional)"},
-			"constraints":      map[string]any{"type": "string", "description": "JSON array of natural language constraints (optional)"},
-			"token_budget":     map[string]any{"type": "integer", "description": "Maximum tokens for the response (default: 4000, max: 16000)", "minimum": 100, "maximum": 16000},
-			"parent_ticket_id": map[string]any{"type": "string", "description": "Ticket ID that triggered this investigation (for tracing, optional)"},
-			"agent_id":         map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
-		},
-		"required":             []string{"project_id", "question"},
-		"additionalProperties": false,
-	}}, wrap(dispatchInvestigationHandler))
 	mcp.AddTool(s, &mcp.Tool{Name: "approve_ticket", Description: "Approve a ticket in awaiting_validation. Moves it to validated. Call when the user says to approve, ship it, looks good, etc. reviewer_id is inferred from OAuth.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -483,124 +451,17 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 	}}, wrap(resolveTicketInputHandler))
 
 	// Git notes (Flywheel integration): if repo_path provided and server has access, run git notes; else return commands for flywheel-git CLI.
-	mcp.AddTool(s, &mcp.Tool{Name: "flywheel_add_git_note", Description: "Add a git note to a commit (refs/notes/flywheel/decision|trace|intent). Params: message (required), type (decision|trace|intent, default decision), commit_sha (default HEAD), optional repo_path, ticket_id, project_id. If server has repo_path, adds note; else returns commands to run flywheel-git note add locally.", InputSchema: map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"message":    map[string]any{"type": "string", "description": "Note message content"},
-			"type":       map[string]any{"type": "string", "description": "Note type: decision, trace, or intent (default: decision)", "enum": []string{"decision", "trace", "intent"}},
-			"commit_sha": map[string]any{"type": "string", "description": "Commit SHA to attach note to (default: HEAD)"},
-			"repo_path":  map[string]any{"type": "string", "description": "Path to git repo (optional, for server-side execution)"},
-			"ticket_id":  map[string]any{"type": "string", "description": "Associated ticket ID (optional, stored in note metadata)"},
-			"project_id": map[string]any{"type": "string", "description": "Associated project ID (optional, stored in note metadata)"},
-			"agent_id":   map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
-		},
-		"required":             []string{"message"},
-		"additionalProperties": false,
-	}}, wrap(flywheelAddGitNoteHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "flywheel_show_git_notes", Description: "Show git note(s) for a commit. Params: commit_sha (default HEAD), optional repo_path, type (decision|trace|intent, or omit for all). Returns note body or commands for flywheel-git note show.", InputSchema: map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"commit_sha": map[string]any{"type": "string", "description": "Commit SHA to show notes for (default: HEAD)"},
-			"repo_path":  map[string]any{"type": "string", "description": "Path to git repo (optional, for server-side execution)"},
-			"type":       map[string]any{"type": "string", "description": "Note type filter: decision, trace, or intent (optional, omit for all)", "enum": []string{"decision", "trace", "intent"}},
-		},
-		"additionalProperties": false,
-	}}, wrap(flywheelShowGitNotesHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "flywheel_log_git_notes", Description: "Log commits with notes (last N). Params: limit (default 20), optional repo_path, type (default decision). Returns list of {commit_sha, ref, body} or commands for flywheel-git note log.", InputSchema: map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"limit":     map[string]any{"type": "integer", "description": "Number of entries to return (default: 20)", "minimum": 1},
-			"repo_path": map[string]any{"type": "string", "description": "Path to git repo (optional, for server-side execution)"},
-			"type":      map[string]any{"type": "string", "description": "Note type: decision, trace, or intent (default: decision)", "enum": []string{"decision", "trace", "intent"}},
-		},
-		"additionalProperties": false,
-	}}, wrap(flywheelLogGitNotesHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "flywheel_diff_git_notes", Description: "Notes on commits in base..head. Params: base, head (required), optional repo_path, type (default decision). Returns entries or commands for flywheel-git note diff.", InputSchema: map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"base":      map[string]any{"type": "string", "description": "Base commit SHA or ref"},
-			"head":      map[string]any{"type": "string", "description": "Head commit SHA or ref"},
-			"repo_path": map[string]any{"type": "string", "description": "Path to git repo (optional, for server-side execution)"},
-			"type":      map[string]any{"type": "string", "description": "Note type: decision, trace, or intent (default: decision)", "enum": []string{"decision", "trace", "intent"}},
-		},
-		"required":             []string{"base", "head"},
-		"additionalProperties": false,
-	}}, wrap(flywheelDiffGitNotesHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "flywheel_sync_git_notes", Description: "Push/pull refs/notes/flywheel/*. Params: optional repo_path, direction (push|pull|both). Usually returns commands to run flywheel-git sync locally.", InputSchema: map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"repo_path": map[string]any{"type": "string", "description": "Path to git repo (optional)"},
-			"direction": map[string]any{"type": "string", "description": "Sync direction: push, pull, or both (default: both)", "enum": []string{"push", "pull", "both"}},
-		},
-		"additionalProperties": false,
-	}}, wrap(flywheelSyncGitNotesHandler))
 
 	// --- Claims registry tools (spec v0.2 §4.3) ---
-	if b.Claims != nil {
-		mcp.AddTool(s, &mcp.Tool{Name: "query_active_claims", Description: "Query active claims in the claims registry. Use to check what resources are currently claimed before starting execution. Filter by ticket_id, entity_id+environment, or environment alone. Returns claims with their types, metadata, and the tickets holding them.", InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"ticket_id":   map[string]any{"type": "string", "description": "Filter by ticket ID (returns all active claims for that ticket)"},
-				"entity_id":   map[string]any{"type": "string", "description": "Filter by entity ID (requires environment)"},
-				"environment": map[string]any{"type": "string", "description": "Filter by environment (required with entity_id, optional alone for all claims in env)"},
-			},
-			"additionalProperties": false,
-		}}, wrap(queryActiveClaimsHandler))
-		mcp.AddTool(s, &mcp.Tool{Name: "detect_claim_conflicts", Description: "Run conflict detection for a set of planned touches without registering claims. Use at ticket creation time or before dispatch to check if execution would conflict with active work. Returns conflict classification: hard (must serialize), soft (advisory), or parallel-safe.", InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"ticket_id": map[string]any{"type": "string", "description": "Ticket ID to check conflicts for"},
-				"touches":   map[string]any{"type": "string", "description": "JSON array of touch objects: [{entity_id, environment, claim_type, metadata}]"},
-			},
-			"required":             []string{"ticket_id", "touches"},
-			"additionalProperties": false,
-		}}, wrap(detectClaimConflictsHandler))
-	}
 
 	// --- Notification tools ---
-	mcp.AddTool(s, &mcp.Tool{Name: "get_notification_preferences", Description: "Get notification preferences for a project. Returns channel routing (per urgency), digest settings, push threshold, and configured channels (Slack webhook URL, email, SMS). If no preferences are set, returns defaults.", InputSchema: map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"project_id": map[string]any{"type": "string", "description": "Project ID"},
-		},
-		"required":             []string{"project_id"},
-		"additionalProperties": false,
-	}}, wrap(getNotificationPreferencesHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "set_notification_preferences", Description: "Set notification preferences for a project. Controls which channel is used per urgency level (critical/high/medium/low), digest settings, push threshold, and channel configuration (Slack webhook URL, email address, SMS number). Unset fields keep their defaults.", InputSchema: map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"project_id":       map[string]any{"type": "string", "description": "Project ID"},
-			"critical_channel": map[string]any{"type": "string", "description": "Channel for critical urgency", "enum": []string{"slack", "email", "sms"}},
-			"high_channel":     map[string]any{"type": "string", "description": "Channel for high urgency", "enum": []string{"slack", "email", "sms"}},
-			"medium_channel":   map[string]any{"type": "string", "description": "Channel for medium urgency", "enum": []string{"slack", "email", "sms"}},
-			"low_channel":      map[string]any{"type": "string", "description": "Channel for low urgency", "enum": []string{"slack", "email", "sms"}},
-			"digest_enabled":   map[string]any{"type": "boolean", "description": "Enable digest batching for below-threshold notifications"},
-			"digest_interval":  map[string]any{"type": "string", "description": "Digest interval (e.g. '1h', '30m')"},
-			"push_threshold":   map[string]any{"type": "string", "description": "Urgency at or above which notifications are pushed immediately", "enum": []string{"critical", "high", "medium", "low"}},
-			"slack_webhook_url": map[string]any{"type": "string", "description": "Slack incoming webhook URL"},
-			"email_address":    map[string]any{"type": "string", "description": "Email address for notifications"},
-			"sms_number":       map[string]any{"type": "string", "description": "SMS number for notifications"},
-		},
-		"required":             []string{"project_id"},
-		"additionalProperties": false,
-	}}, wrap(setNotificationPreferencesHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "get_dismissal_rates", Description: "Get notification dismissal rates per classifier for a project. Used for tuning notification classifiers — high dismissal rates suggest notifications are too noisy.", InputSchema: map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"project_id": map[string]any{"type": "string", "description": "Project ID"},
-		},
-		"required":             []string{"project_id"},
-		"additionalProperties": false,
-	}}, wrap(getDismissalRatesHandler))
 
 	// Pillar and strategy layer (Layer 15).
-	registerPillarTools(s, b, wrap)
 
 	// Workflow tools.
 	registerWorkflowTools(s, b, wrap)
 
 	// Project template tools.
-	registerProjectTemplateTools(s, b, wrap)
 }
 
 func requireString(args map[string]any, key string) (string, error) {
@@ -834,47 +695,23 @@ func createProjectHandler(b *Backend, ctx context.Context, args map[string]any) 
 		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
 	}
 	slug := getString(args, "slug", "")
-		// Prefer personal org (slug "u-..."); otherwise use first org
-		var targetOrg *org.Org
-		for _, o := range orgs {
-			if strings.HasPrefix(o.Slug, "u-") {
-				targetOrg = o
-				break
-			}
+	// Prefer personal org (slug "u-..."); otherwise use first org
+	var targetOrg *org.Org
+	for _, o := range orgs {
+		if strings.HasPrefix(o.Slug, "u-") {
+			targetOrg = o
+			break
 		}
-		if targetOrg == nil {
-			targetOrg = orgs[0]
-		}
-		p, err := b.Project.CreateProject(ctx, targetOrg.ID, name, slug, "", nil)
-		if err != nil {
-			return toolErrTriple(apierrors.MapError(err))
+	}
+	if targetOrg == nil {
+		targetOrg = orgs[0]
+	}
+	p, err := b.Project.CreateProject(ctx, targetOrg.ID, name, slug, "", nil)
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
 	}
 
-	// Seed from template if requested
-	var seedResult any
-	templateID := getString(args, "template_id", "")
-	if templateID != "" && b.ProjectTemplate != nil {
-		wsIDs := getStringArray(args, "work_stream_template_ids")
-		if len(wsIDs) == 0 {
-			pt, err := b.ProjectTemplate.GetProjectTemplate(ctx, templateID)
-			if err == nil && pt != nil {
-				wsIDs = pt.WorkstreamTemplateIDs
-			}
-		}
-		if len(wsIDs) > 0 {
-			sr, err := b.ProjectTemplate.SeedProject(ctx, p.ID, wsIDs, agentID, b.WorkStream, b.Ticket)
-			if err != nil {
-				return toolErrTriple(apierrors.New(apierrors.CodeInternal, "project created but template seeding failed: "+err.Error(), false))
-			}
-			seedResult = sr
-		}
-	}
-
-	result := map[string]any{"project": p}
-	if seedResult != nil {
-		result["seed_result"] = seedResult
-	}
-	return jsonResult(result)
+	return jsonResult(map[string]any{"project": p})
 }
 
 // workStreamGitInstruction returns checkout/create guidance when the project is git-backed.
@@ -1070,10 +907,10 @@ func updateWorkStreamHandler(b *Backend, ctx context.Context, args map[string]an
 				defaultBranch = "main"
 			}
 			out["git_instruction"] = map[string]any{
-				"enabled":  true,
-				"action":   "checkout_default_branch",
-				"branch":   defaultBranch,
-				"message":  "Work stream closed. Checkout default branch with `git checkout " + defaultBranch + "`",
+				"enabled": true,
+				"action":  "checkout_default_branch",
+				"branch":  defaultBranch,
+				"message": "Work stream closed. Checkout default branch with `git checkout " + defaultBranch + "`",
 			}
 		}
 	}
@@ -1150,209 +987,209 @@ func checkProjectAccess(ctx context.Context, b *Backend, agentID, projectID stri
 }
 
 func createTicketHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-		agentID, err := getAgentIDFromArgs(ctx, args)
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	agentID, err := getAgentIDFromArgs(ctx, args)
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	projectID, err := requireString(args, "project_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	title, err := requireString(args, "title")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	// Accept description from top-level "description" or nested "objective.description".
+	description := getString(args, "description", "")
+	if description == "" {
+		if obj, ok := args["objective"].(map[string]any); ok {
+			if d, ok := obj["description"].(string); ok {
+				description = d
+			}
 		}
-		projectID, err := requireString(args,"project_id")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	if description == "" {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, "description required (pass as top-level \"description\" or inside \"objective.description\")", false))
+	}
+	// Verify user has access to the project (project's org is one of user's orgs)
+	proj, err := b.Project.GetProject(ctx, projectID)
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	agent, err := b.AgentStore.GetByID(ctx, agentID)
+	if err != nil || agent == nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "agent not found", false))
+	}
+	if agent.UserID == "" {
+		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "create_ticket requires OAuth login.", false))
+	}
+	orgIDs, err := b.Org.ListOrgIDsForUser(ctx, agent.UserID)
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	allowed := false
+	for _, id := range orgIDs {
+		if id == proj.OrgID {
+			allowed = true
+			break
 		}
-		title, err := requireString(args,"title")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	if !allowed {
+		return toolErrTriple(apierrors.New(apierrors.CodeForbidden, "you do not have access to that project", false))
+	}
+	if proj.Status == "closed" {
+		return toolErrTriple(apierrors.New(apierrors.CodeProjectClosed, "project is closed; reopen it with update_project_status or choose another project", false))
+	}
+	typ := ticket.TypeTask
+	if t := getString(args, "ticket_type", ""); t != "" {
+		switch t {
+		case "task", "bug", "spike", "review":
+			typ = ticket.TicketType(t)
 		}
-		// Accept description from top-level "description" or nested "objective.description".
-		description := getString(args, "description", "")
-		if description == "" {
-			if obj, ok := args["objective"].(map[string]any); ok {
-				if d, ok := obj["description"].(string); ok {
-					description = d
+	}
+	prio := ticket.P2
+	if p := getInt(args, "priority", -1); p >= 0 && p <= 3 {
+		prio = ticket.Priority(p)
+	}
+	var successCriteria []string
+	if s := getString(args, "success_criteria", ""); s != "" {
+		_ = json.Unmarshal([]byte(s), &successCriteria)
+	}
+	// Also accept success_criteria and acceptance_test from nested objective.
+	if len(successCriteria) == 0 {
+		if obj, ok := args["objective"].(map[string]any); ok {
+			if sc, ok := obj["success_criteria"].([]any); ok {
+				for _, v := range sc {
+					if s, ok := v.(string); ok {
+						successCriteria = append(successCriteria, s)
+					}
 				}
 			}
 		}
-		if description == "" {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, "description required (pass as top-level \"description\" or inside \"objective.description\")", false))
+	}
+	acceptanceTest := getString(args, "acceptance_test", "")
+	if acceptanceTest == "" {
+		if obj, ok := args["objective"].(map[string]any); ok {
+			if at, ok := obj["acceptance_test"].(string); ok {
+				acceptanceTest = at
+			}
 		}
-		// Verify user has access to the project (project's org is one of user's orgs)
-		proj, err := b.Project.GetProject(ctx, projectID)
-		if err != nil {
-			return toolErrTriple(apierrors.MapError(err))
+	}
+	objective := ticket.Objective{
+		Description:     description,
+		SuccessCriteria: successCriteria,
+		AcceptanceTest:  acceptanceTest,
+	}
+	idempotencyKey := getString(args, "idempotency_key", "")
+	workStreamID := getString(args, "work_stream_id", "")
+	if workStreamID != "" && b.WorkStream != nil {
+		ws, err := b.WorkStream.GetWorkStream(ctx, workStreamID)
+		if err != nil || ws == nil || ws.ProjectID != projectID {
+			return toolErrTriple(apierrors.New(apierrors.CodeNotFound, "work stream not found or does not belong to project", false))
 		}
-		agent, err := b.AgentStore.GetByID(ctx, agentID)
-		if err != nil || agent == nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "agent not found", false))
+	}
+	dependsOn := getStringArray(args, "depends_on")
+	if dependsOn == nil {
+		dependsOn = []string{}
+	}
+	targetRepo := getString(args, "target_repo", "")
+	// Validate target_repo alias exists if provided and multi-repo is configured.
+	if targetRepo != "" && b.Repos != nil {
+		_, repoErr := b.Repos.GetRepository(ctx, projectID, targetRepo)
+		if repoErr != nil {
+			return toolErrTriple(apierrors.New(apierrors.CodeNotFound, "target_repo alias not found: "+targetRepo+". Use list_project_repositories to see available aliases.", false))
 		}
-		if agent.UserID == "" {
-			return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "create_ticket requires OAuth login.", false))
+	}
+	t, err := b.Ticket.CreateTicket(ctx, projectID, title, typ, prio, agentID, dependsOn, workStreamID, objective, ticket.TicketContext{}, idempotencyKey, targetRepo)
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	// Apply optional inputs metadata (e.g. decomposed_from for subticket provenance).
+	if inputsRaw, ok := args["inputs"].(map[string]any); ok && len(inputsRaw) > 0 {
+		if patchErr := b.Ticket.PatchInputs(ctx, t.ID, inputsRaw); patchErr != nil {
+			return toolErrTriple(apierrors.MapError(patchErr))
 		}
-		orgIDs, err := b.Org.ListOrgIDsForUser(ctx, agent.UserID)
-		if err != nil {
-			return toolErrTriple(apierrors.MapError(err))
+		for k, v := range inputsRaw {
+			t.Inputs[k] = v
 		}
+	}
+	// Override workflow if specified (e.g. subtickets using a simpler workflow).
+	if wfID := getString(args, "workflow_id", ""); wfID != "" && b.Workflow != nil {
+		if wfDef, wfErr := b.Workflow.GetDefinition(ctx, wfID); wfErr == nil && wfDef != nil && len(wfDef.Phases) > 0 {
+			firstPhase := wfDef.Phases[0].ID
+			if updErr := b.Ticket.UpdateWorkflow(ctx, t.ID, wfDef.ID, wfDef.Version, firstPhase); updErr != nil {
+				return toolErrTriple(apierrors.MapError(updErr))
+			}
+			t.WorkflowID = wfDef.ID
+			t.WorkflowVersion = wfDef.Version
+			t.WorkflowPhase = firstPhase
+		}
+	}
+	return jsonResult(map[string]any{
+		"ticket":   t,
+		"workflow": workflowAfterCreateTicket(projectID),
+	})
+}
+
+func listProjectsHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
+	agentID, err := getAgentIDFromArgs(ctx, args)
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	agent, err := b.AgentStore.GetByID(ctx, agentID)
+	if err != nil || agent == nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "agent not found", false))
+	}
+	if agent.UserID == "" {
+		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "list_projects requires OAuth login (agent must be linked to a user). Use GitHub sign-in via MCP URL auth.", false))
+	}
+	orgIDs, err := b.Org.ListOrgIDsForUser(ctx, agent.UserID)
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	if len(orgIDs) == 0 {
+		return jsonResult([]any{})
+	}
+	filterOrgID := getString(args, "org_id", "")
+	if filterOrgID != "" {
 		allowed := false
 		for _, id := range orgIDs {
-			if id == proj.OrgID {
+			if id == filterOrgID {
 				allowed = true
 				break
 			}
 		}
 		if !allowed {
-			return toolErrTriple(apierrors.New(apierrors.CodeForbidden, "you do not have access to that project", false))
+			return toolErrTriple(apierrors.New(apierrors.CodeForbidden, "you are not a member of that organization", false))
 		}
-		if proj.Status == "closed" {
-			return toolErrTriple(apierrors.New(apierrors.CodeProjectClosed, "project is closed; reopen it with update_project_status or choose another project", false))
-		}
-		typ := ticket.TypeTask
-		if t := getString(args,"ticket_type", ""); t != "" {
-			switch t {
-			case "task", "bug", "spike", "review":
-				typ = ticket.TicketType(t)
-			}
-		}
-		prio := ticket.P2
-		if p := getInt(args,"priority", -1); p >= 0 && p <= 3 {
-			prio = ticket.Priority(p)
-		}
-		var successCriteria []string
-		if s := getString(args,"success_criteria", ""); s != "" {
-			_ = json.Unmarshal([]byte(s), &successCriteria)
-		}
-		// Also accept success_criteria and acceptance_test from nested objective.
-		if len(successCriteria) == 0 {
-			if obj, ok := args["objective"].(map[string]any); ok {
-				if sc, ok := obj["success_criteria"].([]any); ok {
-					for _, v := range sc {
-						if s, ok := v.(string); ok {
-							successCriteria = append(successCriteria, s)
-						}
-					}
-				}
-			}
-		}
-		acceptanceTest := getString(args,"acceptance_test", "")
-		if acceptanceTest == "" {
-			if obj, ok := args["objective"].(map[string]any); ok {
-				if at, ok := obj["acceptance_test"].(string); ok {
-					acceptanceTest = at
-				}
-			}
-		}
-		objective := ticket.Objective{
-			Description:     description,
-			SuccessCriteria: successCriteria,
-			AcceptanceTest:  acceptanceTest,
-		}
-		idempotencyKey := getString(args, "idempotency_key", "")
-		workStreamID := getString(args, "work_stream_id", "")
-		if workStreamID != "" && b.WorkStream != nil {
-			ws, err := b.WorkStream.GetWorkStream(ctx, workStreamID)
-			if err != nil || ws == nil || ws.ProjectID != projectID {
-				return toolErrTriple(apierrors.New(apierrors.CodeNotFound, "work stream not found or does not belong to project", false))
-			}
-		}
-		dependsOn := getStringArray(args, "depends_on")
-		if dependsOn == nil {
-			dependsOn = []string{}
-		}
-		targetRepo := getString(args, "target_repo", "")
-		// Validate target_repo alias exists if provided and multi-repo is configured.
-		if targetRepo != "" && b.Repos != nil {
-			_, repoErr := b.Repos.GetRepository(ctx, projectID, targetRepo)
-			if repoErr != nil {
-				return toolErrTriple(apierrors.New(apierrors.CodeNotFound, "target_repo alias not found: "+targetRepo+". Use list_project_repositories to see available aliases.", false))
-			}
-		}
-		t, err := b.Ticket.CreateTicket(ctx, projectID, title, typ, prio, agentID, dependsOn, workStreamID, objective, ticket.TicketContext{}, idempotencyKey, targetRepo)
+		orgIDs = []string{filterOrgID}
+	}
+	includeClosed := getBool(args, "include_closed", false)
+	statusFilter := "active"
+	if includeClosed {
+		statusFilter = "all"
+	}
+	var all []project.Project
+	for _, oid := range orgIDs {
+		list, err := b.Project.ListByOrgID(ctx, oid, statusFilter)
 		if err != nil {
 			return toolErrTriple(apierrors.MapError(err))
 		}
-		// Apply optional inputs metadata (e.g. decomposed_from for subticket provenance).
-		if inputsRaw, ok := args["inputs"].(map[string]any); ok && len(inputsRaw) > 0 {
-			if patchErr := b.Ticket.PatchInputs(ctx, t.ID, inputsRaw); patchErr != nil {
-				return toolErrTriple(apierrors.MapError(patchErr))
-			}
-			for k, v := range inputsRaw {
-				t.Inputs[k] = v
-			}
-		}
-		// Override workflow if specified (e.g. subtickets using a simpler workflow).
-		if wfID := getString(args, "workflow_id", ""); wfID != "" && b.Workflow != nil {
-			if wfDef, wfErr := b.Workflow.GetDefinition(ctx, wfID); wfErr == nil && wfDef != nil && len(wfDef.Phases) > 0 {
-				firstPhase := wfDef.Phases[0].ID
-				if updErr := b.Ticket.UpdateWorkflow(ctx, t.ID, wfDef.ID, wfDef.Version, firstPhase); updErr != nil {
-					return toolErrTriple(apierrors.MapError(updErr))
-				}
-				t.WorkflowID = wfDef.ID
-				t.WorkflowVersion = wfDef.Version
-				t.WorkflowPhase = firstPhase
-			}
-		}
-		return jsonResult(map[string]any{
-			"ticket":   t,
-			"workflow": workflowAfterCreateTicket(projectID),
-		})
-}
-
-func listProjectsHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-		agentID, err := getAgentIDFromArgs(ctx, args)
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		agent, err := b.AgentStore.GetByID(ctx, agentID)
-		if err != nil || agent == nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "agent not found", false))
-		}
-		if agent.UserID == "" {
-			return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "list_projects requires OAuth login (agent must be linked to a user). Use GitHub sign-in via MCP URL auth.", false))
-		}
-		orgIDs, err := b.Org.ListOrgIDsForUser(ctx, agent.UserID)
-		if err != nil {
-			return toolErrTriple(apierrors.MapError(err))
-		}
-		if len(orgIDs) == 0 {
-			return jsonResult([]any{})
-		}
-		filterOrgID := getString(args,"org_id", "")
-		if filterOrgID != "" {
-			allowed := false
-			for _, id := range orgIDs {
-				if id == filterOrgID {
-					allowed = true
-					break
-				}
-			}
-			if !allowed {
-				return toolErrTriple(apierrors.New(apierrors.CodeForbidden, "you are not a member of that organization", false))
-			}
-			orgIDs = []string{filterOrgID}
-		}
-		includeClosed := getBool(args, "include_closed", false)
-		statusFilter := "active"
-		if includeClosed {
-			statusFilter = "all"
-		}
-		var all []project.Project
-		for _, oid := range orgIDs {
-			list, err := b.Project.ListByOrgID(ctx, oid, statusFilter)
-			if err != nil {
-				return toolErrTriple(apierrors.MapError(err))
-			}
-			all = append(all, list...)
-		}
-		return jsonResult(all)
+		all = append(all, list...)
+	}
+	return jsonResult(all)
 }
 
 func getProjectContextHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-		projectID, err := requireString(args,"project_id")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		pack, err := b.Project.AssembleContextPack(ctx, projectID)
-		if err != nil {
-			return toolErrTriple(apierrors.MapError(err))
-		}
-		return jsonResult(pack)
+	projectID, err := requireString(args, "project_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	pack, err := b.Project.AssembleContextPack(ctx, projectID)
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	return jsonResult(pack)
 }
 
 func updateProjectContextHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
@@ -1476,166 +1313,166 @@ func updateProjectStatusHandler(b *Backend, ctx context.Context, args map[string
 }
 
 func listTicketsHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-		projectID, err := requireString(args,"project_id")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		workStreamID := getString(args, "work_stream_id", "")
-		state := ticket.State(getString(args, "state", ""))
-		list, err := b.Ticket.ListTickets(ctx, projectID, workStreamID, state)
-		if err != nil {
-			return toolErrTriple(apierrors.MapError(err))
-		}
-		if p := getInt(args,"priority", -1); p >= 0 && p <= 3 {
-			filtered := make([]*ticket.Ticket, 0)
-			for _, t := range list {
-				if int(t.Priority) == p {
-					filtered = append(filtered, t)
-				}
-			}
-			list = filtered
-		}
-		// Return slim ticket summaries to keep response size manageable.
-		// Full ticket details (outputs, inputs, context) are available via get_ticket.
-		summaries := make([]map[string]any, 0, len(list))
+	projectID, err := requireString(args, "project_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	workStreamID := getString(args, "work_stream_id", "")
+	state := ticket.State(getString(args, "state", ""))
+	list, err := b.Ticket.ListTickets(ctx, projectID, workStreamID, state)
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	if p := getInt(args, "priority", -1); p >= 0 && p <= 3 {
+		filtered := make([]*ticket.Ticket, 0)
 		for _, t := range list {
-			s := map[string]any{
-				"id":         t.ID,
-				"title":      t.Title,
-				"type":       t.Type,
-				"state":      t.State,
-				"priority":   t.Priority,
-				"project_id": t.ProjectID,
-				"created_at": t.CreatedAt,
-				"updated_at": t.UpdatedAt,
+			if int(t.Priority) == p {
+				filtered = append(filtered, t)
 			}
-			if t.WorkStreamID != "" {
-				s["work_stream_id"] = t.WorkStreamID
-			}
-			if t.AssignedTo != "" {
-				s["assigned_to"] = t.AssignedTo
-			}
-			if len(t.DependsOn) > 0 {
-				s["depends_on"] = t.DependsOn
-			}
-			if t.Objective.Description != "" {
-				s["objective"] = t.Objective.Description
-			}
-			summaries = append(summaries, s)
 		}
-		stateStr := getString(args, "state", "")
-		out := map[string]any{"tickets": summaries, "count": len(summaries)}
-		if stateStr == "" || ticket.State(stateStr) == ticket.StateDraft {
-			out["workflow"] = workflowAfterListTicketsPending()
+		list = filtered
+	}
+	// Return slim ticket summaries to keep response size manageable.
+	// Full ticket details (outputs, inputs, context) are available via get_ticket.
+	summaries := make([]map[string]any, 0, len(list))
+	for _, t := range list {
+		s := map[string]any{
+			"id":         t.ID,
+			"title":      t.Title,
+			"type":       t.Type,
+			"state":      t.State,
+			"priority":   t.Priority,
+			"project_id": t.ProjectID,
+			"created_at": t.CreatedAt,
+			"updated_at": t.UpdatedAt,
 		}
-		return jsonResult(out)
+		if t.WorkStreamID != "" {
+			s["work_stream_id"] = t.WorkStreamID
+		}
+		if t.AssignedTo != "" {
+			s["assigned_to"] = t.AssignedTo
+		}
+		if len(t.DependsOn) > 0 {
+			s["depends_on"] = t.DependsOn
+		}
+		if t.Objective.Description != "" {
+			s["objective"] = t.Objective.Description
+		}
+		summaries = append(summaries, s)
+	}
+	stateStr := getString(args, "state", "")
+	out := map[string]any{"tickets": summaries, "count": len(summaries)}
+	if stateStr == "" || ticket.State(stateStr) == ticket.StateDraft {
+		out["workflow"] = workflowAfterListTicketsPending()
+	}
+	return jsonResult(out)
 }
 
 func getTicketHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-		ticketID, err := requireString(args,"ticket_id")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		t, err := b.Ticket.GetTicket(ctx, ticketID)
-		if err != nil {
-			return toolErrTriple(apierrors.MapError(err))
-		}
-		pack, _ := b.Project.AssembleContextPack(ctx, t.ProjectID)
-		deps, _ := b.Ticket.GetTicketsByIDs(ctx, t.DependsOn)
-		depOutputs := ticket.GetDependencyOutputs(t, deps)
-		sum, _ := b.Trace.SummarizeTrace(ctx, ticketID)
-		out := map[string]any{
-			"ticket":              t,
-			"context_pack":        pack,
-			"dependency_outputs":  depOutputs,
-			"prior_attempts":      t.Context.PriorAttempts,
-			"human_answers":       t.Context.HumanAnswers,
-		}
-		if sum != nil {
-			out["latest_attempt_summary"] = sum
-		}
-		if t.WorkStreamID != "" && b.WorkStream != nil {
-			if ws, err := b.WorkStream.GetWorkStream(ctx, t.WorkStreamID); err == nil && ws != nil {
-				out["work_stream"] = ws
-				if proj, _ := b.Project.GetProject(ctx, t.ProjectID); proj != nil {
-					attachWorkStreamGit(out, proj, ws)
-				}
+	ticketID, err := requireString(args, "ticket_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	t, err := b.Ticket.GetTicket(ctx, ticketID)
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	pack, _ := b.Project.AssembleContextPack(ctx, t.ProjectID)
+	deps, _ := b.Ticket.GetTicketsByIDs(ctx, t.DependsOn)
+	depOutputs := ticket.GetDependencyOutputs(t, deps)
+	sum, _ := b.Trace.SummarizeTrace(ctx, ticketID)
+	out := map[string]any{
+		"ticket":             t,
+		"context_pack":       pack,
+		"dependency_outputs": depOutputs,
+		"prior_attempts":     t.Context.PriorAttempts,
+		"human_answers":      t.Context.HumanAnswers,
+	}
+	if sum != nil {
+		out["latest_attempt_summary"] = sum
+	}
+	if t.WorkStreamID != "" && b.WorkStream != nil {
+		if ws, err := b.WorkStream.GetWorkStream(ctx, t.WorkStreamID); err == nil && ws != nil {
+			out["work_stream"] = ws
+			if proj, _ := b.Project.GetProject(ctx, t.ProjectID); proj != nil {
+				attachWorkStreamGit(out, proj, ws)
 			}
 		}
-		// Include target repo info for multi-repo tickets.
-		if t.TargetRepo != "" && b.Repos != nil {
-			if repo, err := b.Repos.GetRepository(ctx, t.ProjectID, t.TargetRepo); err == nil && repo != nil {
-				out["target_repository"] = repo
-			}
+	}
+	// Include target repo info for multi-repo tickets.
+	if t.TargetRepo != "" && b.Repos != nil {
+		if repo, err := b.Repos.GetRepository(ctx, t.ProjectID, t.TargetRepo); err == nil && repo != nil {
+			out["target_repository"] = repo
 		}
-		return jsonResult(out)
+	}
+	return jsonResult(out)
 }
 
 func updateTicketHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-		agentID, err := getAgentIDFromArgs(ctx, args)
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	agentID, err := getAgentIDFromArgs(ctx, args)
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	projectID, err := requireString(args, "project_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	ticketID, err := requireString(args, "ticket_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	agent, err := b.AgentStore.GetByID(ctx, agentID)
+	if err != nil || agent == nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "agent not found", false))
+	}
+	if agent.UserID == "" {
+		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "update_ticket requires OAuth login.", false))
+	}
+	proj, err := b.Project.GetProject(ctx, projectID)
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	orgIDs, err := b.Org.ListOrgIDsForUser(ctx, agent.UserID)
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	allowed := false
+	for _, id := range orgIDs {
+		if id == proj.OrgID {
+			allowed = true
+			break
 		}
-		projectID, err := requireString(args,"project_id")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		ticketID, err := requireString(args,"ticket_id")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		agent, err := b.AgentStore.GetByID(ctx, agentID)
-		if err != nil || agent == nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "agent not found", false))
-		}
-		if agent.UserID == "" {
-			return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "update_ticket requires OAuth login.", false))
-		}
-		proj, err := b.Project.GetProject(ctx, projectID)
-		if err != nil {
+	}
+	if !allowed {
+		return toolErrTriple(apierrors.New(apierrors.CodeForbidden, "you do not have access to that project", false))
+	}
+	t, err := b.Ticket.GetTicket(ctx, ticketID)
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	if t.ProjectID != projectID {
+		return toolErrTriple(apierrors.New(apierrors.CodeForbidden, "ticket does not belong to that project", false))
+	}
+	if dependsOn := getStringArray(args, "depends_on"); dependsOn != nil {
+		if err := b.Ticket.UpdateDependsOn(ctx, ticketID, dependsOn); err != nil {
 			return toolErrTriple(apierrors.MapError(err))
 		}
-		orgIDs, err := b.Org.ListOrgIDsForUser(ctx, agent.UserID)
-		if err != nil {
+	}
+	workStreamID := getString(args, "work_stream_id", "")
+	if workStreamID != "" && b.WorkStream != nil {
+		ws, err := b.WorkStream.GetWorkStream(ctx, workStreamID)
+		if err != nil || ws == nil || ws.ProjectID != projectID {
+			return toolErrTriple(apierrors.New(apierrors.CodeNotFound, "work stream not found or does not belong to project", false))
+		}
+		if err := b.Ticket.UpdateWorkStreamID(ctx, ticketID, workStreamID); err != nil {
 			return toolErrTriple(apierrors.MapError(err))
 		}
-		allowed := false
-		for _, id := range orgIDs {
-			if id == proj.OrgID {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
-			return toolErrTriple(apierrors.New(apierrors.CodeForbidden, "you do not have access to that project", false))
-		}
-		t, err := b.Ticket.GetTicket(ctx, ticketID)
-		if err != nil {
-			return toolErrTriple(apierrors.MapError(err))
-		}
-		if t.ProjectID != projectID {
-			return toolErrTriple(apierrors.New(apierrors.CodeForbidden, "ticket does not belong to that project", false))
-		}
-		if dependsOn := getStringArray(args, "depends_on"); dependsOn != nil {
-			if err := b.Ticket.UpdateDependsOn(ctx, ticketID, dependsOn); err != nil {
-				return toolErrTriple(apierrors.MapError(err))
-			}
-		}
-		workStreamID := getString(args, "work_stream_id", "")
-		if workStreamID != "" && b.WorkStream != nil {
-			ws, err := b.WorkStream.GetWorkStream(ctx, workStreamID)
-			if err != nil || ws == nil || ws.ProjectID != projectID {
-				return toolErrTriple(apierrors.New(apierrors.CodeNotFound, "work stream not found or does not belong to project", false))
-			}
-			if err := b.Ticket.UpdateWorkStreamID(ctx, ticketID, workStreamID); err != nil {
-				return toolErrTriple(apierrors.MapError(err))
-			}
-		}
-		updated, err := b.Ticket.GetTicket(ctx, ticketID)
-		if err != nil {
-			return toolErrTriple(apierrors.MapError(err))
-		}
-		return jsonResult(updated)
+	}
+	updated, err := b.Ticket.GetTicket(ctx, ticketID)
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	return jsonResult(updated)
 }
 
 func claimTicketHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
@@ -1737,112 +1574,112 @@ func claimTicketResult(b *Backend, ctx context.Context, t *ticket.Ticket, lease 
 }
 
 func startTicketHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-		ticketID, err := requireString(args,"ticket_id")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		leaseToken, err := requireString(args,"lease_token")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		agentID, err := getAgentIDFromArgs(ctx, args)
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		actor := ticket.Actor{ID: agentID, Type: ticket.ActorAgent}
-		if err := b.Ticket.TransitionTicket(ctx, ticketID, ticket.TriggerStart, actor, nil); err != nil {
-			return toolErrTriple(apierrors.MapError(err))
-		}
-		_ = leaseToken
-		return jsonResult(map[string]any{
-			"ok":       true,
-			"workflow": workflowAfterStart(),
-		})
+	ticketID, err := requireString(args, "ticket_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	leaseToken, err := requireString(args, "lease_token")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	agentID, err := getAgentIDFromArgs(ctx, args)
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	actor := ticket.Actor{ID: agentID, Type: ticket.ActorAgent}
+	if err := b.Ticket.TransitionTicket(ctx, ticketID, ticket.TriggerStart, actor, nil); err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	_ = leaseToken
+	return jsonResult(map[string]any{
+		"ok":       true,
+		"workflow": workflowAfterStart(),
+	})
 }
 
 func logStepHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-		ticketID, err := requireString(args,"ticket_id")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		leaseToken, err := requireString(args,"lease_token")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		stepType, err := requireString(args,"step_type")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		payload := getPayloadMap(args, "payload")
-		step := execution.Step{Type: execution.StepType(stepType), Payload: payload}
-		// Record worker type in the step if provided.
-		if wt := getString(args, "worker_type", ""); wt != "" {
-			step.WorkerType = wt
-		}
-		if err := b.Trace.LogStep(ctx, ticketID, leaseToken, step); err != nil {
-			return toolErrTriple(apierrors.MapError(err))
-		}
-		return jsonResult(map[string]any{"ok": true})
+	ticketID, err := requireString(args, "ticket_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	leaseToken, err := requireString(args, "lease_token")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	stepType, err := requireString(args, "step_type")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	payload := getPayloadMap(args, "payload")
+	step := execution.Step{Type: execution.StepType(stepType), Payload: payload}
+	// Record worker type in the step if provided.
+	if wt := getString(args, "worker_type", ""); wt != "" {
+		step.WorkerType = wt
+	}
+	if err := b.Trace.LogStep(ctx, ticketID, leaseToken, step); err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	return jsonResult(map[string]any{"ok": true})
 }
 
 func submitTicketHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-		ticketID, err := requireString(args,"ticket_id")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		leaseToken, err := requireString(args,"lease_token")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		outputsStr, err := requireString(args,"outputs")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		var outputs map[string]any
-		if err := json.Unmarshal([]byte(outputsStr), &outputs); err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, fmt.Sprintf("invalid outputs JSON: %v", err), false))
-		}
-		if err := b.Ticket.SubmitTicket(ctx, ticketID, leaseToken, outputs); err != nil {
-			return toolErrTriple(apierrors.MapError(err))
-		}
-		// Clean up lease since ticket has moved past lease-tracked states.
-		_ = b.Queue.CleanupLease(ctx, ticketID)
-		return jsonResult(map[string]any{"ok": true})
+	ticketID, err := requireString(args, "ticket_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	leaseToken, err := requireString(args, "lease_token")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	outputsStr, err := requireString(args, "outputs")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	var outputs map[string]any
+	if err := json.Unmarshal([]byte(outputsStr), &outputs); err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, fmt.Sprintf("invalid outputs JSON: %v", err), false))
+	}
+	if err := b.Ticket.SubmitTicket(ctx, ticketID, leaseToken, outputs); err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	// Clean up lease since ticket has moved past lease-tracked states.
+	_ = b.Queue.CleanupLease(ctx, ticketID)
+	return jsonResult(map[string]any{"ok": true})
 }
 
 func escalateTicketHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-		ticketID, err := requireString(args,"ticket_id")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		leaseToken, err := requireString(args,"lease_token")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		reason, _ := requireString(args,"reason")
-		question, _ := requireString(args,"question")
-		if err := b.Ticket.EscalateTicket(ctx, ticketID, leaseToken, reason, question); err != nil {
-			return toolErrTriple(apierrors.MapError(err))
-		}
-		// Clean up lease since ticket has moved past lease-tracked states.
-		_ = b.Queue.CleanupLease(ctx, ticketID)
-		return jsonResult(map[string]any{"ok": true})
+	ticketID, err := requireString(args, "ticket_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	leaseToken, err := requireString(args, "lease_token")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	reason, _ := requireString(args, "reason")
+	question, _ := requireString(args, "question")
+	if err := b.Ticket.EscalateTicket(ctx, ticketID, leaseToken, reason, question); err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	// Clean up lease since ticket has moved past lease-tracked states.
+	_ = b.Queue.CleanupLease(ctx, ticketID)
+	return jsonResult(map[string]any{"ok": true})
 }
 
 func renewLeaseHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-		ticketID, err := requireString(args,"ticket_id")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		leaseToken, err := requireString(args,"lease_token")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		expiresAt, err := b.Queue.RenewLease(ctx, ticketID, leaseToken)
-		if err != nil {
-			return toolErrTriple(apierrors.MapError(err))
-		}
-		return jsonResult(map[string]any{"expires_at": expiresAt})
+	ticketID, err := requireString(args, "ticket_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	leaseToken, err := requireString(args, "lease_token")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	expiresAt, err := b.Queue.RenewLease(ctx, ticketID, leaseToken)
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	return jsonResult(map[string]any{"expires_at": expiresAt})
 }
 
 func forceReleaseLeaseHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
@@ -1886,12 +1723,11 @@ func forceReleaseLeaseHandler(b *Backend, ctx context.Context, args map[string]a
 	return jsonResult(map[string]any{"ok": true, "ticket_id": ticketID, "message": "Ticket returned to pending; use claim_ticket to claim it."})
 }
 
-func rollbackTicketHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-	ticketID, err := requireString(args, "ticket_id")
-	if err != nil {
-		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+func listPendingReviewsHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
+	if b.Review == nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInternal, "reviews not configured", false))
 	}
-	reason, err := requireString(args, "reason")
+	projectID, err := requireString(args, "project_id")
 	if err != nil {
 		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
 	}
@@ -1899,183 +1735,96 @@ func rollbackTicketHandler(b *Backend, ctx context.Context, args map[string]any)
 	if err != nil {
 		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
 	}
-	if b.Rollback == nil {
-		return toolErrTriple(apierrors.New(apierrors.CodeInternal, "rollback service not configured", false))
+	agent, err := b.AgentStore.GetByID(ctx, agentID)
+	if err != nil || agent == nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "agent not found", false))
 	}
-	actor := ticket.Actor{ID: agentID, Type: ticket.ActorHuman}
-	result, err := b.Rollback.Rollback(ctx, ticketID, actor, reason)
+	if agent.UserID == "" {
+		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "list_pending_reviews requires OAuth login.", false))
+	}
+	proj, err := b.Project.GetProject(ctx, projectID)
 	if err != nil {
 		return toolErrTriple(apierrors.MapError(err))
 	}
-	return jsonResult(result)
-}
-
-func listPendingReviewsHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-		if b.Review == nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInternal, "reviews not configured", false))
+	orgIDs, err := b.Org.ListOrgIDsForUser(ctx, agent.UserID)
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	allowed := false
+	for _, id := range orgIDs {
+		if id == proj.OrgID {
+			allowed = true
+			break
 		}
-		projectID, err := requireString(args,"project_id")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	if !allowed {
+		return toolErrTriple(apierrors.New(apierrors.CodeForbidden, "you do not have access to that project", false))
+	}
+	ids, err := b.Review.ListPendingReviews(ctx, projectID)
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	tickets := make([]*ticket.Ticket, 0, len(ids))
+	for _, id := range ids {
+		t, _ := b.Ticket.GetTicket(ctx, id)
+		if t != nil {
+			tickets = append(tickets, t)
 		}
-		agentID, err := getAgentIDFromArgs(ctx, args)
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		agent, err := b.AgentStore.GetByID(ctx, agentID)
-		if err != nil || agent == nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "agent not found", false))
-		}
-		if agent.UserID == "" {
-			return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "list_pending_reviews requires OAuth login.", false))
-		}
-		proj, err := b.Project.GetProject(ctx, projectID)
-		if err != nil {
-			return toolErrTriple(apierrors.MapError(err))
-		}
-		orgIDs, err := b.Org.ListOrgIDsForUser(ctx, agent.UserID)
-		if err != nil {
-			return toolErrTriple(apierrors.MapError(err))
-		}
-		allowed := false
-		for _, id := range orgIDs {
-			if id == proj.OrgID {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
-			return toolErrTriple(apierrors.New(apierrors.CodeForbidden, "you do not have access to that project", false))
-		}
-		ids, err := b.Review.ListPendingReviews(ctx, projectID)
-		if err != nil {
-			return toolErrTriple(apierrors.MapError(err))
-		}
-		tickets := make([]*ticket.Ticket, 0, len(ids))
-		for _, id := range ids {
-			t, _ := b.Ticket.GetTicket(ctx, id)
-			if t != nil {
-				tickets = append(tickets, t)
-			}
-		}
-		return jsonResult(map[string]any{"tickets": tickets})
+	}
+	return jsonResult(map[string]any{"tickets": tickets})
 }
 
 func getTraceHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-		ticketID, err := requireString(args,"ticket_id")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		trace, err := b.Trace.GetTrace(ctx, ticketID)
-		if err != nil {
-			return toolErrTriple(apierrors.MapError(err))
-		}
-		return jsonResult(trace)
-}
-
-func dispatchInvestigationHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-	if b.Investigation == nil {
-		return toolErrTriple(apierrors.New(apierrors.CodeInternal, "investigation service not configured", false))
-	}
-
-	projectID, err := requireString(args, "project_id")
+	ticketID, err := requireString(args, "ticket_id")
 	if err != nil {
 		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
 	}
-	question, err := requireString(args, "question")
+	trace, err := b.Trace.GetTrace(ctx, ticketID)
 	if err != nil {
-		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+		return toolErrTriple(apierrors.MapError(err))
 	}
-
-	// Build the investigation request.
-	req := &investigationPkg.Request{
-		ProjectID:      projectID,
-		Question:       question,
-		TokenBudget:    getInt(args, "token_budget", 0),
-		ParentTicketID: getString(args, "parent_ticket_id", ""),
-		RequestedBy:    getString(args, "agent_id", ""),
-	}
-
-	// Parse optional scope arrays.
-	if filesStr := getString(args, "files", ""); filesStr != "" {
-		var files []string
-		if json.Unmarshal([]byte(filesStr), &files) == nil {
-			req.Scope.Files = files
-		}
-	}
-	if symbolsStr := getString(args, "symbols", ""); symbolsStr != "" {
-		var symbols []string
-		if json.Unmarshal([]byte(symbolsStr), &symbols) == nil {
-			req.Scope.Symbols = symbols
-		}
-	}
-	if packagesStr := getString(args, "packages", ""); packagesStr != "" {
-		var packages []string
-		if json.Unmarshal([]byte(packagesStr), &packages) == nil {
-			req.Scope.Packages = packages
-		}
-	}
-	if excludeStr := getString(args, "exclude_files", ""); excludeStr != "" {
-		var excludeFiles []string
-		if json.Unmarshal([]byte(excludeStr), &excludeFiles) == nil {
-			req.Scope.ExcludeFiles = excludeFiles
-		}
-	}
-	if constraintsStr := getString(args, "constraints", ""); constraintsStr != "" {
-		var constraints []string
-		if json.Unmarshal([]byte(constraintsStr), &constraints) == nil {
-			req.Scope.Constraints = constraints
-		}
-	}
-
-	// Dispatch the investigation (synchronous).
-	resp, err := b.Investigation.Dispatch(ctx, req)
-	if err != nil {
-		return toolErrTriple(apierrors.New(apierrors.CodeInternal, "investigation dispatch failed: "+err.Error(), true))
-	}
-
-	return jsonResult(resp)
+	return jsonResult(trace)
 }
 
 func approveTicketHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-		if b.Review == nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInternal, "reviews not configured", false))
-		}
-		ticketID, err := requireString(args,"ticket_id")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		reviewerID, err := getAgentIDFromArgs(ctx, args)
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		notes := getString(args,"notes", "")
-		if err := b.Review.ApproveTicket(ctx, ticketID, reviewerID, notes); err != nil {
-			return toolErrTriple(apierrors.MapError(err))
-		}
-		return jsonResult(map[string]any{"ok": true, "decision": review.DecisionApproved})
+	if b.Review == nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInternal, "reviews not configured", false))
+	}
+	ticketID, err := requireString(args, "ticket_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	reviewerID, err := getAgentIDFromArgs(ctx, args)
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	notes := getString(args, "notes", "")
+	if err := b.Review.ApproveTicket(ctx, ticketID, reviewerID, notes); err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	return jsonResult(map[string]any{"ok": true, "decision": review.DecisionApproved})
 }
 
 func rejectTicketHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-		if b.Review == nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInternal, "reviews not configured", false))
-		}
-		ticketID, err := requireString(args,"ticket_id")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		reviewerID, err := getAgentIDFromArgs(ctx, args)
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-		}
-		notes, err := requireString(args,"notes")
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, "notes required when rejecting (so the agent knows what to fix)", false))
-		}
-		if err := b.Review.RejectTicket(ctx, ticketID, reviewerID, notes); err != nil {
-			return toolErrTriple(apierrors.MapError(err))
-		}
-		return jsonResult(map[string]any{"ok": true, "decision": review.DecisionRejected})
+	if b.Review == nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInternal, "reviews not configured", false))
+	}
+	ticketID, err := requireString(args, "ticket_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	reviewerID, err := getAgentIDFromArgs(ctx, args)
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	notes, err := requireString(args, "notes")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, "notes required when rejecting (so the agent knows what to fix)", false))
+	}
+	if err := b.Review.RejectTicket(ctx, ticketID, reviewerID, notes); err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	return jsonResult(map[string]any{"ok": true, "decision": review.DecisionRejected})
 }
 
 func reopenTicketHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
@@ -2155,49 +1904,6 @@ func repoPathAccessible(repoPath string) bool {
 	return err == nil
 }
 
-func flywheelAddGitNoteHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-	message, err := requireString(args, "message")
-	if err != nil {
-		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-	}
-	noteType := getString(args, "type", gitnotes.TypeDecision)
-	ref := gitnotes.RefForType(noteType)
-	if ref == "" {
-		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, "type must be decision, trace, or intent", false))
-	}
-	commitSHA := getString(args, "commit_sha", "HEAD")
-	repoPath := getString(args, "repo_path", "")
-	ticketID := getString(args, "ticket_id", "")
-	projectID := getString(args, "project_id", "")
-	agentID, _ := getAgentIDFromArgs(ctx, args)
-
-	payload := map[string]any{
-		"v":         1,
-		"type":      noteType,
-		"message":   message,
-		"created_at": time.Now().UTC().Format(time.RFC3339),
-	}
-	if agentID != "" {
-		payload["agent_id"] = agentID
-	}
-	if ticketID != "" {
-		payload["ticket_id"] = ticketID
-	}
-	if projectID != "" {
-		payload["project_id"] = projectID
-	}
-	bodyBytes, _ := json.Marshal(payload)
-	body := string(bodyBytes)
-
-	if repoPathAccessible(repoPath) {
-		if err := gitnotes.AddNote(repoPath, ref, commitSHA, body); err != nil {
-			return jsonResult(map[string]any{"ok": false, "error": err.Error(), "commands": flywheelGitNoteAddCommands(noteType, message, commitSHA)})
-		}
-		return jsonResult(map[string]any{"ok": true, "message": "Note added."})
-	}
-	return jsonResult(map[string]any{"ok": true, "commands": flywheelGitNoteAddCommands(noteType, message, commitSHA), "hint": "Run these in your repo (or install flywheel-git and run the first)."})
-}
-
 func flywheelGitNoteAddCommands(noteType, message, commitSHA string) []string {
 	esc := strings.ReplaceAll(message, `\`, `\\`)
 	esc = strings.ReplaceAll(esc, `"`, `\"`)
@@ -2206,264 +1912,6 @@ func flywheelGitNoteAddCommands(noteType, message, commitSHA string) []string {
 	}
 }
 
-func flywheelShowGitNotesHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-	commitSHA := getString(args, "commit_sha", "HEAD")
-	repoPath := getString(args, "repo_path", "")
-	noteType := getString(args, "type", "")
-
-	if noteType != "" && gitnotes.RefForType(noteType) == "" {
-		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, "type must be decision, trace, or intent", false))
-	}
-
-	if repoPathAccessible(repoPath) {
-		if noteType != "" {
-			ref := gitnotes.RefForType(noteType)
-			if ref == "" {
-				return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, "type must be decision, trace, or intent", false))
-			}
-			body, err := gitnotes.ShowNote(repoPath, ref, commitSHA)
-			if err != nil {
-				return toolErrTriple(apierrors.MapError(err))
-			}
-			return jsonResult(map[string]any{"commit_sha": commitSHA, "ref": ref, "body": body})
-		}
-		out := make(map[string]any)
-		out["commit_sha"] = commitSHA
-		notes := make(map[string]string)
-		for _, ref := range gitnotes.AllRefs() {
-			body, _ := gitnotes.ShowNote(repoPath, ref, commitSHA)
-			if body != "" {
-				notes[filepath.Base(ref)] = body
-			}
-		}
-		out["notes"] = notes
-		return jsonResult(out)
-	}
-	cmd := fmt.Sprintf("flywheel-git note show -c %s", commitSHA)
-	if noteType != "" {
-		cmd += " -t " + noteType
-	}
-	return jsonResult(map[string]any{"commands": []string{cmd}})
-}
-
-func flywheelLogGitNotesHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-	limit := getInt(args, "limit", 20)
-	repoPath := getString(args, "repo_path", "")
-	noteType := getString(args, "type", gitnotes.TypeDecision)
-	ref := gitnotes.RefForType(noteType)
-	if ref == "" {
-		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, "type must be decision, trace, or intent", false))
-	}
-
-	if repoPathAccessible(repoPath) {
-		entries, err := gitnotes.Log(repoPath, ref, limit)
-		if err != nil {
-			return toolErrTriple(apierrors.MapError(err))
-		}
-		list := make([]map[string]any, 0, len(entries))
-		for _, e := range entries {
-			list = append(list, map[string]any{"commit_sha": e.CommitSHA, "ref": e.Ref, "body": e.Body})
-		}
-		return jsonResult(map[string]any{"entries": list})
-	}
-	return jsonResult(map[string]any{"commands": []string{fmt.Sprintf("flywheel-git note log -t %s -n %d", noteType, limit)}})
-}
-
-func flywheelDiffGitNotesHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-	base, err := requireString(args, "base")
-	if err != nil {
-		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-	}
-	head, err := requireString(args, "head")
-	if err != nil {
-		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-	}
-	repoPath := getString(args, "repo_path", "")
-	noteType := getString(args, "type", gitnotes.TypeDecision)
-	ref := gitnotes.RefForType(noteType)
-	if ref == "" {
-		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, "type must be decision, trace, or intent", false))
-	}
-
-	if repoPathAccessible(repoPath) {
-		entries, err := gitnotes.Diff(repoPath, ref, base, head)
-		if err != nil {
-			return toolErrTriple(apierrors.MapError(err))
-		}
-		list := make([]map[string]any, 0, len(entries))
-		for _, e := range entries {
-			list = append(list, map[string]any{"commit_sha": e.CommitSHA, "ref": e.Ref, "body": e.Body})
-		}
-		return jsonResult(map[string]any{"entries": list})
-	}
-	return jsonResult(map[string]any{"commands": []string{fmt.Sprintf("flywheel-git note diff -t %s %s %s", noteType, base, head)}})
-}
-
-func flywheelSyncGitNotesHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-	direction := getString(args, "direction", "both")
-	return jsonResult(map[string]any{
-		"commands": []string{fmt.Sprintf("flywheel-git sync %s", direction)},
-		"hint":     "Run in your repo to push/pull refs/notes/flywheel/*.",
-	})
-}
-
 // --- Claims registry MCP handlers ---
 
-func queryActiveClaimsHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-	ticketID := getString(args, "ticket_id", "")
-	entityID := getString(args, "entity_id", "")
-	environment := getString(args, "environment", "")
-
-	if ticketID != "" {
-		active, err := b.Claims.GetActiveClaims(ctx, ticketID)
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInternal, "failed to query claims: "+err.Error(), true))
-		}
-		return jsonResult(map[string]any{"claims": active, "count": len(active), "filter": "ticket_id", "ticket_id": ticketID})
-	}
-
-	if entityID != "" {
-		active, err := b.Claims.GetActiveClaimsByEntity(ctx, entityID, environment)
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInternal, "failed to query claims: "+err.Error(), true))
-		}
-		return jsonResult(map[string]any{"claims": active, "count": len(active), "filter": "entity", "entity_id": entityID, "environment": environment})
-	}
-
-	if environment != "" {
-		active, err := b.Claims.GetActiveClaimsByEnvironment(ctx, environment)
-		if err != nil {
-			return toolErrTriple(apierrors.New(apierrors.CodeInternal, "failed to query claims: "+err.Error(), true))
-		}
-		return jsonResult(map[string]any{"claims": active, "count": len(active), "filter": "environment", "environment": environment})
-	}
-
-	return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, "at least one filter required: ticket_id, entity_id+environment, or environment", false))
-}
-
-func detectClaimConflictsHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-	ticketID, err := requireString(args, "ticket_id")
-	if err != nil {
-		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-	}
-	touchesJSON, err := requireString(args, "touches")
-	if err != nil {
-		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-	}
-
-	var touches []claims.Touch
-	if err := json.Unmarshal([]byte(touchesJSON), &touches); err != nil {
-		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, "invalid touches JSON: "+err.Error(), false))
-	}
-	if len(touches) == 0 {
-		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, "touches array must not be empty", false))
-	}
-
-	result, err := b.Claims.DetectConflicts(ctx, ticketID, touches)
-	if err != nil {
-		return toolErrTriple(apierrors.New(apierrors.CodeInternal, "conflict detection failed: "+err.Error(), true))
-	}
-
-	return jsonResult(result)
-}
-
 // --- Notification handlers ---
-
-func getNotificationPreferencesHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-	if b.Notification == nil {
-		return toolErrTriple(apierrors.New(apierrors.CodeInternal, "notification service not enabled", false))
-	}
-	projectID, err := requireString(args, "project_id")
-	if err != nil {
-		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-	}
-	prefs, err := b.Notification.GetPreferences(ctx, projectID)
-	if err != nil {
-		return toolErrTriple(apierrors.MapError(err))
-	}
-	return jsonResult(prefs)
-}
-
-func setNotificationPreferencesHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-	if b.Notification == nil {
-		return toolErrTriple(apierrors.New(apierrors.CodeInternal, "notification service not enabled", false))
-	}
-	projectID, err := requireString(args, "project_id")
-	if err != nil {
-		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-	}
-
-	// Load existing preferences (or defaults) and merge updates.
-	prefs, err := b.Notification.GetPreferences(ctx, projectID)
-	if err != nil {
-		return toolErrTriple(apierrors.MapError(err))
-	}
-
-	if v := getString(args, "critical_channel", ""); v != "" {
-		prefs.CriticalChannel = notification.Channel(v)
-	}
-	if v := getString(args, "high_channel", ""); v != "" {
-		prefs.HighChannel = notification.Channel(v)
-	}
-	if v := getString(args, "medium_channel", ""); v != "" {
-		prefs.MediumChannel = notification.Channel(v)
-	}
-	if v := getString(args, "low_channel", ""); v != "" {
-		prefs.LowChannel = notification.Channel(v)
-	}
-	if v := getString(args, "digest_interval", ""); v != "" {
-		prefs.DigestInterval = v
-	}
-	if v := getString(args, "push_threshold", ""); v != "" {
-		prefs.PushThreshold = notification.Urgency(v)
-	}
-	if v := getString(args, "slack_webhook_url", ""); v != "" {
-		prefs.SlackWebhookURL = v
-	}
-	if v := getString(args, "email_address", ""); v != "" {
-		prefs.EmailAddress = v
-	}
-	if v := getString(args, "sms_number", ""); v != "" {
-		prefs.SMSNumber = v
-	}
-	// Handle boolean fields.
-	if v, ok := args["digest_enabled"]; ok {
-		if b, isBool := v.(bool); isBool {
-			prefs.DigestEnabled = b
-		}
-	}
-
-	if err := b.Notification.SetPreferences(ctx, prefs); err != nil {
-		return toolErrTriple(apierrors.MapError(err))
-	}
-	return jsonResult(prefs)
-}
-
-func getDismissalRatesHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
-	if b.Notification == nil {
-		return toolErrTriple(apierrors.New(apierrors.CodeInternal, "notification service not enabled", false))
-	}
-	projectID, err := requireString(args, "project_id")
-	if err != nil {
-		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
-	}
-	rates, err := b.Notification.GetDismissalRates(ctx, projectID)
-	if err != nil {
-		return toolErrTriple(apierrors.MapError(err))
-	}
-	// Enrich with computed rates.
-	results := make([]map[string]any, 0, len(rates))
-	for _, r := range rates {
-		results = append(results, map[string]any{
-			"classifier":       r.Classifier,
-			"project_id":       r.ProjectID,
-			"total_sent":       r.TotalSent,
-			"total_dismissed":  r.TotalDismissed,
-			"dismissal_rate":   r.Rate(),
-			"window_sent":      r.WindowSent,
-			"window_dismissed": r.WindowDismissed,
-			"window_rate":      r.WindowRate(),
-		})
-	}
-	return jsonResult(map[string]any{"rates": results})
-}

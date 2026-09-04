@@ -28,9 +28,9 @@ Use the REST server for:
 
 ```bash
 cp .env.example .env
-# Edit .env: set GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, JWT_SECRET
-docker compose up -d
-# Server at http://localhost:8080
+# .env is generated with local defaults by the preflight
+make dev
+# Server at http://localhost:8090
 ```
 
 For a full **operations runbook** (run locally, migrations, DB/Redis inspection, health and logs, OAuth/MCP troubleshooting), see **docs/troubleshooting.md**.
@@ -39,30 +39,30 @@ For a full **operations runbook** (run locally, migrations, DB/Redis inspection,
 
 1. **Create org and project** (POST /orgs requires auth; the authenticated user is added as org owner)
    ```bash
-   curl -s -X POST http://localhost:8080/orgs -H "Content-Type: application/json" \
+   curl -s -X POST http://localhost:8090/orgs -H "Content-Type: application/json" \
      -H "Authorization: Bearer YOUR_JWT" \
      -d '{"name":"Acme","slug":"acme"}'  # → org id
-   curl -s -X POST http://localhost:8080/orgs/{org_id}/projects \
+   curl -s -X POST http://localhost:8090/orgs/{org_id}/projects \
      -H "Content-Type: application/json" \
      -d '{"name":"Hubble Backend","slug":"hubble"}'  # → project id
    ```
 
 2. **Set project context** (conventions, key files, system prompt for agents)
    ```bash
-   curl -s -X PUT http://localhost:8080/projects/{project_id}/context-pack \
+   curl -s -X PUT http://localhost:8090/projects/{project_id}/context-pack \
      -H "Content-Type: application/json" \
      -d '{"conventions":"Use Go 1.23. Prefer table-driven tests.","system_prompt":"You are a backend engineer."}'
    ```
 
 3. **Register an agent** (get an API key for that identity)
    ```bash
-   curl -s -X POST http://localhost:8080/agents -H "Content-Type: application/json" \
+   curl -s -X POST http://localhost:8090/agents -H "Content-Type: application/json" \
      -d '{"name":"Cursor in my IDE","type":"custom"}'  # → agent id + api_key (save it)
    ```
 
 4. **Create tickets** (or let the agent claim from the queue)
    ```bash
-   curl -s -X POST http://localhost:8080/projects/{project_id}/tickets \
+   curl -s -X POST http://localhost:8090/projects/{project_id}/tickets \
      -H "Content-Type: application/json" \
      -d '{
        "title":"Add health check",
@@ -74,11 +74,11 @@ For a full **operations runbook** (run locally, migrations, DB/Redis inspection,
 
 5. **Review and escalations**
    ```bash
-   curl -s http://localhost:8080/projects/{project_id}/reviews      # pending reviews
-   curl -s -X POST http://localhost:8080/tickets/{ticket_id}/reviews \
+   curl -s http://localhost:8090/projects/{project_id}/reviews      # pending reviews
+   curl -s -X POST http://localhost:8090/tickets/{ticket_id}/reviews \
      -d '{"decision":"approved","notes":"LGTM","reviewer_id":"human-1"}'
-   curl -s http://localhost:8080/projects/{project_id}/escalations  # open escalations
-   curl -s -X POST http://localhost:8080/tickets/{ticket_id}/escalations/{esc_id}/resolve \
+   curl -s http://localhost:8090/projects/{project_id}/escalations  # open escalations
+   curl -s -X POST http://localhost:8090/tickets/{ticket_id}/escalations/{esc_id}/resolve \
      -d '{"answer":"Use the existing logger.","reviewer_id":"human-1"}'
    ```
 
@@ -88,29 +88,15 @@ For a full **operations runbook** (run locally, migrations, DB/Redis inspection,
 
 Agents talk to Flywheel via **MCP** so they can list projects, get a full ticket (objective + context pack + dependency outputs), claim work, log steps, submit or escalate, and renew leases—all as tools.
 
-**MCP over HTTP (recommended for Cursor)**
-When the Flywheel REST server is running with GitHub OAuth configured, MCP is also exposed at **`/mcp`**. Point Cursor at `"url": "http://localhost:8080/mcp"` (or your deployed base URL + `/mcp`). On first connect, Cursor gets a 401, discovers our OAuth metadata, and opens a browser for GitHub sign-in; after that it stores the token and uses it automatically. No manual token copy; `agent_id` is inferred from the token for tools like `claim_ticket` and `start_ticket`. See **docs/cursor-mcp.md** and **docs/oauth-mcp-cursor.md**.
-
-**Run the MCP server (stdio)**
-
-Same DB and Redis as REST. Run the MCP server as the process your IDE or Claude connects to (e.g. Cursor MCP config runs this over stdio):
-
-```bash
-docker compose up -d
-make run-mcp     # MCP over stdio (connects to localhost:5433, localhost:6379; requires Go)
-```
-
-Or point your MCP client at:
-
-```bash
-go run ./cmd/mcp
-```
-
-with env: `DATABASE_URL`, `REDIS_URL` (same as REST).
+**MCP over HTTP**
+MCP is exposed at **`/mcp`** (Streamable HTTP; `/sse` remains for older clients). Authenticate with an API key
+in the `X-API-Key` header — either `DISPATCH_API_KEY` or an agent key from `POST /agents` — or with the
+operator JWT as `Authorization: Bearer <token>`. `agent_id` is inferred from the credential for tools like
+`claim_ticket` and `start_ticket`.
 
 **Typical agent flow (via MCP tools)**
 
-1. **list_projects** (no args when using OAuth) → returns projects in all orgs you're a member of; optionally pass `org_id` to limit to one org. Requires OAuth (agent linked to a user).
+1. **list_projects** (no args) → returns projects in all orgs you're a member of; optionally pass `org_id` to limit to one org.
 2. **get_project_context** (`project_id`) → conventions, key files, system prompt.
 3. **claim_ticket** (`project_id`, `agent_id`) → receive a **ticket** and a **lease** (with `lease_token` and `expires_at`).
 4. **get_ticket** (`ticket_id`) → full payload: objective, success criteria, acceptance test, context pack, dependency outputs, prior attempts, human answers. The agent uses this as the single input to do the work.
@@ -124,7 +110,7 @@ with env: `DATABASE_URL`, `REDIS_URL` (same as REST).
 
 | Tool | Purpose |
 |------|--------|
-| `list_projects` | List projects for your org(s); OAuth required. Optional `org_id` to filter. |
+| `list_projects` | List projects for your org(s). Optional `org_id` to filter. |
 | `get_project_context` | Context pack for a project. |
 | `list_tickets` | List tickets by project (optional `state`, `priority`). |
 | `get_ticket` | Full ticket + context pack + dep outputs + prior attempts (main input for the agent). |
@@ -137,19 +123,16 @@ with env: `DATABASE_URL`, `REDIS_URL` (same as REST).
 
 ---
 
-## 3. Auth: GitHub OAuth2
+## 3. Auth: local operator + API keys
 
-**No CLI registration.** First sign-in with GitHub creates your user and agent; you get a JWT to use for MCP and REST. On first sign-up we also create a **default org** named after your email (or GitHub login if email is not available) and add you as owner, so `list_projects` returns that org’s projects without any extra setup. To work with others, you’d create a separate collaboration org (invite flow) later.
+Flywheel is single-operator and local-first; there is no external identity provider.
 
-1. **Create a GitHub OAuth App** (Settings → Developer settings → OAuth Apps): Homepage URL = your app URL, Authorization callback URL = `https://your-domain/auth/github/callback` (or `http://localhost:8080/auth/github/callback` for local).
-
-2. **Configure env:** `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `JWT_SECRET` (any long random string), and optionally `BASE_URL` (e.g. `http://localhost:8080`), `AUTH_SUCCESS_REDIRECT_URL` (if you want a custom landing URL after login; the callback appends `#token=<jwt>`).
-
-3. **Sign in:** Open `GET /auth/github` in a browser (or redirect the user there). After authorizing on GitHub, you’re redirected back; the callback creates your user + agent and redirects to **`BASE_URL/`** with **`#token=<jwt>`** for the web UI (or your `AUTH_SUCCESS_REDIRECT_URL` with the same fragment). The **TUI** still uses `?token=...` on a localhost `redirect_uri`; **MCP** uses the OAuth `code` exchange—those flows are unchanged.
-
-4. **Use the token:** For **MCP over URL**, Cursor uses the token automatically after you complete the in-browser sign-in. For **MCP over stdio**, set the Bearer token (e.g. `FLYWHEEL_TOKEN` env) to that JWT. Same token works for REST: `Authorization: Bearer <token>`.
-
-**API keys** still work for headless/CI: create an agent via `POST /agents` (no OAuth), get an `api_key`, and use `X-API-Key` header. For humans and IDE agents, use GitHub OAuth and the JWT.
+- **Operator sign-in:** `GET /auth/login` provisions (once) the local operator user and agent, creates a
+  default org, and redirects to `BASE_URL/#token=<jwt>` for the web UI (or `AUTH_SUCCESS_REDIRECT_URL` with
+  the same fragment; a localhost `?redirect_uri=` gets `?token=` for CLI callbacks). Set `JWT_SECRET` so
+  sessions survive server restarts. The JWT works for REST (`Authorization: Bearer <token>`) and MCP.
+- **API keys** for agents: `POST /agents` returns an `api_key`; send it as `X-API-Key`. Dispatched workers
+  receive a key automatically.
 
 ---
 
@@ -184,7 +167,7 @@ Errors are returned in a **structured shape** so clients and agents can branch o
 | Code | Meaning | Retry? |
 |------|--------|--------|
 | `lease_expired` | Lease token invalid or expired (e.g. submit/renew after TTL). | **Yes** – re-claim or get a new lease. |
-| `unauthorized` | Not authenticated (e.g. OAuth required, agent not found). | No – sign in or link agent. |
+| `unauthorized` | Not authenticated (missing/invalid token or API key). | No – sign in or use a valid key. |
 | `forbidden` | Authenticated but not allowed (e.g. not a member of the org, no access to project). | No. |
 | `not_found` | Resource missing (ticket, project, or “no ticket available to claim”). | For “no ticket available”, retrying later is OK; for missing ID, fix the ID. |
 | `conflict` | State conflict (e.g. ticket already claimed, not the leaseholder, dependency not done). | No – refresh state and act accordingly. |

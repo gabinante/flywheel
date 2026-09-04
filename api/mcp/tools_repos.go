@@ -3,8 +3,8 @@ package mcp
 import (
 	"context"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	apierrors "github.com/gabinante/flywheel/internal/errors"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // RegisterRepoTools adds multi-repo management MCP tools.
@@ -57,7 +57,7 @@ func RegisterRepoTools(s *mcp.Server, b *Backend) {
 	}, wrap(listProjectRepositoriesHandler))
 
 	mcp.AddTool(s, &mcp.Tool{
-		Name: "remove_project_repository",
+		Name:        "remove_project_repository",
 		Description: "Remove a repository from a project by alias. Cannot remove the primary repo while other repos exist.",
 		InputSchema: map[string]any{
 			"type": "object",

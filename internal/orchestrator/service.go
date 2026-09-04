@@ -10,7 +10,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/gabinante/flywheel/internal/cost"
 	"github.com/gabinante/flywheel/internal/dispatch"
 	"github.com/gabinante/flywheel/internal/project"
 )
@@ -48,7 +47,6 @@ type Config struct {
 	HistoryLimit  int
 	RunLimit      int
 	RunEventLimit int
-	CostSvc       *cost.Service
 	AgentRunner   string
 	AgentDriver   string
 	AgentModel    string
@@ -68,7 +66,7 @@ type Service struct {
 	cfg      Config
 	playbook Playbook
 
-	serverCtx context.Context
+	serverCtx  context.Context
 	activeRuns sync.Map // runID → context.CancelFunc
 
 	// SSE pub/sub
@@ -241,7 +239,6 @@ func (s *Service) executeRun(proj *project.Project, run *Run, projectID, systemP
 	s.updatePhase(ctx, run, PhaseConnecting)
 
 	result, selected, err := s.runOrchestratorWorker(ctx, proj, run, projectID, systemPrompt, taskMessage, workDir)
-	s.recordUsage(ctx, selected.Config, projectID, run.ID, systemPrompt, taskMessage, result)
 
 	if ctx.Err() == context.Canceled {
 		run.Status = RunStatusCancelled
@@ -610,27 +607,6 @@ func (s *Service) appendRunEvent(ctx context.Context, runID string, kind RunEven
 	}
 }
 
-func (s *Service) recordUsage(ctx context.Context, workerCfg dispatch.Config, projectID, ticketID, systemPrompt, taskMessage string, result *dispatch.WorkerResult) {
-	if s.cfg.CostSvc == nil || result == nil {
-		return
-	}
-	provider, model := cost.InferProviderModel(workerCfg.AgentRunner, workerCfg.AgentDriver, workerCfg.AgentModel)
-	output := strings.TrimSpace(result.Output)
-	if output == "" {
-		output = strings.TrimSpace(result.Error)
-	}
-	_, _ = s.cfg.CostSvc.RecordAndCheck(ctx, &cost.LLMCallRecord{
-		ProjectID:     projectID,
-		TicketID:      ticketID,
-		WorkerRole:    "orchestrator",
-		Provider:      provider,
-		Model:         model,
-		OperationType: cost.OpPlanning,
-		InputTokens:   cost.EstimateTokens(systemPrompt, taskMessage),
-		OutputTokens:  cost.EstimateTokens(output),
-	})
-}
-
 // InjectSystemEvent creates a system-role message in the command center thread.
 // This surfaces lifecycle events (escalations, failures, gate blocks, completions)
 // so the orchestrator agent sees them as context on its next invocation.
@@ -699,9 +675,5 @@ func runnerNameFromConfig(cfg dispatch.Config) string {
 	if strings.TrimSpace(cfg.AgentRunner) != "" {
 		return strings.TrimSpace(cfg.AgentRunner)
 	}
-	if cfg.DockerEnabled {
-		return "docker"
-	}
 	return "cli"
 }
-

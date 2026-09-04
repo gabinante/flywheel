@@ -1,7 +1,6 @@
 package dispatch
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -44,22 +43,6 @@ func (d *ClaudeDriver) BuildCLIArgs(systemPrompt, taskMessage string, _ mcpConne
 	}
 }
 
-// BuildDockerCmd returns the shell command to run claude inside a container.
-// All long inputs are read from mounted files to avoid shell escaping issues.
-func (d *ClaudeDriver) BuildDockerCmd(branch string, _ mcpConnection) string {
-	return fmt.Sprintf(
-		`set -e
-git clone /repo /workspace 2>/dev/null
-cd /workspace
-git checkout -b %s 2>/dev/null || git checkout %s
-claude --print --dangerously-skip-permissions --system-prompt "$(cat /tmp/system-prompt.txt)" "$(cat /tmp/task-prompt.txt)" --mcp-config /tmp/mcp-config.json`,
-		branch, branch,
-	)
-}
-
-// DockerImage returns empty to use the default image from config.
-func (d *ClaudeDriver) DockerImage() string { return "" }
-
 // FormatPrompt passes through unchanged — Claude Code consumes markdown natively.
 func (d *ClaudeDriver) FormatPrompt(systemPrompt string) string { return systemPrompt }
 
@@ -88,15 +71,6 @@ func (d *ClaudeDriver) CredentialEnvName() string { return "ANTHROPIC_API_KEY" }
 
 func (d *ClaudeDriver) DefaultAllowedHosts() []string {
 	return []string{"api.anthropic.com", "registry.npmjs.org", "github.com"}
-}
-
-// ExtraDockerArgs returns the persistent .claude data directory mount.
-func (d *ClaudeDriver) ExtraDockerArgs() []string {
-	claudeDataDir := defaultClaudeDataDir()
-	_ = os.MkdirAll(claudeDataDir, 0o755)
-	return []string{
-		"-v", claudeDataDir + ":/home/claude/.claude:delegated",
-	}
 }
 
 // defaultClaudeDataDir returns the default path for persistent Claude CLI state.

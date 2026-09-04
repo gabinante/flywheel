@@ -17,28 +17,12 @@ type RouterConfig struct {
 	StrictServer        *StrictServer
 	AuthMiddleware      func(http.Handler) http.Handler
 	AuthHandler         *AuthHandler
-	OAuthHandler        *OAuthHandler
 	MCPHandler          http.Handler
 	MCPSSEHandler       http.Handler // SSE transport for older MCP clients
 	AgentsHandler       *AgentsHandler
-	EntitiesHandler     *EntitiesHandler
 	DispatchHandler     *DispatchHandler
 	OrchestratorHandler *OrchestratorHandler
-	UsageHandler        *UsageHandler
-	PlansHandler        *PlansHandler
-	ObservationHandler  *ObservationHandler
-	StreamsHandler      *StreamsHandler      // Foundational streams (entity, state, change) per spec v0.2 section 2.2
-	CatalogHandler      *CatalogHandler      // Layer 14 project map
-	PoliciesHandler     *PoliciesHandler     // Policy calibration feedback loop (not in OpenAPI spec yet)
-	EnvironmentsHandler *EnvironmentsHandler // Environment CRUD (spec 4.1 compound tuple)
-	StateIndexHandler   *StateIndexHandler   // Observed state index (spec v0.2 Layer 10)
-	ClaimsHandler       *ClaimsHandler       // Claims registry for concurrency control (spec v0.2 §4.3)
-	HooksHandler        *HooksHandler        // Change event webhook receiver (spec v0.2 §2.4)
-	PillarsHandler      *PillarsHandler      // Pillar and strategy layer (Layer 15)
-	DeliveryHandler     *DeliveryHandler     // Delivery integrations (pipeline, PR, config)
-	WorkflowHandler           *WorkflowHandler           // Configurable SDLC workflow definitions
-	ProjectTemplatesHandler   *ProjectTemplatesHandler   // Project + workstream template library
-	InvitesHandler            *InvitesHandler            // Org invite links
+	WorkflowHandler     *WorkflowHandler     // Configurable SDLC workflow definitions
 	WorkerConfigHandler *WorkerConfigHandler // MCP config for local Claude Code workers
 	// HealthCheckers are called by /readyz for deep readiness checks.
 	HealthCheckers []HealthChecker
@@ -55,7 +39,7 @@ type HealthChecker interface {
 }
 
 // NewRouter returns an http.Handler with global middleware and all routes:
-// healthz and API from the spec-generated server, plus metrics, auth, oauth, mcp, agents.
+// healthz and API from the spec-generated server, plus metrics, auth, mcp, agents.
 func NewRouter(cfg RouterConfig) http.Handler {
 	mux := http.NewServeMux()
 
@@ -111,18 +95,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	MountWebUI(mux, cfg.WebDist, cfg.WebDevProxyURL)
 
 	// Auth routes (when configured)
+	// Local operator sign-in: issues a JWT for the single local identity.
 	if cfg.AuthHandler != nil {
-		auth := cfg.AuthHandler
-		mux.HandleFunc("GET /auth/github", auth.githubRedirect)
-		mux.HandleFunc("GET /auth/github/callback", auth.githubCallback)
-	}
-	if cfg.OAuthHandler != nil {
-		oauth := cfg.OAuthHandler
-		mux.HandleFunc("GET /.well-known/oauth-protected-resource", oauth.serveProtectedResourceMetadata)
-		mux.HandleFunc("GET /.well-known/oauth-authorization-server", oauth.serveAuthorizationServerMetadata)
-		mux.HandleFunc("GET /oauth/authorize", oauth.oauthAuthorize)
-		mux.HandleFunc("POST /oauth/token", oauth.oauthToken)
-		mux.HandleFunc("POST /oauth/register", oauth.oauthRegister)
+		mux.HandleFunc("GET /auth/login", cfg.AuthHandler.login)
 	}
 	if cfg.MCPHandler != nil {
 		// Streamable HTTP transport uses GET (SSE stream), POST (messages), DELETE (session end).
@@ -145,9 +120,6 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		mux.HandleFunc("POST /agents", agents.register)
 		mux.HandleFunc("GET /agents/{agentID}", agents.getAgent)
 	}
-	if cfg.EntitiesHandler != nil {
-		cfg.EntitiesHandler.Register(mux)
-	}
 	if cfg.DispatchHandler != nil {
 		mux.HandleFunc("GET /api/dispatch/status", cfg.DispatchHandler.getStatus)
 	}
@@ -157,49 +129,8 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		mux.HandleFunc("DELETE /api/command-center/projects/{projectID}/orchestrator/runs/{runID}", cfg.OrchestratorHandler.cancelRun)
 		mux.HandleFunc("GET /api/command-center/projects/{projectID}/orchestrator/events", cfg.OrchestratorHandler.streamEvents)
 	}
-	if cfg.UsageHandler != nil {
-		mux.HandleFunc("GET /api/projects/{projectID}/usage", cfg.UsageHandler.getProjectUsage)
-	}
-	if cfg.PlansHandler != nil {
-		plans := cfg.PlansHandler
-		mux.HandleFunc("POST /plans/{planID}/freshness-check", plans.freshnessCheck)
-		mux.HandleFunc("GET /plans/staleness-config", plans.stalenessConfig)
-	}
-	if cfg.ObservationHandler != nil {
-		cfg.ObservationHandler.RegisterRoutes(mux)
-	}
-	if cfg.StreamsHandler != nil {
-		cfg.StreamsHandler.RegisterRoutes(mux)
-	}
-	if cfg.CatalogHandler != nil {
-		cfg.CatalogHandler.RegisterRoutes(mux)
-	}
-	if cfg.PoliciesHandler != nil {
-		mux.HandleFunc("POST /decisions/{decisionID}/outcome", cfg.PoliciesHandler.recordOutcome)
-	}
-	if cfg.StateIndexHandler != nil {
-		cfg.StateIndexHandler.RegisterRoutes(mux)
-	}
-	if cfg.ClaimsHandler != nil {
-		cfg.ClaimsHandler.RegisterRoutes(mux)
-	}
-	if cfg.HooksHandler != nil {
-		cfg.HooksHandler.RegisterRoutes(mux)
-	}
-	if cfg.PillarsHandler != nil {
-		cfg.PillarsHandler.RegisterRoutes(mux)
-	}
-	if cfg.DeliveryHandler != nil {
-		cfg.DeliveryHandler.RegisterRoutes(mux)
-	}
 	if cfg.WorkflowHandler != nil {
 		cfg.WorkflowHandler.RegisterRoutes(mux)
-	}
-	if cfg.ProjectTemplatesHandler != nil {
-		cfg.ProjectTemplatesHandler.RegisterRoutes(mux)
-	}
-	if cfg.InvitesHandler != nil {
-		cfg.InvitesHandler.RegisterRoutes(mux)
 	}
 	if cfg.WorkerConfigHandler != nil {
 		mux.HandleFunc("GET /worker-config", cfg.WorkerConfigHandler.getConfig)

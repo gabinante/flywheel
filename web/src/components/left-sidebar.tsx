@@ -5,11 +5,8 @@ import {
   ClipboardCheck,
   LayoutDashboard,
   LogOut,
-  PieChart,
   Building2,
-  Server,
   Settings,
-  ShieldCheck,
   Ticket,
   Workflow,
 } from 'lucide-react'
@@ -158,28 +155,6 @@ export function LeftSidebar() {
       ]
     : []
 
-  const observeItems: NavItem[] = projectBase
-    ? [
-        {
-          label: 'Infrastructure',
-          icon: Server,
-          href: `${projectBase}/infrastructure`,
-          match: `${projectBase}/infrastructure`,
-        },
-        {
-          label: 'Usage',
-          icon: PieChart,
-          href: `${projectBase}/usage`,
-          match: `${projectBase}/usage`,
-        },
-        {
-          label: 'Policy Health',
-          icon: ShieldCheck,
-          href: `${projectBase}/policies`,
-          match: `${projectBase}/policies`,
-        },
-      ]
-    : []
 
   const configureItems: NavItem[] = projectBase
     ? [
@@ -206,12 +181,6 @@ export function LeftSidebar() {
               icon: Settings,
               href: `${projectBase}/settings/workflow`,
               match: `${projectBase}/settings/workflow`,
-            },
-            {
-              label: 'Integrations',
-              icon: Settings,
-              href: `${projectBase}/settings/integrations`,
-              match: `${projectBase}/settings/integrations`,
             },
           ],
         },
@@ -288,14 +257,6 @@ export function LeftSidebar() {
             currentPath={currentPath}
           />
         )}
-        {token && observeItems.length > 0 && (
-          <NavSection
-            title="Observe"
-            items={observeItems}
-            expanded={isExpanded}
-            currentPath={currentPath}
-          />
-        )}
         {token && configureItems.length > 0 && (
           <NavSection
             title="Configure"
@@ -351,8 +312,8 @@ export function LeftSidebar() {
           </button>
         ) : (
           <Button asChild size="sm" className={cn(!isExpanded && 'px-2')}>
-            <a href="/auth/github">
-              {isExpanded ? 'Sign in with GitHub' : 'In'}
+            <a href="/auth/login">
+              {isExpanded ? 'Sign in' : 'In'}
             </a>
           </Button>
         )}

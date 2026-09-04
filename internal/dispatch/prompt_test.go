@@ -163,7 +163,6 @@ func TestAssembleCoordinatorPrompt_MinimalProject(t *testing.T) {
 	}
 }
 
-
 func TestAssembleWorkerPromptMinimal(t *testing.T) {
 	proj := &project.Project{
 		ID:   "proj-1",

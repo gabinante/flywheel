@@ -173,8 +173,8 @@ func TestIsCoordinatorForbidden(t *testing.T) {
 		{ActionGrantAccess, true},
 		{ActionModifyPermission, true},
 		{ActionDeleteResource, true},
-		{ActionOpenPR, false},         // Workers can open PRs
-		{ActionPostExternal, false},   // Allowed with confirmation
+		{ActionOpenPR, false},       // Workers can open PRs
+		{ActionPostExternal, false}, // Allowed with confirmation
 	}
 
 	for _, tt := range tests {

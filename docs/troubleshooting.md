@@ -2,23 +2,22 @@
 
 ## Operations runbook
 
-**Run locally:** See README or **docs/deployment.md**: copy `.env.example` to `.env`, set secrets, then `docker compose up -d`. Server at http://localhost:8080.
+**Run locally:** `make dev` (preflight writes a `.env` with local defaults, starts Postgres 5439 and Redis 6389 in Docker, runs migrations, starts the server). Server at http://localhost:8090.
 
-**Run migrations:** Migrations run automatically in the server container. For hosted/non-Docker deploys, run `make migrate` from the host. Migrations are in **db/migrations/**; never run them from multiple app instances at once.
+**Run migrations:** `make dev` runs `make migrate` before starting the server; run it by hand after pulling new migrations. Migrations are in **db/migrations/**; never run them from multiple app instances at once.
 
-**Inspect DB:** Connect with `psql` using `DATABASE_URL` (e.g. `psql postgres://flywheel:flywheel@localhost:5433/flywheel`). Key tables: `orgs`, `org_members`, `projects`, `tickets`, `execution_steps`, `reviews`, `escalations`. Use `GET /tickets/{id}` or MCP **get_ticket** to inspect a ticket; use **get_trace** for execution steps.
+**Inspect DB:** Connect with `psql` using `DATABASE_URL` (e.g. `psql postgres://flywheel:flywheel@localhost:5439/flywheel`). Key tables: `orgs`, `org_members`, `projects`, `tickets`, `execution_steps`, `reviews`, `escalations`. Use `GET /tickets/{id}` or MCP **get_ticket** to inspect a ticket; use **get_trace** for execution steps.
 
-**Inspect Redis:** Connect with `redis-cli` using `REDIS_URL` (e.g. `redis-cli -u redis://localhost:6379/0`). Lease keys: `flywheel:lease:{ticketID}`. Idempotency keys: `flywheel:idempotency_claim:*`. Expiry set: `flywheel:lease:expires`. Use `KEYS flywheel:*` to list; `TTL flywheel:lease:X` to see lease TTL.
+**Inspect Redis:** Connect with `redis-cli` using `REDIS_URL` (e.g. `redis-cli -u redis://localhost:6389/0`). Lease keys: `flywheel:lease:{ticketID}`. Idempotency keys: `flywheel:idempotency_claim:*`. Expiry set: `flywheel:lease:expires`. Use `KEYS flywheel:*` to list; `TTL flywheel:lease:X` to see lease TTL.
 
-**Health and logs:** **GET /healthz** returns 200 when the HTTP server is up. For Docker, use `docker compose logs -f server` to tail logs. Each request is logged with method, path, status, duration, and **request_id** (in `X-Request-Id` response header). Use request_id to correlate errors with log lines. API errors are structured JSON only; no stack traces in responses.
+**Health and logs:** **GET /healthz** returns 200 when the HTTP server is up. Each request is logged with method, path, status, duration, and **request_id** (in `X-Request-Id` response header). Use request_id to correlate errors with log lines. API errors are structured JSON only; no stack traces in responses.
 
-**OAuth / MCP troubleshooting:** If Cursor or another MCP client cannot sign in or gets 401: ensure **BASE_URL** in `.env` matches the URL the client uses (e.g. `http://localhost:8080`). Ensure `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, and `JWT_SECRET` are set. For "no ticket available" and releasing stuck tickets, see **Tickets: agent stuck or wrong state** below and **docs/mcp-human-in-the-loop.md**. For full MCP setup, see **docs/cursor-mcp.md** and **docs/interacting.md**.
+**MCP troubleshooting:** If an MCP client gets 401, check that it sends `X-API-Key` (or a Bearer JWT) and that **BASE_URL** in `.env` matches the URL the client uses (`http://localhost:8090`). For "no ticket available" and releasing stuck tickets, see **Tickets: agent stuck or wrong state** below and **docs/mcp-human-in-the-loop.md**. For MCP setup, see **docs/interacting.md**.
 
 ---
 
 ## Server exits when running in Docker
 
-For Docker Compose setup, config, health checks, and migration workflow, see **docs/deployment.md**.
 
 **See the actual error:**
 ```bash
@@ -40,9 +39,9 @@ docker compose logs server
 
 3. **Missing .env** – If `docker compose up` fails with "no such file: .env" or similar, run `cp .env.example .env` and edit it with your secrets.
 
-4. **Invalid `.env`** – If auth is enabled, the server expects `GITHUB_CLIENT_ID` and `JWT_SECRET`. Empty values are fine for startup; the server only enables auth when both are non-empty. If the process still exits, check for syntax errors or stray characters in `.env`.
+4. **Invalid `.env`** – Run `make varlock-validate`. An empty `JWT_SECRET` is fine for startup (a per-process secret is generated) but UI sessions will not survive restarts.
 
-5. **Port 8080 already in use** – Another process is bound to 8080. Change `PORT` in the server’s environment or stop the other process.
+5. **Port 8090 already in use** – Another process is bound to 8090 (`make dev` kills a previous Flywheel server first). Change `PORT` in the server’s environment or stop the other process.
 
 ---
 
@@ -80,4 +79,4 @@ When an agent crashes after claiming a ticket, or a ticket is stuck in **claimed
 - **With lease token:** `DELETE /tickets/{ticketID}/lease` with `lease_token` (body or query).
 - **Without lease token:** `POST /tickets/{ticketID}/transitions` with `{"trigger": "lease_expired", "actor": "system", "actor_id": "operator"}`.
 
-For more on using Flywheel from Cursor and MCP, see **docs/cursor-mcp.md**. For the agent flow (claim → start → log_step → submit), see the Flywheel MCP agent guide (e.g. resource `flywheel://docs/agent-guide` or in-app guide).
+For the agent flow (claim → start → log_step → submit), see the Flywheel MCP agent guide (e.g. resource `flywheel://docs/agent-guide` or in-app guide).

@@ -5,29 +5,27 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/gabinante/flywheel/internal/cost"
-	"github.com/gabinante/flywheel/internal/pillar"
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
 	"github.com/gabinante/flywheel/internal/ticket"
+	"github.com/jackc/pgx/v5"
 )
 
 // Code is a stable identifier for error types so agents and clients can branch on it.
 type Code string
 
 const (
-	CodeLeaseExpired    Code = "lease_expired"
-	CodeUnauthorized    Code = "unauthorized"
-	CodeNotFound        Code = "not_found"
-	CodeConflict        Code = "conflict"
-	CodeInvalidInput    Code = "invalid_input"
-	CodeForbidden       Code = "forbidden"
-	CodeInternal        Code = "internal"
-	CodeProjectClosed   Code = "project_closed"
-	CodeNotImplemented  Code = "not_implemented"
-	CodeBudgetExceeded  Code = "budget_exceeded"  // spend exceeds limit (hard stop enabled)
-	CodeRateLimited     Code = "rate_limited"     // provider rate-limited, backing off
+	CodeLeaseExpired   Code = "lease_expired"
+	CodeUnauthorized   Code = "unauthorized"
+	CodeNotFound       Code = "not_found"
+	CodeConflict       Code = "conflict"
+	CodeInvalidInput   Code = "invalid_input"
+	CodeForbidden      Code = "forbidden"
+	CodeInternal       Code = "internal"
+	CodeProjectClosed  Code = "project_closed"
+	CodeNotImplemented Code = "not_implemented"
+	CodeBudgetExceeded Code = "budget_exceeded" // spend exceeds limit (hard stop enabled)
+	CodeRateLimited    Code = "rate_limited"    // provider rate-limited, backing off
 )
 
 // StructuredError is returned in REST JSON and in MCP tool error messages (as JSON string).
@@ -47,7 +45,6 @@ func (e *StructuredError) Error() string {
 func New(code Code, message string, retriable bool) *StructuredError {
 	return &StructuredError{Message: message, Code: code, Retriable: retriable}
 }
-
 
 // JSON returns the JSON encoding for use in REST body or MCP tool error message.
 func (e *StructuredError) JSON() string {
@@ -108,25 +105,6 @@ func MapError(err error) *StructuredError {
 	}
 	if errors.Is(err, ticket.ErrAcceptanceCriteriaRequired) {
 		return New(CodeInvalidInput, err.Error(), false)
-	}
-	if errors.Is(err, cost.ErrBudgetExceeded) {
-		return New(CodeBudgetExceeded, err.Error(), false)
-	}
-	if errors.Is(err, cost.ErrRateLimited) {
-		return New(CodeRateLimited, err.Error(), true)
-	}
-	if errors.Is(err, cost.ErrInvalidBudget) {
-		return New(CodeInvalidInput, err.Error(), false)
-	}
-	// Pillar layer errors (Layer 15).
-	if errors.Is(err, pillar.ErrEntryNotFound) || errors.Is(err, pillar.ErrClaimNotFound) || errors.Is(err, pillar.ErrEvaluationNotFound) {
-		return New(CodeNotFound, err.Error(), false)
-	}
-	if errors.Is(err, pillar.ErrInvalidPillarType) || errors.Is(err, pillar.ErrInvalidClaimStatus) {
-		return New(CodeInvalidInput, err.Error(), false)
-	}
-	if errors.Is(err, pillar.ErrVersionConflict) {
-		return New(CodeConflict, err.Error(), true)
 	}
 	msg := err.Error()
 	switch {

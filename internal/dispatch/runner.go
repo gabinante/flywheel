@@ -4,19 +4,17 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 )
 
 const (
-	RunnerCLI              = "cli"
-	RunnerDocker           = "docker"
-	RunnerOpenAIResponses  = "openai-responses"
-	RunnerOpenAICompatible = "openai-compatible"
+	RunnerCLI = "cli"
 )
 
 // AvailableRunners returns the supported worker execution backends.
+// Flywheel runs local CLI harnesses (Claude Code, Codex); API-native and
+// Docker runners were removed in the local-first revival.
 func AvailableRunners() []string {
-	names := []string{RunnerCLI, RunnerDocker, RunnerOpenAICompatible, RunnerOpenAIResponses}
+	names := []string{RunnerCLI}
 	sort.Strings(names)
 	return names
 }
@@ -24,9 +22,6 @@ func AvailableRunners() []string {
 func resolveRunnerType(cfg Config) string {
 	if cfg.AgentRunner != "" {
 		return cfg.AgentRunner
-	}
-	if cfg.DockerEnabled {
-		return RunnerDocker
 	}
 	return RunnerCLI
 }
@@ -47,39 +42,6 @@ func newWorker(cfg Config, driver AgentDriver) (Worker, error) {
 			Driver:      driver,
 			APIKey:      cfg.APIKey,
 			AgentAPIKey: cfg.AgentAPIKey,
-		}, nil
-	case RunnerDocker:
-		return &DockerWorker{
-			Driver:      driver,
-			Image:       cfg.DockerImage,
-			APIKey:      cfg.APIKey,
-			RepoDir:     cfg.RepoDir,
-			AgentAPIKey: cfg.AgentAPIKey,
-			Memory:      cfg.DockerMemory,
-			CPUs:        cfg.DockerCPUs,
-			Firewall:    cfg.DockerFirewall,
-		}, nil
-	case RunnerOpenAIResponses:
-		return &OpenAIResponsesWorker{
-			Config: OpenAIResponsesConfig{
-				APIBaseURL:      cfg.AgentAPIBaseURL,
-				APIKey:          cfg.AgentAPIKey,
-				Model:           cfg.AgentModel,
-				ReasoningEffort: cfg.AgentReasoningEffort,
-				PollInterval:    2 * time.Second,
-			},
-			APIKey: cfg.APIKey,
-		}, nil
-	case RunnerOpenAICompatible:
-		return &OpenAICompatibleWorker{
-			Config: OpenAICompatibleConfig{
-				APIBaseURL:      cfg.AgentAPIBaseURL,
-				APIKey:          cfg.AgentAPIKey,
-				Model:           cfg.AgentModel,
-				ReasoningEffort: cfg.AgentReasoningEffort,
-				MaxToolRounds:   32,
-			},
-			APIKey: cfg.APIKey,
 		}, nil
 	default:
 		return nil, validateRunnerType(resolveRunnerType(cfg))

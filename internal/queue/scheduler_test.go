@@ -72,7 +72,7 @@ func (t *trackingTransitioner) getTransitions() []transitionRecord {
 type simpleBus struct{}
 
 func (b *simpleBus) Publish(_ context.Context, _ events.Event) error { return nil }
-func (b *simpleBus) Subscribe(_ string, _ events.HandlerFn)         {}
+func (b *simpleBus) Subscribe(_ string, _ events.HandlerFn)          {}
 
 // mockFailureSummarizer records AppendFailureSummary calls for assertions.
 type mockFailureSummarizer struct {
@@ -478,4 +478,3 @@ func TestSweepStaleTickets_NoFailureContextWithoutSummarizer(t *testing.T) {
 		t.Fatalf("expected 1 transition, got %d", len(transitions))
 	}
 }
-

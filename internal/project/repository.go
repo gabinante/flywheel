@@ -8,7 +8,7 @@ import "time"
 type Repository struct {
 	ID            string    `json:"id"`
 	ProjectID     string    `json:"project_id"`
-	Alias         string    `json:"alias"`          // unique per project, e.g. "backend", "frontend"
+	Alias         string    `json:"alias"` // unique per project, e.g. "backend", "frontend"
 	RepoURL       string    `json:"repo_url"`
 	DefaultBranch string    `json:"default_branch"`
 	IsPrimary     bool      `json:"is_primary"`

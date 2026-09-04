@@ -210,6 +210,7 @@ func TestNewDispatcherCLIWorker(t *testing.T) {
 	}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	if d == nil {
 		t.Fatal("expected non-nil dispatcher")
 	}
@@ -228,42 +229,6 @@ func TestNewDispatcherCLIWorker(t *testing.T) {
 	}
 }
 
-func TestNewDispatcherDockerWorker(t *testing.T) {
-	bus := events.NewInProcessBus()
-	tg := newMockTicketGetter()
-	pg := newMockProjectGetter()
-
-	cfg := Config{
-		MaxWorkers:    1,
-		DockerEnabled: true,
-		DockerImage:   "my-image",
-		DockerMemory:  "8g",
-		DockerCPUs:    "4",
-		APIKey:        "key-456",
-		RepoDir:       "/repo",
-		AgentAPIKey:   "sk-test",
-	}
-
-	d := New(cfg, bus, tg, pg)
-	dw, ok := d.worker.(*DockerWorker)
-	if !ok {
-		t.Fatal("expected DockerWorker when DockerEnabled is true")
-	}
-	if dw.Image != "my-image" {
-		t.Errorf("expected image 'my-image', got %q", dw.Image)
-	}
-	if dw.Memory != "8g" {
-		t.Errorf("expected memory '8g', got %q", dw.Memory)
-	}
-	if dw.APIKey != "key-456" {
-		t.Errorf("expected API key 'key-456', got %q", dw.APIKey)
-	}
-	// Driver should be Claude by default.
-	if dw.Driver.Name() != "claude" {
-		t.Errorf("expected claude driver, got %q", dw.Driver.Name())
-	}
-}
-
 func TestNewDispatcherGenericDriver(t *testing.T) {
 	bus := events.NewInProcessBus()
 	tg := newMockTicketGetter()
@@ -277,66 +242,13 @@ func TestNewDispatcherGenericDriver(t *testing.T) {
 	}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	cliWorker, ok := d.worker.(*CLIWorker)
 	if !ok {
 		t.Fatal("expected CLIWorker when DockerEnabled is false")
 	}
 	if cliWorker.Driver.Name() != "generic" {
 		t.Errorf("expected generic driver, got %q", cliWorker.Driver.Name())
-	}
-}
-
-func TestNewDispatcherOpenAIResponsesWorker(t *testing.T) {
-	bus := events.NewInProcessBus()
-	tg := newMockTicketGetter()
-	pg := newMockProjectGetter()
-
-	cfg := Config{
-		MaxWorkers:  1,
-		AgentRunner: RunnerOpenAIResponses,
-		AgentAPIKey: "sk-openai",
-		APIKey:      "wf-key",
-		RepoDir:     "/repo",
-		AgentModel:  "gpt-5.2-codex",
-	}
-
-	d := New(cfg, bus, tg, pg)
-	apiWorker, ok := d.worker.(*OpenAIResponsesWorker)
-	if !ok {
-		t.Fatal("expected OpenAIResponsesWorker when AgentRunner=openai-responses")
-	}
-	if apiWorker.Config.Model != "gpt-5.2-codex" {
-		t.Errorf("expected model gpt-5.2-codex, got %q", apiWorker.Config.Model)
-	}
-	if apiWorker.Config.APIKey != "sk-openai" {
-		t.Errorf("expected API key sk-openai, got %q", apiWorker.Config.APIKey)
-	}
-}
-
-func TestNewDispatcherOpenAICompatibleWorker(t *testing.T) {
-	bus := events.NewInProcessBus()
-	tg := newMockTicketGetter()
-	pg := newMockProjectGetter()
-
-	cfg := Config{
-		MaxWorkers:  1,
-		AgentRunner: RunnerOpenAICompatible,
-		AgentAPIKey: "sk-openai",
-		APIKey:      "wf-key",
-		RepoDir:     "/repo",
-		AgentModel:  "qwen2.5-coder",
-	}
-
-	d := New(cfg, bus, tg, pg)
-	apiWorker, ok := d.worker.(*OpenAICompatibleWorker)
-	if !ok {
-		t.Fatal("expected OpenAICompatibleWorker when AgentRunner=openai-compatible")
-	}
-	if apiWorker.Config.Model != "qwen2.5-coder" {
-		t.Errorf("expected model qwen2.5-coder, got %q", apiWorker.Config.Model)
-	}
-	if apiWorker.Config.APIKey != "sk-openai" {
-		t.Errorf("expected API key sk-openai, got %q", apiWorker.Config.APIKey)
 	}
 }
 
@@ -678,14 +590,14 @@ func TestTryDispatchDependenciesMet(t *testing.T) {
 
 	worker := &mockWorker{}
 	cfg := Config{
-		MaxWorkers:    5,
-		DockerEnabled: true, // use docker mode to avoid worktree creation
-		WorktreeDir:   t.TempDir(),
-		ServerURL:     "http://localhost",
-		AgentID:       "test-agent",
+		MaxWorkers:  5,
+		WorktreeDir: t.TempDir(),
+		ServerURL:   "http://localhost",
+		AgentID:     "test-agent",
 	}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker // inject mock worker
 	seedTestClone(t, d, "p-1")
 
@@ -813,13 +725,13 @@ func TestSpawnDuplicatePrevented(t *testing.T) {
 	}
 
 	cfg := Config{
-		MaxWorkers:    5,
-		DockerEnabled: true,
-		WorktreeDir:   t.TempDir(),
-		ServerURL:     "http://localhost",
+		MaxWorkers:  5,
+		WorktreeDir: t.TempDir(),
+		ServerURL:   "http://localhost",
 	}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 	seedTestClone(t, d, "p-1")
 
@@ -842,77 +754,6 @@ func TestSpawnDuplicatePrevented(t *testing.T) {
 	d.Stop()
 }
 
-func TestRunWorkerDockerMode(t *testing.T) {
-	proj := &project.Project{
-		ID:      "p-1",
-		Name:    "test-proj",
-		RepoURL: "https://github.com/test/repo.git",
-		ContextPack: project.ContextPack{
-			SystemPrompt: "Be helpful",
-		},
-	}
-	dep := &ticket.Ticket{
-		ID:      "dep-1",
-		State:   ticket.StateClosed,
-		Outputs: map[string]any{"key": "value"},
-	}
-	tk := &ticket.Ticket{
-		ID:        "t-1",
-		ProjectID: "p-1",
-		State:     ticket.StateDraft,
-		Title:     "test ticket",
-		Type:      ticket.TypeTask,
-		Objective: ticket.Objective{Description: "do work"},
-		DependsOn: []string{"dep-1"},
-	}
-
-	bus := events.NewInProcessBus()
-	tg := newMockTicketGetter(tk, dep)
-	pg := newMockProjectGetter(proj)
-
-	worker := &mockWorker{}
-	cfg := Config{
-		MaxWorkers:    5,
-		DockerEnabled: true,
-		WorktreeDir:   t.TempDir(),
-		ServerURL:     "http://localhost:8080",
-		AgentID:       "agent-test",
-	}
-
-	d := New(cfg, bus, tg, pg)
-	d.worker = worker
-	seedTestClone(t, d, "p-1")
-
-	err := d.runWorker(context.Background(), tk)
-	if err != nil {
-		t.Fatalf("runWorker: %v", err)
-	}
-
-	if worker.callCount() != 1 {
-		t.Fatalf("expected 1 worker call, got %d", worker.callCount())
-	}
-
-	worker.mu.Lock()
-	call := worker.calls[0]
-	worker.mu.Unlock()
-
-	if call.TicketID != "t-1" {
-		t.Errorf("expected ticketID 't-1', got %q", call.TicketID)
-	}
-	// In docker mode, workDir should be the isolated clone dir (not the server's RepoDir).
-	expectedCloneDir := filepath.Join(d.clones.BaseDir, "p-1")
-	if call.WorkDir != expectedCloneDir {
-		t.Errorf("expected workDir %q (isolated clone), got %q", expectedCloneDir, call.WorkDir)
-	}
-	if call.ServerURL != "http://localhost:8080" {
-		t.Errorf("expected serverURL, got %q", call.ServerURL)
-	}
-	// System prompt should contain the project system prompt.
-	if call.SystemPrompt == "" {
-		t.Error("expected non-empty system prompt")
-	}
-}
-
 func TestRunWorkerContextCancelled(t *testing.T) {
 	proj := &project.Project{ID: "p-1", Name: "test", RepoURL: "https://github.com/test/repo.git"}
 	tk := &ticket.Ticket{
@@ -930,13 +771,13 @@ func TestRunWorkerContextCancelled(t *testing.T) {
 
 	worker := &mockWorker{}
 	cfg := Config{
-		MaxWorkers:    5,
-		DockerEnabled: true,
-		RepoDir:       "/tmp",
-		ServerURL:     "http://localhost",
+		MaxWorkers: 5,
+		RepoDir:    "/tmp",
+		ServerURL:  "http://localhost",
 	}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 
 	// Cancel context immediately so the thundering-herd delay returns early.
@@ -965,13 +806,13 @@ func TestRunWorkerProjectNotFound(t *testing.T) {
 
 	worker := &mockWorker{}
 	cfg := Config{
-		MaxWorkers:    5,
-		DockerEnabled: true,
-		RepoDir:       "/tmp",
-		ServerURL:     "http://localhost",
+		MaxWorkers: 5,
+		RepoDir:    "/tmp",
+		ServerURL:  "http://localhost",
 	}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 
 	err := d.runWorker(context.Background(), tk)
@@ -1036,13 +877,13 @@ func TestHandleWorkerExit_WorkerCrash_ReleasesLease(t *testing.T) {
 	}
 
 	cfg := Config{
-		MaxWorkers:    5,
-		DockerEnabled: true,
-		RepoDir:       "/tmp",
-		ServerURL:     "http://localhost",
+		MaxWorkers: 5,
+		RepoDir:    "/tmp",
+		ServerURL:  "http://localhost",
 	}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 	d.SetLeaseReleaser(releaser)
 
@@ -1094,13 +935,13 @@ func TestHandleWorkerExit_SuccessfulSubmit_NoRelease(t *testing.T) {
 	}
 
 	cfg := Config{
-		MaxWorkers:    5,
-		DockerEnabled: true,
-		RepoDir:       "/tmp",
-		ServerURL:     "http://localhost",
+		MaxWorkers: 5,
+		RepoDir:    "/tmp",
+		ServerURL:  "http://localhost",
 	}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 	d.SetLeaseReleaser(releaser)
 
@@ -1136,13 +977,13 @@ func TestHandleWorkerExit_PlanningState_ReleasesLease(t *testing.T) {
 	}
 
 	cfg := Config{
-		MaxWorkers:    5,
-		DockerEnabled: true,
-		RepoDir:       "/tmp",
-		ServerURL:     "http://localhost",
+		MaxWorkers: 5,
+		RepoDir:    "/tmp",
+		ServerURL:  "http://localhost",
 	}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 	d.SetLeaseReleaser(releaser)
 
@@ -1178,13 +1019,13 @@ func TestHandleWorkerExit_PreSpawnFailure_NoRelease(t *testing.T) {
 	worker := &mockWorker{}
 
 	cfg := Config{
-		MaxWorkers:    5,
-		DockerEnabled: true,
-		RepoDir:       "/tmp",
-		ServerURL:     "http://localhost",
+		MaxWorkers: 5,
+		RepoDir:    "/tmp",
+		ServerURL:  "http://localhost",
 	}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 	d.SetLeaseReleaser(releaser)
 
@@ -1220,13 +1061,13 @@ func TestHandleWorkerExit_NilReleaser_NoOp(t *testing.T) {
 	}
 
 	cfg := Config{
-		MaxWorkers:    5,
-		DockerEnabled: true,
-		RepoDir:       "/tmp",
-		ServerURL:     "http://localhost",
+		MaxWorkers: 5,
+		RepoDir:    "/tmp",
+		ServerURL:  "http://localhost",
 	}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 	// Note: NOT setting leaseReleaser — it's nil.
 
@@ -1267,13 +1108,13 @@ func TestHandleWorkerExit_Escalation_NoRelease(t *testing.T) {
 	}
 
 	cfg := Config{
-		MaxWorkers:    5,
-		DockerEnabled: true,
-		RepoDir:       "/tmp",
-		ServerURL:     "http://localhost",
+		MaxWorkers: 5,
+		RepoDir:    "/tmp",
+		ServerURL:  "http://localhost",
 	}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 	d.SetLeaseReleaser(releaser)
 
@@ -1308,13 +1149,13 @@ func TestHandleWorkerExit_ActiveMapCleanup(t *testing.T) {
 	}
 
 	cfg := Config{
-		MaxWorkers:    5,
-		DockerEnabled: true,
-		RepoDir:       "/tmp",
-		ServerURL:     "http://localhost",
+		MaxWorkers: 5,
+		RepoDir:    "/tmp",
+		ServerURL:  "http://localhost",
 	}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 	d.SetLeaseReleaser(releaser)
 
@@ -1355,13 +1196,13 @@ func TestHandleWorkerExit_ReleaserError_Logged(t *testing.T) {
 	}
 
 	cfg := Config{
-		MaxWorkers:    5,
-		DockerEnabled: true,
-		RepoDir:       "/tmp",
-		ServerURL:     "http://localhost",
+		MaxWorkers: 5,
+		RepoDir:    "/tmp",
+		ServerURL:  "http://localhost",
 	}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 	d.SetLeaseReleaser(releaser)
 
@@ -1413,13 +1254,13 @@ func TestHandleWorkerExit_ConcurrentWorkers(t *testing.T) {
 	}
 
 	cfg := Config{
-		MaxWorkers:    5,
-		DockerEnabled: true,
-		RepoDir:       "/tmp",
-		ServerURL:     "http://localhost",
+		MaxWorkers: 5,
+		RepoDir:    "/tmp",
+		ServerURL:  "http://localhost",
 	}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 	d.SetLeaseReleaser(releaser)
 
@@ -1453,14 +1294,14 @@ func TestEventBusIntegration(t *testing.T) {
 
 	worker := &mockWorker{}
 	cfg := Config{
-		MaxWorkers:    5,
-		ProjectID:     "p-1",
-		DockerEnabled: true,
-		WorktreeDir:   t.TempDir(),
-		ServerURL:     "http://localhost",
+		MaxWorkers:  5,
+		ProjectID:   "p-1",
+		WorktreeDir: t.TempDir(),
+		ServerURL:   "http://localhost",
 	}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 	seedTestClone(t, d, "p-1")
 
@@ -1501,14 +1342,14 @@ func TestDispatchDisabledSkipsTickets(t *testing.T) {
 
 	worker := &mockWorker{}
 	cfg := Config{
-		MaxWorkers:    5,
-		ProjectID:     "p-1",
-		DockerEnabled: true,
-		RepoDir:       "/tmp",
-		ServerURL:     "http://localhost",
+		MaxWorkers: 5,
+		ProjectID:  "p-1",
+		RepoDir:    "/tmp",
+		ServerURL:  "http://localhost",
 	}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1548,14 +1389,14 @@ func TestDispatchEnabledAllowsTickets(t *testing.T) {
 
 	worker := &mockWorker{}
 	cfg := Config{
-		MaxWorkers:    5,
-		ProjectID:     "p-1",
-		DockerEnabled: true,
-		WorktreeDir:   t.TempDir(),
-		ServerURL:     "http://localhost",
+		MaxWorkers:  5,
+		ProjectID:   "p-1",
+		WorktreeDir: t.TempDir(),
+		ServerURL:   "http://localhost",
 	}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 	seedTestClone(t, d, "p-1")
 
@@ -1594,9 +1435,10 @@ func TestDispatchNoRepoUsesOperator(t *testing.T) {
 	tg := newMockTicketGetter(tk)
 	pg := newMockProjectGetter(proj)
 	worker := &mockWorker{}
-	cfg := Config{MaxWorkers: 5, ProjectID: "p-no-repo", DockerEnabled: true, RepoDir: "/tmp", ServerURL: "http://localhost", AgentID: "test"}
+	cfg := Config{MaxWorkers: 5, ProjectID: "p-no-repo", RepoDir: "/tmp", ServerURL: "http://localhost", AgentID: "test"}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 	d.Start(context.Background())
 
@@ -2190,9 +2032,10 @@ func TestHandleInputProvided_Executing_ReleasesAndDispatches(t *testing.T) {
 
 	releaser := &mockLeaseReleaser{}
 	worker := &mockWorker{}
-	cfg := Config{MaxWorkers: 5, ProjectID: "p-1", DockerEnabled: true, WorktreeDir: t.TempDir(), ServerURL: "http://localhost"}
+	cfg := Config{MaxWorkers: 5, ProjectID: "p-1", WorktreeDir: t.TempDir(), ServerURL: "http://localhost"}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 	d.SetLeaseReleaser(releaser)
 	seedTestClone(t, d, "p-1")
@@ -2252,9 +2095,10 @@ func TestHandleInputProvided_AlreadyDraft_DispatchesDirectly(t *testing.T) {
 
 	releaser := &mockLeaseReleaser{}
 	worker := &mockWorker{}
-	cfg := Config{MaxWorkers: 5, ProjectID: "p-1", DockerEnabled: true, WorktreeDir: t.TempDir(), ServerURL: "http://localhost"}
+	cfg := Config{MaxWorkers: 5, ProjectID: "p-1", WorktreeDir: t.TempDir(), ServerURL: "http://localhost"}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 	d.SetLeaseReleaser(releaser)
 	seedTestClone(t, d, "p-1")
@@ -2293,9 +2137,10 @@ func TestHandleInputProvided_WorkerAlreadyActive_Skips(t *testing.T) {
 
 	releaser := &mockLeaseReleaser{}
 	worker := &mockWorker{}
-	cfg := Config{MaxWorkers: 5, ProjectID: "p-1", DockerEnabled: true, RepoDir: "/tmp", ServerURL: "http://localhost"}
+	cfg := Config{MaxWorkers: 5, ProjectID: "p-1", RepoDir: "/tmp", ServerURL: "http://localhost"}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 	d.SetLeaseReleaser(releaser)
 
@@ -2335,9 +2180,10 @@ func TestHandleInputProvided_WrongProject_Filtered(t *testing.T) {
 
 	releaser := &mockLeaseReleaser{}
 	worker := &mockWorker{}
-	cfg := Config{MaxWorkers: 5, ProjectID: "p-1", DockerEnabled: true, RepoDir: "/tmp", ServerURL: "http://localhost"}
+	cfg := Config{MaxWorkers: 5, ProjectID: "p-1", RepoDir: "/tmp", ServerURL: "http://localhost"}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 	d.SetLeaseReleaser(releaser)
 
@@ -2372,9 +2218,10 @@ func TestHandleInputProvided_UnexpectedState_Skips(t *testing.T) {
 
 	releaser := &mockLeaseReleaser{}
 	worker := &mockWorker{}
-	cfg := Config{MaxWorkers: 5, ProjectID: "p-1", DockerEnabled: true, RepoDir: "/tmp", ServerURL: "http://localhost"}
+	cfg := Config{MaxWorkers: 5, ProjectID: "p-1", RepoDir: "/tmp", ServerURL: "http://localhost"}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 	d.SetLeaseReleaser(releaser)
 
@@ -2409,9 +2256,10 @@ func TestHandleInputProvided_ReleaserFails_NoDispatch(t *testing.T) {
 
 	releaser := &mockLeaseReleaser{err: fmt.Errorf("redis unavailable")}
 	worker := &mockWorker{}
-	cfg := Config{MaxWorkers: 5, ProjectID: "p-1", DockerEnabled: true, RepoDir: "/tmp", ServerURL: "http://localhost"}
+	cfg := Config{MaxWorkers: 5, ProjectID: "p-1", RepoDir: "/tmp", ServerURL: "http://localhost"}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 	d.SetLeaseReleaser(releaser)
 
@@ -2445,9 +2293,10 @@ func TestHandleInputProvided_NilReleaser_NoPanic(t *testing.T) {
 	pg := newMockProjectGetter(proj)
 
 	worker := &mockWorker{}
-	cfg := Config{MaxWorkers: 5, ProjectID: "p-1", DockerEnabled: true, RepoDir: "/tmp", ServerURL: "http://localhost"}
+	cfg := Config{MaxWorkers: 5, ProjectID: "p-1", RepoDir: "/tmp", ServerURL: "http://localhost"}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 	// Note: NOT setting leaseReleaser — it's nil.
 
@@ -2527,13 +2376,13 @@ func TestHandleWorkerExit_CrashLoop_EscalatesToAwaitingInput(t *testing.T) {
 	}
 
 	cfg := Config{
-		MaxWorkers:    5,
-		DockerEnabled: true,
-		RepoDir:       "/tmp",
-		ServerURL:     "http://localhost",
+		MaxWorkers: 5,
+		RepoDir:    "/tmp",
+		ServerURL:  "http://localhost",
 	}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 	d.SetLeaseReleaser(releaser)
 	d.SetFailureSummarizer(fs)
@@ -2593,13 +2442,13 @@ func TestHandleWorkerExit_BelowMaxAttempts_ReleasesLease(t *testing.T) {
 	}
 
 	cfg := Config{
-		MaxWorkers:    5,
-		DockerEnabled: true,
-		RepoDir:       "/tmp",
-		ServerURL:     "http://localhost",
+		MaxWorkers: 5,
+		RepoDir:    "/tmp",
+		ServerURL:  "http://localhost",
 	}
 
 	d := New(cfg, bus, tg, pg)
+	d.skipWorktrees = true
 	d.worker = worker
 	d.SetLeaseReleaser(releaser)
 	d.SetFailureSummarizer(fs)

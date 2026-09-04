@@ -14,11 +14,11 @@ import (
 
 // QueueHandler handles queue and lease REST endpoints.
 type QueueHandler struct {
-	QueueSvc    *queue.Service
-	TicketSvc   *ticket.Service
-	ProjectSvc  *project.Service
-	OrgSvc      *org.Service
-	AgentStore  agent.AgentStore
+	QueueSvc   *queue.Service
+	TicketSvc  *ticket.Service
+	ProjectSvc *project.Service
+	OrgSvc     *org.Service
+	AgentStore agent.AgentStore
 }
 
 func (h *QueueHandler) claim(w http.ResponseWriter, r *http.Request) {

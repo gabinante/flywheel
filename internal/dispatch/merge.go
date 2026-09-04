@@ -15,8 +15,7 @@ import (
 	"time"
 
 	"github.com/gabinante/flywheel/events"
-	"github.com/gabinante/flywheel/internal/cost"
-	"github.com/gabinante/flywheel/internal/policy"
+	"github.com/gabinante/flywheel/internal/gate"
 	"github.com/gabinante/flywheel/internal/ticket"
 )
 
@@ -168,11 +167,10 @@ func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
 	slog.Info("dispatch: running validator worker", "ticket", t.ID)
 
 	taskMsg := buildTypedTaskPrompt(WorkerTypeValidator, t.ID, t.ProjectID)
-	result, selected, err := d.spawnWorker(ctx, proj, t.ID, t.ProjectID, string(WorkerTypeValidator), WorkerTypeValidator, prompt, taskMsg, workDir)
+	result, _, err := d.spawnWorker(ctx, proj, t.ID, t.ProjectID, string(WorkerTypeValidator), WorkerTypeValidator, prompt, taskMsg, workDir)
 	if err != nil {
 		return err
 	}
-	d.recordUsage(ctx, selected.Config, t.ProjectID, t.ID, "review", cost.OpReview, prompt, taskMsg, result)
 
 	if !result.Success {
 		slog.Error("dispatch: validator completed with error", "ticket", t.ID, "error", result.Error, "output", result.Output)
@@ -706,9 +704,9 @@ func (d *Dispatcher) persistMergeState(ctx context.Context, ticketID string, att
 		return
 	}
 	_ = d.outputPatcher.PatchOutputs(ctx, ticketID, map[string]any{
-		"_merge_attempts":       attempts,
-		"_merge_status":         status,
-		"_merge_last_error":     lastErr,
+		"_merge_attempts":        attempts,
+		"_merge_status":          status,
+		"_merge_last_error":      lastErr,
 		"_merge_last_attempt_at": time.Now().UTC().Format(time.RFC3339),
 	})
 }
@@ -762,11 +760,11 @@ func (d *Dispatcher) cleanupTicketBranch(ctx context.Context, ticketID, projectI
 // validatePRChecks verifies CI checks pass on the PR before merging.
 // Returns true if checks pass (or no checks exist), false if failing/pending.
 // Emits EventTestsFailed when checks fail.
-// Uses policy.ParseGHPRChecks for the actual `gh pr checks` parsing.
+// Uses gate.ParseGHPRChecks for the actual `gh pr checks` parsing.
 func (d *Dispatcher) validatePRChecks(ctx context.Context, t *ticket.Ticket, prURL, repoDir string) bool {
-	status, reason := policy.ParseGHPRChecks(prURL)
+	status, reason := gate.ParseGHPRChecks(prURL)
 	switch status {
-	case policy.ChecksFailed:
+	case gate.ChecksFailed:
 		slog.Warn("dispatch: CI checks failed", "ticket", t.ID, "reason", reason)
 		_ = d.bus.Publish(ctx, events.Event{
 			Type: events.EventTestsFailed,
@@ -778,7 +776,7 @@ func (d *Dispatcher) validatePRChecks(ctx context.Context, t *ticket.Ticket, prU
 			},
 		})
 		return false
-	case policy.ChecksPending:
+	case gate.ChecksPending:
 		slog.Info("dispatch: CI checks pending, will retry later", "ticket", t.ID)
 		return false
 	default:
@@ -854,11 +852,10 @@ func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, 
 		branch, prURL,
 	)
 
-	result, selected, err := d.spawnWorker(ctx, proj, t.ID, t.ProjectID, WorkerRoleConflictResolver, WorkerType(WorkerRoleConflictResolver), prompt, taskMsg, workDir)
+	result, _, err := d.spawnWorker(ctx, proj, t.ID, t.ProjectID, WorkerRoleConflictResolver, WorkerType(WorkerRoleConflictResolver), prompt, taskMsg, workDir)
 	if err != nil {
 		return err
 	}
-	d.recordUsage(ctx, selected.Config, t.ProjectID, t.ID, "conflict_resolution", cost.OpCodeGeneration, prompt, taskMsg, result)
 
 	if !result.Success {
 		slog.Error("dispatch: conflict resolver failed", "ticket", t.ID, "error", result.Error, "output", result.Output)

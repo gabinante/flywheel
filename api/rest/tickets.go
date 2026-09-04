@@ -13,10 +13,10 @@ import (
 
 // TicketsHandler handles ticket REST endpoints.
 type TicketsHandler struct {
-	TicketSvc   *ticket.Service
-	ProjectSvc  *project.Service
-	OrgSvc      *org.Service
-	AgentStore  agent.AgentStore
+	TicketSvc  *ticket.Service
+	ProjectSvc *project.Service
+	OrgSvc     *org.Service
+	AgentStore agent.AgentStore
 }
 
 func (h *TicketsHandler) createTicket(w http.ResponseWriter, r *http.Request) {
@@ -34,15 +34,15 @@ func (h *TicketsHandler) createTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Title           string               `json:"title"`
-		WorkStreamID    string               `json:"work_stream_id"`
-		Type            ticket.TicketType    `json:"type"`
-		Priority        *int                 `json:"priority"`
-		CreatedBy       string               `json:"created_by"`
-		DependsOn       []string             `json:"depends_on"`
-		Objective       ticket.Objective     `json:"objective"`
-		Context         ticket.TicketContext `json:"ticket_context"`
-		IdempotencyKey  string               `json:"idempotency_key"`
+		Title          string               `json:"title"`
+		WorkStreamID   string               `json:"work_stream_id"`
+		Type           ticket.TicketType    `json:"type"`
+		Priority       *int                 `json:"priority"`
+		CreatedBy      string               `json:"created_by"`
+		DependsOn      []string             `json:"depends_on"`
+		Objective      ticket.Objective     `json:"objective"`
+		Context        ticket.TicketContext `json:"ticket_context"`
+		IdempotencyKey string               `json:"idempotency_key"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		WriteStructuredError(w, apierrors.New(apierrors.CodeInvalidInput, "invalid body", false))

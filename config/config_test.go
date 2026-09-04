@@ -90,24 +90,6 @@ func TestValidate_InvalidDriver(t *testing.T) {
 	}
 }
 
-func TestValidate_ClaudePathSkippedWhenDockerEnabled(t *testing.T) {
-	cfg := &Config{
-		Dispatch: DispatchConfig{
-			Enabled:       true,
-			DockerEnabled: true,
-			AgentRunner:   "docker",
-			ClaudePath:    "nonexistent-binary-that-should-not-exist-on-path",
-		},
-	}
-	warnings := cfg.Validate()
-
-	for _, w := range warnings {
-		if strings.Contains(w, "DISPATCH_CLAUDE_PATH") {
-			t.Errorf("should not warn about DISPATCH_CLAUDE_PATH when DockerEnabled=true, got: %s", w)
-		}
-	}
-}
-
 func TestValidate_ClaudePathSkippedWhenDispatchDisabled(t *testing.T) {
 	cfg := &Config{
 		Dispatch: DispatchConfig{
@@ -167,153 +149,14 @@ func TestValidate_InvalidRunner(t *testing.T) {
 	}
 }
 
-func TestValidate_OpenAIResponsesRunnerRequiresKey(t *testing.T) {
-	cfg := &Config{
-		Dispatch: DispatchConfig{
-			Enabled:     true,
-			AgentRunner: "openai-responses",
-		},
-	}
-	warnings := cfg.Validate()
-
-	found := false
-	for _, w := range warnings {
-		if strings.Contains(w, "DISPATCH_AGENT_RUNNER=openai-responses") && strings.Contains(w, "OPENAI_API_KEY") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("expected warning about missing key for openai-responses runner, got: %v", warnings)
-	}
-}
-
-func TestValidate_OpenAICompatibleRunnerRequiresKey(t *testing.T) {
-	cfg := &Config{
-		Dispatch: DispatchConfig{
-			Enabled:     true,
-			AgentRunner: "openai-compatible",
-		},
-	}
-	warnings := cfg.Validate()
-
-	found := false
-	for _, w := range warnings {
-		if strings.Contains(w, "DISPATCH_AGENT_RUNNER=openai-compatible") && strings.Contains(w, "OPENAI_API_KEY") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("expected warning about missing key for openai-compatible runner, got: %v", warnings)
-	}
-}
-
-func TestValidate_OrchestratorOpenAIResponsesRunnerRequiresKey(t *testing.T) {
-	cfg := &Config{
-		Orchestrator: OrchestratorConfig{
-			Enabled:     true,
-			AgentRunner: "openai-responses",
-		},
-	}
-	warnings := cfg.Validate()
-
-	found := false
-	for _, w := range warnings {
-		if strings.Contains(w, "ORCHESTRATOR_AGENT_RUNNER=openai-responses") && strings.Contains(w, "OPENAI_API_KEY") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("expected warning about missing key for orchestrator openai-responses runner, got: %v", warnings)
-	}
-}
-
-func TestValidate_OrchestratorOpenAICompatibleRunnerRequiresKey(t *testing.T) {
-	cfg := &Config{
-		Orchestrator: OrchestratorConfig{
-			Enabled:     true,
-			AgentRunner: "openai-compatible",
-		},
-	}
-	warnings := cfg.Validate()
-
-	found := false
-	for _, w := range warnings {
-		if strings.Contains(w, "ORCHESTRATOR_AGENT_RUNNER=openai-compatible") && strings.Contains(w, "OPENAI_API_KEY") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("expected warning about missing key for orchestrator openai-compatible runner, got: %v", warnings)
-	}
-}
-
-func TestResolveDispatchAgentAPIKey_OpenAIRunnerPrefersOpenAI(t *testing.T) {
-	t.Setenv("DISPATCH_AGENT_API_KEY", "")
-	t.Setenv("OPENAI_API_KEY", "sk-openai")
-	t.Setenv("ANTHROPIC_API_KEY", "sk-anthropic")
-
-	got := resolveDispatchAgentAPIKey("openai-responses", "claude")
-	if got != "sk-openai" {
-		t.Fatalf("expected OPENAI_API_KEY fallback, got %q", got)
-	}
-}
-
-func TestResolveDispatchAgentAPIKey_OpenAICompatibleRunnerPrefersOpenAI(t *testing.T) {
-	t.Setenv("DISPATCH_AGENT_API_KEY", "")
-	t.Setenv("OPENAI_API_KEY", "sk-openai")
-	t.Setenv("ANTHROPIC_API_KEY", "sk-anthropic")
-
-	got := resolveDispatchAgentAPIKey("openai-compatible", "claude")
-	if got != "sk-openai" {
-		t.Fatalf("expected OPENAI_API_KEY fallback, got %q", got)
-	}
-}
-
-func TestResolveDispatchAgentAPIKey_OpenAIRunnerDoesNotUseAnthropicFallback(t *testing.T) {
-	t.Setenv("DISPATCH_AGENT_API_KEY", "")
-	t.Setenv("OPENAI_API_KEY", "")
-	t.Setenv("ANTHROPIC_API_KEY", "sk-anthropic")
-
-	got := resolveDispatchAgentAPIKey("openai-responses", "claude")
-	if got != "" {
-		t.Fatalf("expected no fallback for openai-responses without OPENAI_API_KEY, got %q", got)
-	}
-}
-
-func TestResolveDispatchAgentAPIKey_OpenAICompatibleRunnerDoesNotUseAnthropicFallback(t *testing.T) {
-	t.Setenv("DISPATCH_AGENT_API_KEY", "")
-	t.Setenv("OPENAI_API_KEY", "")
-	t.Setenv("ANTHROPIC_API_KEY", "sk-anthropic")
-
-	got := resolveDispatchAgentAPIKey("openai-compatible", "claude")
-	if got != "" {
-		t.Fatalf("expected no fallback for openai-compatible without OPENAI_API_KEY, got %q", got)
-	}
-}
-
 func TestResolveDispatchAgentAPIKey_ClaudeUsesAnthropicFallback(t *testing.T) {
 	t.Setenv("DISPATCH_AGENT_API_KEY", "")
 	t.Setenv("OPENAI_API_KEY", "sk-openai")
 	t.Setenv("ANTHROPIC_API_KEY", "sk-anthropic")
 
-	got := resolveDispatchAgentAPIKey("cli", "claude")
+	got := resolveAgentAPIKey("DISPATCH_AGENT_API_KEY", "claude")
 	if got != "sk-anthropic" {
 		t.Fatalf("expected ANTHROPIC_API_KEY fallback for claude, got %q", got)
-	}
-}
-
-func TestResolveAgentAPIKey_OrchestratorOpenAIRunnerPrefersOpenAI(t *testing.T) {
-	t.Setenv("ORCHESTRATOR_AGENT_API_KEY", "")
-	t.Setenv("OPENAI_API_KEY", "sk-openai")
-	t.Setenv("ANTHROPIC_API_KEY", "sk-anthropic")
-
-	got := resolveAgentAPIKey("ORCHESTRATOR_AGENT_API_KEY", "openai-responses", "claude")
-	if got != "sk-openai" {
-		t.Fatalf("expected OPENAI_API_KEY fallback for orchestrator, got %q", got)
 	}
 }
 

@@ -145,8 +145,6 @@ func resolveWorkerCredential(cfg Config, envVar string) string {
 		return key
 	}
 	switch {
-	case resolveRunnerType(cfg) == RunnerOpenAIResponses, resolveRunnerType(cfg) == RunnerOpenAICompatible:
-		return strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
 	case cfg.AgentDriver == "claude":
 		return strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY"))
 	default:

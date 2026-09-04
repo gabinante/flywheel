@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/gabinante/flywheel/events"
-	"github.com/gabinante/flywheel/internal/policy"
+	"github.com/gabinante/flywheel/internal/gate"
 	"github.com/gabinante/flywheel/internal/ticket"
 	"github.com/gabinante/flywheel/internal/workflow"
 )
@@ -49,16 +49,16 @@ func (d *Dispatcher) processReadyPhase(ctx context.Context, t *ticket.Ticket) {
 			if gateCfg != nil {
 				conditions := gateCfg.EffectiveConditions()
 				if len(conditions) > 0 {
-					var reqs []policy.GateRequirement
+					var reqs []gate.GateRequirement
 					for _, c := range conditions {
-						reqs = append(reqs, policy.GateRequirement{Type: policy.GateRequirementType(c.Type), Config: c.Config})
+						reqs = append(reqs, gate.GateRequirement{Type: gate.GateRequirementType(c.Type), Config: c.Config})
 					}
 					prURL, _ := t.Outputs["pr_url"].(string)
-					statuses := d.checkerRegistry.CheckAll(ctx, reqs, policy.CheckContext{
+					statuses := d.checkerRegistry.CheckAll(ctx, reqs, gate.CheckContext{
 						TicketID: t.ID, ProjectID: t.ProjectID, PRURL: prURL,
 						PhaseID: phase.ID, Outputs: t.Outputs,
 					})
-					if len(policy.Unsatisfied(statuses)) == 0 {
+					if len(gate.Unsatisfied(statuses)) == 0 {
 						// All conditions met — advance.
 						next := d.advanceWorkflowIfNeeded(ctx, t, "success")
 						if next == nil {
@@ -284,16 +284,16 @@ func (d *Dispatcher) recheckBlockedGates(ctx context.Context) {
 		if len(conditions) == 0 {
 			continue
 		}
-		var reqs []policy.GateRequirement
+		var reqs []gate.GateRequirement
 		for _, c := range conditions {
-			reqs = append(reqs, policy.GateRequirement{Type: policy.GateRequirementType(c.Type), Config: c.Config})
+			reqs = append(reqs, gate.GateRequirement{Type: gate.GateRequirementType(c.Type), Config: c.Config})
 		}
 		prURL, _ := t.Outputs["pr_url"].(string)
-		statuses := d.checkerRegistry.CheckAll(ctx, reqs, policy.CheckContext{
+		statuses := d.checkerRegistry.CheckAll(ctx, reqs, gate.CheckContext{
 			TicketID: t.ID, ProjectID: t.ProjectID, PRURL: prURL,
 			PhaseID: phase.ID, Outputs: t.Outputs,
 		})
-		if len(policy.Unsatisfied(statuses)) == 0 {
+		if len(gate.Unsatisfied(statuses)) == 0 {
 			// All conditions now satisfied — reset to ready so processReadyPhase advances.
 			_ = d.workflowPhaseUpdater.UpdateWorkflowPhaseStatus(ctx, t.ID, "ready")
 			slog.Info("dispatch: blocked gate now satisfied, advancing", "ticket", t.ID, "phase", phase.Name)

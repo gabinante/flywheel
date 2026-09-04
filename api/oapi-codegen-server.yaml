@@ -4,3 +4,5 @@ generate:
   strict-server: true
   models: true
 output: generated/server.gen.go
+compatibility:
+  always-prefix-enum-values: true

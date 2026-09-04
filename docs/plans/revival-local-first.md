@@ -110,6 +110,12 @@ Intake
 - **Paste**: a Review page input and a command-center intent accept one or many PR URLs → N `review_requests`.
 - **Poller** (2 min): `gh search prs --review-requested=@me --state=open` → new requests.
 - **Watcher** (2 min): for `watching` requests, compare `headRefOid` and my latest review state.
+- **Feedback watcher** (2 min): for open PRs *authored by me* (`gh search prs --author=@me --state=open`), detect
+  reviews that landed since the last check — new review comments, `CHANGES_REQUESTED`, bot reviews (Bugbot, CI
+  annotations). Each new batch creates a `feedback_rounds` row on the PR's implementation ticket and triggers the
+  **address_feedback** phase of the Implement workflow (§3.5): a Claude session in the PR's worktree that resolves
+  the comments, replies on each thread, pushes, and re-requests review. This is the "address feedback on PR / check
+  bugbot feedback" loop the operator runs by hand today.
 
 GitHub access goes through the already-authenticated `gh` CLI (search, view, diff, review posting), the same
 way Codex does it today. No PAT management.
@@ -167,8 +173,8 @@ and per workflow phase (`phase.config.harness`, `.model`, `.effort`).
 Template **Implement** (phases): `plan` (agent, claude) → `implement` (agent, claude, worktree
 `~/git/<repo>-worktrees/<identifier>-<slug>`) → `open_pr` (action: `gh pr create`, Abstract body,
 Linear identifier in body) → `linear_sync` (action: attach PR, Abstract comment, move to In Review) →
-`land` (agent loop: address review feedback, fix CI, resolve conflicts — the "get it to green" loop) →
-`merged` (gate: PR merged → Linear Done). Worktrees are removed after merge.
+`land` (agent loop: fix CI, resolve conflicts — the "get it to green" loop; re-entered by the feedback
+watcher as `address_feedback` whenever a review lands) → `merged` (gate: PR merged → Linear Done). Worktrees are removed after merge.
 
 ### 3.6 Linear reporting parity
 
@@ -214,7 +220,7 @@ Linear identifier in body) → `linear_sync` (action: attach PR, Abstract commen
    MCP tools (`get_review_target`, `report_finding`, `submit_review`), Codex driver, `gh` publisher, paste
    intake, review-requested poller, watch / re-review loop, Reviews UI.
 4. **Implementation workflow** — Implement template, worktree convention, PR → Linear filing, land loop,
-   merge → Done.
+   feedback watcher → `address_feedback` dispatch, merge → Done.
 5. **Reporting parity** — project status job, weekly roundup, usage roll-ups.
 6. Later — real-time hooks, "resume session" actions (`claude --resume`, `codex resume`), Redis removal,
    `codex exec review` evaluation.

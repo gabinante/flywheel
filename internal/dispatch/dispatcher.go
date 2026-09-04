@@ -14,9 +14,8 @@ import (
 	"time"
 
 	"github.com/gabinante/flywheel/events"
-	"github.com/gabinante/flywheel/internal/cost"
 	"github.com/gabinante/flywheel/internal/execution"
-	"github.com/gabinante/flywheel/internal/policy"
+	"github.com/gabinante/flywheel/internal/gate"
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/ticket"
 	"github.com/gabinante/flywheel/internal/workflow"
@@ -127,43 +126,37 @@ type Config struct {
 	AgentModel           string   // API-native model name (used by API-native runners)
 	AgentReasoningEffort string   // API-native reasoning effort
 	AgentAPIBaseURL      string   // API-native base URL
-	// Docker isolation settings.
-	DockerEnabled  bool
-	DockerImage    string
-	DockerMemory   string
-	DockerCPUs     string
-	DockerFirewall bool
-	AgentAPIKey    string
-	ScanLimit      int // max tickets per scan phase (default 50, 0 = unlimited)
-	CostSvc        *cost.Service
-	TraceSvc       TraceAppender
+	AgentAPIKey          string
+	ScanLimit            int // max tickets per scan phase (default 50, 0 = unlimited)
+	TraceSvc             TraceAppender
 }
 
 // Dispatcher listens for ticket events and spawns workers.
 // Supports both the legacy Bus interface (exact Subscribe) and the new DurableEventBus
 // (pattern-based SubscribePattern) for at-least-once delivery.
 type Dispatcher struct {
-	cfg                Config
-	bus                events.Bus
-	durableBus         events.DurableEventBus // nil if bus doesn't support durability
-	tickets            TicketGetter
-	projects           ProjectGetter
-	worker             Worker
-	workerRouter       *ProjectWorkerRouter
-	worktrees          *WorktreeManager
-	clones             *MultiRepoCloneManager // nil-safe: only used for multi-repo projects
-	repoResolver       RepoResolver           // nil-safe: only used for multi-repo projects
-	leaseReleaser      LeaseReleaser          // nil-safe: if nil, worker exit does not release lease (Layer 2 TTL handles it)
-	failureSummarizer  FailureSummarizer      // nil-safe: if nil, worker exit does not inject failure context
-	ticketTransitioner TicketTransitioner        // nil-safe: if nil, merged tickets are not auto-closed
-	workflowEngine     *workflow.Engine              // nil-safe: if nil, workflow-aware dispatching is disabled
-	externalExecutor   *workflow.ExternalExecutor   // nil-safe: if nil, external phases auto-advance
-	actionRegistry     *workflow.ActionRegistry     // nil-safe: if nil, action phases auto-advance
-	checkerRegistry    *policy.CheckerRegistry      // nil-safe: if nil, gate requirements are not auto-checked
-	outputPatcher        TicketOutputPatcher          // nil-safe: if nil, merge state is not persisted
-	workflowPhaseUpdater WorkflowPhaseUpdater        // nil-safe: if nil, async phase processing is disabled
+	cfg                  Config
+	bus                  events.Bus
+	durableBus           events.DurableEventBus // nil if bus doesn't support durability
+	tickets              TicketGetter
+	projects             ProjectGetter
+	worker               Worker
+	workerRouter         *ProjectWorkerRouter
+	worktrees            *WorktreeManager
+	clones               *MultiRepoCloneManager     // nil-safe: only used for multi-repo projects
+	repoResolver         RepoResolver               // nil-safe: only used for multi-repo projects
+	leaseReleaser        LeaseReleaser              // nil-safe: if nil, worker exit does not release lease (Layer 2 TTL handles it)
+	failureSummarizer    FailureSummarizer          // nil-safe: if nil, worker exit does not inject failure context
+	ticketTransitioner   TicketTransitioner         // nil-safe: if nil, merged tickets are not auto-closed
+	workflowEngine       *workflow.Engine           // nil-safe: if nil, workflow-aware dispatching is disabled
+	externalExecutor     *workflow.ExternalExecutor // nil-safe: if nil, external phases auto-advance
+	actionRegistry       *workflow.ActionRegistry   // nil-safe: if nil, action phases auto-advance
+	checkerRegistry      *gate.CheckerRegistry      // nil-safe: if nil, gate requirements are not auto-checked
+	outputPatcher        TicketOutputPatcher        // nil-safe: if nil, merge state is not persisted
+	workflowPhaseUpdater WorkflowPhaseUpdater       // nil-safe: if nil, async phase processing is disabled
 
-	ghLimiter      *ghRateLimiter  // rate limiter for gh CLI subprocess calls
+	ghLimiter      *ghRateLimiter // rate limiter for gh CLI subprocess calls
+	skipWorktrees  bool           // tests only: run workers directly in the repo dir instead of a git worktree
 	reconcileCache *projectCache  // per-reconcile project lookup cache; nil outside scanPending
 
 	mu             sync.Mutex
@@ -357,7 +350,7 @@ func (d *Dispatcher) SetActionRegistry(ar *workflow.ActionRegistry) {
 	d.actionRegistry = ar
 }
 
-func (d *Dispatcher) SetCheckerRegistry(cr *policy.CheckerRegistry) {
+func (d *Dispatcher) SetCheckerRegistry(cr *gate.CheckerRegistry) {
 	d.checkerRegistry = cr
 }
 
@@ -1176,11 +1169,10 @@ func (d *Dispatcher) runTypedWorkerWithProject(ctx context.Context, t *ticket.Ti
 			}
 		}
 
-		if d.cfg.DockerEnabled {
-			// Docker mode: container handles its own workspace; pass repo dir for context.
+		if d.skipWorktrees {
 			workDir = repoDir
 		} else {
-			// Host mode: create git worktree for isolation.
+			// Create a git worktree for isolation.
 			branch := d.branchForTicket(ctx, t)
 			var err error
 			workDir, err = d.worktrees.CreateFromRepo(t.ID, branch, repoDir, proj.DefaultBranch)
@@ -1239,16 +1231,10 @@ func (d *Dispatcher) runTypedWorkerWithProject(ctx context.Context, t *ticket.Ti
 	slog.Info("dispatch: running worker", "type", string(wt), "role", role, "ticket", t.ID)
 
 	// Spawn worker.
-	result, selected, err := d.spawnWorker(ctx, proj, t.ID, t.ProjectID, role, wt, prompt, taskMsg, workDir)
+	result, _, err := d.spawnWorker(ctx, proj, t.ID, t.ProjectID, role, wt, prompt, taskMsg, workDir)
 	if err != nil {
 		return err
 	}
-	usageRole := role
-	if role == string(wt) {
-		usageRole = workerRoleForType(wt)
-	}
-	d.recordUsage(ctx, selected.Config, t.ProjectID, t.ID, usageRole, operationTypeForType(wt), prompt, taskMsg, result)
-
 	if !result.Success {
 		slog.Error("dispatch: worker completed with error", "type", string(wt), "role", role, "ticket", t.ID, "error", result.Error, "output", result.Output)
 	} else {
@@ -1698,43 +1684,6 @@ func workerRoleForType(wt WorkerType) string {
 	default:
 		return "implementation"
 	}
-}
-
-func operationTypeForType(wt WorkerType) cost.OperationType {
-	switch wt {
-	case WorkerTypePlanner:
-		return cost.OpPlanning
-	case WorkerTypeValidator:
-		return cost.OpReview
-	case WorkerTypeInvestigator:
-		return cost.OpStructuralQuery
-	case WorkerTypeDeployer:
-		return cost.OpGeneral
-	default:
-		return cost.OpCodeGeneration
-	}
-}
-
-func (d *Dispatcher) recordUsage(ctx context.Context, workerCfg Config, projectID, ticketID, workerRole string, op cost.OperationType, systemPrompt, taskMessage string, result *WorkerResult) {
-	if d.cfg.CostSvc == nil || result == nil {
-		return
-	}
-	provider, model := cost.InferProviderModel(workerCfg.AgentRunner, workerCfg.AgentDriver, workerCfg.AgentModel)
-	output := strings.TrimSpace(result.Output)
-	if output == "" {
-		output = strings.TrimSpace(result.Error)
-	}
-	record := &cost.LLMCallRecord{
-		ProjectID:     projectID,
-		TicketID:      ticketID,
-		WorkerRole:    workerRole,
-		Provider:      provider,
-		Model:         model,
-		OperationType: op,
-		InputTokens:   cost.EstimateTokens(systemPrompt, taskMessage),
-		OutputTokens:  cost.EstimateTokens(output),
-	}
-	_, _ = d.cfg.CostSvc.RecordAndCheck(ctx, record)
 }
 
 // PR/merge/review functions are in merge.go.

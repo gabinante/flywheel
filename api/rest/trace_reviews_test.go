@@ -36,7 +36,7 @@ func (m *mockTraceService) GetTracePaginated(ctx context.Context, ticketID strin
 
 type mockTicketGetter struct {
 	ticket *ticket.Ticket
-	err   error
+	err    error
 }
 
 func (m *mockTicketGetter) GetTicket(ctx context.Context, id string) (*ticket.Ticket, error) {
@@ -44,14 +44,14 @@ func (m *mockTicketGetter) GetTicket(ctx context.Context, id string) (*ticket.Ti
 }
 
 type mockReviewService struct {
-	listIDs     []string
-	listErr     error
-	approveErr  error
-	rejectErr   error
-	reopenErr   error
-	listEsc     []review.Escalation
-	listEscErr  error
-	resolveErr  error
+	listIDs    []string
+	listErr    error
+	approveErr error
+	rejectErr  error
+	reopenErr  error
+	listEsc    []review.Escalation
+	listEscErr error
+	resolveErr error
 }
 
 func (m *mockReviewService) ListPendingReviews(ctx context.Context, projectID string) ([]string, error) {
@@ -179,7 +179,7 @@ func TestTraceHandler_getTrace_200(t *testing.T) {
 func TestReviewsHandler_listPendingReviews_403(t *testing.T) {
 	h := &ReviewsHandler{
 		ReviewSvc:  &mockReviewService{listIDs: []string{}},
-		TicketSvc: &mockTicketGetter{},
+		TicketSvc:  &mockTicketGetter{},
 		ProjectSvc: &mockProjectSvc{proj: &project.Project{ID: "proj1", OrgID: "org1"}},
 		OrgSvc:     &mockOrgSvc{orgIDs: []string{"other"}},
 		AgentStore: &mockAgentStore{agent: &agent.Agent{ID: "a1", UserID: "u1"}},
@@ -195,7 +195,7 @@ func TestReviewsHandler_listPendingReviews_403(t *testing.T) {
 func TestReviewsHandler_listPendingReviews_200(t *testing.T) {
 	h := &ReviewsHandler{
 		ReviewSvc:  &mockReviewService{listIDs: []string{"t1"}},
-		TicketSvc: &mockTicketGetter{ticket: &ticket.Ticket{ID: "t1", Title: "T1", ProjectID: "proj1"}},
+		TicketSvc:  &mockTicketGetter{ticket: &ticket.Ticket{ID: "t1", Title: "T1", ProjectID: "proj1"}},
 		ProjectSvc: &mockProjectSvc{proj: &project.Project{ID: "proj1", OrgID: "org1"}},
 		OrgSvc:     &mockOrgSvc{orgIDs: []string{"org1"}},
 		AgentStore: &mockAgentStore{agent: &agent.Agent{ID: "a1", UserID: "u1"}},
@@ -221,7 +221,7 @@ func TestReviewsHandler_createReview_Approve_200(t *testing.T) {
 	tick := &ticket.Ticket{ID: "t1", ProjectID: "proj1"}
 	h := &ReviewsHandler{
 		ReviewSvc:  &mockReviewService{},
-		TicketSvc: &mockTicketGetter{ticket: tick},
+		TicketSvc:  &mockTicketGetter{ticket: tick},
 		ProjectSvc: &mockProjectSvc{proj: &project.Project{ID: "proj1", OrgID: "org1"}},
 		OrgSvc:     &mockOrgSvc{orgIDs: []string{"org1"}},
 		AgentStore: &mockAgentStore{agent: &agent.Agent{ID: "a1", UserID: "u1"}},
@@ -241,7 +241,7 @@ func TestReviewsHandler_createReview_Reject_200(t *testing.T) {
 	tick := &ticket.Ticket{ID: "t1", ProjectID: "proj1"}
 	h := &ReviewsHandler{
 		ReviewSvc:  &mockReviewService{},
-		TicketSvc: &mockTicketGetter{ticket: tick},
+		TicketSvc:  &mockTicketGetter{ticket: tick},
 		ProjectSvc: &mockProjectSvc{proj: &project.Project{ID: "proj1", OrgID: "org1"}},
 		OrgSvc:     &mockOrgSvc{orgIDs: []string{"org1"}},
 		AgentStore: &mockAgentStore{agent: &agent.Agent{ID: "a1", UserID: "u1"}},
@@ -261,7 +261,7 @@ func TestReviewsHandler_createReview_InvalidDecision_400(t *testing.T) {
 	tick := &ticket.Ticket{ID: "t1", ProjectID: "proj1"}
 	h := &ReviewsHandler{
 		ReviewSvc:  &mockReviewService{},
-		TicketSvc: &mockTicketGetter{ticket: tick},
+		TicketSvc:  &mockTicketGetter{ticket: tick},
 		ProjectSvc: &mockProjectSvc{proj: &project.Project{ID: "proj1", OrgID: "org1"}},
 		OrgSvc:     &mockOrgSvc{orgIDs: []string{"org1"}},
 		AgentStore: &mockAgentStore{agent: &agent.Agent{ID: "a1", UserID: "u1"}},

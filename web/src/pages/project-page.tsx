@@ -5,7 +5,6 @@ import {
   GitBranch,
   Layers,
   LayoutList,
-  PieChart,
   Plus,
   Save,
   ShieldCheck,
@@ -14,7 +13,6 @@ import {
 
 import { DispatchDashboard } from '@/components/dispatch-dashboard'
 import { ProjectDispatchRoutingCard } from '@/components/project-dispatch-routing-card'
-import { ProjectIntegrationsSection } from '@/components/project-integrations-section'
 import { WorkflowTimelineEditor } from '@/components/workflow-timeline-editor'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -435,11 +433,6 @@ export function ProjectPage() {
         onProjectChange={setProject}
       />
 
-      <ProjectIntegrationsSection
-        projectId={projectId}
-        project={project}
-      />
-
       <section>
         <h2 className="mb-3 text-sm font-medium text-muted-foreground">
           Navigate
@@ -456,18 +449,6 @@ export function ProjectPage() {
             icon={Eye}
             title="Pending Reviews"
             description="Review tickets awaiting approval"
-          />
-          <NavCard
-            to={`${base}/policies`}
-            icon={ShieldCheck}
-            title="Policy Health"
-            description="Monitor policy compliance and gates"
-          />
-          <NavCard
-            to={`${base}/usage`}
-            icon={PieChart}
-            title="Usage"
-            description="Inspect token, cost, and API usage trends"
           />
         </div>
       </section>

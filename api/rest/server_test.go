@@ -57,4 +57,3 @@ func TestRouter_OrgList_401_NoAuth(t *testing.T) {
 		t.Errorf("GET /orgs (no auth): got status %d, want 401", w.Code)
 	}
 }
-

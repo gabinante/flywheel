@@ -7,22 +7,15 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/gabinante/flywheel/api/generated"
 	"github.com/gabinante/flywheel/internal/agent"
-	"github.com/gabinante/flywheel/internal/cost"
-	"github.com/gabinante/flywheel/internal/entity"
-	"github.com/gabinante/flywheel/internal/environment"
 	apierrors "github.com/gabinante/flywheel/internal/errors"
 	"github.com/gabinante/flywheel/internal/execution"
-	"github.com/gabinante/flywheel/internal/gitnotes"
 	"github.com/gabinante/flywheel/internal/org"
-	"github.com/gabinante/flywheel/internal/plan"
 	"github.com/gabinante/flywheel/internal/project"
-	"github.com/gabinante/flywheel/internal/projecttemplate"
 	"github.com/gabinante/flywheel/internal/queue"
 	"github.com/gabinante/flywheel/internal/review"
 	"github.com/gabinante/flywheel/internal/ticket"
@@ -39,13 +32,7 @@ type StrictServer struct {
 	QueueSvc      *queue.Service
 	TraceSvc      *execution.Service
 	ReviewSvc     *review.Service
-	EntitySvc     *entity.Service
-	EnvSvc        *environment.Service
-	PlanSvc       *plan.Service
-	PolicySvc     PolicyServiceForHandler
-	AgentStore         agent.AgentStore
-	CostSvc            *cost.Service
-	ProjectTemplateSvc *projecttemplate.Service // nil-safe: template seeding disabled when nil
+	AgentStore    agent.AgentStore
 }
 
 // resolveOrg resolves an org slug to a UUID. Returns the input unchanged if already a UUID.
@@ -247,127 +234,7 @@ func (s *StrictServer) CreateProject(ctx context.Context, req generated.CreatePr
 		return nil, apierrors.MapError(err)
 	}
 
-	// Seed from template if requested
-	if s.ProjectTemplateSvc != nil && body.TemplateId != nil && *body.TemplateId != "" {
-		wsIDs := []string{}
-		if body.WorkStreamTemplateIds != nil {
-			wsIDs = *body.WorkStreamTemplateIds
-		} else {
-			pt, err := s.ProjectTemplateSvc.GetProjectTemplate(ctx, *body.TemplateId)
-			if err != nil {
-				slog.Warn("template lookup failed", "template_id", *body.TemplateId, "error", err)
-			} else if pt != nil {
-				wsIDs = pt.WorkstreamTemplateIDs
-			}
-		}
-		if len(wsIDs) > 0 {
-			createdBy := "system"
-			if agentID, ok := ctx.Value(ContextKeyAgentID).(string); ok && agentID != "" {
-				createdBy = agentID
-			}
-			if _, err := s.ProjectTemplateSvc.SeedProject(ctx, p.ID, wsIDs, createdBy, s.WorkStreamSvc, s.TicketSvc); err != nil {
-				slog.Error("template seed failed", "project_id", p.ID, "error", err)
-			}
-		}
-	}
-
 	return generated.CreateProject201JSONResponse(projectToGen(p)), nil
-}
-
-func (s *StrictServer) GetCommitNotes(ctx context.Context, req generated.GetCommitNotesRequestObject) (generated.GetCommitNotesResponseObject, error) {
-	req.OrgID = s.resolveOrg(ctx, req.OrgID)
-	req.ProjectID = s.resolveProject(ctx, req.ProjectID)
-	repoPath := req.Params.RepoPath
-	proj, err := s.ProjectSvc.GetProject(ctx, req.ProjectID)
-	if err != nil {
-		return nil, apierrors.MapError(err)
-	}
-	if proj == nil || proj.OrgID != req.OrgID {
-		return generated.GetCommitNotes404JSONResponse(seToGen(apierrors.New(apierrors.CodeNotFound, "project not found", false))), nil
-	}
-	if err := CheckProjectAccess(ctx, req.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
-		return nil, err
-	}
-	if !repoPathAccessible(repoPath) {
-		return generated.GetCommitNotes501JSONResponse(generated.NotImplementedError{
-			Code:  ptr(generated.NotImplementedErrorCodeNotImplemented),
-			Error: ptr("repo_path query param required and must point to an accessible git repo (server does not have the repo)"),
-		}), nil
-	}
-	noteType := ""
-	if req.Params.Type != nil {
-		noteType = string(*req.Params.Type)
-	}
-	out := generated.CommitNotesResponse{CommitSha: &req.CommitSha, Notes: &map[string]string{}}
-	if noteType != "" {
-		ref := gitnotes.RefForType(noteType)
-		if ref == "" {
-			return nil, apierrors.New(apierrors.CodeInvalidInput, "type must be decision, trace, or intent", false)
-		}
-		body, err := gitnotes.ShowNote(repoPath, ref, req.CommitSha)
-		if err != nil {
-			return nil, apierrors.MapError(err)
-		}
-		(*out.Notes)[filepath.Base(ref)] = body
-	} else {
-		for _, ref := range gitnotes.AllRefs() {
-			body, _ := gitnotes.ShowNote(repoPath, ref, req.CommitSha)
-			if body != "" {
-				(*out.Notes)[filepath.Base(ref)] = body
-			}
-		}
-	}
-	return generated.GetCommitNotes200JSONResponse(out), nil
-}
-
-func (s *StrictServer) GetGitNotesLog(ctx context.Context, req generated.GetGitNotesLogRequestObject) (generated.GetGitNotesLogResponseObject, error) {
-	req.OrgID = s.resolveOrg(ctx, req.OrgID)
-	req.ProjectID = s.resolveProject(ctx, req.ProjectID)
-	repoPath := req.Params.RepoPath
-	proj, err := s.ProjectSvc.GetProject(ctx, req.ProjectID)
-	if err != nil {
-		return nil, apierrors.MapError(err)
-	}
-	if proj == nil || proj.OrgID != req.OrgID {
-		return generated.GetGitNotesLog404JSONResponse(seToGen(apierrors.New(apierrors.CodeNotFound, "project not found", false))), nil
-	}
-	if err := CheckProjectAccess(ctx, req.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
-		return nil, err
-	}
-	if !repoPathAccessible(repoPath) {
-		return generated.GetGitNotesLog501JSONResponse(generated.NotImplementedError{
-			Code:  ptr(generated.NotImplementedErrorCodeNotImplemented),
-			Error: ptr("repo_path query param required and must point to an accessible git repo (server does not have the repo)"),
-		}), nil
-	}
-	noteType := gitnotes.TypeDecision
-	if req.Params.Type != nil {
-		noteType = string(*req.Params.Type)
-	}
-	limit := 20
-	if req.Params.Limit != nil {
-		limit = *req.Params.Limit
-		if limit <= 0 {
-			limit = 20
-		}
-	}
-	ref := gitnotes.RefForType(noteType)
-	if ref == "" {
-		return nil, apierrors.New(apierrors.CodeInvalidInput, "type must be decision, trace, or intent", false)
-	}
-	entries, err := gitnotes.Log(repoPath, ref, limit)
-	if err != nil {
-		return nil, apierrors.MapError(err)
-	}
-	out := make([]generated.GitNotesLogEntry, len(entries))
-	for i := range entries {
-		out[i] = generated.GitNotesLogEntry{
-			CommitSha: &entries[i].CommitSHA,
-			Ref:       &entries[i].Ref,
-			Body:      &entries[i].Body,
-		}
-	}
-	return generated.GetGitNotesLog200JSONResponse(generated.GitNotesLogResponse{Entries: &out}), nil
 }
 
 func (s *StrictServer) GetProject(ctx context.Context, req generated.GetProjectRequestObject) (generated.GetProjectResponseObject, error) {

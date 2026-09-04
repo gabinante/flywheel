@@ -33,9 +33,9 @@ const (
 	RunEventKindStatus       RunEventKind = "status"
 	RunEventKindWorkerOutput RunEventKind = "worker_output"
 	RunEventKindError        RunEventKind = "error"
-	RunEventKindToolCall    RunEventKind = "tool_call"
-	RunEventKindToolResult  RunEventKind = "tool_result"
-	RunEventKindPhaseChange RunEventKind = "phase_change"
+	RunEventKindToolCall     RunEventKind = "tool_call"
+	RunEventKindToolResult   RunEventKind = "tool_result"
+	RunEventKindPhaseChange  RunEventKind = "phase_change"
 )
 
 type OrchestratorPhase string

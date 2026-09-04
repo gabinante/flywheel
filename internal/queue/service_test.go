@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/redis/go-redis/v9"
 	"github.com/gabinante/flywheel/internal/ticket"
+	"github.com/redis/go-redis/v9"
 )
 
 func TestClaimTicket_IdempotencyKey_ReuseLease(t *testing.T) {

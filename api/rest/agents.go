@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	apierrors "github.com/gabinante/flywheel/internal/errors"
 	"github.com/gabinante/flywheel/internal/agent"
+	apierrors "github.com/gabinante/flywheel/internal/errors"
 )
 
 // AgentsHandler handles agent registration (and later auth).
@@ -15,8 +15,8 @@ type AgentsHandler struct {
 
 func (h *AgentsHandler) register(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name string      `json:"name"`
-		Type agent.Type  `json:"type"`
+		Name string     `json:"name"`
+		Type agent.Type `json:"type"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		WriteStructuredError(w, apierrors.New(apierrors.CodeInvalidInput, "invalid body", false))

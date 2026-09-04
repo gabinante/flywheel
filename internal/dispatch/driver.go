@@ -31,18 +31,6 @@ type AgentDriver interface {
 	// mcpConfigPath is the path to the written Claude-compatible MCP config file.
 	BuildCLIArgs(systemPrompt, taskMessage string, mcp mcpConnection, mcpConfigPath string) []string
 
-	// BuildDockerCmd returns the shell command to run inside a Docker container.
-	// Standard file mount paths:
-	//   /tmp/system-prompt.txt  — system prompt content
-	//   /tmp/task-prompt.txt    — task message content
-	//   /tmp/mcp-config.json   — MCP server configuration
-	// branch is the git branch to check out inside the container.
-	BuildDockerCmd(branch string, mcp mcpConnection) string
-
-	// DockerImage returns the preferred Docker image for this agent.
-	// Return empty string to use the default from DispatchConfig.DockerImage.
-	DockerImage() string
-
 	// FormatPrompt optionally transforms the system prompt for agent-specific needs.
 	// Most drivers return the input unchanged.
 	FormatPrompt(systemPrompt string) string
@@ -64,10 +52,6 @@ type AgentDriver interface {
 	// workers when DISPATCH_DOCKER_FIREWALL is enabled and no explicit host list
 	// is configured.
 	DefaultAllowedHosts() []string
-
-	// ExtraDockerArgs returns additional docker run arguments (e.g., volumes, env vars)
-	// specific to this agent. These are appended before the image name.
-	ExtraDockerArgs() []string
 }
 
 // DriverEnv describes environment configuration for an agent driver.

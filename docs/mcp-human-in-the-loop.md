@@ -59,4 +59,4 @@ srv.SendNotificationToAllClients("flywheel/need_human", map[string]interface{}{
 2. **Elicitation (done):** When claim_ticket returns no ticket available, the server sends an elicitation that lists stuck tickets (claimed or executing) and lets the user choose one to force-release (ticket_id_to_release). On accept, the server force-releases that ticket and retries claim so the agent gets the lease in the same session. The user can also direct the agent in chat (e.g. "release agent-reliability-3 and claim it"); the agent then calls force_release_lease (ticket_id) and claim_ticket (project_id). See docs/troubleshooting.md.
 3. **Notifications (optional):** If the SDK exposes a way to send notifications to the client, use them for passive “agent is blocked; see …” without blocking the tool.
 
-This doc should be updated as we implement; link to it from **docs/cursor-mcp.md** and the agent guide once elicitation or notifications are in use.
+This doc should be updated as we implement; link to it from **docs/interacting.md** and the agent guide once elicitation or notifications are in use.

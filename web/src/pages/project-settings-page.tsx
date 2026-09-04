@@ -7,7 +7,6 @@ import {
   FileText,
   GitBranch,
   Monitor,
-  Plug,
   Save,
   ServerCog,
   Settings,
@@ -18,7 +17,6 @@ import {
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { ProjectBasePromptCard } from '@/components/project-base-prompt-card'
 import { ProjectDispatchRoutingCard } from '@/components/project-dispatch-routing-card'
-import { ProjectIntegrationsSection } from '@/components/project-integrations-section'
 import { WorkflowTimelineEditor } from '@/components/workflow-timeline-editor'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -40,7 +38,7 @@ import type { components } from '@/lib/api/v1'
 
 type Project = components['schemas']['Project']
 
-type SettingsSectionID = 'dispatch' | 'workers' | 'workflow' | 'integrations' | 'prompts'
+type SettingsSectionID = 'dispatch' | 'workers' | 'workflow' | 'prompts'
 
 const SETTINGS_SECTIONS: Array<{
   id: SettingsSectionID
@@ -71,12 +69,6 @@ const SETTINGS_SECTIONS: Array<{
     label: 'Workflow stages',
     description: 'Define the staged ticket lifecycle for this project.',
     icon: Workflow,
-  },
-  {
-    id: 'integrations',
-    label: 'Integrations',
-    description: 'Connect delivery, infrastructure, and provider integrations.',
-    icon: Plug,
   },
 ]
 
@@ -115,7 +107,7 @@ function ScopeModelCard() {
           </div>
           <p className="text-xs leading-relaxed text-muted-foreground">
             Active worker limits, configured executors, custom roles, routing
-            policy, workflows, and integrations are stored on this project.
+            workflows, and worker routing are stored on this project.
           </p>
         </div>
         <div className="rounded-2xl border border-white/10 bg-black/10 p-4">
@@ -542,7 +534,7 @@ export function ProjectSettingsPage() {
   const title = selectedSectionMeta?.label ?? 'Project settings'
   const description =
     selectedSectionMeta?.description ??
-    "Configure this project's dispatch behavior, worker overrides, delivery workflow, and provider integrations."
+    "Configure this project's dispatch behavior, worker overrides, and workflow stages."
 
   return (
     <div className="flex flex-col gap-6">
@@ -612,10 +604,6 @@ export function ProjectSettingsPage() {
 
           {selectedSection === 'workflow' ? (
             <WorkflowTimelineEditor projectId={projectId} orgId={orgId} />
-          ) : null}
-
-          {selectedSection === 'integrations' ? (
-            <ProjectIntegrationsSection projectId={projectId} project={project} />
           ) : null}
 
           <div className="flex justify-end">

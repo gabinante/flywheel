@@ -3,3 +3,5 @@ generate:
   models: true
   client: true
 output: client/client.gen.go
+compatibility:
+  always-prefix-enum-values: true

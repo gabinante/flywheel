@@ -13,11 +13,11 @@ import (
 type ContentRiskClass string
 
 const (
-	RiskClassURL              ContentRiskClass = "url"
-	RiskClassBase64           ContentRiskClass = "base64_blob"
-	RiskClassInstructionLike  ContentRiskClass = "instruction_like"
-	RiskClassUnusualFormat    ContentRiskClass = "unusual_formatting"
-	RiskClassCodeExecution    ContentRiskClass = "code_execution"
+	RiskClassURL                 ContentRiskClass = "url"
+	RiskClassBase64              ContentRiskClass = "base64_blob"
+	RiskClassInstructionLike     ContentRiskClass = "instruction_like"
+	RiskClassUnusualFormat       ContentRiskClass = "unusual_formatting"
+	RiskClassCodeExecution       ContentRiskClass = "code_execution"
 	RiskClassPrivilegeEscalation ContentRiskClass = "privilege_escalation"
 )
 
@@ -31,13 +31,13 @@ type ContentFlag struct {
 
 // ContentAuditEntry records an external content ingestion event for audit purposes.
 type ContentAuditEntry struct {
-	Timestamp   time.Time        `json:"timestamp"`
-	Source      string           `json:"source"`       // Where the content came from (e.g. "dependency_readme", "pr_description", "mcp_tool_output")
-	TicketID    string           `json:"ticket_id"`    // Associated ticket if any
-	AgentID     string           `json:"agent_id"`     // Which agent read it
-	ContentSize int              `json:"content_size"` // Byte length of ingested content
-	Flags       []ContentFlag    `json:"flags"`        // Risky content classes detected
-	Action      string           `json:"action"`       // What happened next ("injected_to_prompt", "logged_only", "blocked")
+	Timestamp   time.Time     `json:"timestamp"`
+	Source      string        `json:"source"`       // Where the content came from (e.g. "dependency_readme", "pr_description", "mcp_tool_output")
+	TicketID    string        `json:"ticket_id"`    // Associated ticket if any
+	AgentID     string        `json:"agent_id"`     // Which agent read it
+	ContentSize int           `json:"content_size"` // Byte length of ingested content
+	Flags       []ContentFlag `json:"flags"`        // Risky content classes detected
+	Action      string        `json:"action"`       // What happened next ("injected_to_prompt", "logged_only", "blocked")
 }
 
 // Patterns for risky content detection.

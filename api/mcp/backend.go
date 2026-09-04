@@ -2,20 +2,11 @@ package mcp
 
 import (
 	"github.com/gabinante/flywheel/internal/agent"
-	"github.com/gabinante/flywheel/internal/catalog"
-	"github.com/gabinante/flywheel/internal/claims"
-	"github.com/gabinante/flywheel/internal/entity"
 	"github.com/gabinante/flywheel/internal/execution"
-	"github.com/gabinante/flywheel/internal/investigation"
-	"github.com/gabinante/flywheel/internal/notification"
 	"github.com/gabinante/flywheel/internal/org"
-	"github.com/gabinante/flywheel/internal/pillar"
 	"github.com/gabinante/flywheel/internal/project"
-	"github.com/gabinante/flywheel/internal/projecttemplate"
 	"github.com/gabinante/flywheel/internal/queue"
 	"github.com/gabinante/flywheel/internal/review"
-	"github.com/gabinante/flywheel/internal/rollback"
-	"github.com/gabinante/flywheel/internal/stateindex"
 	"github.com/gabinante/flywheel/internal/ticket"
 	"github.com/gabinante/flywheel/internal/workflow"
 	"github.com/gabinante/flywheel/internal/workstream"
@@ -29,36 +20,12 @@ type Backend struct {
 	Queue      *queue.Service
 	Trace      *execution.Service
 	Review     *review.Service
-	Org           *org.Service
-	Entity        *entity.Service
-	AgentStore    agent.AgentStore
-	Investigation *investigation.Service
-	Claims        *claims.Service
-	Notification  *notification.Service
-	Repos         *project.RepositoryService // nil-safe: multi-repo features disabled when nil
-	Pillar        *pillar.Service
-
-	// CodeIntel is the pluggable code intelligence provider (Layer 3).
-	// When nil, code_* tools are not registered. Set via PluginRegistry.
-	CodeIntel CodeIntelligenceProvider
-
-	// Findings is the pluggable findings provider (Layer 4).
-	// When non-nil, findings_* MCP tools are registered.
-	// Default: Weaviate backend; alternatives: pgvector, Qdrant, in-memory.
-	Findings FindingsProvider
-
-	// Catalog (Layer 14 project map)
-	Catalog        *catalog.Service
-	CatalogScanner *catalog.Scanner
-
-	// StateIndex provides observed infrastructure state queries (Layer 10).
-	StateIndex *stateindex.Service
-
-	Rollback        *rollback.Service
-	Workflow        *workflow.Engine
-	ProjectTemplate *projecttemplate.Service
+	Org        *org.Service
+	AgentStore agent.AgentStore
+	Repos      *project.RepositoryService // nil-safe: multi-repo features disabled when nil
+	Workflow   *workflow.Engine
 
 	// DefaultAgentID is used as a fallback when agent_id is not passed in args
-	// and not available from HTTP auth context (e.g. stdio mode with FLYWHEEL_TOKEN).
+	// and not available from HTTP auth context.
 	DefaultAgentID string
 }

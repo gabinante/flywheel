@@ -16,7 +16,7 @@ jobs:
           go-version-file: go.mod
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version-file: '.nvmrc'
           cache: 'npm'
           cache-dependency-path: web/package-lock.json
       - name: Web build (validates Vite pipeline)
@@ -28,17 +28,3 @@ jobs:
       - name: Test
         run: make test
 
-  smoke:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Docker Compose smoke test
-        run: |
-          cp .env.example .env
-          docker compose up -d
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:8080/healthz && break
-            sleep 2
-          done
-          curl -sf http://localhost:8080/healthz
-          curl -sf http://localhost:8080/ | grep -q doctype

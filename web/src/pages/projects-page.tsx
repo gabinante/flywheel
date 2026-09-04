@@ -395,13 +395,6 @@ export function ProjectsPage() {
               <Plus className="size-3.5" />
               Create project
             </Link>
-            <Link
-              to={`/orgs/${orgParam}/settings`}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground"
-            >
-              <Settings className="size-3.5" />
-              Org settings
-            </Link>
           </div>
         </div>
       </motion.div>

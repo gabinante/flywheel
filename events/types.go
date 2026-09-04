@@ -43,9 +43,9 @@ const (
 	EventPolicyEvaluated = "policy.evaluated" // policy was evaluated for a transition (audit trail)
 
 	// --- CI/merge events ---
-	EventTestsFailed  = "ticket.tests_failed"  // CI checks failed on PR before merge
-	EventTestsPassed  = "ticket.tests_passed"  // CI checks passed on PR
-	EventTicketMerged = "ticket.merged"        // PR merged and ticket closed
+	EventTestsFailed  = "ticket.tests_failed" // CI checks failed on PR before merge
+	EventTestsPassed  = "ticket.tests_passed" // CI checks passed on PR
+	EventTicketMerged = "ticket.merged"       // PR merged and ticket closed
 
 	// --- Deprecated aliases (backward compat for existing subscribers) ---
 	EventTicketDone      = EventTicketClosed // alias: done → closed

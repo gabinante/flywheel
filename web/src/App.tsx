@@ -20,24 +20,10 @@ import { WorkStreamsPage } from '@/pages/work-streams-page'
 import { ProjectCreatePage } from '@/pages/project-create-page'
 import { WorkStreamCreatePage } from '@/pages/work-stream-create-page'
 import { WorkStreamEditPage } from '@/pages/work-stream-edit-page'
-import { OrgSettingsPage } from '@/pages/org-settings-page'
-import { InviteAcceptPage } from '@/pages/invite-accept-page'
 
 // Lazy-load heavy pages that aren't needed on initial render
 const CommandCenterPage = lazy(() =>
   import('@/pages/command-center-page').then((m) => ({ default: m.CommandCenterPage })),
-)
-const InfrastructurePage = lazy(() =>
-  import('@/pages/infrastructure-page').then((m) => ({ default: m.InfrastructurePage })),
-)
-const EntityDetailPage = lazy(() =>
-  import('@/pages/entity-detail-page').then((m) => ({ default: m.EntityDetailPage })),
-)
-const PolicyHealthPage = lazy(() =>
-  import('@/pages/policy-health-page').then((m) => ({ default: m.PolicyHealthPage })),
-)
-const UsagePage = lazy(() =>
-  import('@/pages/usage-page').then((m) => ({ default: m.UsagePage })),
 )
 
 function PageSuspense({ children }: { children: React.ReactNode }) {
@@ -111,17 +97,11 @@ export default function App() {
             <Routes>
               {/* Home/landing page renders full-width, outside AppShell constraints */}
               <Route path="/" element={<HomeRoute />} />
-              {/* Invite accept page — accessible without auth, handles sign-in flow */}
-              <Route path="/invite/:code" element={<InviteAcceptPage />} />
               <Route element={<AppShell />}>
                 <Route element={<RequireAuthLayout />}>
                   {/* Auto-redirect UUID URLs to slug URLs */}
                   <Route element={<SlugRedirect />}>
                   <Route path="/orgs" element={<OrgsPage />} />
-                  <Route
-                    path="/orgs/:orgId/settings"
-                    element={<OrgSettingsPage />}
-                  />
                   <Route
                     path="/orgs/:orgId/projects"
                     element={<ProjectsPage />}
@@ -163,46 +143,6 @@ export default function App() {
                   <Route
                     path="/orgs/:orgId/projects/:projectId/reviews"
                     element={<ReviewsPage />}
-                  />
-                  <Route
-                    path="/orgs/:orgId/projects/:projectId/infrastructure"
-                    element={
-                      <ErrorBoundary>
-                        <PageSuspense>
-                          <InfrastructurePage />
-                        </PageSuspense>
-                      </ErrorBoundary>
-                    }
-                  />
-                  <Route
-                    path="/orgs/:orgId/projects/:projectId/infrastructure/entities/:entityId"
-                    element={
-                      <ErrorBoundary>
-                        <PageSuspense>
-                          <EntityDetailPage />
-                        </PageSuspense>
-                      </ErrorBoundary>
-                    }
-                  />
-                  <Route
-                    path="/orgs/:orgId/projects/:projectId/policies"
-                    element={
-                      <ErrorBoundary>
-                        <PageSuspense>
-                          <PolicyHealthPage />
-                        </PageSuspense>
-                      </ErrorBoundary>
-                    }
-                  />
-                  <Route
-                    path="/orgs/:orgId/projects/:projectId/usage"
-                    element={
-                      <ErrorBoundary>
-                        <PageSuspense>
-                          <UsagePage />
-                        </PageSuspense>
-                      </ErrorBoundary>
-                    }
                   />
                   <Route
                     path="/orgs/:orgId/projects/:projectId/work-streams/new"

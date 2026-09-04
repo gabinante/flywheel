@@ -5,20 +5,20 @@ import (
 	"errors"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/gabinante/flywheel/internal/agent"
 	"github.com/gabinante/flywheel/internal/user"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
-// Provisioner creates or finds user and agent from GitHub identity.
+// Provisioner creates or finds the user and agent for an operator identity.
 type Provisioner struct {
 	UserStore  *user.Store
 	AgentStore *agent.Store
 }
 
-// Provision finds user by GitHub ID, or creates user + agent. Returns user and agent.
-func (p *Provisioner) Provision(ctx context.Context, gh *GitHubUser) (*user.User, *agent.Agent, error) {
+// Provision finds the user by identity ID, or creates user + agent. Returns user and agent.
+func (p *Provisioner) Provision(ctx context.Context, gh *Identity) (*user.User, *agent.Agent, error) {
 	u, err := p.UserStore.GetByGitHubID(ctx, gh.ID)
 	if err == nil {
 		// Existing user: get linked agent
@@ -54,7 +54,7 @@ func (p *Provisioner) Provision(ctx context.Context, gh *GitHubUser) (*user.User
 		UserID:    u.ID,
 		Name:      name,
 		Type:      agent.TypeCustom,
-		APIKey:    "", // OAuth-only; no API key
+		APIKey:    "", // browser identity; agents use API keys
 		CreatedAt: now,
 	}
 	if err := p.AgentStore.Create(ctx, a); err != nil {

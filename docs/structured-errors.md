@@ -22,7 +22,7 @@ All error responses use this JSON structure:
 | Code | Meaning | Typical cause | Retriable? |
 |------|---------|----------------|------------|
 | `lease_expired` | Lease invalid or expired | Token expired, wrong ticket, or lease was released | Yes – call **renew_lease** or **claim_ticket** again |
-| `unauthorized` | Not authenticated or identity unknown | Missing/invalid OAuth or token; agent not linked to user | No – fix auth (e.g. sign in again) |
+| `unauthorized` | Not authenticated or identity unknown | Missing/invalid API key or token; agent not linked to user | No – fix auth (e.g. sign in again) |
 | `forbidden` | Authenticated but not allowed | No access to project/org; not the leaseholder | No – fix scope or use correct identity |
 | `not_found` | Resource doesn't exist or no ticket available | Wrong ID; or **claim_ticket** when queue is empty | Often yes for "no ticket" (retry later); no for bad ID |
 | `conflict` | State or precondition conflict | Ticket already claimed; dependency not done; wrong state for transition | No – refresh state, wait for deps, or release lease |
@@ -38,7 +38,7 @@ All error responses use this JSON structure:
 Use **code** to decide next step:
 
 - `lease_expired` → **renew_lease** or **claim_ticket** (possibly another ticket).
-- `unauthorized` → Ensure OAuth / sign-in; do not retry until auth is fixed.
+- `unauthorized` → Sign in or supply a valid API key; do not retry until auth is fixed.
 - `forbidden` → Check project/org access or leaseholder; fix then retry.
 - `not_found` (no ticket) → Retry **claim_ticket** later; `not_found` (bad ID) → stop, fix ID.
 - `conflict` → Refresh ticket state; wait for dependencies; or release lease and re-claim.

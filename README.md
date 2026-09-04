@@ -1,52 +1,47 @@
 # Flywheel
 
-## What it is
+Flywheel is a **local-first control plane for one operator's agentic software delivery**. It sits between
+Linear (tickets), GitHub (pull requests), and the local coding harnesses — **Claude Code** and **Codex** — and
+keeps the ticket as the contract between the human and the agents.
 
-Flywheel is a **work queue plus shared context** for software projects, built so **AI agents and people** can use the same system. You organize work in **organizations** and **projects**, and each project carries a **context pack** (conventions, file hints, system prompt) so agents know *how* you want work done not just *what* ticket text says.
+What it does:
 
-Work is tracked as **tickets** with an objective. Tickets move from a project **queue** → claimed → in progress → **submitted for review**.
+- **Tickets live in Linear.** Flywheel projects map 1:1 to Linear projects you lead (spanning several repos)
+  and keep a projection of each issue plus everything Linear cannot hold: sessions, workflow position, review
+  findings, agent runs.
+- **Code review is its own, PR-keyed workflow.** Paste PR URLs, or let Flywheel pick up `review-requested`
+  PRs, run an in-depth review (Codex by default), post inline conversational comments, and approve unless a
+  P0/P1 finding blocks. Reviewed PRs are watched for new commits or dismissed reviews; your own PRs are
+  watched for landed reviews so an agent can address the comments.
+- **Every Claude Code and Codex session is tracked** and linked to the PRs and issues it touched.
+- **Workflows dispatch local harnesses.** Codex reviews, Claude Code implements — selectable per phase.
 
-## How it works
-
-**Agents** connect over **MCP** (e.g. Cursor, Claude Code) or the **REST API**. They **claim** a ticket from the queue, get the full ticket plus that project’s context, **log steps** while working, then **submit** (or escalate) for a human. **Humans** use the web UI or REST to review, approve, reject, or resolve escalations. Sign-in is usually **GitHub OAuth**; agents can also use API keys where that fits.
-
-One **Go server** serves the REST API, **MCP** at `/mcp`, and the web UI. Optional **git notes** can tie traces or decisions to your repository ([docs/git-notes.md](docs/git-notes.md)).
-
-More detail on flows: [docs/interacting.md](docs/interacting.md).
+Design and phase plan: [docs/plans/revival-local-first.md](docs/plans/revival-local-first.md).
 
 ## Quick start
 
-You need **Docker** with the **Compose v2 plugin**, and a [GitHub OAuth app](https://github.com/settings/developers) if you want sign-in. Local callback URL:
-
-`http://localhost:8090/auth/github/callback`
-
-**Option A — setup script** (creates `.env`, asks for secrets when possible, starts the stack):
+Requirements: Go (see `go.mod`), Node (see `.nvmrc`), Docker with Compose v2, the `migrate` CLI, and the
+authenticated `gh` CLI.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gabinante/flywheel/main/scripts/flywheel-docker-setup.sh | bash
+make dev
 ```
 
-That clones into `$HOME/flywheel` when you run it from `curl`. If you already have the repo: `./scripts/flywheel-docker-setup.sh` from the project root (symlinks are fine).
+`make dev` runs the preflight (creates a `.env` with local defaults), starts Postgres and Redis in Docker,
+runs migrations, and starts the server. Ports are deliberately non-default so Flywheel never collides with
+other local stacks:
 
-Script flags: `--ghcr` (use the published image instead of building), `--no-build`. In CI (no terminal), it generates `JWT_SECRET` and leaves GitHub OAuth blank.
+| Service  | Port |
+|----------|------|
+| Server   | 8090 |
+| Postgres | 5439 |
+| Redis    | 6389 |
 
-**Option B — by hand:** `cp .env.example .env`, edit, then `docker compose up -d`. See `.env.example` and [docs/deployment.md](docs/deployment.md).
+Then open [http://localhost:8090](http://localhost:8090) and click **Sign in** — Flywheel provisions the single
+local operator and issues a session token. There is no external identity provider.
 
-## Claude Code setup
-
-```bash
-./scripts/setup-local.sh
-```
-
-Builds the server, provisions an agent API key, installs the MCP proxy, and configures Claude Code in one step. Safe to re-run. See [docs/bootstrap-quickstart.md](docs/bootstrap-quickstart.md) for details and manual setup.
-
-## After it’s running
-
-- **Health:** `curl -s http://localhost:8090/healthz` should print `ok`.
-- **Browser:** [http://localhost:8090/](http://localhost:8090/) — the SPA uses hash routes (`/#/…`) so paths like `/orgs` stay the REST API.
-- **MCP:** `http://localhost:8090/mcp` — see [docs/cursor-mcp.md](docs/cursor-mcp.md).
-
-If you leave GitHub OAuth empty, sign-in is off and some endpoints return 401.
+- Health: `curl -s http://localhost:8090/healthz`
+- MCP: `http://localhost:8090/mcp` (Streamable HTTP; `X-API-Key` header)
 
 ## Hacking on the web app
 
@@ -54,39 +49,33 @@ If you leave GitHub OAuth empty, sign-in is off and some endpoints return 401.
 cd web && npm install && npm run dev
 ```
 
-Vite defaults to port **5173** and proxies API calls to `127.0.0.1:8090` (change with `VITE_API_PROXY` if your API isn’t there). If you want to keep browsing through **`http://localhost:8090`** while still getting HMR, set `WEB_DEV_PROXY_URL=http://127.0.0.1:5173` before starting the Go server; it will reverse-proxy frontend requests to Vite while keeping API routes local. After editing `api/openapi.yaml`, run `npm run gen:api` in `web/`. To run the Go server with a production UI build: `make web-build` first.
-
-## Binary releases
-
-[GitHub Releases](https://github.com/gabinante/flywheel/releases) has prebuilt binaries. Container: `ghcr.io/gabinante/flywheel:latest` (you supply Postgres/Redis, or use the compose files in this repo).
+Vite serves on `5173` and proxies API calls to `127.0.0.1:8090`. To keep browsing through `:8090` with HMR,
+start the Go server with `WEB_DEV_PROXY_URL=http://127.0.0.1:5173`. After editing `api/openapi.yaml`, run
+`make generate` and `cd web && npm run gen:api`.
 
 ## Tests
 
-`make test` (no database required). Run `make web-build` first if tests need a current `web/dist`. After OpenAPI changes: `make generate` and, in `web/`, `npm run gen:api`.
+`make test` (no database required). Web: `cd web && npm test && npm run build`.
 
 ## Config
 
-Everything lives in `.env.example` with comments. The usual suspects: `PORT`, `DATABASE_URL`, `REDIS_URL`, and for OAuth: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `JWT_SECRET`. Dispatch now splits **runner** from **driver**:
-
-- `DISPATCH_AGENT_RUNNER=cli|docker|openai-responses|openai-compatible`
-- `DISPATCH_AGENT_DRIVER=claude|generic` for CLI or Docker harnesses
-- `DISPATCH_AGENT_API_KEY` as the generic explicit credential, with `OPENAI_API_KEY` as the fallback for OpenAI-compatible runners and `ANTHROPIC_API_KEY` retained as a Claude fallback
-- `ORCHESTRATOR_AGENT_*` to give the command-center chat its own stronger planner profile without forcing the background dispatch workers onto the same model or runner
-
-A common setup is a strong command-center orchestrator (`openai-responses` with `xhigh`, or your preferred Claude harness) paired with cheaper `DISPATCH_*` workers for implementation tickets. For local gateways like LiteLLM or vLLM, use `openai-compatible` with `DISPATCH_AGENT_API_BASE_URL` pointing at the local `/v1` endpoint and an explicit `DISPATCH_AGENT_MODEL`.
-
-More in [docs/deployment.md](docs/deployment.md) and [internal/dispatch/DRIVERS.md](internal/dispatch/DRIVERS.md).
+Everything lives in `.env.example` with comments and is validated against `.env.schema` by varlock. The usual
+suspects: `PORT`, `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, and `DISPATCH_*` / `ORCHESTRATOR_*` for the
+harnesses (`DISPATCH_AGENT_DRIVER=claude|codex|generic`).
 
 ## API surface
 
-- **REST** — [api/openapi.yaml](api/openapi.yaml); `make generate` after edits. Errors: [docs/structured-errors.md](docs/structured-errors.md).
-- **MCP** — [docs/cursor-mcp.md](docs/cursor-mcp.md), [docs/interacting.md](docs/interacting.md); resource `flywheel://docs/agent-guide` for in-app help.
-- **Git notes** — [docs/git-notes.md](docs/git-notes.md), [docs/git-integration-design.md](docs/git-integration-design.md). Builds: `make build-flywheel-git` → `./flywheel-git`, `make build-flywheel-mcp` → `./flywheel-mcp`.
+- **REST** — [api/openapi.yaml](api/openapi.yaml); `make generate` after edits. Errors:
+  [docs/structured-errors.md](docs/structured-errors.md).
+- **MCP** — [docs/interacting.md](docs/interacting.md); resource `flywheel://docs/agent-guide` for in-app help.
 
 ## How this project was built
 
-Flywheel was developed using **agentic engineering**: ideation, architecture, and review were led by an experienced engineer, the system is **heavily tested**, and most of the **implementation was written by large language models** working in that loop. We state this for transparency—evaluate the code and tests the same way you would any other dependency you ship.
+Flywheel was developed using **agentic engineering**: ideation, architecture, and review were led by an
+experienced engineer, the system is heavily tested, and most of the implementation was written by large
+language models working in that loop. Evaluate the code and tests the same way you would any other dependency.
 
 ## License
 
-[BSL 1.1](LICENSE): free for non-production use until the change date, then GPL-2.0-or-later. Production use needs a commercial license from the licensor.
+[BSL 1.1](LICENSE): free for non-production use until the change date, then GPL-2.0-or-later. Production use
+needs a commercial license from the licensor.

@@ -52,13 +52,7 @@ func NewServer(b *Backend) (*mcp.Server, error) {
 		Instructions: ServerInstructions,
 	})
 	RegisterTools(server, b)
-	RegisterStateIndexTools(server, b.StateIndex)
-	RegisterEntityTools(server, b)
-	RegisterCodeIntelTools(server, b)
-	RegisterFindingsTools(server, b)
-	RegisterCatalogTools(server, b)
 	RegisterRepoTools(server, b)
-	RegisterCoordinatorLearningTools(server, b)
 	registerResources(server)
 	return server, nil
 }

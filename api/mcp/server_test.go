@@ -119,18 +119,6 @@ func TestNewServer_RegistersCoreTools(t *testing.T) {
 		"approve_ticket",
 		"reject_ticket",
 		"reopen_ticket",
-
-		// Git notes
-		"flywheel_add_git_note",
-		"flywheel_show_git_notes",
-		"flywheel_log_git_notes",
-		"flywheel_diff_git_notes",
-		"flywheel_sync_git_notes",
-
-		// Notifications
-		"get_notification_preferences",
-		"set_notification_preferences",
-		"get_dismissal_rates",
 	}
 
 	for _, name := range coreTools {
@@ -238,38 +226,6 @@ func TestNewServer_OptionalProvidersConditional(t *testing.T) {
 	for _, name := range findingsTools {
 		if toolNames[name] {
 			t.Errorf("Tool %q should not be registered without Findings provider", name)
-		}
-	}
-}
-
-// TestNewServer_WithCodeIntel verifies code intelligence tools appear when provider is set.
-func TestNewServer_WithCodeIntel(t *testing.T) {
-	b := &Backend{
-		CodeIntel: NewTreeSitterCodeIntel(),
-	}
-	cs := testClientSession(t, b)
-	ctx := context.Background()
-
-	result, err := cs.ListTools(ctx, nil)
-	if err != nil {
-		t.Fatalf("ListTools() error = %v", err)
-	}
-
-	toolNames := make(map[string]bool)
-	for _, tool := range result.Tools {
-		toolNames[tool.Name] = true
-	}
-
-	codeIntelTools := []string{
-		"code_symbol_lookup",
-		"code_callers",
-		"code_callees",
-		"code_blast_radius",
-		"code_importers",
-	}
-	for _, name := range codeIntelTools {
-		if !toolNames[name] {
-			t.Errorf("Tool %q should be registered when CodeIntel provider is set", name)
 		}
 	}
 }

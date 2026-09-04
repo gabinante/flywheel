@@ -43,8 +43,8 @@ func (h *TraceHandler) logStep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		LeaseToken string            `json:"lease_token"`
-		Step       execution.Step   `json:"step"`
+		LeaseToken string         `json:"lease_token"`
+		Step       execution.Step `json:"step"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		WriteStructuredError(w, apierrors.New(apierrors.CodeInvalidInput, "invalid body", false))

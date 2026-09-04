@@ -89,32 +89,6 @@ func TestBuildTaskPrompt(t *testing.T) {
 	}
 }
 
-func TestSanitizeContainerName(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{"simple", "ticket-42", "ticket-42"},
-		{"uppercase", "TICKET-42", "ticket-42"},
-		{"mixed case", "Ticket-ABC", "ticket-abc"},
-		{"special chars", "org/proj#42", "org-proj-42"},
-		{"spaces", "my ticket", "my-ticket"},
-		{"dots", "v1.2.3", "v1-2-3"},
-		{"underscores", "my_ticket", "my-ticket"},
-		{"already clean", "abc-123", "abc-123"},
-		{"all special", "!@#$%", "-----"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := sanitizeContainerName(tt.input)
-			if got != tt.want {
-				t.Errorf("sanitizeContainerName(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestWorkerResultFields(t *testing.T) {
 	// Test that WorkerResult struct is properly initialized.
 	r := &WorkerResult{
