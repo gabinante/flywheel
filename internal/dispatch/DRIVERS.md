@@ -51,7 +51,7 @@ Drivers apply to the `cli` and `docker` runners.
 
 ### `claude` (default)
 
-The Claude Code driver. Invokes `claude --print --dangerously-skip-permissions --system-prompt <prompt> <task> --mcp-config <path>`.
+The Claude Code driver. Invokes `claude --print --output-format stream-json --verbose --dangerously-skip-permissions --system-prompt <prompt> <task> --mcp-config <path>` and parses the stream-json records into `tool_call` / `tool_result` / `assistant` / `system` output events; the final `result` record becomes the worker output.
 
 - Resolves OAuth tokens from the macOS keychain for cost-free usage.
 - Mounts persistent `.claude` data directory in Docker mode.

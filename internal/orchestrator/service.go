@@ -461,7 +461,8 @@ func (s *Service) resolveWorker(candidate dispatch.RoutedWorker) Worker {
 	return dispatch.NewWorker(candidate.Config)
 }
 
-// knownToolNames are Flywheel MCP tools that appear in worker output.
+// knownToolNames are Flywheel MCP tools that appear in worker output. They only
+// drive the fallback heuristic for drivers that emit raw text lines.
 var knownToolNames = []string{
 	"create_ticket", "update_ticket", "create_work_stream", "update_work_stream",
 	"update_work_stream_plan", "get_project_context", "list_tickets", "get_ticket",
@@ -469,34 +470,43 @@ var knownToolNames = []string{
 	"update_project_context",
 }
 
-// readToolNames are tools that only read data (used for phase inference).
-var readToolNames = map[string]bool{
-	"get_project_context": true,
-	"list_tickets":        true,
-	"get_ticket":          true,
-	"list_work_streams":   true,
-	"get_work_stream":     true,
-	"list_orgs":           true,
-	"list_projects":       true,
+// authoringToolNames are the Flywheel tools that create or change work. A call
+// to one of them moves the run into the authoring phase; every other tool call
+// (Flywheel reads, Claude Code's own Read/Grep/Bash, and so on) is
+// investigation.
+var authoringToolNames = map[string]bool{
+	"create_ticket":           true,
+	"update_ticket":           true,
+	"create_work_stream":      true,
+	"update_work_stream":      true,
+	"update_work_stream_plan": true,
+	"update_project_context":  true,
 }
 
 func classifyWorkerOutput(stream, text string) (RunEventKind, map[string]any) {
 	trimmed := strings.TrimSpace(text)
-	// Semantic stream markers from OpenAI runners (fast path).
+	// Semantic streams from structured harness output (see dispatch.OutputParser).
 	switch stream {
 	case "tool_call":
-		tool := trimmed
-		if tool == "" {
-			tool = "unknown"
+		tool, detail := splitToolCall(trimmed)
+		payload := map[string]any{"tool": tool}
+		if detail != "" {
+			payload["summary"] = truncateText(detail, 200)
 		}
-		return RunEventKindToolCall, map[string]any{"tool": tool}
+		return RunEventKindToolCall, payload
 	case "tool_result":
 		tool, summary, status := parseToolResult(trimmed)
 		return RunEventKindToolResult, map[string]any{
-			"tool": tool, "summary": truncateText(summary, 500), "status": status,
+			"tool": normalizeToolName(tool), "summary": truncateText(summary, 500), "status": status,
+		}
+	case "assistant", "system":
+		// Prose and lifecycle notes from the harness are never tool markers,
+		// even when the text mentions a tool by name.
+		return RunEventKindWorkerOutput, map[string]any{
+			"stream": stream, "text": truncateText(trimmed, 2000),
 		}
 	}
-	// Fallback heuristic for CLI/Docker workers.
+	// Fallback heuristic for drivers that only give us raw text lines.
 	for _, tool := range knownToolNames {
 		if strings.Contains(trimmed, tool) {
 			return RunEventKindToolCall, map[string]any{
@@ -507,6 +517,32 @@ func classifyWorkerOutput(stream, text string) (RunEventKind, map[string]any) {
 	return RunEventKindWorkerOutput, map[string]any{
 		"stream": stream, "text": trimmed,
 	}
+}
+
+// splitToolCall separates a "tool: detail" marker into its parts.
+func splitToolCall(text string) (tool, detail string) {
+	tool = text
+	if idx := strings.Index(text, ": "); idx >= 0 {
+		tool, detail = text[:idx], strings.TrimSpace(text[idx+2:])
+	}
+	tool = normalizeToolName(tool)
+	if tool == "" {
+		tool = "unknown"
+	}
+	return tool, detail
+}
+
+// normalizeToolName maps an MCP-qualified name (mcp__flywheel__list_tickets)
+// to the bare tool name the phase tables and the UI key on.
+func normalizeToolName(name string) string {
+	name = strings.TrimSpace(name)
+	if !strings.HasPrefix(name, "mcp__") {
+		return name
+	}
+	if idx := strings.LastIndex(name, "__"); idx >= len("mcp__") && idx+2 < len(name) {
+		return name[idx+2:]
+	}
+	return name
 }
 
 // parseToolResult splits "name: output" and detects "name failed: error" pattern.
@@ -542,19 +578,31 @@ func (s *Service) traceRunOutput(runID string, run *Run) dispatch.WorkerOutputHa
 		kind, payload := classifyWorkerOutput(stream, text)
 		s.appendRunEvent(context.Background(), runID, kind, payload)
 
-		// Phase inference from tool calls and results.
+		// Phase inference. The harness announcing its session means we are
+		// connected and it is working; a Flywheel write tool means authoring;
+		// any other tool activity is investigation.
+		if stream == "system" {
+			s.leaveConnecting(run)
+			return
+		}
 		if kind == RunEventKindToolCall || kind == RunEventKindToolResult {
 			toolName, _ := payload["tool"].(string)
-			if readToolNames[toolName] {
-				if run.Phase == PhaseConnecting || run.Phase == PhaseQueued {
-					s.updatePhase(context.Background(), run, PhaseInvestigating)
-				}
-			} else {
+			if authoringToolNames[toolName] {
 				if run.Phase != PhaseAuthoring {
 					s.updatePhase(context.Background(), run, PhaseAuthoring)
 				}
+				return
 			}
+			s.leaveConnecting(run)
 		}
+	}
+}
+
+// leaveConnecting moves a run that is still queued or connecting into
+// investigating. Later phases are never regressed.
+func (s *Service) leaveConnecting(run *Run) {
+	if run.Phase == PhaseConnecting || run.Phase == PhaseQueued {
+		s.updatePhase(context.Background(), run, PhaseInvestigating)
 	}
 }
 

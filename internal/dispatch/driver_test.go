@@ -236,3 +236,28 @@ func TestRegisterDriver(t *testing.T) {
 		t.Fatal("expected non-nil driver")
 	}
 }
+
+func TestClaudeDriverBuildCLIArgsStreamsStructuredOutput(t *testing.T) {
+	d := NewClaudeDriver(DriverConfig{})
+	args := d.BuildCLIArgs("system prompt here", "do the task", testMCPConnection(), "/tmp/mcp.json")
+
+	idx := func(want string) int {
+		for i, a := range args {
+			if a == want {
+				return i
+			}
+		}
+		t.Fatalf("expected %q in args %q", want, args)
+		return -1
+	}
+	if i := idx("--output-format"); args[i+1] != "stream-json" {
+		t.Fatalf("expected --output-format stream-json, got %q", args[i+1])
+	}
+	idx("--verbose")
+	if idx("do the task") > idx("--mcp-config") {
+		t.Fatal("task message must precede --mcp-config, which is variadic and would swallow it")
+	}
+	if _, ok := AgentDriver(d).(OutputParsingDriver); !ok {
+		t.Fatal("ClaudeDriver should provide an OutputParser for its stream-json output")
+	}
+}

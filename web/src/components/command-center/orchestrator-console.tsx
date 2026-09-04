@@ -108,13 +108,14 @@ function normalizeThread(next: OrchestratorThread | null): OrchestratorThread | 
 function eventLabel(event: OrchestratorRunEvent): string {
   const payload = event.payload ?? {}
   if (event.kind === 'tool_call' && typeof payload.tool === 'string') {
-    return `Calling ${payload.tool}`
+    const summary = typeof payload.summary === 'string' ? payload.summary.trim() : ''
+    return summary ? `${payload.tool} · ${clip(summary, 60)}` : `Calling ${payload.tool}`
   }
   if (event.kind === 'tool_result' && typeof payload.tool === 'string') {
     const toolName = payload.tool as string
     const status = payload.status as string | undefined
     const summary = typeof payload.summary === 'string' ? payload.summary : ''
-    const preview = summary.length > 80 ? summary.slice(0, 80) + '...' : summary
+    const preview = clip(summary, 80)
     const label = status === 'error' ? `${toolName} (failed)` : toolName
     return preview ? `${label}: ${preview}` : label
   }
@@ -125,15 +126,21 @@ function eventLabel(event: OrchestratorRunEvent): string {
     return payload.message.trim()
   }
   if (typeof payload.text === 'string' && payload.text.trim().length > 0) {
-    return payload.text.trim()
+    return clip(payload.text.trim(), 120)
   }
   return event.kind
 }
 
-const READ_TOOLS = new Set([
-  'get_project_context', 'list_tickets', 'get_ticket',
-  'list_work_streams', 'get_work_stream', 'list_orgs', 'list_projects',
+// Flywheel tools that create or change work. Every other tool call — Flywheel
+// reads and the harness's own Read/Grep/Bash — is investigation.
+const WRITE_TOOLS = new Set([
+  'create_ticket', 'update_ticket', 'create_work_stream', 'update_work_stream',
+  'update_work_stream_plan', 'update_project_context',
 ])
+
+function clip(text: string, max: number): string {
+  return text.length > max ? text.slice(0, max) + '...' : text
+}
 
 const PHASE_STEPS: OrchestratorPhase[] = [
   'queued', 'connecting', 'investigating', 'authoring', 'composing',
@@ -193,11 +200,11 @@ function ToolTimeline({ events }: { events: OrchestratorRunEvent[] }) {
     <div className="max-h-40 space-y-1.5 overflow-y-auto">
       {toolEvents.map((event) => {
         const toolName = typeof event.payload?.tool === 'string' ? event.payload.tool : ''
-        const isRead = READ_TOOLS.has(toolName)
+        const isRead = !WRITE_TOOLS.has(toolName)
         const isResult = event.kind === 'tool_result'
         const isError = isResult && event.payload?.status === 'error'
         const summary = typeof event.payload?.summary === 'string' ? event.payload.summary : ''
-        const truncatedSummary = summary.length > 80 ? summary.slice(0, 80) + '...' : summary
+        const truncatedSummary = clip(summary, 80)
         return (
           <div key={event.id} className="flex items-center gap-2 text-xs">
             {isResult ? (

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -209,13 +210,29 @@ func (w *CLIWorker) SpawnStream(ctx context.Context, ticketID, projectID, system
 
 	cmd.Env = env
 
-	output, err := runCommandStreaming(cmd, onOutput)
+	// Drivers with structured output get a parser so the trace sees semantic
+	// events and the result is the agent's answer rather than a JSON transcript.
+	var parser OutputParser
+	if parsing, ok := w.Driver.(OutputParsingDriver); ok {
+		parser = parsing.NewOutputParser()
+	}
 
+	output, parsed, err := runCommandStreaming(cmd, onOutput, parser)
+	if parsed != nil {
+		slog.Info("dispatch: worker run reported result", "driver", w.Driver.Name(), "session", parsed.SessionID, "turns", parsed.NumTurns, "cost_usd", parsed.CostUSD, "is_error", parsed.IsError)
+	}
 	if err != nil {
 		return &WorkerResult{
 			Success: false,
 			Output:  output,
 			Error:   err.Error(),
+		}, nil
+	}
+	if parsed != nil && parsed.IsError {
+		return &WorkerResult{
+			Success: false,
+			Output:  output,
+			Error:   parsed.Error,
 		}, nil
 	}
 
@@ -230,17 +247,21 @@ type workerOutputEvent struct {
 	text   string
 }
 
-func runCommandStreaming(cmd *exec.Cmd, onOutput WorkerOutputHandler) (string, error) {
+// runCommandStreaming runs cmd and forwards each output line to onOutput as it
+// arrives. With a parser, structured stdout lines become semantic events and the
+// parser's final result becomes the returned output; unstructured lines and
+// stderr pass through unchanged. Without one, the output is the raw transcript.
+func runCommandStreaming(cmd *exec.Cmd, onOutput WorkerOutputHandler, parser OutputParser) (string, *ParsedResult, error) {
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if err := cmd.Start(); err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	events := make(chan workerOutputEvent, 128)
@@ -256,15 +277,26 @@ func runCommandStreaming(cmd *exec.Cmd, onOutput WorkerOutputHandler) (string, e
 		close(errCh)
 	}()
 
-	var output strings.Builder
-	for event := range events {
-		if output.Len() > 0 {
-			output.WriteByte('\n')
-		}
-		output.WriteString(event.text)
+	emit := func(stream, text string) {
 		if onOutput != nil {
-			onOutput(event.stream, event.text)
+			onOutput(stream, text)
 		}
+	}
+	var raw strings.Builder
+	for event := range events {
+		if parser != nil && event.stream == "stdout" {
+			if parsed, ok := parser.ParseLine(event.text); ok {
+				for _, pe := range parsed {
+					emit(pe.Stream, pe.Text)
+				}
+				continue
+			}
+		}
+		if raw.Len() > 0 {
+			raw.WriteByte('\n')
+		}
+		raw.WriteString(event.text)
+		emit(event.stream, event.text)
 	}
 
 	waitErr := cmd.Wait()
@@ -274,7 +306,28 @@ func runCommandStreaming(cmd *exec.Cmd, onOutput WorkerOutputHandler) (string, e
 		}
 	}
 
-	return strings.TrimSpace(output.String()), waitErr
+	output := strings.TrimSpace(raw.String())
+	if parser == nil {
+		return output, nil, waitErr
+	}
+	result := parser.Result()
+	answer := ""
+	if result != nil {
+		answer = strings.TrimSpace(result.Output)
+	}
+	if answer == "" {
+		answer = strings.TrimSpace(parser.Transcript())
+	}
+	if waitErr == nil && (result == nil || !result.IsError) {
+		if answer != "" {
+			return answer, result, nil
+		}
+		return output, result, nil
+	}
+	// On failure keep the harness's own words and whatever else it printed
+	// (auth errors arrive as plain text) so failover matching and the run log
+	// see both.
+	return joinNonEmpty(answer, output), result, waitErr
 }
 
 func streamPipeOutput(stream string, reader io.Reader, events chan<- workerOutputEvent, errCh chan<- error, wg *sync.WaitGroup) {

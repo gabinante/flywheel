@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -330,6 +331,7 @@ func TestClassifyWorkerOutput(t *testing.T) {
 		wantKind   RunEventKind
 		wantTool   string
 		wantStatus string
+		wantSum    string
 	}{
 		{
 			name:     "tool_call stream",
@@ -353,6 +355,41 @@ func TestClassifyWorkerOutput(t *testing.T) {
 			wantKind:   RunEventKindToolResult,
 			wantTool:   "create_ticket",
 			wantStatus: "error",
+		},
+		{
+			name:     "tool_call stream with detail",
+			stream:   "tool_call",
+			text:     "Read: internal/foo.go",
+			wantKind: RunEventKindToolCall,
+			wantTool: "Read",
+			wantSum:  "internal/foo.go",
+		},
+		{
+			name:     "tool_call stream strips mcp prefix",
+			stream:   "tool_call",
+			text:     "mcp__flywheel__get_ticket: FLY-12",
+			wantKind: RunEventKindToolCall,
+			wantTool: "get_ticket",
+		},
+		{
+			name:       "tool_result stream strips mcp prefix",
+			stream:     "tool_result",
+			text:       "mcp__flywheel__list_tickets: 3 tickets",
+			wantKind:   RunEventKindToolResult,
+			wantTool:   "list_tickets",
+			wantStatus: "success",
+		},
+		{
+			name:     "assistant prose mentioning a tool is not a tool call",
+			stream:   "assistant",
+			text:     "Next I will call create_ticket for each gap.",
+			wantKind: RunEventKindWorkerOutput,
+		},
+		{
+			name:     "system lifecycle note is worker output",
+			stream:   "system",
+			text:     "Claude Code session started · MCP flywheel connected",
+			wantKind: RunEventKindWorkerOutput,
 		},
 		{
 			name:     "stdout with known tool name (heuristic)",
@@ -382,6 +419,11 @@ func TestClassifyWorkerOutput(t *testing.T) {
 			if tt.wantStatus != "" {
 				if got, _ := payload["status"].(string); got != tt.wantStatus {
 					t.Fatalf("status = %q, want %q", got, tt.wantStatus)
+				}
+			}
+			if tt.wantSum != "" {
+				if got, _ := payload["summary"].(string); got != tt.wantSum {
+					t.Fatalf("summary = %q, want %q", got, tt.wantSum)
 				}
 			}
 		})
@@ -469,5 +511,59 @@ func TestFailRunPersistsErrorAndCompletion(t *testing.T) {
 	}
 	if len(store.events) < 2 {
 		t.Fatalf("expected failure events, got %d", len(store.events))
+	}
+}
+
+func TestStreamedRunPhasesFollowToolActivity(t *testing.T) {
+	store := &mockStore{}
+	worker := &mockStreamWorker{
+		mockWorker: mockWorker{
+			result: &dispatch.WorkerResult{Success: true, Output: "Filed one ticket."},
+		},
+		streamOutputs: []streamOutput{
+			{stream: "system", text: "Claude Code session started · MCP flywheel connected"},
+			{stream: "tool_call", text: "Read: internal/foo.go"},
+			{stream: "tool_result", text: "Read: package foo"},
+			{stream: "tool_call", text: "mcp__flywheel__list_tickets"},
+			{stream: "assistant", text: "I should create_ticket for the gap."},
+			{stream: "tool_call", text: "create_ticket: Wire the thing"},
+			{stream: "tool_result", text: "create_ticket: FLY-9"},
+			{stream: "tool_call", text: "get_ticket: FLY-9"},
+		},
+	}
+	svc := NewService(context.Background(), store, &mockProjectGetter{
+		project: &project.Project{ID: "proj-1", Name: "Test", RepoURL: "/tmp/project-repo"},
+	}, worker, Config{ServerURL: "http://localhost:8080", AgentID: "orch"})
+
+	if _, err := svc.SendUserMessage(context.Background(), "proj-1", "Plan the auth feature"); err != nil {
+		t.Fatalf("SendUserMessage() error = %v", err)
+	}
+	thread := waitForRunDone(t, svc, "proj-1", 5*time.Second)
+	if len(thread.Runs) != 1 {
+		t.Fatalf("expected 1 run, got %d", len(thread.Runs))
+	}
+	run := thread.Runs[0]
+
+	var phases []string
+	for _, event := range run.Events {
+		if event.Kind == RunEventKindPhaseChange {
+			phase, _ := event.Payload["phase"].(string)
+			phases = append(phases, phase)
+		}
+		if event.Kind == RunEventKindToolCall && event.Payload["tool"] == "create_ticket" {
+			if got, _ := event.Payload["summary"].(string); got != "Wire the thing" {
+				t.Fatalf("expected tool_call detail to be kept as summary, got %q", got)
+			}
+		}
+		if event.Kind == RunEventKindToolCall && event.Payload["tool"] == "mcp__flywheel__list_tickets" {
+			t.Fatal("expected MCP-qualified tool names to be normalised")
+		}
+		if event.Kind != RunEventKindWorkerOutput && event.Payload["stream"] == "assistant" {
+			t.Fatalf("assistant prose was classified as %s", event.Kind)
+		}
+	}
+	want := []string{"queued", "connecting", "investigating", "authoring", "composing", "complete"}
+	if !reflect.DeepEqual(phases, want) {
+		t.Fatalf("phase sequence = %v, want %v", phases, want)
 	}
 }

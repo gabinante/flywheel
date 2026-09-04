@@ -247,6 +247,9 @@ func ShouldFailoverToNextWorker(err error, result *WorkerResult) bool {
 		"unauthorized",
 		"authentication",
 		"invalid api key",
+		// Claude Code's own wording when its API key or login is rejected.
+		"api key is invalid",
+		"failed to authenticate",
 		"missing openai api key",
 		"missing api key for openai-compatible runner",
 		"missing model for openai-compatible runner",

@@ -6,9 +6,11 @@ import (
 )
 
 // ClaudeDriver implements AgentDriver for Claude Code CLI.
-// It preserves the existing dispatch behavior: --print mode, --system-prompt,
-// --dangerously-skip-permissions, --mcp-config, OAuth token resolution, and
-// the persistent .claude data directory mount.
+// It runs `claude --print --output-format stream-json` so each session event
+// (init, every assistant message, every tool result, the final result) reaches
+// the dispatcher as it happens; claudeStreamParser turns those records into the
+// semantic worker output stream. It keeps --system-prompt,
+// --dangerously-skip-permissions, --mcp-config and OAuth login reuse.
 type ClaudeDriver struct {
 	model string
 	// CLIPath is the path to the claude binary. Default: "claude".
@@ -37,12 +39,18 @@ func (d *ClaudeDriver) Executable() string {
 func (d *ClaudeDriver) BuildCLIArgs(systemPrompt, taskMessage string, _ mcpConnection, mcpConfigPath string) []string {
 	args := []string{
 		"--print",
+		// Plain --print buffers everything until the run ends. stream-json emits
+		// one JSON record per event as it happens, which is what lets the UI show
+		// live activity; Claude Code requires --verbose alongside it.
+		"--output-format", "stream-json", "--verbose",
 		"--dangerously-skip-permissions",
 		"--system-prompt", systemPrompt,
 	}
 	if d.model != "" {
 		args = append(args, "--model", d.model)
 	}
+	// The task must precede --mcp-config: that flag takes a list of files and
+	// would swallow a trailing positional prompt.
 	return append(args, taskMessage, "--mcp-config", mcpConfigPath)
 }
 

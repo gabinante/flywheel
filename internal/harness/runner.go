@@ -366,9 +366,13 @@ func (r *CLIRunner) runClaude(ctx context.Context, spec Spec) (*Result, error) {
 		if err := os.WriteFile(mcpPath, b, 0o600); err != nil {
 			return nil, err
 		}
-		args = append(args, "--mcp-config", mcpPath, "--allowedTools", strings.Join(allowed, ","))
+		// The prompt has to precede these flags: both take a list of values and
+		// would swallow a trailing positional prompt, after which the CLI exits
+		// with "Input must be provided either through stdin or as a prompt argument".
+		args = append(args, spec.Prompt, "--mcp-config", mcpPath, "--allowedTools", strings.Join(allowed, ","))
+	} else {
+		args = append(args, spec.Prompt)
 	}
-	args = append(args, spec.Prompt)
 
 	cctx, cancel := context.WithTimeout(ctx, spec.Timeout)
 	defer cancel()
