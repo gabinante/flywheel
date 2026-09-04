@@ -1013,6 +1013,12 @@ type MeStatsHistory struct {
 	TicketsCreated []int `json:"tickets_created"`
 }
 
+// MergeProjectRequest defines model for MergeProjectRequest.
+type MergeProjectRequest struct {
+	// Into ID or slug of the project that absorbs this one
+	Into string `json:"into"`
+}
+
 // Objective defines model for Objective.
 type Objective struct {
 	AcceptanceTest  *string   `json:"acceptance_test,omitempty"`
@@ -1096,6 +1102,18 @@ type ProjectLinearLink struct {
 	SyncedAt          *time.Time `json:"synced_at,omitempty"`
 	TeamKeys          []string   `json:"team_keys"`
 	TicketCount       int        `json:"ticket_count"`
+}
+
+// ProjectMergeResult defines model for ProjectMergeResult.
+type ProjectMergeResult struct {
+	LinearLinkMoved  bool           `json:"linear_link_moved"`
+	ReposMoved       int            `json:"repos_moved"`
+	SourceId         string         `json:"source_id"`
+	SourceName       string         `json:"source_name"`
+	TablesTouched    map[string]int `json:"tables_touched"`
+	Target           Project        `json:"target"`
+	TicketsMoved     int            `json:"tickets_moved"`
+	WorkStreamsMoved int            `json:"work_streams_moved"`
 }
 
 // RenewLeaseRequest defines model for RenewLeaseRequest.
@@ -1596,6 +1614,9 @@ type UpdateProjectJSONRequestBody = UpdateProjectRequest
 // SetProjectLinearLinkJSONRequestBody defines body for SetProjectLinearLink for application/json ContentType.
 type SetProjectLinearLinkJSONRequestBody = SetProjectLinearLinkRequest
 
+// MergeProjectJSONRequestBody defines body for MergeProject for application/json ContentType.
+type MergeProjectJSONRequestBody = MergeProjectRequest
+
 // ClaimTicketJSONRequestBody defines body for ClaimTicket for application/json ContentType.
 type ClaimTicketJSONRequestBody = ClaimRequest
 
@@ -1893,6 +1914,30 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /projects/{projectID}/linear/sync (the `SyncProjectLinear` operationId).
 	SyncProjectLinear(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// MergeProjectWithBody Merge this project into another project and delete it
+	//
+	// Moves tickets, work streams, repositories, reports, orchestrator threads, and the Linear link
+	// (when the target has none) from this project into the target, fills the target's empty
+	// fields from this project, then deletes this project. Fails when both projects are linked
+	// to different Linear projects.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /projects/{projectID}/merge (the `MergeProject` operationId).
+	MergeProjectWithBody(ctx context.Context, projectID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// MergeProject Merge this project into another project and delete it
+	//
+	// Moves tickets, work streams, repositories, reports, orchestrator threads, and the Linear link
+	// (when the target has none) from this project into the target, fills the target's empty
+	// fields from this project, then deletes this project. Fails when both projects are linked
+	// to different Linear projects.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /projects/{projectID}/merge (the `MergeProject` operationId).
+	MergeProject(ctx context.Context, projectID string, body MergeProjectJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ClaimTicketWithBody performs a POST /projects/{projectID}/queue/claim (the `ClaimTicket` operationId) request,
 	// with any type of body and a specified content type.
@@ -2610,6 +2655,50 @@ func (c *Client) SetProjectLinearLink(ctx context.Context, projectID string, bod
 // Corresponds with POST /projects/{projectID}/linear/sync (the `SyncProjectLinear` operationId).
 func (c *Client) SyncProjectLinear(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSyncProjectLinearRequest(c.Server, projectID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// MergeProjectWithBody Merge this project into another project and delete it
+//
+// Moves tickets, work streams, repositories, reports, orchestrator threads, and the Linear link
+// (when the target has none) from this project into the target, fills the target's empty
+// fields from this project, then deletes this project. Fails when both projects are linked
+// to different Linear projects.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /projects/{projectID}/merge (the `MergeProject` operationId).
+func (c *Client) MergeProjectWithBody(ctx context.Context, projectID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMergeProjectRequestWithBody(c.Server, projectID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// MergeProject Merge this project into another project and delete it
+//
+// Moves tickets, work streams, repositories, reports, orchestrator threads, and the Linear link
+// (when the target has none) from this project into the target, fills the target's empty
+// fields from this project, then deletes this project. Fails when both projects are linked
+// to different Linear projects.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /projects/{projectID}/merge (the `MergeProject` operationId).
+func (c *Client) MergeProject(ctx context.Context, projectID string, body MergeProjectJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMergeProjectRequest(c.Server, projectID, body)
 	if err != nil {
 		return nil, err
 	}
@@ -4333,6 +4422,53 @@ func NewSyncProjectLinearRequest(server string, projectID string) (*http.Request
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewMergeProjectRequest calls the generic MergeProject builder with application/json body
+func NewMergeProjectRequest(server string, projectID string, body MergeProjectJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewMergeProjectRequestWithBody(server, projectID, "application/json", bodyReader)
+}
+
+// NewMergeProjectRequestWithBody constructs an http.Request for the MergeProject method, with any body, and a specified content type
+func NewMergeProjectRequestWithBody(server string, projectID string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "projectID", projectID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/projects/%s/merge", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -6110,6 +6246,30 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /projects/{projectID}/linear/sync (the `SyncProjectLinear` operationId).
 	SyncProjectLinearWithResponse(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*SyncProjectLinearResponse, error)
 
+	// MergeProjectWithBodyWithResponse Merge this project into another project and delete it
+	//
+	// Moves tickets, work streams, repositories, reports, orchestrator threads, and the Linear link
+	// (when the target has none) from this project into the target, fills the target's empty
+	// fields from this project, then deletes this project. Fails when both projects are linked
+	// to different Linear projects.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /projects/{projectID}/merge (the `MergeProject` operationId).
+	MergeProjectWithBodyWithResponse(ctx context.Context, projectID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*MergeProjectResponse, error)
+
+	// MergeProjectWithResponse Merge this project into another project and delete it
+	//
+	// Moves tickets, work streams, repositories, reports, orchestrator threads, and the Linear link
+	// (when the target has none) from this project into the target, fills the target's empty
+	// fields from this project, then deletes this project. Fails when both projects are linked
+	// to different Linear projects.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /projects/{projectID}/merge (the `MergeProject` operationId).
+	MergeProjectWithResponse(ctx context.Context, projectID string, body MergeProjectJSONRequestBody, reqEditors ...RequestEditorFn) (*MergeProjectResponse, error)
+
 	// ClaimTicketWithBodyWithResponse performs a POST /projects/{projectID}/queue/claim (the `ClaimTicket` operationId) request,
 	// with any type of body and a specified content type.
 	//
@@ -7679,6 +7839,68 @@ func (r SyncProjectLinearResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r SyncProjectLinearResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type MergeProjectResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ProjectMergeResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *StructuredError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *StructuredError
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r MergeProjectResponse) GetJSON200() *ProjectMergeResult {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r MergeProjectResponse) GetJSON400() *StructuredError {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r MergeProjectResponse) GetJSON404() *StructuredError {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r MergeProjectResponse) GetJSON409() *StructuredError {
+	return r.JSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r MergeProjectResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r MergeProjectResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r MergeProjectResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r MergeProjectResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -9627,6 +9849,42 @@ func (c *ClientWithResponses) SyncProjectLinearWithResponse(ctx context.Context,
 	return ParseSyncProjectLinearResponse(rsp)
 }
 
+// MergeProjectWithBodyWithResponse Merge this project into another project and delete it
+//
+// Moves tickets, work streams, repositories, reports, orchestrator threads, and the Linear link
+// (when the target has none) from this project into the target, fills the target's empty
+// fields from this project, then deletes this project. Fails when both projects are linked
+// to different Linear projects.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /projects/{projectID}/merge (the `MergeProject` operationId).
+func (c *ClientWithResponses) MergeProjectWithBodyWithResponse(ctx context.Context, projectID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*MergeProjectResponse, error) {
+	rsp, err := c.MergeProjectWithBody(ctx, projectID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMergeProjectResponse(rsp)
+}
+
+// MergeProjectWithResponse Merge this project into another project and delete it
+//
+// Moves tickets, work streams, repositories, reports, orchestrator threads, and the Linear link
+// (when the target has none) from this project into the target, fills the target's empty
+// fields from this project, then deletes this project. Fails when both projects are linked
+// to different Linear projects.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /projects/{projectID}/merge (the `MergeProject` operationId).
+func (c *ClientWithResponses) MergeProjectWithResponse(ctx context.Context, projectID string, body MergeProjectJSONRequestBody, reqEditors ...RequestEditorFn) (*MergeProjectResponse, error) {
+	rsp, err := c.MergeProject(ctx, projectID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMergeProjectResponse(rsp)
+}
+
 // ClaimTicketWithBodyWithResponse performs a POST /projects/{projectID}/queue/claim (the `ClaimTicket` operationId) request,
 // with any type of body and a specified content type.
 //
@@ -11068,6 +11326,53 @@ func ParseSyncProjectLinearResponse(rsp *http.Response) (*SyncProjectLinearRespo
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseMergeProjectResponse parses an HTTP response from a MergeProjectWithResponse call
+func ParseMergeProjectResponse(rsp *http.Response) (*MergeProjectResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &MergeProjectResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProjectMergeResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	}
 

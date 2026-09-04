@@ -122,6 +122,29 @@ export interface paths {
         patch: operations["UpdateProject"];
         trace?: never;
     };
+    "/projects/{projectID}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge this project into another project and delete it
+         * @description Moves tickets, work streams, repositories, reports, orchestrator threads, and the Linear link
+         *     (when the target has none) from this project into the target, fills the target's empty
+         *     fields from this project, then deletes this project. Fails when both projects are linked
+         *     to different Linear projects.
+         */
+        post: operations["MergeProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{projectID}/work-streams": {
         parameters: {
             query?: never;
@@ -1477,6 +1500,22 @@ export interface components {
             feedback: components["schemas"]["FeedbackSettings"];
             report: components["schemas"]["ReportSettings"];
         };
+        MergeProjectRequest: {
+            /** @description ID or slug of the project that absorbs this one */
+            into: string;
+        };
+        ProjectMergeResult: {
+            target: components["schemas"]["Project"];
+            source_id: string;
+            source_name: string;
+            tickets_moved: number;
+            work_streams_moved: number;
+            repos_moved: number;
+            linear_link_moved: boolean;
+            tables_touched: {
+                [key: string]: number;
+            };
+        };
     };
     responses: never;
     parameters: never;
@@ -1793,6 +1832,59 @@ export interface operations {
             };
             /** @description Not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    MergeProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeProjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Merged */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectMergeResult"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Conflict (both projects linked to different Linear projects) */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

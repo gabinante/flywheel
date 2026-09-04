@@ -1014,6 +1014,12 @@ type MeStatsHistory struct {
 	TicketsCreated []int `json:"tickets_created"`
 }
 
+// MergeProjectRequest defines model for MergeProjectRequest.
+type MergeProjectRequest struct {
+	// Into ID or slug of the project that absorbs this one
+	Into string `json:"into"`
+}
+
 // Objective defines model for Objective.
 type Objective struct {
 	AcceptanceTest  *string   `json:"acceptance_test,omitempty"`
@@ -1097,6 +1103,18 @@ type ProjectLinearLink struct {
 	SyncedAt          *time.Time `json:"synced_at,omitempty"`
 	TeamKeys          []string   `json:"team_keys"`
 	TicketCount       int        `json:"ticket_count"`
+}
+
+// ProjectMergeResult defines model for ProjectMergeResult.
+type ProjectMergeResult struct {
+	LinearLinkMoved  bool           `json:"linear_link_moved"`
+	ReposMoved       int            `json:"repos_moved"`
+	SourceId         string         `json:"source_id"`
+	SourceName       string         `json:"source_name"`
+	TablesTouched    map[string]int `json:"tables_touched"`
+	Target           Project        `json:"target"`
+	TicketsMoved     int            `json:"tickets_moved"`
+	WorkStreamsMoved int            `json:"work_streams_moved"`
 }
 
 // RenewLeaseRequest defines model for RenewLeaseRequest.
@@ -1597,6 +1615,9 @@ type UpdateProjectJSONRequestBody = UpdateProjectRequest
 // SetProjectLinearLinkJSONRequestBody defines body for SetProjectLinearLink for application/json ContentType.
 type SetProjectLinearLinkJSONRequestBody = SetProjectLinearLinkRequest
 
+// MergeProjectJSONRequestBody defines body for MergeProject for application/json ContentType.
+type MergeProjectJSONRequestBody = MergeProjectRequest
+
 // ClaimTicketJSONRequestBody defines body for ClaimTicket for application/json ContentType.
 type ClaimTicketJSONRequestBody = ClaimRequest
 
@@ -1722,6 +1743,9 @@ type ServerInterface interface {
 	// SyncProjectLinear Pull updated Linear issues for this project now
 	// (POST /projects/{projectID}/linear/sync)
 	SyncProjectLinear(w http.ResponseWriter, r *http.Request, projectID string)
+	// MergeProject Merge this project into another project and delete it
+	// (POST /projects/{projectID}/merge)
+	MergeProject(w http.ResponseWriter, r *http.Request, projectID string)
 
 	// (POST /projects/{projectID}/queue/claim)
 	ClaimTicket(w http.ResponseWriter, r *http.Request, projectID string)
@@ -2492,6 +2516,32 @@ func (siw *ServerInterfaceWrapper) SyncProjectLinear(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SyncProjectLinear(w, r, projectID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MergeProject operation middleware
+func (siw *ServerInterfaceWrapper) MergeProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectID" -------------
+	var projectID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectID", r.PathValue("projectID"), &projectID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MergeProject(w, r, projectID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3631,6 +3681,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/orgs/{orgID}/projects", wrapper.CreateProject)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectID}", wrapper.GetProject)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/projects/{projectID}", wrapper.UpdateProject)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/projects/{projectID}/merge", wrapper.MergeProject)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectID}/work-streams", wrapper.ListWorkStreams)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/projects/{projectID}/work-streams", wrapper.CreateWorkStream)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectID}/work-streams/{workStreamID}", wrapper.GetWorkStream)
@@ -4753,6 +4804,71 @@ func (response SyncProjectLinear500JSONResponse) VisitSyncProjectLinearResponse(
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MergeProjectRequestObject struct {
+	ProjectID string `json:"projectID"`
+	Body      *MergeProjectJSONRequestBody
+}
+
+type MergeProjectResponseObject interface {
+	VisitMergeProjectResponse(w http.ResponseWriter) error
+}
+
+type MergeProject200JSONResponse ProjectMergeResult
+
+func (response MergeProject200JSONResponse) VisitMergeProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MergeProject400JSONResponse StructuredError
+
+func (response MergeProject400JSONResponse) VisitMergeProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MergeProject404JSONResponse StructuredError
+
+func (response MergeProject404JSONResponse) VisitMergeProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MergeProject409JSONResponse StructuredError
+
+func (response MergeProject409JSONResponse) VisitMergeProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -6213,6 +6329,9 @@ type StrictServerInterface interface {
 	// SyncProjectLinear Pull updated Linear issues for this project now
 	// (POST /projects/{projectID}/linear/sync)
 	SyncProjectLinear(ctx context.Context, request SyncProjectLinearRequestObject) (SyncProjectLinearResponseObject, error)
+	// MergeProject Merge this project into another project and delete it
+	// (POST /projects/{projectID}/merge)
+	MergeProject(ctx context.Context, request MergeProjectRequestObject) (MergeProjectResponseObject, error)
 
 	// (POST /projects/{projectID}/queue/claim)
 	ClaimTicket(ctx context.Context, request ClaimTicketRequestObject) (ClaimTicketResponseObject, error)
@@ -7049,6 +7168,39 @@ func (sh *strictHandler) SyncProjectLinear(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SyncProjectLinearResponseObject); ok {
 		if err := validResponse.VisitSyncProjectLinearResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// MergeProject operation middleware
+func (sh *strictHandler) MergeProject(w http.ResponseWriter, r *http.Request, projectID string) {
+	var request MergeProjectRequestObject
+
+	request.ProjectID = projectID
+
+	var body MergeProjectJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MergeProject(ctx, request.(MergeProjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MergeProject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MergeProjectResponseObject); ok {
+		if err := validResponse.VisitMergeProjectResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

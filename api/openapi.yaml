@@ -242,6 +242,52 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StructuredError'
+  /projects/{projectID}/merge:
+    post:
+      operationId: MergeProject
+      summary: Merge this project into another project and delete it
+      description: |
+        Moves tickets, work streams, repositories, reports, orchestrator threads, and the Linear link
+        (when the target has none) from this project into the target, fills the target's empty
+        fields from this project, then deletes this project. Fails when both projects are linked
+        to different Linear projects.
+      parameters:
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MergeProjectRequest'
+      responses:
+        "200":
+          description: Merged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectMergeResult'
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "409":
+          description: Conflict (both projects linked to different Linear projects)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
   /projects/{projectID}/work-streams:
     get:
       operationId: ListWorkStreams
@@ -3058,3 +3104,32 @@ components:
           $ref: '#/components/schemas/FeedbackSettings'
         report:
           $ref: '#/components/schemas/ReportSettings'
+    MergeProjectRequest:
+      type: object
+      required: [into]
+      properties:
+        into:
+          type: string
+          description: ID or slug of the project that absorbs this one
+    ProjectMergeResult:
+      type: object
+      required: [target, source_id, source_name, tickets_moved, work_streams_moved, repos_moved, linear_link_moved, tables_touched]
+      properties:
+        target:
+          $ref: '#/components/schemas/Project'
+        source_id:
+          type: string
+        source_name:
+          type: string
+        tickets_moved:
+          type: integer
+        work_streams_moved:
+          type: integer
+        repos_moved:
+          type: integer
+        linear_link_moved:
+          type: boolean
+        tables_touched:
+          type: object
+          additionalProperties:
+            type: integer

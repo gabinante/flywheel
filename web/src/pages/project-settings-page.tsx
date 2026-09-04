@@ -6,6 +6,7 @@ import {
   Copy,
   FileText,
   GitBranch,
+  GitMerge,
   Link2,
   Monitor,
   Save,
@@ -19,6 +20,7 @@ import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { ProjectBasePromptCard } from '@/components/project-base-prompt-card'
 import { ProjectLinearCard } from '@/components/project-linear-card'
 import { ProjectReportsCard } from '@/components/project-reports-card'
+import { ProjectMergeCard } from '@/components/project-merge-card'
 import { ProjectDispatchRoutingCard } from '@/components/project-dispatch-routing-card'
 import { WorkflowTimelineEditor } from '@/components/workflow-timeline-editor'
 import { Badge } from '@/components/ui/badge'
@@ -41,7 +43,7 @@ import type { components } from '@/lib/api/v1'
 
 type Project = components['schemas']['Project']
 
-type SettingsSectionID = 'dispatch' | 'workers' | 'workflow' | 'prompts' | 'linear' | 'reports'
+type SettingsSectionID = 'dispatch' | 'workers' | 'workflow' | 'prompts' | 'linear' | 'reports' | 'merge'
 
 const SETTINGS_SECTIONS: Array<{
   id: SettingsSectionID
@@ -84,6 +86,12 @@ const SETTINGS_SECTIONS: Array<{
     label: 'Reports',
     description: 'Preview and post the Linear project status update and the weekly roundup.',
     icon: FileText,
+  },
+  {
+    id: 'merge',
+    label: 'Merge',
+    description: 'Fold this project into another one (for duplicates) and delete it.',
+    icon: GitMerge,
   },
 ]
 
@@ -624,6 +632,7 @@ export function ProjectSettingsPage() {
           {selectedSection === 'linear' ? <ProjectLinearCard projectId={projectId} /> : null}
 
           {selectedSection === 'reports' ? <ProjectReportsCard projectId={projectId} /> : null}
+          {selectedSection === 'merge' ? <ProjectMergeCard project={project} orgId={orgId} orgSlug={orgSlug} /> : null}
 
           <div className="flex justify-end">
             <Button asChild variant="ghost" size="sm">
