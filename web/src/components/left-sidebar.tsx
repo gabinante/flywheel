@@ -6,7 +6,7 @@ import {
   GitPullRequest,
   LayoutDashboard,
   LogOut,
-  Building2,
+  FolderKanban,
   Settings,
   TerminalSquare,
   Ticket,
@@ -284,8 +284,8 @@ export function LeftSidebar() {
             title="Navigate"
             items={[
               {
-                label: 'Organizations',
-                icon: Building2,
+                label: 'Projects',
+                icon: FolderKanban,
                 href: '/orgs',
                 match: '/orgs',
               },
