@@ -52,7 +52,7 @@ func TestWorktreeCreateAndRemove(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	expected := filepath.Join(baseDir, "test-ticket")
+	expected := filepath.Join(baseDir, filepath.Base(repoDir)+"-worktrees", "test-ticket")
 	if dir != expected {
 		t.Errorf("Create returned %q, want %q", dir, expected)
 	}
@@ -126,7 +126,7 @@ func TestWorktreeCreateCleansUpLeftover(t *testing.T) {
 	m := &WorktreeManager{BaseDir: baseDir, RepoDir: repoDir}
 
 	// Create a leftover directory simulating a crash.
-	leftoverDir := filepath.Join(baseDir, "leftover")
+	leftoverDir := filepath.Join(baseDir, filepath.Base(repoDir)+"-worktrees", "leftover")
 	if err := os.MkdirAll(leftoverDir, 0o755); err != nil {
 		t.Fatalf("mkdir leftover: %v", err)
 	}

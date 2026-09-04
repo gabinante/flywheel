@@ -125,14 +125,54 @@ func (s *Store) List(ctx context.Context, f Filter) ([]*Request, int, error) {
 	}
 	defer rows.Close()
 	var out []*Request
+	var ids []string
 	for rows.Next() {
 		q, err := scanRequest(rows)
 		if err != nil {
 			return nil, 0, err
 		}
 		out = append(out, q)
+		ids = append(ids, q.ID)
 	}
-	return out, total, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	findings, err := s.FindingsForRequests(ctx, ids)
+	if err != nil {
+		return nil, 0, err
+	}
+	for _, q := range out {
+		q.Findings = findings[q.ID]
+		if q.Findings == nil {
+			q.Findings = []Finding{}
+		}
+	}
+	return out, total, nil
+}
+
+// FindingsForRequests returns latest-attempt findings for many requests at once.
+func (s *Store) FindingsForRequests(ctx context.Context, ids []string) (map[string][]Finding, error) {
+	out := map[string][]Finding{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := s.pool.Query(ctx, `SELECT f.id, f.request_id, f.attempt, f.severity, f.path, f.line, f.side, f.title, f.body, f.github_comment_id, f.status, f.created_at
+		FROM code_review_findings f
+		JOIN (SELECT request_id, max(attempt) AS attempt FROM code_review_findings WHERE request_id = ANY($1) GROUP BY request_id) latest
+		  ON latest.request_id = f.request_id AND latest.attempt = f.attempt
+		ORDER BY CASE f.severity WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END, f.path, f.line`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var f Finding
+		if err := rows.Scan(&f.ID, &f.RequestID, &f.Attempt, &f.Severity, &f.Path, &f.Line, &f.Side, &f.Title, &f.Body, &f.GitHubCommentID, &f.Status, &f.CreatedAt); err != nil {
+			return nil, err
+		}
+		out[f.RequestID] = append(out[f.RequestID], f)
+	}
+	return out, rows.Err()
 }
 
 // ListByState returns all requests in a state.

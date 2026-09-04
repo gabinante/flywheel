@@ -249,8 +249,8 @@ func TestGetPosition_NoWorkflow(t *testing.T) {
 
 func TestTemplates(t *testing.T) {
 	templates := BuiltinTemplates()
-	if len(templates) != 6 {
-		t.Fatalf("expected 6 templates, got %d", len(templates))
+	if len(templates) != 7 {
+		t.Fatalf("expected 7 templates, got %d", len(templates))
 	}
 	names := map[string]bool{}
 	for _, tmpl := range templates {

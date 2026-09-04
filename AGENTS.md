@@ -87,6 +87,9 @@ if tools error after a restart, start a new session.
 ## Dispatch config
 
 - Runner is `cli` only. Drivers: `claude` (default), `codex`, `generic`.
+- Worktrees follow the operator's layout: `<DISPATCH_WORKTREE_DIR>/<repo>-worktrees/<slug>` (default root `~/git`), cut from
+  the operator's own checkout at `<root>/<repo>` when it exists. Linear-backed tickets branch as `<identifier>-<title-slug>`
+  (e.g. `rlep-3488-review-fixes`). Review worktrees are `review-<n>`, feedback worktrees `feedback-<n>`; both are removed after the run.
 - `DISPATCH_AGENT_MODEL` / `DISPATCH_AGENT_REASONING_EFFORT` are passed to harnesses that accept them.
 - Orchestrator and dispatch worker configs can differ (`ORCHESTRATOR_AGENT_*`).
 

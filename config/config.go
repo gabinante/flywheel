@@ -52,7 +52,7 @@ func Load() *Config {
 			Enabled:                     getEnvBool("DISPATCH_ENABLED", false),
 			MaxWorkers:                  getEnvInt("DISPATCH_MAX_WORKERS", 4),
 			ClaudePath:                  getEnv("DISPATCH_CLAUDE_PATH", "claude"),
-			WorktreeDir:                 getEnv("DISPATCH_WORKTREE_DIR", "/tmp/flywheel-worktrees"),
+			WorktreeDir:                 getEnv("DISPATCH_WORKTREE_DIR", filepath.Join(homeDir(), "git")),
 			APIKey:                      getEnv("DISPATCH_API_KEY", ""),
 			ProjectID:                   getEnv("DISPATCH_PROJECT_ID", ""),
 			AutoApproveOnAcceptancePass: getEnvBool("AUTO_APPROVE_ON_ACCEPTANCE_PASS", false),
@@ -87,6 +87,13 @@ func Load() *Config {
 			WatchAuthored:  getEnvBool("REVIEW_WATCH_AUTHORED", true),
 			Timeout:        getEnvDuration("REVIEW_TIMEOUT", 30*time.Minute),
 			SkipDrafts:     getEnvBool("REVIEW_SKIP_DRAFTS", true),
+		},
+		Feedback: FeedbackConfig{
+			Harness:     getEnv("FEEDBACK_HARNESS", "claude"),
+			Model:       getEnv("FEEDBACK_MODEL", ""),
+			Effort:      getEnv("FEEDBACK_REASONING_EFFORT", ""),
+			AutoAddress: getEnvBool("FEEDBACK_AUTO_ADDRESS", false),
+			Timeout:     getEnvDuration("FEEDBACK_TIMEOUT", 45*time.Minute),
 		},
 		Linear: LinearConfig{
 			APIKey:         getEnv("LINEAR_API_KEY", ""),
@@ -174,7 +181,19 @@ type Config struct {
 	Sessions                  SessionsConfig
 	Linear                    LinearConfig
 	Review                    ReviewConfig
+	Feedback                  FeedbackConfig
 	RunAcceptanceTestOnSubmit bool
+}
+
+// FeedbackConfig controls the address-feedback workflow: when a review lands on one
+// of the operator's PRs, a harness (Claude Code by default) can resolve the comments
+// on the PR branch. AutoAddress defaults to false; the operator triggers it from the UI.
+type FeedbackConfig struct {
+	Harness     string
+	Model       string
+	Effort      string
+	AutoAddress bool
+	Timeout     time.Duration
 }
 
 // ReviewConfig controls PR-keyed code review. Publish defaults to false so a fresh

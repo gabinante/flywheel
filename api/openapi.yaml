@@ -1279,6 +1279,41 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StructuredError'
+  /code-reviews/feedback/{roundID}/address:
+    post:
+      operationId: AddressFeedbackRound
+      summary: Run the feedback harness on the PR branch to resolve a landed review
+      parameters:
+        - name: roundID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackRound'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "409":
+          description: Already in progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
   /code-reviews/{reviewID}:
     get:
       operationId: GetCodeReview

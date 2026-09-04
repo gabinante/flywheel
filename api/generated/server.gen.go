@@ -1493,6 +1493,9 @@ type ServerInterface interface {
 	// ListFeedbackRounds Reviews that landed on your own PRs
 	// (GET /code-reviews/feedback)
 	ListFeedbackRounds(w http.ResponseWriter, r *http.Request, params ListFeedbackRoundsParams)
+	// AddressFeedbackRound Run the feedback harness on the PR branch to resolve a landed review
+	// (POST /code-reviews/feedback/{roundID}/address)
+	AddressFeedbackRound(w http.ResponseWriter, r *http.Request, roundID string)
 	// SetFeedbackRoundState Mark a landed review as addressed or ignored
 	// (POST /code-reviews/feedback/{roundID}/state)
 	SetFeedbackRoundState(w http.ResponseWriter, r *http.Request, roundID string)
@@ -1776,6 +1779,32 @@ func (siw *ServerInterfaceWrapper) ListFeedbackRounds(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListFeedbackRounds(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddressFeedbackRound operation middleware
+func (siw *ServerInterfaceWrapper) AddressFeedbackRound(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roundID" -------------
+	var roundID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roundID", r.PathValue("roundID"), &roundID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roundID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddressFeedbackRound(w, r, roundID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3206,6 +3235,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/code-reviews/status", wrapper.GetCodeReviewStatus)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/code-reviews/feedback", wrapper.ListFeedbackRounds)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/code-reviews/feedback/{roundID}/state", wrapper.SetFeedbackRoundState)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/code-reviews/feedback/{roundID}/address", wrapper.AddressFeedbackRound)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/code-reviews/{reviewID}", wrapper.GetCodeReview)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/code-reviews/{reviewID}/rerun", wrapper.RerunCodeReview)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/code-reviews/{reviewID}/close", wrapper.CloseCodeReview)
@@ -3366,6 +3396,70 @@ func (response ListFeedbackRounds401JSONResponse) VisitListFeedbackRoundsRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddressFeedbackRoundRequestObject struct {
+	RoundID string `json:"roundID"`
+}
+
+type AddressFeedbackRoundResponseObject interface {
+	VisitAddressFeedbackRoundResponse(w http.ResponseWriter) error
+}
+
+type AddressFeedbackRound202JSONResponse FeedbackRound
+
+func (response AddressFeedbackRound202JSONResponse) VisitAddressFeedbackRoundResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddressFeedbackRound401JSONResponse StructuredError
+
+func (response AddressFeedbackRound401JSONResponse) VisitAddressFeedbackRoundResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddressFeedbackRound404JSONResponse StructuredError
+
+func (response AddressFeedbackRound404JSONResponse) VisitAddressFeedbackRoundResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddressFeedbackRound409JSONResponse StructuredError
+
+func (response AddressFeedbackRound409JSONResponse) VisitAddressFeedbackRoundResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -5213,6 +5307,9 @@ type StrictServerInterface interface {
 	// ListFeedbackRounds Reviews that landed on your own PRs
 	// (GET /code-reviews/feedback)
 	ListFeedbackRounds(ctx context.Context, request ListFeedbackRoundsRequestObject) (ListFeedbackRoundsResponseObject, error)
+	// AddressFeedbackRound Run the feedback harness on the PR branch to resolve a landed review
+	// (POST /code-reviews/feedback/{roundID}/address)
+	AddressFeedbackRound(ctx context.Context, request AddressFeedbackRoundRequestObject) (AddressFeedbackRoundResponseObject, error)
 	// SetFeedbackRoundState Mark a landed review as addressed or ignored
 	// (POST /code-reviews/feedback/{roundID}/state)
 	SetFeedbackRoundState(ctx context.Context, request SetFeedbackRoundStateRequestObject) (SetFeedbackRoundStateResponseObject, error)
@@ -5489,6 +5586,32 @@ func (sh *strictHandler) ListFeedbackRounds(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListFeedbackRoundsResponseObject); ok {
 		if err := validResponse.VisitListFeedbackRoundsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AddressFeedbackRound operation middleware
+func (sh *strictHandler) AddressFeedbackRound(w http.ResponseWriter, r *http.Request, roundID string) {
+	var request AddressFeedbackRoundRequestObject
+
+	request.RoundID = roundID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AddressFeedbackRound(ctx, request.(AddressFeedbackRoundRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AddressFeedbackRound")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AddressFeedbackRoundResponseObject); ok {
+		if err := validResponse.VisitAddressFeedbackRoundResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

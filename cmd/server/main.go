@@ -213,6 +213,7 @@ func run(ctx context.Context, cfg *config.Config) {
 		Interval:       cfg.Linear.Interval,
 		DefaultTeamKey: cfg.Linear.DefaultTeamKey,
 	})
+	linearSvc.SetOutputPatcher(ticketStore)
 	linearSvc.Start(ctx)
 
 	// Session tracking: ingest Claude Code and Codex sessions from their local stores.
@@ -243,6 +244,13 @@ func run(ctx context.Context, cfg *config.Config) {
 		WatchAuthored:  cfg.Review.WatchAuthored,
 		ReviewTimeout:  cfg.Review.Timeout,
 		SkipDrafts:     cfg.Review.SkipDrafts,
+	})
+	codeReviewSvc.SetFeedbackConfig(codereview.FeedbackConfig{
+		Harness:     cfg.Feedback.Harness,
+		Model:       cfg.Feedback.Model,
+		Effort:      cfg.Feedback.Effort,
+		AutoAddress: cfg.Feedback.AutoAddress,
+		Timeout:     cfg.Feedback.Timeout,
 	})
 	codeReviewSvc.Start(ctx)
 

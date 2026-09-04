@@ -39,6 +39,11 @@ type Status struct {
 	LastDurationMS int64      `json:"last_duration_ms"`
 }
 
+// OutputPatcher merges keys into a ticket's outputs (implemented by the ticket store).
+type OutputPatcher interface {
+	PatchOutputs(ctx context.Context, id string, patch map[string]any) error
+}
+
 // Syncer keeps Flywheel projects/tickets in step with Linear in both directions.
 type Syncer struct {
 	client   *Client
@@ -47,6 +52,7 @@ type Syncer struct {
 	projects *project.Service
 	bus      events.Bus
 	cfg      Config
+	outputs  OutputPatcher // optional: records that a PR was attached so it is not re-posted
 
 	mu       sync.Mutex
 	status   Status
@@ -76,6 +82,9 @@ func NewSyncer(client *Client, store *Store, tickets *ticket.Service, projects *
 	return &Syncer{client: client, store: store, tickets: tickets, projects: projects, bus: bus, cfg: cfg,
 		status: Status{Enabled: cfg.Enabled}, states: map[string]teamStatesCache{}}
 }
+
+// SetOutputPatcher lets the syncer remember which PR it already attached.
+func (s *Syncer) SetOutputPatcher(p OutputPatcher) { s.outputs = p }
 
 // Enabled reports whether Linear sync is active.
 func (s *Syncer) Enabled() bool { return s.cfg.Enabled }
@@ -362,6 +371,14 @@ func (s *Syncer) subscribe(ctx context.Context) {
 			go s.pushState(ctx, payloadString(e, "ticket_id"), st, "")
 		})
 	}
+	// A submitted ticket carries its PR: attach it to the Linear issue and leave the Abstract comment
+	// the operator's hook used to post by hand.
+	s.bus.Subscribe(events.EventTicketSubmitted, func(_ context.Context, e events.Event) {
+		if payloadString(e, "external_provider") != "" {
+			return
+		}
+		go s.attachSubmittedPR(ctx, payloadString(e, "ticket_id"))
+	})
 	s.bus.Subscribe(events.EventTicketCancelled, func(_ context.Context, e events.Event) {
 		if payloadString(e, "external_provider") != "" {
 			return
@@ -500,6 +517,40 @@ func (s *Syncer) pushState(ctx context.Context, ticketID string, st ticket.State
 	}
 	_ = s.store.UpsertRef(ctx, ticketID, refFromIssue(*is))
 	slog.Info("linear: moved issue", "issue", ref.Identifier, "state", target.Name)
+}
+
+// attachSubmittedPR links the ticket's PR to its Linear issue and comments once.
+func (s *Syncer) attachSubmittedPR(ctx context.Context, ticketID string) {
+	if ticketID == "" || s.client == nil {
+		return
+	}
+	t, err := s.tickets.GetTicket(ctx, ticketID)
+	if err != nil || t == nil || t.External == nil {
+		return
+	}
+	prURL, _ := t.Outputs["pr_url"].(string)
+	if prURL == "" {
+		return
+	}
+	if attached, _ := t.Outputs["_linear_pr_attached"].(string); attached == prURL {
+		return
+	}
+	ref, err := s.store.RefByTicketID(ctx, ticketID)
+	if err != nil || ref == nil {
+		return
+	}
+	if err := s.client.AttachPullRequest(ctx, ref.ExternalID, prURL); err != nil {
+		slog.Warn("linear: attach PR failed", "ticket", ticketID, "pr", prURL, "error", err)
+	}
+	body := AbstractBody(t) + "\n\nPull request: " + prURL
+	if _, err := s.client.CreateComment(ctx, ref.ExternalID, body); err != nil {
+		slog.Warn("linear: PR comment failed", "ticket", ticketID, "error", err)
+		return
+	}
+	if s.outputs != nil {
+		_ = s.outputs.PatchOutputs(ctx, ticketID, map[string]any{"_linear_pr_attached": prURL})
+	}
+	slog.Info("linear: attached PR to issue", "issue", ref.Identifier, "pr", prURL)
 }
 
 // Comment posts a comment on the Linear issue linked to a ticket.

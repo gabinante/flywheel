@@ -51,10 +51,23 @@ type Service struct {
 	bus      events.Bus
 	cfg      Config
 
+	fb FeedbackConfig
+
 	mu        sync.Mutex
 	status    PollerStatus
 	active    int32
 	startedAt time.Time
+}
+
+// SetFeedbackConfig configures the address-feedback workflow.
+func (s *Service) SetFeedbackConfig(cfg FeedbackConfig) {
+	if cfg.Timeout <= 0 {
+		cfg.Timeout = 45 * time.Minute
+	}
+	if cfg.Harness == "" {
+		cfg.Harness = "claude"
+	}
+	s.fb = cfg
 }
 
 // New builds a Service. sessions and bus may be nil.
@@ -592,6 +605,11 @@ func (s *Service) pollFeedback(ctx context.Context) error {
 			}
 			if created && round.State == "new" {
 				slog.Info("codereview: review landed on your PR", "pr", round.Ref(), "reviewer", rv.User, "state", rv.State, "comments", round.CommentCount)
+				if s.fb.AutoAddress && (rv.State == "CHANGES_REQUESTED" || round.CommentCount > 0) {
+					if _, err := s.AddressFeedback(ctx, round.ID); err != nil {
+						slog.Warn("codereview: auto-address failed", "pr", round.Ref(), "error", err)
+					}
+				}
 				if s.bus != nil {
 					_ = s.bus.Publish(ctx, events.NewEvent(EventFeedbackLanded, map[string]any{
 						"round_id": round.ID, "repo": round.Repo, "number": round.Number, "url": round.URL, "title": round.Title,

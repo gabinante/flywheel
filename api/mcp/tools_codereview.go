@@ -57,6 +57,29 @@ func RegisterCodeReviewTools(s *mcp.Server, b *Backend) {
 	}, wrap(listCodeReviewsHandler))
 
 	mcp.AddTool(s, &mcp.Tool{
+		Name: "list_pr_feedback",
+		Description: "List reviews that landed on the operator's own open PRs (from the feedback watcher), newest first. " +
+			"Params (optional): state (new|dispatched|addressed|ignored), limit.",
+		InputSchema: map[string]any{
+			"type":                 "object",
+			"properties":           map[string]any{"state": map[string]any{"type": "string"}, "limit": map[string]any{"type": "integer"}},
+			"additionalProperties": false,
+		},
+	}, wrap(listPRFeedbackHandler))
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "address_pr_feedback",
+		Description: "Run the feedback harness (Claude Code by default) on the PR branch to resolve a landed review: fix the comments, " +
+			"push, reply on threads, re-request review. Params: round_id (from list_pr_feedback).",
+		InputSchema: map[string]any{
+			"type":                 "object",
+			"properties":           map[string]any{"round_id": map[string]any{"type": "string"}},
+			"required":             []string{"round_id"},
+			"additionalProperties": false,
+		},
+	}, wrap(addressPRFeedbackHandler))
+
+	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_code_review",
 		Description: "Get one PR review request with its findings. Params: review_id.",
 		InputSchema: map[string]any{
@@ -108,4 +131,27 @@ func getCodeReviewHandler(b *Backend, ctx context.Context, args map[string]any) 
 		return toolErrTriple(apierrors.New(apierrors.CodeNotFound, "review request not found", false))
 	}
 	return jsonResult(r)
+}
+
+func listPRFeedbackHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
+	rounds, err := b.CodeReview.FeedbackRounds(ctx, getString(args, "state", ""), getInt(args, "limit", 25))
+	if err != nil {
+		return toolErrTriple(apierrors.MapError(err))
+	}
+	return jsonResult(map[string]any{"rounds": rounds})
+}
+
+func addressPRFeedbackHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp.CallToolResult, any, error) {
+	id, err := requireString(args, "round_id")
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))
+	}
+	r, err := b.CodeReview.AddressFeedback(ctx, id)
+	if err != nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeConflict, err.Error(), false))
+	}
+	if r == nil {
+		return toolErrTriple(apierrors.New(apierrors.CodeNotFound, "feedback round not found", false))
+	}
+	return jsonResult(map[string]any{"round": r, "dispatched": true})
 }

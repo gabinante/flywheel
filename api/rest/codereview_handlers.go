@@ -256,3 +256,23 @@ func (s *StrictServer) CloseCodeReview(ctx context.Context, req generated.CloseC
 	}
 	return generated.CloseCodeReview200JSONResponse(codeReviewToGen(r)), nil
 }
+
+func (s *StrictServer) AddressFeedbackRound(ctx context.Context, req generated.AddressFeedbackRoundRequestObject) (generated.AddressFeedbackRoundResponseObject, error) {
+	if err := requireAgent(ctx, s.AgentStore); err != nil {
+		return generated.AddressFeedbackRound401JSONResponse(seToGen(err)), nil
+	}
+	if err := s.requireCodeReview(); err != nil {
+		return nil, err
+	}
+	r, err := s.CodeReviewSvc.AddressFeedback(ctx, req.RoundID)
+	if err != nil {
+		if r != nil {
+			return generated.AddressFeedbackRound409JSONResponse(seToGen(apierrors.New(apierrors.CodeConflict, err.Error(), false))), nil
+		}
+		return nil, apierrors.MapError(err)
+	}
+	if r == nil {
+		return generated.AddressFeedbackRound404JSONResponse(seToGen(apierrors.New(apierrors.CodeNotFound, "feedback round not found", false))), nil
+	}
+	return generated.AddressFeedbackRound202JSONResponse(feedbackToGen(r)), nil
+}

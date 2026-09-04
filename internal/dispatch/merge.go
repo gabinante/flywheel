@@ -714,6 +714,10 @@ func (d *Dispatcher) persistMergeState(ctx context.Context, ticketID string, att
 // branchForTicket returns the branch name for a ticket, using the project's
 // GitPolicy if configured, falling back to "ticket/<id>".
 func (d *Dispatcher) branchForTicket(ctx context.Context, t *ticket.Ticket) string {
+	if t.External != nil && t.External.Identifier != "" {
+		// Operator convention for Linear-backed work: rlep-3488-review-fixes.
+		return sanitizeDirName(t.External.Identifier + "-" + t.Title)
+	}
 	if d.projects != nil {
 		if proj, err := d.projects.GetProject(ctx, t.ProjectID); err == nil && proj != nil {
 			if gp := proj.DispatchConfig.Normalized().GitPolicy; gp != nil {

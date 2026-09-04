@@ -1590,6 +1590,11 @@ type ClientInterface interface {
 	// Corresponds with GET /code-reviews/feedback (the `ListFeedbackRounds` operationId).
 	ListFeedbackRounds(ctx context.Context, params *ListFeedbackRoundsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// AddressFeedbackRound Run the feedback harness on the PR branch to resolve a landed review
+	//
+	// Corresponds with POST /code-reviews/feedback/{roundID}/address (the `AddressFeedbackRound` operationId).
+	AddressFeedbackRound(ctx context.Context, roundID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// SetFeedbackRoundStateWithBody Mark a landed review as addressed or ignored
 	//
 	// Takes any type of body and a specified content type.
@@ -1950,6 +1955,21 @@ func (c *Client) CreateCodeReviews(ctx context.Context, body CreateCodeReviewsJS
 // Corresponds with GET /code-reviews/feedback (the `ListFeedbackRounds` operationId).
 func (c *Client) ListFeedbackRounds(ctx context.Context, params *ListFeedbackRoundsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListFeedbackRoundsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AddressFeedbackRound Run the feedback harness on the PR branch to resolve a landed review
+//
+// Corresponds with POST /code-reviews/feedback/{roundID}/address (the `AddressFeedbackRound` operationId).
+func (c *Client) AddressFeedbackRound(ctx context.Context, roundID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAddressFeedbackRoundRequest(c.Server, roundID)
 	if err != nil {
 		return nil, err
 	}
@@ -3037,6 +3057,40 @@ func NewListFeedbackRoundsRequest(server string, params *ListFeedbackRoundsParam
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAddressFeedbackRoundRequest constructs an http.Request for the AddressFeedbackRound method
+func NewAddressFeedbackRoundRequest(server string, roundID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "roundID", roundID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/code-reviews/feedback/%s/address", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -5023,6 +5077,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /code-reviews/feedback (the `ListFeedbackRounds` operationId).
 	ListFeedbackRoundsWithResponse(ctx context.Context, params *ListFeedbackRoundsParams, reqEditors ...RequestEditorFn) (*ListFeedbackRoundsResponse, error)
 
+	// AddressFeedbackRoundWithResponse Run the feedback harness on the PR branch to resolve a landed review
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /code-reviews/feedback/{roundID}/address (the `AddressFeedbackRound` operationId).
+	AddressFeedbackRoundWithResponse(ctx context.Context, roundID string, reqEditors ...RequestEditorFn) (*AddressFeedbackRoundResponse, error)
+
 	// SetFeedbackRoundStateWithBodyWithResponse Mark a landed review as addressed or ignored
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -5559,6 +5620,68 @@ func (r ListFeedbackRoundsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListFeedbackRoundsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type AddressFeedbackRoundResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *FeedbackRound
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *StructuredError
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *StructuredError
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r AddressFeedbackRoundResponse) GetJSON202() *FeedbackRound {
+	return r.JSON202
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r AddressFeedbackRoundResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r AddressFeedbackRoundResponse) GetJSON404() *StructuredError {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r AddressFeedbackRoundResponse) GetJSON409() *StructuredError {
+	return r.JSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r AddressFeedbackRoundResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AddressFeedbackRoundResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AddressFeedbackRoundResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AddressFeedbackRoundResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -7751,6 +7874,19 @@ func (c *ClientWithResponses) ListFeedbackRoundsWithResponse(ctx context.Context
 	return ParseListFeedbackRoundsResponse(rsp)
 }
 
+// AddressFeedbackRoundWithResponse Run the feedback harness on the PR branch to resolve a landed review
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /code-reviews/feedback/{roundID}/address (the `AddressFeedbackRound` operationId).
+func (c *ClientWithResponses) AddressFeedbackRoundWithResponse(ctx context.Context, roundID string, reqEditors ...RequestEditorFn) (*AddressFeedbackRoundResponse, error) {
+	rsp, err := c.AddressFeedbackRound(ctx, roundID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAddressFeedbackRoundResponse(rsp)
+}
+
 // SetFeedbackRoundStateWithBodyWithResponse Mark a landed review as addressed or ignored
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -8567,6 +8703,53 @@ func ParseListFeedbackRoundsResponse(rsp *http.Response) (*ListFeedbackRoundsRes
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAddressFeedbackRoundResponse parses an HTTP response from a AddressFeedbackRoundWithResponse call
+func ParseAddressFeedbackRoundResponse(rsp *http.Response) (*AddressFeedbackRoundResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AddressFeedbackRoundResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest FeedbackRound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	}
 

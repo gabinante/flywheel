@@ -3,12 +3,52 @@ package workflow
 // BuiltinTemplates returns the built-in workflow templates.
 func BuiltinTemplates() []Definition {
 	return []Definition{
+		Implement(),
 		StandardSDLC(),
 		FastTrack(),
 		FullPipeline(),
 		Triage(),
 		GenericTask(),
 		SubticketSDLC(),
+	}
+}
+
+// Implement is the operator's implementation loop for a Linear-backed ticket:
+// plan, implement in a repo worktree and open a PR (Abstract body, Linear
+// identifier in the branch), pass CI, land it. The Linear issue is attached to
+// the PR and moved along by the Linear syncer; landed review comments re-enter
+// the loop through the feedback watcher.
+func Implement() Definition {
+	return Definition{
+		Name:        "Implement",
+		Description: "Plan, implement in a worktree, open a PR, get CI green, merge. Linear issue follows automatically.",
+		Phases: []Phase{
+			{
+				ID: "plan", Name: "Plan", Type: PhaseAgent,
+				Description: "Read the ticket and the repo; write a short implementation plan into the ticket outputs.",
+				Config:      map[string]any{"role": "planner"},
+			},
+			{
+				ID: "implement", Name: "Implement", Type: PhaseAgent,
+				Description: "Implement the change in the ticket worktree, run the relevant tests, open a PR whose description starts with an Abstract, and submit with pr_url.",
+				Config:      map[string]any{"role": "executor"},
+			},
+			{
+				ID: "ci", Name: "CI green", Type: PhaseGate,
+				Description: "GitHub checks must pass. Failures loop back to implementation to fix tests or conflicts.",
+				Config: map[string]any{
+					"conditions": []any{
+						map[string]any{"type": "github_checks"},
+					},
+				},
+				OnFailure: "implement",
+			},
+			{
+				ID: "merge", Name: "Merge", Type: PhaseExternal,
+				Description: "Merge once approved; the Linear issue moves to Done.",
+				Config:      map[string]any{"mode": "sync"},
+			},
+		},
 	}
 }
 
@@ -31,8 +71,8 @@ func StandardSDLC() Definition {
 			{
 				ID: "agentic-review", Name: "Agentic Code Review", Type: PhaseAgent,
 				Description: "Agent reviews code and provides feedback. Loops back to execution on rejection. Auto-passes after max iterations.",
-				Config:    map[string]any{"role": "validator", "max_iterations": 3},
-				OnFailure: "execute",
+				Config:      map[string]any{"role": "validator", "max_iterations": 3},
+				OnFailure:   "execute",
 			},
 			{
 				ID: "quality-gate", Name: "Quality Gate", Type: PhaseGate,
@@ -46,12 +86,12 @@ func StandardSDLC() Definition {
 			{
 				ID: "merge", Name: "Merge", Type: PhaseExternal,
 				Description: "Merge the approved PR.",
-				Config: map[string]any{"mode": "sync"},
+				Config:      map[string]any{"mode": "sync"},
 			},
 			{
 				ID: "deploy-dev", Name: "Deploy to Dev", Type: PhaseExternal,
 				Description: "Deploy merged changes to the dev environment.",
-				Config: map[string]any{"mode": "async"},
+				Config:      map[string]any{"mode": "async"},
 			},
 		},
 	}
@@ -106,8 +146,8 @@ func Triage() Definition {
 			{
 				ID: "respond", Name: "Respond", Type: PhaseAgent,
 				Description: "Execute the approved response. Loops back to diagnose on failure.",
-				Config:    map[string]any{"role": "operator", "goal": "Execute the approved response plan. Log all actions taken."},
-				OnFailure: "diagnose",
+				Config:      map[string]any{"role": "operator", "goal": "Execute the approved response plan. Log all actions taken."},
+				OnFailure:   "diagnose",
 			},
 		},
 	}
@@ -153,13 +193,13 @@ func SubticketSDLC() Definition {
 			{
 				ID: "review", Name: "Review", Type: PhaseAgent,
 				Description: "Lightweight review of subticket work. Single iteration.",
-				Config:    map[string]any{"role": "validator", "max_iterations": 1},
-				OnFailure: "execute",
+				Config:      map[string]any{"role": "validator", "max_iterations": 1},
+				OnFailure:   "execute",
 			},
 			{
 				ID: "merge", Name: "Merge", Type: PhaseExternal,
 				Description: "Merge the approved subticket PR.",
-				Config: map[string]any{"mode": "sync"},
+				Config:      map[string]any{"mode": "sync"},
 			},
 		},
 	}

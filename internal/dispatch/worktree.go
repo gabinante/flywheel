@@ -11,9 +11,17 @@ import (
 )
 
 // WorktreeManager handles git worktree lifecycle for concurrent ticket execution.
+//
+// Worktrees follow the operator's convention: <BaseDir>/<repo>-worktrees/<name>, where
+// BaseDir is the code root (e.g. ~/git), <repo> is the repository's directory name, and
+// <name> is the ticket's branch slug (e.g. rlep-3488-review-fixes). Legacy callers that
+// only know the ticket ID still resolve through the recorded mapping.
 type WorktreeManager struct {
-	BaseDir string // base directory for worktrees (e.g. /tmp/flywheel-worktrees)
+	BaseDir string // code root (e.g. ~/git); worktrees live under <BaseDir>/<repo>-worktrees/
 	RepoDir string // path to the main git repository (legacy single-repo)
+
+	mu    sync.Mutex
+	paths map[string]string // ticket ID → worktree dir created in this process
 }
 
 // Create creates a git worktree for a ticket branch and returns the worktree path.
@@ -30,10 +38,11 @@ func (m *WorktreeManager) CreateFromRepo(ticketID, branch, repoDir, defaultBranc
 		defaultBranch = "main"
 	}
 
-	dir := m.worktreePath(ticketID)
+	dir := m.worktreePathFor(ticketID, branch, repoDir)
 	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 		return "", fmt.Errorf("worktree mkdir: %w", err)
 	}
+	m.remember(ticketID, dir)
 
 	// Prune stale worktree entries first.
 	prune := exec.Command("git", "worktree", "prune")
@@ -94,17 +103,26 @@ func (m *WorktreeManager) Remove(ticketID string) error {
 
 // RemoveFromRepo cleans up a worktree for a ticket using the specified repo dir.
 func (m *WorktreeManager) RemoveFromRepo(ticketID, repoDir string) error {
-	dir := m.worktreePath(ticketID)
+	dir := m.lookup(ticketID)
+	if dir == "" {
+		dir = m.worktreePath(ticketID)
+	}
 	cmd := exec.Command("git", "worktree", "remove", "--force", dir)
 	cmd.Dir = repoDir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("worktree remove: %s: %w", strings.TrimSpace(string(out)), err)
 	}
+	m.forget(ticketID)
 	return nil
 }
 
 // Path returns the worktree directory for a ticket if it exists, or empty string.
 func (m *WorktreeManager) Path(ticketID string) string {
+	if dir := m.lookup(ticketID); dir != "" {
+		if _, err := os.Stat(dir); err == nil {
+			return dir
+		}
+	}
 	dir := m.worktreePath(ticketID)
 	if _, err := os.Stat(dir); err == nil {
 		return dir
@@ -112,10 +130,107 @@ func (m *WorktreeManager) Path(ticketID string) string {
 	return ""
 }
 
+// worktreePath is the legacy flat layout (<BaseDir>/<ticketID>), used when the repo is unknown.
 func (m *WorktreeManager) worktreePath(ticketID string) string {
-	// Sanitize ticket ID for filesystem use (e.g. "proj-42" → "proj-42").
 	safe := strings.ReplaceAll(ticketID, "/", "-")
 	return filepath.Join(m.BaseDir, safe)
+}
+
+// worktreePathFor places the worktree under <BaseDir>/<repo>-worktrees/<slug>.
+func (m *WorktreeManager) worktreePathFor(ticketID, branch, repoDir string) string {
+	repo := repoDisplayName(repoDir)
+	if repo == "" {
+		return m.worktreePath(ticketID)
+	}
+	name := branch
+	if i := strings.LastIndex(name, "/"); i >= 0 {
+		name = name[i+1:]
+	}
+	name = sanitizeDirName(name)
+	if name == "" {
+		name = sanitizeDirName(ticketID)
+	}
+	return filepath.Join(m.BaseDir, repo+"-worktrees", name)
+}
+
+func (m *WorktreeManager) remember(ticketID, dir string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.paths == nil {
+		m.paths = map[string]string{}
+	}
+	m.paths[ticketID] = dir
+}
+
+func (m *WorktreeManager) lookup(ticketID string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if dir, ok := m.paths[ticketID]; ok {
+		return dir
+	}
+	// Fall back to scanning the convention layout for a directory named after the ticket.
+	matches, _ := filepath.Glob(filepath.Join(m.BaseDir, "*-worktrees", sanitizeDirName(ticketID)))
+	if len(matches) == 1 {
+		return matches[0]
+	}
+	return ""
+}
+
+func (m *WorktreeManager) forget(ticketID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.paths, ticketID)
+}
+
+// repoDisplayName returns the repository directory name for a clone: the basename for
+// a normal checkout, or the name derived from the remote URL for Flywheel-managed clones.
+func repoDisplayName(repoDir string) string {
+	if repoDir == "" {
+		return ""
+	}
+	base := filepath.Base(repoDir)
+	if filepath.Base(filepath.Dir(repoDir)) == ".clones" || strings.Contains(base, "__") {
+		if url := currentRemoteURL(repoDir); url != "" {
+			return repoNameFromURL(url)
+		}
+		if i := strings.Index(base, "__"); i >= 0 {
+			return base[i+2:]
+		}
+	}
+	return base
+}
+
+// repoNameFromURL extracts "name" from git@github.com:owner/name.git or https URLs.
+func repoNameFromURL(u string) string {
+	u = strings.TrimSpace(u)
+	u = strings.TrimSuffix(strings.TrimSuffix(u, "/"), ".git")
+	if i := strings.LastIndexAny(u, "/:"); i >= 0 {
+		u = u[i+1:]
+	}
+	return u
+}
+
+// sanitizeDirName keeps a branch slug filesystem-safe.
+func sanitizeDirName(s string) string {
+	var b strings.Builder
+	lastDash := false
+	for _, r := range strings.ToLower(s) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '.', r == '_':
+			b.WriteRune(r)
+			lastDash = false
+		default:
+			if !lastDash && b.Len() > 0 {
+				b.WriteRune('-')
+				lastDash = true
+			}
+		}
+	}
+	out := strings.Trim(b.String(), "-.")
+	if len(out) > 64 {
+		out = strings.Trim(out[:64], "-.")
+	}
+	return out
 }
 
 // MultiRepoCloneManager manages local clones for multi-repo projects.

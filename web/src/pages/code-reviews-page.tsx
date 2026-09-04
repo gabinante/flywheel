@@ -84,7 +84,17 @@ function ReviewRow({ r, base }: { r: CodeReviewRequest; base: string }) {
   )
 }
 
-function FeedbackRow({ f, onState }: { f: FeedbackRound; onState: (id: string, state: 'ignored' | 'addressed') => void }) {
+function FeedbackRow({
+  f,
+  onState,
+  onAddress,
+  harness,
+}: {
+  f: FeedbackRound
+  onState: (id: string, state: 'ignored' | 'addressed') => void
+  onAddress: (id: string) => void
+  harness: string
+}) {
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-xs">
       <MessageSquareWarning className={cn('size-4', f.review_state === 'CHANGES_REQUESTED' ? 'text-amber-300' : 'text-muted-foreground')} />
@@ -99,8 +109,12 @@ function FeedbackRow({ f, onState }: { f: FeedbackRound; onState: (id: string, s
         by {f.reviewer} · {f.comment_count} comment{f.comment_count === 1 ? '' : 's'} · {relativeTime(f.submitted_at ?? f.observed_at)}
       </span>
       <Badge variant="muted" className="h-5 px-1.5 text-[10px]">{f.state}</Badge>
+      {f.state === 'dispatched' && <span className="ml-auto text-[11px] text-sky-300">addressing…</span>}
       {f.state === 'new' && (
         <span className="ml-auto flex gap-1">
+          <Button size="sm" className="h-6 px-2 text-[11px]" onClick={() => onAddress(f.id)}>
+            Address with {harness}
+          </Button>
           <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={() => onState(f.id, 'addressed')}>
             Mark addressed
           </Button>
@@ -137,7 +151,7 @@ export function CodeReviewsPage() {
     void Promise.all([
       client.GET('/code-reviews', { params: { query } }),
       client.GET('/code-reviews/status'),
-      client.GET('/code-reviews/feedback', { params: { query: { state: 'new', limit: 50 } } }),
+      client.GET('/code-reviews/feedback', { params: { query: { limit: 50 } } }),
     ]).then(([list, st, fb]) => {
       if (cancelled) return
       if (!list.response.ok || !list.data) {
@@ -148,7 +162,7 @@ export function CodeReviewsPage() {
         setRequests(list.data.requests)
       }
       if (st.response.ok && st.data) setStatus(st.data)
-      if (fb.response.ok && fb.data) setFeedback(fb.data.rounds)
+      if (fb.response.ok && fb.data) setFeedback(fb.data.rounds.filter((r) => r.state === 'new' || r.state === 'dispatched'))
     })
     const t = setInterval(refresh, 10_000)
     return () => {
@@ -172,6 +186,12 @@ export function CodeReviewsPage() {
 
   const setFeedbackState = async (id: string, st: 'ignored' | 'addressed') => {
     await client.POST('/code-reviews/feedback/{roundID}/state', { params: { path: { roundID: id } }, body: { state: st } })
+    refresh()
+  }
+
+  const addressFeedback = async (id: string) => {
+    const { error, response } = await client.POST('/code-reviews/feedback/{roundID}/address', { params: { path: { roundID: id } } })
+    if (!response.ok) setErr(formatApiError(error))
     refresh()
   }
 
@@ -248,7 +268,7 @@ export function CodeReviewsPage() {
         <section className="flex flex-col gap-2">
           <h2 className="text-sm font-medium text-muted-foreground">Reviews landed on your PRs</h2>
           {feedback.map((f) => (
-            <FeedbackRow key={f.id} f={f} onState={setFeedbackState} />
+            <FeedbackRow key={f.id} f={f} onState={setFeedbackState} onAddress={addressFeedback} harness="Claude Code" />
           ))}
         </section>
       )}

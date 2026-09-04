@@ -180,7 +180,7 @@ func New(cfg Config, bus events.Bus, tickets TicketGetter, projects ProjectGette
 			BaseDir: cfg.WorktreeDir,
 			RepoDir: cfg.RepoDir,
 		},
-		clones:         NewMultiRepoCloneManager(filepath.Join(cfg.WorktreeDir, ".clones")),
+		clones:         NewMultiRepoCloneManager(filepath.Join(cfg.WorktreeDir, ".flywheel", "clones")),
 		ghLimiter:      newGHRateLimiter(1, 10), // 1 token/sec sustained, burst 10
 		active:         make(map[string]context.CancelFunc),
 		activeProjects: make(map[string]string),
@@ -618,10 +618,30 @@ func (d *Dispatcher) resolveProjectRepoDir(ctx context.Context, projectID string
 	if proj.RepoURL == "" {
 		return "", fmt.Errorf("project %s has no repo_url configured", projectID)
 	}
+	// Prefer the operator's own checkout at <code root>/<repo> when it exists and points at the same remote.
+	if name := repoNameFromURL(proj.RepoURL); name != "" && d.cfg.WorktreeDir != "" {
+		primary := filepath.Join(d.cfg.WorktreeDir, name)
+		if st, err := os.Stat(filepath.Join(primary, ".git")); err == nil && (st.IsDir() || st.Mode().IsRegular()) {
+			if sameRemote(currentRemoteURL(primary), proj.RepoURL) {
+				return primary, nil
+			}
+		}
+	}
 	if d.clones == nil {
 		return "", fmt.Errorf("clone manager not initialized — cannot safely resolve repo for project %s", projectID)
 	}
 	return d.clones.EnsureClone(proj.RepoURL, proj.ID)
+}
+
+// sameRemote compares two git remote URLs by owner/name, ignoring scheme and .git.
+func sameRemote(a, b string) bool {
+	norm := func(u string) string {
+		u = strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(u, "/"), ".git"))
+		u = strings.ReplaceAll(u, "git@github.com:", "github.com/")
+		u = strings.TrimPrefix(strings.TrimPrefix(u, "https://"), "ssh://git@")
+		return strings.ToLower(u)
+	}
+	return norm(a) != "" && norm(a) == norm(b)
 }
 
 func (d *Dispatcher) handleTicketReady(ctx context.Context, e events.Event) {
