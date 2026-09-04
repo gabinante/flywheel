@@ -205,7 +205,7 @@ function AppShellInner() {
 
           {/* ─── Main content area ─── */}
           <main ref={mainRef} className="flex-1 overflow-y-auto" id="main-scroll">
-            <div className="mx-auto w-full max-w-4xl p-4">
+            <div className="w-full p-4">
               <Outlet />
             </div>
           </main>

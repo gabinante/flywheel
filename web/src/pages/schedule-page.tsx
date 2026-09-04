@@ -73,7 +73,7 @@ export function SchedulePage() {
   const groups = (['pending', 'scheduled', 'recurring'] as ScheduledAction['kind'][]).map((k) => ({ kind: k, items: (items ?? []).filter((i) => i.kind === k) }))
 
   return (
-    <div className="w-full space-y-6 p-6 xl:px-8">
+    <div className="w-full space-y-6 p-2 xl:px-4">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold">
