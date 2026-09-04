@@ -541,22 +541,13 @@ export function OperatorSettingsPage() {
                   checked={review.watch_requested}
                   onChange={(v) => update('review', { watch_requested: v })}
                 />
-                <Field
-                  label="Which requests"
-                  htmlFor="review-scope"
-                  hint="GitHub's review-requested:@me includes PRs that ask for a team you belong to. Direct-only limits the watcher to PRs that name you."
-                >
-                  <StyledSelect
-                    className="h-9 w-full max-w-md min-w-0"
-                    id="review-scope"
-                    value={review.watch_scope || 'all'}
-                    onValueChange={(v) => update('review', { watch_scope: v })}
-                    options={[
-                      { value: 'all', label: 'Requests to me or to my teams' },
-                      { value: 'direct', label: 'Only requests that name me directly' },
-                    ]}
-                  />
-                </Field>
+                <Toggle
+                  id="review-scope"
+                  label="Include requests to my teams"
+                  hint="Off = only PRs that name you as a reviewer (user-review-requested:@me). On = also PRs that ask for a team you belong to, which is usually most of them."
+                  checked={review.watch_scope === 'all'}
+                  onChange={(v) => update('review', { watch_scope: v ? 'all' : 'direct' })}
+                />
                 <Toggle
                   id="review-watch-authored"
                   label="Watch feedback on my PRs"

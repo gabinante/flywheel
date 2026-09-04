@@ -261,8 +261,8 @@ func (s *Settings) Normalize() {
 	if s.Review.ReReviewMinGapMinutes < 0 {
 		s.Review.ReReviewMinGapMinutes = 0
 	}
-	if s.Review.WatchScope != "direct" {
-		s.Review.WatchScope = "all"
+	if s.Review.WatchScope != "all" {
+		s.Review.WatchScope = "direct" // default: only PRs that ask for the operator personally
 	}
 	if s.Feedback.Harness == "" {
 		s.Feedback.Harness = "claude"

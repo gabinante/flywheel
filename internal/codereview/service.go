@@ -43,7 +43,7 @@ type Config struct {
 	FeedbackLookback time.Duration // reviews older than this at first sight are recorded as ignored (default 48h)
 	ReReviewQuiet    time.Duration // after new commits, wait until the branch has been quiet this long (default 5m)
 	ReReviewMinGap   time.Duration // never post more than one re-review per PR within this window (0 = no limit)
-	WatchScope       string        // "all" (default) = review-requested:@me incl. teams; "direct" = only PRs that ask for the operator personally
+	WatchScope       string        // "direct" (default) = only PRs that ask for the operator personally; "all" = review-requested:@me incl. teams
 }
 
 // Service runs the review queue and the GitHub watchers.
@@ -127,7 +127,7 @@ func normalizeConfig(cfg Config) Config {
 		cfg.ReReviewMinGap = 0
 	}
 	if cfg.WatchScope == "" {
-		cfg.WatchScope = "all"
+		cfg.WatchScope = "direct"
 	}
 	if cfg.Harness == "" {
 		cfg.Harness = "codex"
