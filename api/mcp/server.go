@@ -55,6 +55,7 @@ func NewServer(b *Backend) (*mcp.Server, error) {
 	RegisterRepoTools(server, b)
 	RegisterSessionTools(server, b)
 	RegisterCodeReviewTools(server, b)
+	RegisterReportTools(server, b)
 	registerResources(server)
 	return server, nil
 }

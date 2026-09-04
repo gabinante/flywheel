@@ -289,3 +289,54 @@ func truncateStr(s string, n int) string {
 	}
 	return s[:n] + "…"
 }
+
+// MergedPR is a merged pull request authored by the operator.
+type MergedPR struct {
+	Repo     string
+	Number   int
+	Title    string
+	URL      string
+	MergedAt time.Time
+}
+
+// SearchMergedSince lists the operator's PRs merged since the given time, optionally in one repo.
+func (g *GitHub) SearchMergedSince(ctx context.Context, since time.Time, repo string) ([]MergedPR, error) {
+	args := []string{"search", "prs", "--author=@me", "--merged", "--merged-at", ">=" + since.UTC().Format("2006-01-02"), "--limit", "100",
+		"--json", "number,repository,title,url,closedAt"}
+	if repo != "" {
+		args = append(args, "--repo", repo)
+	}
+	out, err := g.run(ctx, nil, args...)
+	if err != nil {
+		return nil, err
+	}
+	var rows []struct {
+		Number     int    `json:"number"`
+		Title      string `json:"title"`
+		URL        string `json:"url"`
+		ClosedAt   string `json:"closedAt"`
+		Repository struct {
+			NameWithOwner string `json:"nameWithOwner"`
+		} `json:"repository"`
+	}
+	if err := json.Unmarshal(out, &rows); err != nil {
+		return nil, fmt.Errorf("gh search merged: decode: %w", err)
+	}
+	res := make([]MergedPR, 0, len(rows))
+	for _, r := range rows {
+		ts, _ := time.Parse(time.RFC3339, r.ClosedAt)
+		if !ts.IsZero() && ts.Before(since) {
+			continue
+		}
+		res = append(res, MergedPR{Repo: r.Repository.NameWithOwner, Number: r.Number, Title: r.Title, URL: r.URL, MergedAt: ts})
+	}
+	return res, nil
+}
+
+// SearchOpenAuthored lists the operator's open PRs, optionally in one repo.
+func (g *GitHub) SearchOpenAuthored(ctx context.Context, repo string) ([]PRSummary, error) {
+	if repo == "" {
+		return g.search(ctx, "--author=@me")
+	}
+	return g.search(ctx, "--author=@me", "--repo", repo)
+}

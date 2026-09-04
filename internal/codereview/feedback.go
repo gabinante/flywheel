@@ -16,7 +16,7 @@ import (
 
 // FeedbackConfig controls the address-feedback workflow on the operator's own PRs.
 type FeedbackConfig struct {
-	Harness     string        // claude (default) or codex
+	Harness     string // claude (default) or codex
 	Model       string
 	Effort      string
 	AutoAddress bool          // dispatch automatically when a review lands; otherwise wait for the operator

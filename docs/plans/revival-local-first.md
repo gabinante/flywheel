@@ -1,6 +1,6 @@
 # Flywheel revival — local-first control plane for a Linear + Codex + Claude Code workflow
 
-Status: draft for review, 2026-09-04. Target location once the repo is cloned: `docs/plans/revival-local-first.md`.
+Status: phases 0–5 implemented 2026-09-04 (see git history); live Linear posting awaits `LINEAR_API_KEY`. Phase 6 items remain open.
 
 ## 1. Why
 

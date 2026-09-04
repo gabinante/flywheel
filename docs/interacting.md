@@ -123,6 +123,8 @@ operator JWT as `Authorization: Bearer <token>`. `agent_id` is inferred from the
 | `get_ticket` also accepts a Linear identifier (e.g. `RLETD-465`) when the project mirrors Linear. | |
 | `request_code_review` | Queue in-depth reviews for PR URLs / `owner/repo#N` in free text (dry_run, watch, harness). |
 | `list_code_reviews` / `get_code_review` | Inspect review requests, verdicts, and findings. |
+| `preview_project_update` / `post_project_update` | Delta Linear project status update (done, merged, in review, blocked, feedback, activity). |
+| `preview_weekly_roundup` / `post_weekly_roundup` | Weekly roundup across linked projects → rolling Linear document. |
 | `list_sessions` | List tracked Claude Code / Codex sessions (filters: harness, origin, repo, branch, status, q). |
 | `link_session` | Link a session to a PR (`owner/repo#N`), Linear issue (`KEY-N`), ticket, or review. |
 

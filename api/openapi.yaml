@@ -1401,6 +1401,158 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StructuredError'
+  /reports:
+    get:
+      operationId: ListReports
+      summary: Reports composed or posted to Linear
+      parameters:
+        - name: project_id
+          in: query
+          schema:
+            type: string
+        - name: kind
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportListResponse'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /reports/weekly/preview:
+    get:
+      operationId: PreviewWeeklyRoundup
+      summary: Render this week's roundup without posting
+      parameters:
+        - name: week_of
+          in: query
+          description: Any date in the target week (YYYY-MM-DD); default this week.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Report'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /reports/weekly:
+    post:
+      operationId: PostWeeklyRoundup
+      summary: Post the weekly roundup to the rolling Linear document (and project update)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostReportRequest'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Report'
+        "400":
+          description: Not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /projects/{projectID}/reports/status-update/preview:
+    get:
+      operationId: PreviewProjectUpdate
+      summary: Render the delta status update since the last post without posting
+      parameters:
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Report'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /projects/{projectID}/reports/status-update:
+    post:
+      operationId: PostProjectUpdate
+      summary: Post the delta status update to the linked Linear project
+      parameters:
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostReportRequest'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Report'
+        "400":
+          description: Not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
 components:
   securitySchemes:
     BearerAuth:
@@ -2630,3 +2782,52 @@ components:
           type: integer
         repo_root:
           type: string
+    Report:
+      type: object
+      required: [id, kind, window_start, window_end, body, posted, created_at]
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          description: project_update or weekly_roundup
+        project_id:
+          type: string
+        window_start:
+          type: string
+          format: date-time
+        window_end:
+          type: string
+          format: date-time
+        body:
+          type: string
+          description: Markdown
+        health:
+          type: string
+        posted:
+          type: boolean
+        url:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    ReportListResponse:
+      type: object
+      required: [reports]
+      properties:
+        reports:
+          type: array
+          items:
+            $ref: '#/components/schemas/Report'
+    PostReportRequest:
+      type: object
+      properties:
+        health:
+          type: string
+          enum: [onTrack, atRisk, offTrack]
+        body:
+          type: string
+          description: Override the rendered body (edited preview)
+        week_of:
+          type: string
+          description: Weekly roundup only; any date in the target week (YYYY-MM-DD)

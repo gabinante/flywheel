@@ -174,6 +174,27 @@ func (e DispatchWorkerRoleBaseType) Valid() bool {
 	}
 }
 
+// Defines values for PostReportRequestHealth.
+const (
+	PostReportRequestHealthAtRisk   PostReportRequestHealth = "atRisk"
+	PostReportRequestHealthOffTrack PostReportRequestHealth = "offTrack"
+	PostReportRequestHealthOnTrack  PostReportRequestHealth = "onTrack"
+)
+
+// Valid indicates whether the value is a known member of the PostReportRequestHealth enum.
+func (e PostReportRequestHealth) Valid() bool {
+	switch e {
+	case PostReportRequestHealthAtRisk:
+		return true
+	case PostReportRequestHealthOffTrack:
+		return true
+	case PostReportRequestHealthOnTrack:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ProjectStatus.
 const (
 	ProjectStatusActive ProjectStatus = "active"
@@ -993,6 +1014,19 @@ type PendingReviewsResponse struct {
 	Tickets *[]Ticket `json:"tickets,omitempty"`
 }
 
+// PostReportRequest defines model for PostReportRequest.
+type PostReportRequest struct {
+	// Body Override the rendered body (edited preview)
+	Body   *string                  `json:"body,omitempty"`
+	Health *PostReportRequestHealth `json:"health,omitempty"`
+
+	// WeekOf Weekly roundup only; any date in the target week (YYYY-MM-DD)
+	WeekOf *string `json:"week_of,omitempty"`
+}
+
+// PostReportRequestHealth defines model for PostReportRequest.Health.
+type PostReportRequestHealth string
+
 // Project defines model for Project.
 type Project struct {
 	ContextPack *map[string]interface{} `json:"context_pack,omitempty"`
@@ -1042,6 +1076,28 @@ type RenewLeaseRequest struct {
 // RenewLeaseResponseBody defines model for RenewLeaseResponseBody.
 type RenewLeaseResponseBody struct {
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+
+// Report defines model for Report.
+type Report struct {
+	// Body Markdown
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+	Health    *string   `json:"health,omitempty"`
+	Id        string    `json:"id"`
+
+	// Kind project_update or weekly_roundup
+	Kind        string    `json:"kind"`
+	Posted      bool      `json:"posted"`
+	ProjectId   *string   `json:"project_id,omitempty"`
+	Url         *string   `json:"url,omitempty"`
+	WindowEnd   time.Time `json:"window_end"`
+	WindowStart time.Time `json:"window_start"`
+}
+
+// ReportListResponse defines model for ReportListResponse.
+type ReportListResponse struct {
+	Reports []Report `json:"reports"`
 }
 
 // ResolveEscalationRequest defines model for ResolveEscalationRequest.
@@ -1375,6 +1431,19 @@ type ListWorkStreamsParams struct {
 // ListWorkStreamsParamsStatus defines parameters for ListWorkStreams.
 type ListWorkStreamsParamsStatus string
 
+// ListReportsParams defines parameters for ListReports.
+type ListReportsParams struct {
+	ProjectId *string `form:"project_id,omitempty" json:"project_id,omitempty"`
+	Kind      *string `form:"kind,omitempty" json:"kind,omitempty"`
+	Limit     *int    `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// PreviewWeeklyRoundupParams defines parameters for PreviewWeeklyRoundup.
+type PreviewWeeklyRoundupParams struct {
+	// WeekOf Any date in the target week (YYYY-MM-DD); default this week.
+	WeekOf *string `form:"week_of,omitempty" json:"week_of,omitempty"`
+}
+
 // ListSessionsParams defines parameters for ListSessions.
 type ListSessionsParams struct {
 	Harness *ListSessionsParamsHarness `form:"harness,omitempty" json:"harness,omitempty"`
@@ -1445,6 +1514,9 @@ type UpdateProjectJSONRequestBody = UpdateProjectRequest
 // ClaimTicketJSONRequestBody defines body for ClaimTicket for application/json ContentType.
 type ClaimTicketJSONRequestBody = ClaimRequest
 
+// PostProjectUpdateJSONRequestBody defines body for PostProjectUpdate for application/json ContentType.
+type PostProjectUpdateJSONRequestBody = PostReportRequest
+
 // CreateTicketJSONRequestBody defines body for CreateTicket for application/json ContentType.
 type CreateTicketJSONRequestBody = CreateTicketRequest
 
@@ -1453,6 +1525,9 @@ type CreateWorkStreamJSONRequestBody = CreateWorkStreamRequest
 
 // UpdateWorkStreamJSONRequestBody defines body for UpdateWorkStream for application/json ContentType.
 type UpdateWorkStreamJSONRequestBody = UpdateWorkStreamRequest
+
+// PostWeeklyRoundupJSONRequestBody defines body for PostWeeklyRoundup for application/json ContentType.
+type PostWeeklyRoundupJSONRequestBody = PostReportRequest
 
 // CreateSessionLinkJSONRequestBody defines body for CreateSessionLink for application/json ContentType.
 type CreateSessionLinkJSONRequestBody = CreateSessionLinkRequest
@@ -1720,6 +1795,25 @@ type ClientInterface interface {
 	// Takes a body of the `application/json` content type.
 	ClaimTicket(ctx context.Context, projectID string, body ClaimTicketJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PostProjectUpdateWithBody Post the delta status update to the linked Linear project
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /projects/{projectID}/reports/status-update (the `PostProjectUpdate` operationId).
+	PostProjectUpdateWithBody(ctx context.Context, projectID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostProjectUpdate Post the delta status update to the linked Linear project
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /projects/{projectID}/reports/status-update (the `PostProjectUpdate` operationId).
+	PostProjectUpdate(ctx context.Context, projectID string, body PostProjectUpdateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewProjectUpdate Render the delta status update since the last post without posting
+	//
+	// Corresponds with GET /projects/{projectID}/reports/status-update/preview (the `PreviewProjectUpdate` operationId).
+	PreviewProjectUpdate(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListPendingReviews performs a GET /projects/{projectID}/reviews (the `ListPendingReviews` operationId) request.
 	ListPendingReviews(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -1755,6 +1849,30 @@ type ClientInterface interface {
 	// UpdateWorkStream performs a PATCH /projects/{projectID}/work-streams/{workStreamID} (the `UpdateWorkStream` operationId) request.
 	// Takes a body of the `application/json` content type.
 	UpdateWorkStream(ctx context.Context, projectID string, workStreamID string, body UpdateWorkStreamJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListReports Reports composed or posted to Linear
+	//
+	// Corresponds with GET /reports (the `ListReports` operationId).
+	ListReports(ctx context.Context, params *ListReportsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostWeeklyRoundupWithBody Post the weekly roundup to the rolling Linear document (and project update)
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /reports/weekly (the `PostWeeklyRoundup` operationId).
+	PostWeeklyRoundupWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostWeeklyRoundup Post the weekly roundup to the rolling Linear document (and project update)
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /reports/weekly (the `PostWeeklyRoundup` operationId).
+	PostWeeklyRoundup(ctx context.Context, body PostWeeklyRoundupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewWeeklyRoundup Render this week's roundup without posting
+	//
+	// Corresponds with GET /reports/weekly/preview (the `PreviewWeeklyRoundup` operationId).
+	PreviewWeeklyRoundup(ctx context.Context, params *PreviewWeeklyRoundupParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListSessions List tracked Claude Code and Codex sessions
 	//
@@ -2355,6 +2473,55 @@ func (c *Client) ClaimTicket(ctx context.Context, projectID string, body ClaimTi
 	return c.Client.Do(req)
 }
 
+// PostProjectUpdateWithBody Post the delta status update to the linked Linear project
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /projects/{projectID}/reports/status-update (the `PostProjectUpdate` operationId).
+func (c *Client) PostProjectUpdateWithBody(ctx context.Context, projectID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostProjectUpdateRequestWithBody(c.Server, projectID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostProjectUpdate Post the delta status update to the linked Linear project
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /projects/{projectID}/reports/status-update (the `PostProjectUpdate` operationId).
+func (c *Client) PostProjectUpdate(ctx context.Context, projectID string, body PostProjectUpdateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostProjectUpdateRequest(c.Server, projectID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PreviewProjectUpdate Render the delta status update since the last post without posting
+//
+// Corresponds with GET /projects/{projectID}/reports/status-update/preview (the `PreviewProjectUpdate` operationId).
+func (c *Client) PreviewProjectUpdate(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewProjectUpdateRequest(c.Server, projectID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListPendingReviews performs a GET /projects/{projectID}/reviews (the `ListPendingReviews` operationId) request.
 func (c *Client) ListPendingReviews(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListPendingReviewsRequest(c.Server, projectID)
@@ -2481,6 +2648,70 @@ func (c *Client) UpdateWorkStreamWithBody(ctx context.Context, projectID string,
 // Takes a body of the `application/json` content type.
 func (c *Client) UpdateWorkStream(ctx context.Context, projectID string, workStreamID string, body UpdateWorkStreamJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateWorkStreamRequest(c.Server, projectID, workStreamID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListReports Reports composed or posted to Linear
+//
+// Corresponds with GET /reports (the `ListReports` operationId).
+func (c *Client) ListReports(ctx context.Context, params *ListReportsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListReportsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostWeeklyRoundupWithBody Post the weekly roundup to the rolling Linear document (and project update)
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /reports/weekly (the `PostWeeklyRoundup` operationId).
+func (c *Client) PostWeeklyRoundupWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostWeeklyRoundupRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostWeeklyRoundup Post the weekly roundup to the rolling Linear document (and project update)
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /reports/weekly (the `PostWeeklyRoundup` operationId).
+func (c *Client) PostWeeklyRoundup(ctx context.Context, body PostWeeklyRoundupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostWeeklyRoundupRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PreviewWeeklyRoundup Render this week's roundup without posting
+//
+// Corresponds with GET /reports/weekly/preview (the `PreviewWeeklyRoundup` operationId).
+func (c *Client) PreviewWeeklyRoundup(ctx context.Context, params *PreviewWeeklyRoundupParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewWeeklyRoundupRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -3848,6 +4079,87 @@ func NewClaimTicketRequestWithBody(server string, projectID string, contentType 
 	return req, nil
 }
 
+// NewPostProjectUpdateRequest calls the generic PostProjectUpdate builder with application/json body
+func NewPostProjectUpdateRequest(server string, projectID string, body PostProjectUpdateJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostProjectUpdateRequestWithBody(server, projectID, "application/json", bodyReader)
+}
+
+// NewPostProjectUpdateRequestWithBody constructs an http.Request for the PostProjectUpdate method, with any body, and a specified content type
+func NewPostProjectUpdateRequestWithBody(server string, projectID string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "projectID", projectID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/projects/%s/reports/status-update", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPreviewProjectUpdateRequest constructs an http.Request for the PreviewProjectUpdate method
+func NewPreviewProjectUpdateRequest(server string, projectID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "projectID", projectID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/projects/%s/reports/status-update/preview", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListPendingReviewsRequest constructs an http.Request for the ListPendingReviews method
 func NewListPendingReviewsRequest(server string, projectID string) (*http.Request, error) {
 	var err error
@@ -4201,6 +4513,178 @@ func NewUpdateWorkStreamRequestWithBody(server string, projectID string, workStr
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListReportsRequest constructs an http.Request for the ListReports method
+func NewListReportsRequest(server string, params *ListReportsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/reports")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.ProjectId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project_id", *params.ProjectId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Kind != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "kind", *params.Kind, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostWeeklyRoundupRequest calls the generic PostWeeklyRoundup builder with application/json body
+func NewPostWeeklyRoundupRequest(server string, body PostWeeklyRoundupJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostWeeklyRoundupRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPostWeeklyRoundupRequestWithBody constructs an http.Request for the PostWeeklyRoundup method, with any body, and a specified content type
+func NewPostWeeklyRoundupRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/reports/weekly")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPreviewWeeklyRoundupRequest constructs an http.Request for the PreviewWeeklyRoundup method
+func NewPreviewWeeklyRoundupRequest(server string, params *PreviewWeeklyRoundupParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/reports/weekly/preview")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.WeekOf != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "week_of", *params.WeekOf, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -5243,6 +5727,27 @@ type ClientWithResponsesInterface interface {
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	ClaimTicketWithResponse(ctx context.Context, projectID string, body ClaimTicketJSONRequestBody, reqEditors ...RequestEditorFn) (*ClaimTicketResponse, error)
 
+	// PostProjectUpdateWithBodyWithResponse Post the delta status update to the linked Linear project
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /projects/{projectID}/reports/status-update (the `PostProjectUpdate` operationId).
+	PostProjectUpdateWithBodyWithResponse(ctx context.Context, projectID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostProjectUpdateResponse, error)
+
+	// PostProjectUpdateWithResponse Post the delta status update to the linked Linear project
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /projects/{projectID}/reports/status-update (the `PostProjectUpdate` operationId).
+	PostProjectUpdateWithResponse(ctx context.Context, projectID string, body PostProjectUpdateJSONRequestBody, reqEditors ...RequestEditorFn) (*PostProjectUpdateResponse, error)
+
+	// PreviewProjectUpdateWithResponse Render the delta status update since the last post without posting
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /projects/{projectID}/reports/status-update/preview (the `PreviewProjectUpdate` operationId).
+	PreviewProjectUpdateWithResponse(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*PreviewProjectUpdateResponse, error)
+
 	// ListPendingReviewsWithResponse performs a GET /projects/{projectID}/reviews (the `ListPendingReviews` operationId) request.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -5292,6 +5797,34 @@ type ClientWithResponsesInterface interface {
 	// UpdateWorkStreamWithResponse performs a PATCH /projects/{projectID}/work-streams/{workStreamID} (the `UpdateWorkStream` operationId) request.
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	UpdateWorkStreamWithResponse(ctx context.Context, projectID string, workStreamID string, body UpdateWorkStreamJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateWorkStreamResponse, error)
+
+	// ListReportsWithResponse Reports composed or posted to Linear
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /reports (the `ListReports` operationId).
+	ListReportsWithResponse(ctx context.Context, params *ListReportsParams, reqEditors ...RequestEditorFn) (*ListReportsResponse, error)
+
+	// PostWeeklyRoundupWithBodyWithResponse Post the weekly roundup to the rolling Linear document (and project update)
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /reports/weekly (the `PostWeeklyRoundup` operationId).
+	PostWeeklyRoundupWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostWeeklyRoundupResponse, error)
+
+	// PostWeeklyRoundupWithResponse Post the weekly roundup to the rolling Linear document (and project update)
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /reports/weekly (the `PostWeeklyRoundup` operationId).
+	PostWeeklyRoundupWithResponse(ctx context.Context, body PostWeeklyRoundupJSONRequestBody, reqEditors ...RequestEditorFn) (*PostWeeklyRoundupResponse, error)
+
+	// PreviewWeeklyRoundupWithResponse Render this week's roundup without posting
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /reports/weekly/preview (the `PreviewWeeklyRoundup` operationId).
+	PreviewWeeklyRoundupWithResponse(ctx context.Context, params *PreviewWeeklyRoundupParams, reqEditors ...RequestEditorFn) (*PreviewWeeklyRoundupResponse, error)
 
 	// ListSessionsWithResponse List tracked Claude Code and Codex sessions
 	//
@@ -6697,6 +7230,123 @@ func (r ClaimTicketResponse) ContentType() string {
 	return ""
 }
 
+type PostProjectUpdateResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Report
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *StructuredError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PostProjectUpdateResponse) GetJSON200() *Report {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PostProjectUpdateResponse) GetJSON400() *StructuredError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PostProjectUpdateResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PostProjectUpdateResponse) GetJSON404() *StructuredError {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r PostProjectUpdateResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostProjectUpdateResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostProjectUpdateResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostProjectUpdateResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PreviewProjectUpdateResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Report
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PreviewProjectUpdateResponse) GetJSON200() *Report {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PreviewProjectUpdateResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PreviewProjectUpdateResponse) GetJSON404() *StructuredError {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r PreviewProjectUpdateResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PreviewProjectUpdateResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PreviewProjectUpdateResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PreviewProjectUpdateResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListPendingReviewsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -7083,6 +7733,157 @@ func (r UpdateWorkStreamResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r UpdateWorkStreamResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListReportsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ReportListResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListReportsResponse) GetJSON200() *ReportListResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListReportsResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r ListReportsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListReportsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListReportsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListReportsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostWeeklyRoundupResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Report
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *StructuredError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PostWeeklyRoundupResponse) GetJSON200() *Report {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PostWeeklyRoundupResponse) GetJSON400() *StructuredError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PostWeeklyRoundupResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r PostWeeklyRoundupResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostWeeklyRoundupResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostWeeklyRoundupResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostWeeklyRoundupResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PreviewWeeklyRoundupResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Report
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PreviewWeeklyRoundupResponse) GetJSON200() *Report {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PreviewWeeklyRoundupResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r PreviewWeeklyRoundupResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PreviewWeeklyRoundupResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PreviewWeeklyRoundupResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PreviewWeeklyRoundupResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -8196,6 +8997,45 @@ func (c *ClientWithResponses) ClaimTicketWithResponse(ctx context.Context, proje
 	return ParseClaimTicketResponse(rsp)
 }
 
+// PostProjectUpdateWithBodyWithResponse Post the delta status update to the linked Linear project
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /projects/{projectID}/reports/status-update (the `PostProjectUpdate` operationId).
+func (c *ClientWithResponses) PostProjectUpdateWithBodyWithResponse(ctx context.Context, projectID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostProjectUpdateResponse, error) {
+	rsp, err := c.PostProjectUpdateWithBody(ctx, projectID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostProjectUpdateResponse(rsp)
+}
+
+// PostProjectUpdateWithResponse Post the delta status update to the linked Linear project
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /projects/{projectID}/reports/status-update (the `PostProjectUpdate` operationId).
+func (c *ClientWithResponses) PostProjectUpdateWithResponse(ctx context.Context, projectID string, body PostProjectUpdateJSONRequestBody, reqEditors ...RequestEditorFn) (*PostProjectUpdateResponse, error) {
+	rsp, err := c.PostProjectUpdate(ctx, projectID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostProjectUpdateResponse(rsp)
+}
+
+// PreviewProjectUpdateWithResponse Render the delta status update since the last post without posting
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /projects/{projectID}/reports/status-update/preview (the `PreviewProjectUpdate` operationId).
+func (c *ClientWithResponses) PreviewProjectUpdateWithResponse(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*PreviewProjectUpdateResponse, error) {
+	rsp, err := c.PreviewProjectUpdate(ctx, projectID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewProjectUpdateResponse(rsp)
+}
+
 // ListPendingReviewsWithResponse performs a GET /projects/{projectID}/reviews (the `ListPendingReviews` operationId) request.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -8304,6 +9144,58 @@ func (c *ClientWithResponses) UpdateWorkStreamWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseUpdateWorkStreamResponse(rsp)
+}
+
+// ListReportsWithResponse Reports composed or posted to Linear
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /reports (the `ListReports` operationId).
+func (c *ClientWithResponses) ListReportsWithResponse(ctx context.Context, params *ListReportsParams, reqEditors ...RequestEditorFn) (*ListReportsResponse, error) {
+	rsp, err := c.ListReports(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListReportsResponse(rsp)
+}
+
+// PostWeeklyRoundupWithBodyWithResponse Post the weekly roundup to the rolling Linear document (and project update)
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /reports/weekly (the `PostWeeklyRoundup` operationId).
+func (c *ClientWithResponses) PostWeeklyRoundupWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostWeeklyRoundupResponse, error) {
+	rsp, err := c.PostWeeklyRoundupWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostWeeklyRoundupResponse(rsp)
+}
+
+// PostWeeklyRoundupWithResponse Post the weekly roundup to the rolling Linear document (and project update)
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /reports/weekly (the `PostWeeklyRoundup` operationId).
+func (c *ClientWithResponses) PostWeeklyRoundupWithResponse(ctx context.Context, body PostWeeklyRoundupJSONRequestBody, reqEditors ...RequestEditorFn) (*PostWeeklyRoundupResponse, error) {
+	rsp, err := c.PostWeeklyRoundup(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostWeeklyRoundupResponse(rsp)
+}
+
+// PreviewWeeklyRoundupWithResponse Render this week's roundup without posting
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /reports/weekly/preview (the `PreviewWeeklyRoundup` operationId).
+func (c *ClientWithResponses) PreviewWeeklyRoundupWithResponse(ctx context.Context, params *PreviewWeeklyRoundupParams, reqEditors ...RequestEditorFn) (*PreviewWeeklyRoundupResponse, error) {
+	rsp, err := c.PreviewWeeklyRoundup(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewWeeklyRoundupResponse(rsp)
 }
 
 // ListSessionsWithResponse List tracked Claude Code and Codex sessions
@@ -9462,6 +10354,93 @@ func ParseClaimTicketResponse(rsp *http.Response) (*ClaimTicketResponse, error) 
 	return response, nil
 }
 
+// ParsePostProjectUpdateResponse parses an HTTP response from a PostProjectUpdateWithResponse call
+func ParsePostProjectUpdateResponse(rsp *http.Response) (*PostProjectUpdateResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostProjectUpdateResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Report
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePreviewProjectUpdateResponse parses an HTTP response from a PreviewProjectUpdateWithResponse call
+func ParsePreviewProjectUpdateResponse(rsp *http.Response) (*PreviewProjectUpdateResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PreviewProjectUpdateResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Report
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListPendingReviewsResponse parses an HTTP response from a ListPendingReviewsWithResponse call
 func ParseListPendingReviewsResponse(rsp *http.Response) (*ListPendingReviewsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -9743,6 +10722,112 @@ func ParseUpdateWorkStreamResponse(rsp *http.Response) (*UpdateWorkStreamRespons
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListReportsResponse parses an HTTP response from a ListReportsWithResponse call
+func ParseListReportsResponse(rsp *http.Response) (*ListReportsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListReportsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ReportListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostWeeklyRoundupResponse parses an HTTP response from a PostWeeklyRoundupWithResponse call
+func ParsePostWeeklyRoundupResponse(rsp *http.Response) (*PostWeeklyRoundupResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostWeeklyRoundupResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Report
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePreviewWeeklyRoundupResponse parses an HTTP response from a PreviewWeeklyRoundupWithResponse call
+func ParsePreviewWeeklyRoundupResponse(rsp *http.Response) (*PreviewWeeklyRoundupResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PreviewWeeklyRoundupResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Report
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
 
 	}
 

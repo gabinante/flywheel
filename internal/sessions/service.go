@@ -158,3 +158,8 @@ func (s *Service) Link(ctx context.Context, sessionID, kind, ref, source string)
 func (s *Service) Record(ctx context.Context, sess *Session) error {
 	return s.store.Upsert(ctx, sess)
 }
+
+// StatsSince aggregates sessions by harness for a window, optionally restricted to repos.
+func (s *Service) StatsSince(ctx context.Context, since, until time.Time, repos []string) ([]HarnessStats, error) {
+	return s.store.StatsSince(ctx, since, until, repos)
+}

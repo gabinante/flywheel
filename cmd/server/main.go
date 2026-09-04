@@ -30,6 +30,7 @@ import (
 	"github.com/gabinante/flywheel/internal/progress"
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
+	"github.com/gabinante/flywheel/internal/report"
 	"github.com/gabinante/flywheel/internal/review"
 	"github.com/gabinante/flywheel/internal/sessions"
 	"github.com/gabinante/flywheel/internal/ticket"
@@ -254,6 +255,22 @@ func run(ctx context.Context, cfg *config.Config) {
 	})
 	codeReviewSvc.Start(ctx)
 
+	// Reports: Linear project status updates and the weekly roundup.
+	reportSvc := report.New(report.Deps{
+		Store: report.NewStore(pool), Tickets: ticketSvc, Projects: projectSvc, Repos: repoSvc, Linear: linearSvc,
+		GitHub: codereview.NewGitHub(""), Reviews: codeReviewSvc, Sessions: sessionsSvc,
+	}, report.Config{
+		ProjectUpdatesEnabled: cfg.Report.ProjectUpdatesEnabled,
+		ProjectUpdateInterval: cfg.Report.ProjectUpdateInterval,
+		WeeklyEnabled:         cfg.Report.WeeklyEnabled,
+		WeeklyDay:             report.ParseWeekday(cfg.Report.WeeklyDay),
+		WeeklyHour:            cfg.Report.WeeklyHour,
+		RoundupDocumentID:     cfg.Report.RoundupDocumentID,
+		RoundupProjectID:      cfg.Report.RoundupProjectID,
+		DefaultHealth:         cfg.Report.DefaultHealth,
+	})
+	reportSvc.Start(ctx)
+
 	strictServer := &rest.StrictServer{
 		OrgSvc:        orgSvc,
 		ProjectSvc:    projectSvc,
@@ -265,6 +282,7 @@ func run(ctx context.Context, cfg *config.Config) {
 		SessionsSvc:   sessionsSvc,
 		LinearSvc:     linearSvc,
 		CodeReviewSvc: codeReviewSvc,
+		ReportSvc:     reportSvc,
 		AgentStore:    agentStore,
 	}
 
@@ -317,6 +335,7 @@ func run(ctx context.Context, cfg *config.Config) {
 		Workflow:   workflowEngine,
 		Sessions:   sessionsSvc,
 		CodeReview: codeReviewSvc,
+		Reports:    reportSvc,
 	})
 	if err != nil {
 		slog.Error("mcp server init failed", "error", err)

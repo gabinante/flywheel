@@ -95,6 +95,16 @@ func Load() *Config {
 			AutoAddress: getEnvBool("FEEDBACK_AUTO_ADDRESS", false),
 			Timeout:     getEnvDuration("FEEDBACK_TIMEOUT", 45*time.Minute),
 		},
+		Report: ReportConfig{
+			ProjectUpdatesEnabled: getEnvBool("REPORT_PROJECT_UPDATES_ENABLED", false),
+			ProjectUpdateInterval: getEnvDuration("REPORT_PROJECT_UPDATE_INTERVAL", 48*time.Hour),
+			WeeklyEnabled:         getEnvBool("REPORT_WEEKLY_ENABLED", false),
+			WeeklyDay:             getEnv("REPORT_WEEKLY_DAY", "Friday"),
+			WeeklyHour:            getEnvInt("REPORT_WEEKLY_HOUR", 16),
+			RoundupDocumentID:     getEnv("REPORT_ROUNDUP_DOCUMENT_ID", ""),
+			RoundupProjectID:      getEnv("REPORT_ROUNDUP_PROJECT_ID", ""),
+			DefaultHealth:         getEnv("REPORT_HEALTH_DEFAULT", "onTrack"),
+		},
 		Linear: LinearConfig{
 			APIKey:         getEnv("LINEAR_API_KEY", ""),
 			Enabled:        getEnvBool("LINEAR_SYNC_ENABLED", getEnv("LINEAR_API_KEY", "") != ""),
@@ -182,7 +192,21 @@ type Config struct {
 	Linear                    LinearConfig
 	Review                    ReviewConfig
 	Feedback                  FeedbackConfig
+	Report                    ReportConfig
 	RunAcceptanceTestOnSubmit bool
+}
+
+// ReportConfig controls Linear reporting parity with the operator's project-status and
+// weekly-roundup skills. Previews are always available; posting is opt-in.
+type ReportConfig struct {
+	ProjectUpdatesEnabled bool
+	ProjectUpdateInterval time.Duration
+	WeeklyEnabled         bool
+	WeeklyDay             string // weekday name
+	WeeklyHour            int    // local hour (0-23)
+	RoundupDocumentID     string // rolling Linear document that receives each week's roundup
+	RoundupProjectID      string // Flywheel project whose Linear project receives the weekly accomplishment update
+	DefaultHealth         string // onTrack | atRisk | offTrack
 }
 
 // FeedbackConfig controls the address-feedback workflow: when a review lands on one

@@ -19,6 +19,7 @@ import (
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
+	"github.com/gabinante/flywheel/internal/report"
 	"github.com/gabinante/flywheel/internal/review"
 	"github.com/gabinante/flywheel/internal/sessions"
 	"github.com/gabinante/flywheel/internal/ticket"
@@ -38,6 +39,7 @@ type StrictServer struct {
 	SessionsSvc   *sessions.Service   // nil-safe: session endpoints return an error when tracking is off
 	LinearSvc     *linear.Syncer      // nil-safe: Linear endpoints report unlinked when nil
 	CodeReviewSvc *codereview.Service // nil-safe: code review endpoints error when nil
+	ReportSvc     *report.Service     // nil-safe: report endpoints error when nil
 	AgentStore    agent.AgentStore
 }
 

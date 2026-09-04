@@ -663,3 +663,21 @@ func firstNonEmpty(vals ...string) string {
 	}
 	return ""
 }
+
+// PostProjectUpdate posts a status update on the Linear project linked to a Flywheel project.
+func (s *Syncer) PostProjectUpdate(ctx context.Context, projectID, body, health string) (string, error) {
+	if s.client == nil {
+		return "", errors.New("linear: not configured")
+	}
+	link, err := s.store.LinkByProject(ctx, projectID)
+	if err != nil {
+		return "", err
+	}
+	if link == nil {
+		return "", fmt.Errorf("project %s is not linked to Linear", projectID)
+	}
+	return s.client.CreateProjectUpdate(ctx, link.LinearProjectID, body, health)
+}
+
+// Client exposes the underlying API client (nil when Linear is not configured).
+func (s *Syncer) Client() *Client { return s.client }

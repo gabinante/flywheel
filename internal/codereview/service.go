@@ -194,7 +194,7 @@ func (s *Service) setError(err error) {
 	if err == nil || errors.Is(err, context.Canceled) {
 		return
 	}
-	slog.Warn("codereview: "+err.Error())
+	slog.Warn("codereview: " + err.Error())
 	s.mu.Lock()
 	s.status.LastError = err.Error()
 	s.mu.Unlock()
@@ -598,6 +598,9 @@ func (s *Service) pollFeedback(ctx context.Context) error {
 			}
 			if round.State == "new" {
 				round.CommentCount = s.gh.CountReviewComments(ctx, p.Repo, p.Number, rv.ID)
+				if !actionableReview(rv.State, round.CommentCount, rv.Body) {
+					round.State = "ignored" // e.g. a bot "no issues found" summary or a bare approval
+				}
 			}
 			created, err := s.store.InsertFeedbackRound(ctx, round)
 			if err != nil {
@@ -625,7 +628,9 @@ func (s *Service) pollFeedback(ctx context.Context) error {
 // ---- queries ----------------------------------------------------------------
 
 // List returns requests.
-func (s *Service) List(ctx context.Context, f Filter) ([]*Request, int, error) { return s.store.List(ctx, f) }
+func (s *Service) List(ctx context.Context, f Filter) ([]*Request, int, error) {
+	return s.store.List(ctx, f)
+}
 
 // Get returns one request with findings, or nil.
 func (s *Service) Get(ctx context.Context, id string) (*Request, error) { return s.store.Get(ctx, id) }
@@ -697,6 +702,27 @@ func (s *Service) Status(ctx context.Context) PollerStatus {
 		st.ReviewsPosted = n
 	}
 	return st
+}
+
+// actionableReview reports whether a landed review needs a response: it requested changes,
+// carries inline comments, or has a substantive body that is not just an approval note.
+func actionableReview(state string, comments int, body string) bool {
+	if state == "CHANGES_REQUESTED" || comments > 0 {
+		return true
+	}
+	b := strings.ToLower(strings.TrimSpace(body))
+	if state == "APPROVED" {
+		return false
+	}
+	if b == "" || len(b) < 40 {
+		return false
+	}
+	for _, quiet := range []string{"no issues found", "no bugs found", "looks good", "lgtm", "nothing to flag"} {
+		if strings.Contains(b, quiet) {
+			return false
+		}
+	}
+	return true
 }
 
 func firstNonEmpty(vals ...string) string {

@@ -279,3 +279,53 @@ func (c *Client) CreateProjectUpdate(ctx context.Context, projectID, body, healt
 	}
 	return out.ProjectUpdateCreate.ProjectUpdate.URL, nil
 }
+
+// Document is a Linear document (used for the rolling weekly roundup).
+type Document struct {
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	URL     string `json:"url"`
+	Content string `json:"content"`
+}
+
+// GetDocument fetches a document by id or slug.
+func (c *Client) GetDocument(ctx context.Context, id string) (*Document, error) {
+	var out struct {
+		Document Document `json:"document"`
+	}
+	q := `query($id: String!) { document(id: $id) { id title url content } }`
+	if err := c.Query(ctx, q, map[string]any{"id": id}, &out); err != nil {
+		return nil, err
+	}
+	return &out.Document, nil
+}
+
+// UpdateDocumentContent replaces a document's markdown content.
+func (c *Client) UpdateDocumentContent(ctx context.Context, id, content string) (*Document, error) {
+	var out struct {
+		DocumentUpdate struct {
+			Success  bool     `json:"success"`
+			Document Document `json:"document"`
+		} `json:"documentUpdate"`
+	}
+	q := `mutation($id: String!, $input: DocumentUpdateInput!) { documentUpdate(id: $id, input: $input) { success document { id title url content } } }`
+	if err := c.Query(ctx, q, map[string]any{"id": id, "input": map[string]any{"content": content}}, &out); err != nil {
+		return nil, err
+	}
+	return &out.DocumentUpdate.Document, nil
+}
+
+// CreateDocument creates a project document.
+func (c *Client) CreateDocument(ctx context.Context, projectID, title, content string) (*Document, error) {
+	var out struct {
+		DocumentCreate struct {
+			Success  bool     `json:"success"`
+			Document Document `json:"document"`
+		} `json:"documentCreate"`
+	}
+	q := `mutation($input: DocumentCreateInput!) { documentCreate(input: $input) { success document { id title url content } } }`
+	if err := c.Query(ctx, q, map[string]any{"input": map[string]any{"projectId": projectID, "title": title, "content": content}}, &out); err != nil {
+		return nil, err
+	}
+	return &out.DocumentCreate.Document, nil
+}

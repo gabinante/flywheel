@@ -382,6 +382,49 @@ func (st *Store) Counts(ctx context.Context) (map[string]int, int, error) {
 	return out, total, rows.Err()
 }
 
+// HarnessStats aggregates sessions for a window.
+type HarnessStats struct {
+	Harness   string `json:"harness"`
+	Sessions  int    `json:"sessions"`
+	TokensIn  int64  `json:"tokens_in"`
+	TokensOut int64  `json:"tokens_out"`
+	ToolCalls int    `json:"tool_calls"`
+}
+
+// StatsSince aggregates non-subagent sessions active in [since, until) by harness,
+// optionally restricted to repos (owner/name or bare names).
+func (st *Store) StatsSince(ctx context.Context, since, until time.Time, repos []string) ([]HarnessStats, error) {
+	args := []any{since, until}
+	repoClause := ""
+	if len(repos) > 0 {
+		var bare []string
+		for _, r := range repos {
+			if i := strings.LastIndex(r, "/"); i >= 0 {
+				bare = append(bare, r[i+1:])
+			} else {
+				bare = append(bare, r)
+			}
+		}
+		args = append(args, repos, bare)
+		repoClause = " AND (repo = ANY($3) OR split_part(repo, '/', 2) = ANY($4) OR repo = ANY($4))"
+	}
+	rows, err := st.pool.Query(ctx, `SELECT harness, count(*), COALESCE(sum(tokens_in),0), COALESCE(sum(tokens_out),0), COALESCE(sum(tool_call_count),0)
+		FROM agent_sessions WHERE origin <> 'subagent' AND last_activity_at >= $1 AND last_activity_at < $2`+repoClause+` GROUP BY harness ORDER BY harness`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []HarnessStats
+	for rows.Next() {
+		var h HarnessStats
+		if err := rows.Scan(&h.Harness, &h.Sessions, &h.TokensIn, &h.TokensOut, &h.ToolCalls); err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
 // touch is a helper for callers that only need to bump activity (used by hooks later).
 func (st *Store) touch(ctx context.Context, id string, at time.Time) error {
 	_, err := st.pool.Exec(ctx, `UPDATE agent_sessions SET last_activity_at = GREATEST(last_activity_at, $2), updated_at = now() WHERE id = $1`, id, at)

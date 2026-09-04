@@ -175,6 +175,27 @@ func (e DispatchWorkerRoleBaseType) Valid() bool {
 	}
 }
 
+// Defines values for PostReportRequestHealth.
+const (
+	PostReportRequestHealthAtRisk   PostReportRequestHealth = "atRisk"
+	PostReportRequestHealthOffTrack PostReportRequestHealth = "offTrack"
+	PostReportRequestHealthOnTrack  PostReportRequestHealth = "onTrack"
+)
+
+// Valid indicates whether the value is a known member of the PostReportRequestHealth enum.
+func (e PostReportRequestHealth) Valid() bool {
+	switch e {
+	case PostReportRequestHealthAtRisk:
+		return true
+	case PostReportRequestHealthOffTrack:
+		return true
+	case PostReportRequestHealthOnTrack:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ProjectStatus.
 const (
 	ProjectStatusActive ProjectStatus = "active"
@@ -994,6 +1015,19 @@ type PendingReviewsResponse struct {
 	Tickets *[]Ticket `json:"tickets,omitempty"`
 }
 
+// PostReportRequest defines model for PostReportRequest.
+type PostReportRequest struct {
+	// Body Override the rendered body (edited preview)
+	Body   *string                  `json:"body,omitempty"`
+	Health *PostReportRequestHealth `json:"health,omitempty"`
+
+	// WeekOf Weekly roundup only; any date in the target week (YYYY-MM-DD)
+	WeekOf *string `json:"week_of,omitempty"`
+}
+
+// PostReportRequestHealth defines model for PostReportRequest.Health.
+type PostReportRequestHealth string
+
 // Project defines model for Project.
 type Project struct {
 	ContextPack *map[string]interface{} `json:"context_pack,omitempty"`
@@ -1043,6 +1077,28 @@ type RenewLeaseRequest struct {
 // RenewLeaseResponseBody defines model for RenewLeaseResponseBody.
 type RenewLeaseResponseBody struct {
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+
+// Report defines model for Report.
+type Report struct {
+	// Body Markdown
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+	Health    *string   `json:"health,omitempty"`
+	Id        string    `json:"id"`
+
+	// Kind project_update or weekly_roundup
+	Kind        string    `json:"kind"`
+	Posted      bool      `json:"posted"`
+	ProjectId   *string   `json:"project_id,omitempty"`
+	Url         *string   `json:"url,omitempty"`
+	WindowEnd   time.Time `json:"window_end"`
+	WindowStart time.Time `json:"window_start"`
+}
+
+// ReportListResponse defines model for ReportListResponse.
+type ReportListResponse struct {
+	Reports []Report `json:"reports"`
 }
 
 // ResolveEscalationRequest defines model for ResolveEscalationRequest.
@@ -1376,6 +1432,19 @@ type ListWorkStreamsParams struct {
 // ListWorkStreamsParamsStatus defines parameters for ListWorkStreams.
 type ListWorkStreamsParamsStatus string
 
+// ListReportsParams defines parameters for ListReports.
+type ListReportsParams struct {
+	ProjectId *string `form:"project_id,omitempty" json:"project_id,omitempty"`
+	Kind      *string `form:"kind,omitempty" json:"kind,omitempty"`
+	Limit     *int    `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// PreviewWeeklyRoundupParams defines parameters for PreviewWeeklyRoundup.
+type PreviewWeeklyRoundupParams struct {
+	// WeekOf Any date in the target week (YYYY-MM-DD); default this week.
+	WeekOf *string `form:"week_of,omitempty" json:"week_of,omitempty"`
+}
+
 // ListSessionsParams defines parameters for ListSessions.
 type ListSessionsParams struct {
 	Harness *ListSessionsParamsHarness `form:"harness,omitempty" json:"harness,omitempty"`
@@ -1446,6 +1515,9 @@ type UpdateProjectJSONRequestBody = UpdateProjectRequest
 // ClaimTicketJSONRequestBody defines body for ClaimTicket for application/json ContentType.
 type ClaimTicketJSONRequestBody = ClaimRequest
 
+// PostProjectUpdateJSONRequestBody defines body for PostProjectUpdate for application/json ContentType.
+type PostProjectUpdateJSONRequestBody = PostReportRequest
+
 // CreateTicketJSONRequestBody defines body for CreateTicket for application/json ContentType.
 type CreateTicketJSONRequestBody = CreateTicketRequest
 
@@ -1454,6 +1526,9 @@ type CreateWorkStreamJSONRequestBody = CreateWorkStreamRequest
 
 // UpdateWorkStreamJSONRequestBody defines body for UpdateWorkStream for application/json ContentType.
 type UpdateWorkStreamJSONRequestBody = UpdateWorkStreamRequest
+
+// PostWeeklyRoundupJSONRequestBody defines body for PostWeeklyRoundup for application/json ContentType.
+type PostWeeklyRoundupJSONRequestBody = PostReportRequest
 
 // CreateSessionLinkJSONRequestBody defines body for CreateSessionLink for application/json ContentType.
 type CreateSessionLinkJSONRequestBody = CreateSessionLinkRequest
@@ -1556,6 +1631,12 @@ type ServerInterface interface {
 
 	// (POST /projects/{projectID}/queue/claim)
 	ClaimTicket(w http.ResponseWriter, r *http.Request, projectID string)
+	// PostProjectUpdate Post the delta status update to the linked Linear project
+	// (POST /projects/{projectID}/reports/status-update)
+	PostProjectUpdate(w http.ResponseWriter, r *http.Request, projectID string)
+	// PreviewProjectUpdate Render the delta status update since the last post without posting
+	// (GET /projects/{projectID}/reports/status-update/preview)
+	PreviewProjectUpdate(w http.ResponseWriter, r *http.Request, projectID string)
 
 	// (GET /projects/{projectID}/reviews)
 	ListPendingReviews(w http.ResponseWriter, r *http.Request, projectID string)
@@ -1577,6 +1658,15 @@ type ServerInterface interface {
 
 	// (PATCH /projects/{projectID}/work-streams/{workStreamID})
 	UpdateWorkStream(w http.ResponseWriter, r *http.Request, projectID string, workStreamID string)
+	// ListReports Reports composed or posted to Linear
+	// (GET /reports)
+	ListReports(w http.ResponseWriter, r *http.Request, params ListReportsParams)
+	// PostWeeklyRoundup Post the weekly roundup to the rolling Linear document (and project update)
+	// (POST /reports/weekly)
+	PostWeeklyRoundup(w http.ResponseWriter, r *http.Request)
+	// PreviewWeeklyRoundup Render this week's roundup without posting
+	// (GET /reports/weekly/preview)
+	PreviewWeeklyRoundup(w http.ResponseWriter, r *http.Request, params PreviewWeeklyRoundupParams)
 	// ListSessions List tracked Claude Code and Codex sessions
 	// (GET /sessions)
 	ListSessions(w http.ResponseWriter, r *http.Request, params ListSessionsParams)
@@ -2285,6 +2375,58 @@ func (siw *ServerInterfaceWrapper) ClaimTicket(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// PostProjectUpdate operation middleware
+func (siw *ServerInterfaceWrapper) PostProjectUpdate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectID" -------------
+	var projectID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectID", r.PathValue("projectID"), &projectID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostProjectUpdate(w, r, projectID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PreviewProjectUpdate operation middleware
+func (siw *ServerInterfaceWrapper) PreviewProjectUpdate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectID" -------------
+	var projectID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectID", r.PathValue("projectID"), &projectID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PreviewProjectUpdate(w, r, projectID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListPendingReviews operation middleware
 func (siw *ServerInterfaceWrapper) ListPendingReviews(w http.ResponseWriter, r *http.Request) {
 
@@ -2521,6 +2663,112 @@ func (siw *ServerInterfaceWrapper) UpdateWorkStream(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateWorkStream(w, r, projectID, workStreamID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListReports operation middleware
+func (siw *ServerInterfaceWrapper) ListReports(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListReportsParams
+
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project_id", r.URL.Query(), &params.ProjectId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "kind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "kind", r.URL.Query(), &params.Kind, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "kind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kind", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListReports(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostWeeklyRoundup operation middleware
+func (siw *ServerInterfaceWrapper) PostWeeklyRoundup(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostWeeklyRoundup(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PreviewWeeklyRoundup operation middleware
+func (siw *ServerInterfaceWrapper) PreviewWeeklyRoundup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PreviewWeeklyRoundupParams
+
+	// ------------- Optional query parameter "week_of" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "week_of", r.URL.Query(), &params.WeekOf, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "week_of"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "week_of", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PreviewWeeklyRoundup(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3239,6 +3487,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/code-reviews/{reviewID}", wrapper.GetCodeReview)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/code-reviews/{reviewID}/rerun", wrapper.RerunCodeReview)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/code-reviews/{reviewID}/close", wrapper.CloseCodeReview)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/reports", wrapper.ListReports)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/reports/weekly/preview", wrapper.PreviewWeeklyRoundup)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/reports/weekly", wrapper.PostWeeklyRoundup)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectID}/reports/status-update/preview", wrapper.PreviewProjectUpdate)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/projects/{projectID}/reports/status-update", wrapper.PostProjectUpdate)
 
 	return m
 }
@@ -4290,6 +4543,121 @@ func (response ClaimTicket500JSONResponse) VisitClaimTicketResponse(w http.Respo
 	return err
 }
 
+type PostProjectUpdateRequestObject struct {
+	ProjectID string `json:"projectID"`
+	Body      *PostProjectUpdateJSONRequestBody
+}
+
+type PostProjectUpdateResponseObject interface {
+	VisitPostProjectUpdateResponse(w http.ResponseWriter) error
+}
+
+type PostProjectUpdate200JSONResponse Report
+
+func (response PostProjectUpdate200JSONResponse) VisitPostProjectUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectUpdate400JSONResponse StructuredError
+
+func (response PostProjectUpdate400JSONResponse) VisitPostProjectUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectUpdate401JSONResponse StructuredError
+
+func (response PostProjectUpdate401JSONResponse) VisitPostProjectUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectUpdate404JSONResponse StructuredError
+
+func (response PostProjectUpdate404JSONResponse) VisitPostProjectUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewProjectUpdateRequestObject struct {
+	ProjectID string `json:"projectID"`
+}
+
+type PreviewProjectUpdateResponseObject interface {
+	VisitPreviewProjectUpdateResponse(w http.ResponseWriter) error
+}
+
+type PreviewProjectUpdate200JSONResponse Report
+
+func (response PreviewProjectUpdate200JSONResponse) VisitPreviewProjectUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewProjectUpdate401JSONResponse StructuredError
+
+func (response PreviewProjectUpdate401JSONResponse) VisitPreviewProjectUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewProjectUpdate404JSONResponse StructuredError
+
+func (response PreviewProjectUpdate404JSONResponse) VisitPreviewProjectUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListPendingReviewsRequestObject struct {
 	ProjectID string `json:"projectID"`
 }
@@ -4657,6 +5025,128 @@ func (response UpdateWorkStream500JSONResponse) VisitUpdateWorkStreamResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListReportsRequestObject struct {
+	Params ListReportsParams
+}
+
+type ListReportsResponseObject interface {
+	VisitListReportsResponse(w http.ResponseWriter) error
+}
+
+type ListReports200JSONResponse ReportListResponse
+
+func (response ListReports200JSONResponse) VisitListReportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListReports401JSONResponse StructuredError
+
+func (response ListReports401JSONResponse) VisitListReportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostWeeklyRoundupRequestObject struct {
+	Body *PostWeeklyRoundupJSONRequestBody
+}
+
+type PostWeeklyRoundupResponseObject interface {
+	VisitPostWeeklyRoundupResponse(w http.ResponseWriter) error
+}
+
+type PostWeeklyRoundup200JSONResponse Report
+
+func (response PostWeeklyRoundup200JSONResponse) VisitPostWeeklyRoundupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostWeeklyRoundup400JSONResponse StructuredError
+
+func (response PostWeeklyRoundup400JSONResponse) VisitPostWeeklyRoundupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostWeeklyRoundup401JSONResponse StructuredError
+
+func (response PostWeeklyRoundup401JSONResponse) VisitPostWeeklyRoundupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewWeeklyRoundupRequestObject struct {
+	Params PreviewWeeklyRoundupParams
+}
+
+type PreviewWeeklyRoundupResponseObject interface {
+	VisitPreviewWeeklyRoundupResponse(w http.ResponseWriter) error
+}
+
+type PreviewWeeklyRoundup200JSONResponse Report
+
+func (response PreviewWeeklyRoundup200JSONResponse) VisitPreviewWeeklyRoundupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewWeeklyRoundup401JSONResponse StructuredError
+
+func (response PreviewWeeklyRoundup401JSONResponse) VisitPreviewWeeklyRoundupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -5370,6 +5860,12 @@ type StrictServerInterface interface {
 
 	// (POST /projects/{projectID}/queue/claim)
 	ClaimTicket(ctx context.Context, request ClaimTicketRequestObject) (ClaimTicketResponseObject, error)
+	// PostProjectUpdate Post the delta status update to the linked Linear project
+	// (POST /projects/{projectID}/reports/status-update)
+	PostProjectUpdate(ctx context.Context, request PostProjectUpdateRequestObject) (PostProjectUpdateResponseObject, error)
+	// PreviewProjectUpdate Render the delta status update since the last post without posting
+	// (GET /projects/{projectID}/reports/status-update/preview)
+	PreviewProjectUpdate(ctx context.Context, request PreviewProjectUpdateRequestObject) (PreviewProjectUpdateResponseObject, error)
 
 	// (GET /projects/{projectID}/reviews)
 	ListPendingReviews(ctx context.Context, request ListPendingReviewsRequestObject) (ListPendingReviewsResponseObject, error)
@@ -5391,6 +5887,15 @@ type StrictServerInterface interface {
 
 	// (PATCH /projects/{projectID}/work-streams/{workStreamID})
 	UpdateWorkStream(ctx context.Context, request UpdateWorkStreamRequestObject) (UpdateWorkStreamResponseObject, error)
+	// ListReports Reports composed or posted to Linear
+	// (GET /reports)
+	ListReports(ctx context.Context, request ListReportsRequestObject) (ListReportsResponseObject, error)
+	// PostWeeklyRoundup Post the weekly roundup to the rolling Linear document (and project update)
+	// (POST /reports/weekly)
+	PostWeeklyRoundup(ctx context.Context, request PostWeeklyRoundupRequestObject) (PostWeeklyRoundupResponseObject, error)
+	// PreviewWeeklyRoundup Render this week's roundup without posting
+	// (GET /reports/weekly/preview)
+	PreviewWeeklyRoundup(ctx context.Context, request PreviewWeeklyRoundupRequestObject) (PreviewWeeklyRoundupResponseObject, error)
 	// ListSessions List tracked Claude Code and Codex sessions
 	// (GET /sessions)
 	ListSessions(ctx context.Context, request ListSessionsRequestObject) (ListSessionsResponseObject, error)
@@ -6163,6 +6668,68 @@ func (sh *strictHandler) ClaimTicket(w http.ResponseWriter, r *http.Request, pro
 	}
 }
 
+// PostProjectUpdate operation middleware
+func (sh *strictHandler) PostProjectUpdate(w http.ResponseWriter, r *http.Request, projectID string) {
+	var request PostProjectUpdateRequestObject
+
+	request.ProjectID = projectID
+
+	var body PostProjectUpdateJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostProjectUpdate(ctx, request.(PostProjectUpdateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostProjectUpdate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostProjectUpdateResponseObject); ok {
+		if err := validResponse.VisitPostProjectUpdateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PreviewProjectUpdate operation middleware
+func (sh *strictHandler) PreviewProjectUpdate(w http.ResponseWriter, r *http.Request, projectID string) {
+	var request PreviewProjectUpdateRequestObject
+
+	request.ProjectID = projectID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PreviewProjectUpdate(ctx, request.(PreviewProjectUpdateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PreviewProjectUpdate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PreviewProjectUpdateResponseObject); ok {
+		if err := validResponse.VisitPreviewProjectUpdateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListPendingReviews operation middleware
 func (sh *strictHandler) ListPendingReviews(w http.ResponseWriter, r *http.Request, projectID string) {
 	var request ListPendingReviewsRequestObject
@@ -6363,6 +6930,92 @@ func (sh *strictHandler) UpdateWorkStream(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateWorkStreamResponseObject); ok {
 		if err := validResponse.VisitUpdateWorkStreamResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListReports operation middleware
+func (sh *strictHandler) ListReports(w http.ResponseWriter, r *http.Request, params ListReportsParams) {
+	var request ListReportsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListReports(ctx, request.(ListReportsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListReports")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListReportsResponseObject); ok {
+		if err := validResponse.VisitListReportsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostWeeklyRoundup operation middleware
+func (sh *strictHandler) PostWeeklyRoundup(w http.ResponseWriter, r *http.Request) {
+	var request PostWeeklyRoundupRequestObject
+
+	var body PostWeeklyRoundupJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostWeeklyRoundup(ctx, request.(PostWeeklyRoundupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostWeeklyRoundup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostWeeklyRoundupResponseObject); ok {
+		if err := validResponse.VisitPostWeeklyRoundupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PreviewWeeklyRoundup operation middleware
+func (sh *strictHandler) PreviewWeeklyRoundup(w http.ResponseWriter, r *http.Request, params PreviewWeeklyRoundupParams) {
+	var request PreviewWeeklyRoundupRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PreviewWeeklyRoundup(ctx, request.(PreviewWeeklyRoundupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PreviewWeeklyRoundup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PreviewWeeklyRoundupResponseObject); ok {
+		if err := validResponse.VisitPreviewWeeklyRoundupResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
