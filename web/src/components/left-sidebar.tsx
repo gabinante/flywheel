@@ -16,7 +16,7 @@ import { Link, useLocation } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { OrgSwitcher } from '@/components/org-switcher'
+import { ProjectSwitcher } from '@/components/project-switcher'
 import { useAuth } from '@/contexts/use-auth'
 import { useProjectEscalations } from '@/hooks/use-project-escalations'
 import { useProjectPaths } from '@/hooks/use-project-paths'
@@ -245,7 +245,7 @@ export function LeftSidebar() {
 
       {token && (
         <div className="border-b border-sidebar-border px-2 py-3">
-          <OrgSwitcher expanded={isExpanded} />
+          <ProjectSwitcher expanded={isExpanded} />
         </div>
       )}
 
