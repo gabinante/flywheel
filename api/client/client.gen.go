@@ -1166,6 +1166,12 @@ type SetFeedbackRoundStateRequest struct {
 // SetFeedbackRoundStateRequestState defines model for SetFeedbackRoundStateRequest.State.
 type SetFeedbackRoundStateRequestState string
 
+// SetProjectLinearLinkRequest defines model for SetProjectLinearLinkRequest.
+type SetProjectLinearLinkRequest struct {
+	// LinearProject Linear project URL (https://linear.app/<workspace>/project/<slug>-<id>) or project UUID
+	LinearProject string `json:"linear_project"`
+}
+
 // StateTransitionEntry defines model for StateTransitionEntry.
 type StateTransitionEntry struct {
 	ActorId   *string                        `json:"actor_id,omitempty"`
@@ -1511,6 +1517,9 @@ type CreateProjectJSONRequestBody = CreateProjectRequest
 // UpdateProjectJSONRequestBody defines body for UpdateProject for application/json ContentType.
 type UpdateProjectJSONRequestBody = UpdateProjectRequest
 
+// SetProjectLinearLinkJSONRequestBody defines body for SetProjectLinearLink for application/json ContentType.
+type SetProjectLinearLinkJSONRequestBody = SetProjectLinearLinkRequest
+
 // ClaimTicketJSONRequestBody defines body for ClaimTicket for application/json ContentType.
 type ClaimTicketJSONRequestBody = ClaimRequest
 
@@ -1777,10 +1786,29 @@ type ClientInterface interface {
 	// ListEscalations performs a GET /projects/{projectID}/escalations (the `ListEscalations` operationId) request.
 	ListEscalations(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// DeleteProjectLinearLink Unlink this project from its Linear project
+	//
+	// Corresponds with DELETE /projects/{projectID}/linear (the `DeleteProjectLinearLink` operationId).
+	DeleteProjectLinearLink(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetProjectLinearLink The Linear project this Flywheel project mirrors, if any
 	//
 	// Corresponds with GET /projects/{projectID}/linear (the `GetProjectLinearLink` operationId).
 	GetProjectLinearLink(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetProjectLinearLinkWithBody Link this project to a Linear project by URL or id (optional; led projects link automatically)
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /projects/{projectID}/linear (the `SetProjectLinearLink` operationId).
+	SetProjectLinearLinkWithBody(ctx context.Context, projectID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetProjectLinearLink Link this project to a Linear project by URL or id (optional; led projects link automatically)
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /projects/{projectID}/linear (the `SetProjectLinearLink` operationId).
+	SetProjectLinearLink(ctx context.Context, projectID string, body SetProjectLinearLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SyncProjectLinear Pull updated Linear issues for this project now
 	//
@@ -2415,11 +2443,60 @@ func (c *Client) ListEscalations(ctx context.Context, projectID string, reqEdito
 	return c.Client.Do(req)
 }
 
+// DeleteProjectLinearLink Unlink this project from its Linear project
+//
+// Corresponds with DELETE /projects/{projectID}/linear (the `DeleteProjectLinearLink` operationId).
+func (c *Client) DeleteProjectLinearLink(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteProjectLinearLinkRequest(c.Server, projectID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetProjectLinearLink The Linear project this Flywheel project mirrors, if any
 //
 // Corresponds with GET /projects/{projectID}/linear (the `GetProjectLinearLink` operationId).
 func (c *Client) GetProjectLinearLink(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetProjectLinearLinkRequest(c.Server, projectID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetProjectLinearLinkWithBody Link this project to a Linear project by URL or id (optional; led projects link automatically)
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /projects/{projectID}/linear (the `SetProjectLinearLink` operationId).
+func (c *Client) SetProjectLinearLinkWithBody(ctx context.Context, projectID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetProjectLinearLinkRequestWithBody(c.Server, projectID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetProjectLinearLink Link this project to a Linear project by URL or id (optional; led projects link automatically)
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /projects/{projectID}/linear (the `SetProjectLinearLink` operationId).
+func (c *Client) SetProjectLinearLink(ctx context.Context, projectID string, body SetProjectLinearLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetProjectLinearLinkRequest(c.Server, projectID, body)
 	if err != nil {
 		return nil, err
 	}
@@ -3964,6 +4041,40 @@ func NewListEscalationsRequest(server string, projectID string) (*http.Request, 
 	return req, nil
 }
 
+// NewDeleteProjectLinearLinkRequest constructs an http.Request for the DeleteProjectLinearLink method
+func NewDeleteProjectLinearLinkRequest(server string, projectID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "projectID", projectID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/projects/%s/linear", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetProjectLinearLinkRequest constructs an http.Request for the GetProjectLinearLink method
 func NewGetProjectLinearLinkRequest(server string, projectID string) (*http.Request, error) {
 	var err error
@@ -3994,6 +4105,53 @@ func NewGetProjectLinearLinkRequest(server string, projectID string) (*http.Requ
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewSetProjectLinearLinkRequest calls the generic SetProjectLinearLink builder with application/json body
+func NewSetProjectLinearLinkRequest(server string, projectID string, body SetProjectLinearLinkJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetProjectLinearLinkRequestWithBody(server, projectID, "application/json", bodyReader)
+}
+
+// NewSetProjectLinearLinkRequestWithBody constructs an http.Request for the SetProjectLinearLink method, with any body, and a specified content type
+func NewSetProjectLinearLinkRequestWithBody(server string, projectID string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "projectID", projectID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/projects/%s/linear", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -5703,12 +5861,33 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	ListEscalationsWithResponse(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*ListEscalationsResponse, error)
 
+	// DeleteProjectLinearLinkWithResponse Unlink this project from its Linear project
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /projects/{projectID}/linear (the `DeleteProjectLinearLink` operationId).
+	DeleteProjectLinearLinkWithResponse(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*DeleteProjectLinearLinkResponse, error)
+
 	// GetProjectLinearLinkWithResponse The Linear project this Flywheel project mirrors, if any
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /projects/{projectID}/linear (the `GetProjectLinearLink` operationId).
 	GetProjectLinearLinkWithResponse(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*GetProjectLinearLinkResponse, error)
+
+	// SetProjectLinearLinkWithBodyWithResponse Link this project to a Linear project by URL or id (optional; led projects link automatically)
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /projects/{projectID}/linear (the `SetProjectLinearLink` operationId).
+	SetProjectLinearLinkWithBodyWithResponse(ctx context.Context, projectID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetProjectLinearLinkResponse, error)
+
+	// SetProjectLinearLinkWithResponse Link this project to a Linear project by URL or id (optional; led projects link automatically)
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /projects/{projectID}/linear (the `SetProjectLinearLink` operationId).
+	SetProjectLinearLinkWithResponse(ctx context.Context, projectID string, body SetProjectLinearLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProjectLinearLinkResponse, error)
 
 	// SyncProjectLinearWithResponse Pull updated Linear issues for this project now
 	//
@@ -7058,6 +7237,47 @@ func (r ListEscalationsResponse) ContentType() string {
 	return ""
 }
 
+type DeleteProjectLinearLinkResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteProjectLinearLinkResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteProjectLinearLinkResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteProjectLinearLinkResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteProjectLinearLinkResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteProjectLinearLinkResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetProjectLinearLinkResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -7107,6 +7327,61 @@ func (r GetProjectLinearLinkResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetProjectLinearLinkResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SetProjectLinearLinkResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ProjectLinearLink
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *StructuredError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetProjectLinearLinkResponse) GetJSON200() *ProjectLinearLink {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r SetProjectLinearLinkResponse) GetJSON400() *StructuredError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r SetProjectLinearLinkResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r SetProjectLinearLinkResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetProjectLinearLinkResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetProjectLinearLinkResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetProjectLinearLinkResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -8949,6 +9224,19 @@ func (c *ClientWithResponses) ListEscalationsWithResponse(ctx context.Context, p
 	return ParseListEscalationsResponse(rsp)
 }
 
+// DeleteProjectLinearLinkWithResponse Unlink this project from its Linear project
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /projects/{projectID}/linear (the `DeleteProjectLinearLink` operationId).
+func (c *ClientWithResponses) DeleteProjectLinearLinkWithResponse(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*DeleteProjectLinearLinkResponse, error) {
+	rsp, err := c.DeleteProjectLinearLink(ctx, projectID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteProjectLinearLinkResponse(rsp)
+}
+
 // GetProjectLinearLinkWithResponse The Linear project this Flywheel project mirrors, if any
 //
 // Returns a wrapper object for the known response body format(s).
@@ -8960,6 +9248,32 @@ func (c *ClientWithResponses) GetProjectLinearLinkWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParseGetProjectLinearLinkResponse(rsp)
+}
+
+// SetProjectLinearLinkWithBodyWithResponse Link this project to a Linear project by URL or id (optional; led projects link automatically)
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /projects/{projectID}/linear (the `SetProjectLinearLink` operationId).
+func (c *ClientWithResponses) SetProjectLinearLinkWithBodyWithResponse(ctx context.Context, projectID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetProjectLinearLinkResponse, error) {
+	rsp, err := c.SetProjectLinearLinkWithBody(ctx, projectID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetProjectLinearLinkResponse(rsp)
+}
+
+// SetProjectLinearLinkWithResponse Link this project to a Linear project by URL or id (optional; led projects link automatically)
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /projects/{projectID}/linear (the `SetProjectLinearLink` operationId).
+func (c *ClientWithResponses) SetProjectLinearLinkWithResponse(ctx context.Context, projectID string, body SetProjectLinearLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProjectLinearLinkResponse, error) {
+	rsp, err := c.SetProjectLinearLink(ctx, projectID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetProjectLinearLinkResponse(rsp)
 }
 
 // SyncProjectLinearWithResponse Pull updated Linear issues for this project now
@@ -10227,6 +10541,35 @@ func ParseListEscalationsResponse(rsp *http.Response) (*ListEscalationsResponse,
 	return response, nil
 }
 
+// ParseDeleteProjectLinearLinkResponse parses an HTTP response from a DeleteProjectLinearLinkWithResponse call
+func ParseDeleteProjectLinearLinkResponse(rsp *http.Response) (*DeleteProjectLinearLinkResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteProjectLinearLinkResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetProjectLinearLinkResponse parses an HTTP response from a GetProjectLinearLinkWithResponse call
 func ParseGetProjectLinearLinkResponse(rsp *http.Response) (*GetProjectLinearLinkResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -10261,6 +10604,46 @@ func ParseGetProjectLinearLinkResponse(rsp *http.Response) (*GetProjectLinearLin
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetProjectLinearLinkResponse parses an HTTP response from a SetProjectLinearLinkWithResponse call
+func ParseSetProjectLinearLinkResponse(rsp *http.Response) (*SetProjectLinearLinkResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetProjectLinearLinkResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProjectLinearLink
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
 
 	}
 

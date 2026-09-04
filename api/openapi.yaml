@@ -1076,6 +1076,58 @@ paths:
               schema:
                 $ref: '#/components/schemas/StructuredError'
   /projects/{projectID}/linear:
+    put:
+      operationId: SetProjectLinearLink
+      summary: Link this project to a Linear project by URL or id (optional; led projects link automatically)
+      parameters:
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetProjectLinearLinkRequest'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectLinearLink'
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+    delete:
+      operationId: DeleteProjectLinearLink
+      summary: Unlink this project from its Linear project
+      parameters:
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Unlinked
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
     get:
       operationId: GetProjectLinearLink
       summary: The Linear project this Flywheel project mirrors, if any
@@ -2831,3 +2883,10 @@ components:
         week_of:
           type: string
           description: Weekly roundup only; any date in the target week (YYYY-MM-DD)
+    SetProjectLinearLinkRequest:
+      type: object
+      required: [linear_project]
+      properties:
+        linear_project:
+          type: string
+          description: Linear project URL (https://linear.app/<workspace>/project/<slug>-<id>) or project UUID

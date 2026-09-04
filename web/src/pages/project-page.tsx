@@ -13,6 +13,7 @@ import {
 
 import { DispatchDashboard } from '@/components/dispatch-dashboard'
 import { ProjectDispatchRoutingCard } from '@/components/project-dispatch-routing-card'
+import { ProjectLinearLinkChip } from '@/components/project-linear-link'
 import { WorkflowTimelineEditor } from '@/components/workflow-timeline-editor'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -373,6 +374,7 @@ export function ProjectPage() {
             {project.name ?? project.slug ?? project.id}
           </h1>
           {project.status ? <Badge variant="outline">{project.status}</Badge> : null}
+          <ProjectLinearLinkChip projectId={projectId} />
         </div>
       </div>
 

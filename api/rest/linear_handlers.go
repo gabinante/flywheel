@@ -143,3 +143,35 @@ func (s *StrictServer) SyncProjectLinear(ctx context.Context, req generated.Sync
 	}
 	return generated.SyncProjectLinear200JSONResponse(s.projectLinkToGen(ctx, req.ProjectID, l)), nil
 }
+
+func (s *StrictServer) SetProjectLinearLink(ctx context.Context, req generated.SetProjectLinearLinkRequestObject) (generated.SetProjectLinearLinkResponseObject, error) {
+	req.ProjectID = s.resolveProject(ctx, req.ProjectID)
+	if err := CheckProjectAccess(ctx, req.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
+		return nil, err
+	}
+	if s.LinearSvc == nil {
+		return nil, apierrors.New(apierrors.CodeInternal, "Linear integration is not available", false)
+	}
+	if req.Body == nil || req.Body.LinearProject == "" {
+		return generated.SetProjectLinearLink400JSONResponse(seToGen(apierrors.New(apierrors.CodeInvalidInput, "linear_project is required", false))), nil
+	}
+	l, err := s.LinearSvc.LinkProject(ctx, req.ProjectID, req.Body.LinearProject)
+	if err != nil {
+		return generated.SetProjectLinearLink400JSONResponse(seToGen(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))), nil
+	}
+	return generated.SetProjectLinearLink200JSONResponse(s.projectLinkToGen(ctx, req.ProjectID, l)), nil
+}
+
+func (s *StrictServer) DeleteProjectLinearLink(ctx context.Context, req generated.DeleteProjectLinearLinkRequestObject) (generated.DeleteProjectLinearLinkResponseObject, error) {
+	req.ProjectID = s.resolveProject(ctx, req.ProjectID)
+	if err := CheckProjectAccess(ctx, req.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
+		return nil, err
+	}
+	if s.LinearSvc == nil {
+		return nil, apierrors.New(apierrors.CodeInternal, "Linear integration is not available", false)
+	}
+	if err := s.LinearSvc.UnlinkProject(ctx, req.ProjectID); err != nil {
+		return nil, apierrors.MapError(err)
+	}
+	return generated.DeleteProjectLinearLink204Response{}, nil
+}

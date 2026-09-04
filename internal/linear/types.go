@@ -41,17 +41,17 @@ type WorkflowState struct {
 
 // Issue is a Linear issue with the fields Flywheel projects.
 type Issue struct {
-	ID          string     `json:"id"`
-	Identifier  string     `json:"identifier"`
-	Title       string     `json:"title"`
-	Description string     `json:"description"`
-	URL         string     `json:"url"`
-	Priority    int        `json:"priority"` // 0 none, 1 urgent, 2 high, 3 normal, 4 low
-	BranchName  string     `json:"branchName"`
-	CreatedAt   time.Time  `json:"createdAt"`
-	UpdatedAt   time.Time  `json:"updatedAt"`
-	CompletedAt *time.Time `json:"completedAt"`
-	CanceledAt  *time.Time `json:"canceledAt"`
+	ID          string        `json:"id"`
+	Identifier  string        `json:"identifier"`
+	Title       string        `json:"title"`
+	Description string        `json:"description"`
+	URL         string        `json:"url"`
+	Priority    int           `json:"priority"` // 0 none, 1 urgent, 2 high, 3 normal, 4 low
+	BranchName  string        `json:"branchName"`
+	CreatedAt   time.Time     `json:"createdAt"`
+	UpdatedAt   time.Time     `json:"updatedAt"`
+	CompletedAt *time.Time    `json:"completedAt"`
+	CanceledAt  *time.Time    `json:"canceledAt"`
 	State       WorkflowState `json:"state"`
 	Team        Team          `json:"team"`
 	Assignee    *struct {

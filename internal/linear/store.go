@@ -222,3 +222,9 @@ func (s *Store) DefaultOrgID(ctx context.Context) (string, error) {
 	}
 	return id, err
 }
+
+// DeleteLink removes a project's Linear link (ticket projections are kept).
+func (s *Store) DeleteLink(ctx context.Context, projectID string) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM project_linear_links WHERE project_id = $1`, projectID)
+	return err
+}

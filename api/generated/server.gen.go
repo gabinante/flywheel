@@ -1167,6 +1167,12 @@ type SetFeedbackRoundStateRequest struct {
 // SetFeedbackRoundStateRequestState defines model for SetFeedbackRoundStateRequest.State.
 type SetFeedbackRoundStateRequestState string
 
+// SetProjectLinearLinkRequest defines model for SetProjectLinearLinkRequest.
+type SetProjectLinearLinkRequest struct {
+	// LinearProject Linear project URL (https://linear.app/<workspace>/project/<slug>-<id>) or project UUID
+	LinearProject string `json:"linear_project"`
+}
+
 // StateTransitionEntry defines model for StateTransitionEntry.
 type StateTransitionEntry struct {
 	ActorId   *string                        `json:"actor_id,omitempty"`
@@ -1512,6 +1518,9 @@ type CreateProjectJSONRequestBody = CreateProjectRequest
 // UpdateProjectJSONRequestBody defines body for UpdateProject for application/json ContentType.
 type UpdateProjectJSONRequestBody = UpdateProjectRequest
 
+// SetProjectLinearLinkJSONRequestBody defines body for SetProjectLinearLink for application/json ContentType.
+type SetProjectLinearLinkJSONRequestBody = SetProjectLinearLinkRequest
+
 // ClaimTicketJSONRequestBody defines body for ClaimTicket for application/json ContentType.
 type ClaimTicketJSONRequestBody = ClaimRequest
 
@@ -1622,9 +1631,15 @@ type ServerInterface interface {
 
 	// (GET /projects/{projectID}/escalations)
 	ListEscalations(w http.ResponseWriter, r *http.Request, projectID string)
+	// DeleteProjectLinearLink Unlink this project from its Linear project
+	// (DELETE /projects/{projectID}/linear)
+	DeleteProjectLinearLink(w http.ResponseWriter, r *http.Request, projectID string)
 	// GetProjectLinearLink The Linear project this Flywheel project mirrors, if any
 	// (GET /projects/{projectID}/linear)
 	GetProjectLinearLink(w http.ResponseWriter, r *http.Request, projectID string)
+	// SetProjectLinearLink Link this project to a Linear project by URL or id (optional; led projects link automatically)
+	// (PUT /projects/{projectID}/linear)
+	SetProjectLinearLink(w http.ResponseWriter, r *http.Request, projectID string)
 	// SyncProjectLinear Pull updated Linear issues for this project now
 	// (POST /projects/{projectID}/linear/sync)
 	SyncProjectLinear(w http.ResponseWriter, r *http.Request, projectID string)
@@ -2297,6 +2312,32 @@ func (siw *ServerInterfaceWrapper) ListEscalations(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteProjectLinearLink operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProjectLinearLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectID" -------------
+	var projectID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectID", r.PathValue("projectID"), &projectID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProjectLinearLink(w, r, projectID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetProjectLinearLink operation middleware
 func (siw *ServerInterfaceWrapper) GetProjectLinearLink(w http.ResponseWriter, r *http.Request) {
 
@@ -2314,6 +2355,32 @@ func (siw *ServerInterfaceWrapper) GetProjectLinearLink(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetProjectLinearLink(w, r, projectID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetProjectLinearLink operation middleware
+func (siw *ServerInterfaceWrapper) SetProjectLinearLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectID" -------------
+	var projectID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectID", r.PathValue("projectID"), &projectID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetProjectLinearLink(w, r, projectID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3476,7 +3543,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/sessions/{sessionID}", wrapper.GetSession)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/sessions/{sessionID}/links", wrapper.CreateSessionLink)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/linear/status", wrapper.GetLinearStatus)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/projects/{projectID}/linear", wrapper.DeleteProjectLinearLink)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectID}/linear", wrapper.GetProjectLinearLink)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/projects/{projectID}/linear", wrapper.SetProjectLinearLink)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/projects/{projectID}/linear/sync", wrapper.SyncProjectLinear)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/code-reviews", wrapper.ListCodeReviews)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/code-reviews", wrapper.CreateCodeReviews)
@@ -4378,6 +4447,36 @@ func (response ListEscalations500JSONResponse) VisitListEscalationsResponse(w ht
 	return err
 }
 
+type DeleteProjectLinearLinkRequestObject struct {
+	ProjectID string `json:"projectID"`
+}
+
+type DeleteProjectLinearLinkResponseObject interface {
+	VisitDeleteProjectLinearLinkResponse(w http.ResponseWriter) error
+}
+
+type DeleteProjectLinearLink204Response struct {
+}
+
+func (response DeleteProjectLinearLink204Response) VisitDeleteProjectLinearLinkResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteProjectLinearLink401JSONResponse StructuredError
+
+func (response DeleteProjectLinearLink401JSONResponse) VisitDeleteProjectLinearLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetProjectLinearLinkRequestObject struct {
 	ProjectID string `json:"projectID"`
 }
@@ -4424,6 +4523,57 @@ func (response GetProjectLinearLink404JSONResponse) VisitGetProjectLinearLinkRes
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectLinearLinkRequestObject struct {
+	ProjectID string `json:"projectID"`
+	Body      *SetProjectLinearLinkJSONRequestBody
+}
+
+type SetProjectLinearLinkResponseObject interface {
+	VisitSetProjectLinearLinkResponse(w http.ResponseWriter) error
+}
+
+type SetProjectLinearLink200JSONResponse ProjectLinearLink
+
+func (response SetProjectLinearLink200JSONResponse) VisitSetProjectLinearLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectLinearLink400JSONResponse StructuredError
+
+func (response SetProjectLinearLink400JSONResponse) VisitSetProjectLinearLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectLinearLink401JSONResponse StructuredError
+
+func (response SetProjectLinearLink401JSONResponse) VisitSetProjectLinearLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -5851,9 +6001,15 @@ type StrictServerInterface interface {
 
 	// (GET /projects/{projectID}/escalations)
 	ListEscalations(ctx context.Context, request ListEscalationsRequestObject) (ListEscalationsResponseObject, error)
+	// DeleteProjectLinearLink Unlink this project from its Linear project
+	// (DELETE /projects/{projectID}/linear)
+	DeleteProjectLinearLink(ctx context.Context, request DeleteProjectLinearLinkRequestObject) (DeleteProjectLinearLinkResponseObject, error)
 	// GetProjectLinearLink The Linear project this Flywheel project mirrors, if any
 	// (GET /projects/{projectID}/linear)
 	GetProjectLinearLink(ctx context.Context, request GetProjectLinearLinkRequestObject) (GetProjectLinearLinkResponseObject, error)
+	// SetProjectLinearLink Link this project to a Linear project by URL or id (optional; led projects link automatically)
+	// (PUT /projects/{projectID}/linear)
+	SetProjectLinearLink(ctx context.Context, request SetProjectLinearLinkRequestObject) (SetProjectLinearLinkResponseObject, error)
 	// SyncProjectLinear Pull updated Linear issues for this project now
 	// (POST /projects/{projectID}/linear/sync)
 	SyncProjectLinear(ctx context.Context, request SyncProjectLinearRequestObject) (SyncProjectLinearResponseObject, error)
@@ -6583,6 +6739,32 @@ func (sh *strictHandler) ListEscalations(w http.ResponseWriter, r *http.Request,
 	}
 }
 
+// DeleteProjectLinearLink operation middleware
+func (sh *strictHandler) DeleteProjectLinearLink(w http.ResponseWriter, r *http.Request, projectID string) {
+	var request DeleteProjectLinearLinkRequestObject
+
+	request.ProjectID = projectID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteProjectLinearLink(ctx, request.(DeleteProjectLinearLinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteProjectLinearLink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteProjectLinearLinkResponseObject); ok {
+		if err := validResponse.VisitDeleteProjectLinearLinkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetProjectLinearLink operation middleware
 func (sh *strictHandler) GetProjectLinearLink(w http.ResponseWriter, r *http.Request, projectID string) {
 	var request GetProjectLinearLinkRequestObject
@@ -6602,6 +6784,39 @@ func (sh *strictHandler) GetProjectLinearLink(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetProjectLinearLinkResponseObject); ok {
 		if err := validResponse.VisitGetProjectLinearLinkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetProjectLinearLink operation middleware
+func (sh *strictHandler) SetProjectLinearLink(w http.ResponseWriter, r *http.Request, projectID string) {
+	var request SetProjectLinearLinkRequestObject
+
+	request.ProjectID = projectID
+
+	var body SetProjectLinearLinkJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetProjectLinearLink(ctx, request.(SetProjectLinearLinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetProjectLinearLink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetProjectLinearLinkResponseObject); ok {
+		if err := validResponse.VisitSetProjectLinearLinkResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

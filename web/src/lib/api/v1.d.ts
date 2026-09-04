@@ -445,9 +445,11 @@ export interface paths {
         };
         /** The Linear project this Flywheel project mirrors, if any */
         get: operations["GetProjectLinearLink"];
-        put?: never;
+        /** Link this project to a Linear project by URL or id (optional; led projects link automatically) */
+        put: operations["SetProjectLinearLink"];
         post?: never;
-        delete?: never;
+        /** Unlink this project from its Linear project */
+        delete: operations["DeleteProjectLinearLink"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1391,6 +1393,10 @@ export interface components {
             body?: string;
             /** @description Weekly roundup only; any date in the target week (YYYY-MM-DD) */
             week_of?: string;
+        };
+        SetProjectLinearLinkRequest: {
+            /** @description Linear project URL (https://linear.app/<workspace>/project/<slug>-<id>) or project UUID */
+            linear_project: string;
         };
     };
     responses: never;
@@ -2778,6 +2784,79 @@ export interface operations {
             };
             /** @description Not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    SetProjectLinearLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetProjectLinearLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectLinearLink"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    DeleteProjectLinearLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unlinked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

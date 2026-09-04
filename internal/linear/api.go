@@ -2,6 +2,7 @@ package linear
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -328,4 +329,23 @@ func (c *Client) CreateDocument(ctx context.Context, projectID, title, content s
 		return nil, err
 	}
 	return &out.DocumentCreate.Document, nil
+}
+
+// ProjectBySlugID finds a project by the short id at the end of its URL slug.
+func (c *Client) ProjectBySlugID(ctx context.Context, slugID string) (*Project, error) {
+	var out struct {
+		Projects struct {
+			Nodes []rawProject `json:"nodes"`
+		} `json:"projects"`
+	}
+	q := `query($slug: String!) { projects(first: 1, filter: { slugId: { eq: $slug } }) {
+		nodes { id name url status { name type } lead { id } teams { nodes { id key name } } } } }`
+	if err := c.Query(ctx, q, map[string]any{"slug": slugID}, &out); err != nil {
+		return nil, err
+	}
+	if len(out.Projects.Nodes) == 0 {
+		return nil, fmt.Errorf("linear: no project with slug id %q", slugID)
+	}
+	p := out.Projects.Nodes[0].toProject()
+	return &p, nil
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -190,15 +191,124 @@ func (s *Syncer) discover(ctx context.Context) ([]*ProjectLink, error) {
 		}
 	}
 	var links []*ProjectLink
+	covered := map[string]bool{}
+	// Manually linked projects first (PUT /projects/{id}/linear): resolve slug ids to UUIDs so the
+	// led-project pass below finds the existing link instead of creating a duplicate project.
+	if stored, err := s.store.ListLinks(ctx); err == nil {
+		for _, l := range stored {
+			lp, err := s.resolveProjectRef(ctx, l.LinearProjectID)
+			if err != nil {
+				slog.Warn("linear: stored link unresolved", "project", l.ProjectID, "linear_project", l.LinearProjectID, "error", err)
+				covered[l.LinearProjectID] = true
+				links = append(links, l)
+				continue
+			}
+			l.LinearProjectID, l.LinearProjectName, l.LinearProjectURL = lp.ID, lp.Name, lp.URL
+			l.TeamIDs, l.TeamKeys = nil, nil
+			for _, t := range lp.Teams {
+				l.TeamIDs = append(l.TeamIDs, t.ID)
+				l.TeamKeys = append(l.TeamKeys, t.Key)
+			}
+			_ = s.store.UpsertLink(ctx, l)
+			covered[lp.ID] = true
+			links = append(links, l)
+		}
+	}
 	for _, lp := range lps {
+		if covered[lp.ID] {
+			continue
+		}
 		link, err := s.ensureLink(ctx, lp)
 		if err != nil {
 			slog.Warn("linear: ensure project link failed", "project", lp.Name, "error", err)
 			continue
 		}
+		covered[link.LinearProjectID] = true
 		links = append(links, link)
 	}
 	return links, nil
+}
+
+var linearProjectURLRe = regexp.MustCompile(`linear\.app/[^/]+/project/(?:[a-z0-9-]*?-)?([0-9a-f]{8,})(?:/|$|\?)`)
+
+// ParseProjectRef extracts a Linear project id (UUID or URL slug id) from a URL or raw id.
+func ParseProjectRef(ref string) (string, bool) {
+	ref = strings.TrimSpace(ref)
+	if m := linearProjectURLRe.FindStringSubmatch(ref); m != nil {
+		return m[1], true
+	}
+	if uuidLike(ref) || (len(ref) >= 8 && isHex(ref)) {
+		return ref, true
+	}
+	return "", false
+}
+
+func uuidLike(s string) bool {
+	return len(s) == 36 && strings.Count(s, "-") == 4
+}
+
+func isHex(s string) bool {
+	for _, r := range strings.ToLower(s) {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return s != ""
+}
+
+// resolveProjectRef fetches a project by UUID, falling back to slug-id lookup.
+func (s *Syncer) resolveProjectRef(ctx context.Context, id string) (*Project, error) {
+	if s.client == nil {
+		return nil, errors.New("linear: not configured")
+	}
+	if uuidLike(id) {
+		return s.client.ProjectByID(ctx, id)
+	}
+	return s.client.ProjectBySlugID(ctx, id)
+}
+
+// LinkProject links a Flywheel project to a Linear project given a URL or id. When
+// Linear is configured the project is resolved immediately and its issues sync on the
+// next pass; otherwise the link is stored and resolved once a key is present.
+func (s *Syncer) LinkProject(ctx context.Context, projectID, ref string) (*ProjectLink, error) {
+	id, ok := ParseProjectRef(ref)
+	if !ok {
+		return nil, fmt.Errorf("not a Linear project URL or id: %q", ref)
+	}
+	if existing, err := s.store.LinkByLinearProject(ctx, id); err == nil && existing != nil && existing.ProjectID != projectID {
+		return nil, fmt.Errorf("Linear project is already linked to Flywheel project %s", existing.ProjectID)
+	}
+	link := &ProjectLink{ProjectID: projectID, LinearProjectID: id}
+	if strings.Contains(ref, "linear.app") {
+		link.LinearProjectURL = strings.TrimSpace(ref)
+	}
+	if s.client != nil {
+		lp, err := s.resolveProjectRef(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		link.LinearProjectID, link.LinearProjectName, link.LinearProjectURL = lp.ID, lp.Name, lp.URL
+		for _, t := range lp.Teams {
+			link.TeamIDs = append(link.TeamIDs, t.ID)
+			link.TeamKeys = append(link.TeamKeys, t.Key)
+		}
+	}
+	if err := s.store.UpsertLink(ctx, link); err != nil {
+		return nil, err
+	}
+	if s.cfg.Enabled {
+		go func() {
+			if err := s.syncProject(context.WithoutCancel(ctx), link); err != nil {
+				slog.Warn("linear: initial sync after manual link failed", "project", projectID, "error", err)
+			}
+		}()
+	}
+	return link, nil
+}
+
+// UnlinkProject removes the Linear link for a project.
+func (s *Syncer) UnlinkProject(ctx context.Context, projectID string) error {
+	return s.store.DeleteLink(ctx, projectID)
 }
 
 // ensureLink creates the Flywheel project for a Linear project on first sight.

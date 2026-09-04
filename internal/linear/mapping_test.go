@@ -101,3 +101,25 @@ func indexOf(s, sub string) int {
 	}
 	return -1
 }
+
+func TestParseProjectRef(t *testing.T) {
+	cases := map[string]string{
+		"https://linear.app/joinhandshake/project/synthetic-task-generation-for-buckeye-71c32f62d775":          "71c32f62d775",
+		"https://linear.app/joinhandshake/project/synthetic-task-generation-for-buckeye-71c32f62d775/overview": "71c32f62d775",
+		"973951f8-6a52-4663-a75f-32b46d93858c": "973951f8-6a52-4663-a75f-32b46d93858c",
+		"71c32f62d775":                         "71c32f62d775",
+		"not a project":                        "",
+	}
+	for in, want := range cases {
+		got, ok := ParseProjectRef(in)
+		if want == "" {
+			if ok {
+				t.Errorf("ParseProjectRef(%q) accepted %q", in, got)
+			}
+			continue
+		}
+		if !ok || got != want {
+			t.Errorf("ParseProjectRef(%q) = %q,%v want %q", in, got, ok, want)
+		}
+	}
+}
