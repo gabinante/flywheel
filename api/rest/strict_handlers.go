@@ -12,6 +12,7 @@ import (
 
 	"github.com/gabinante/flywheel/api/generated"
 	"github.com/gabinante/flywheel/internal/agent"
+	"github.com/gabinante/flywheel/internal/codereview"
 	apierrors "github.com/gabinante/flywheel/internal/errors"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/linear"
@@ -34,8 +35,9 @@ type StrictServer struct {
 	QueueSvc      *queue.Service
 	TraceSvc      *execution.Service
 	ReviewSvc     *review.Service
-	SessionsSvc   *sessions.Service // nil-safe: session endpoints return an error when tracking is off
-	LinearSvc     *linear.Syncer    // nil-safe: Linear endpoints report unlinked when nil
+	SessionsSvc   *sessions.Service   // nil-safe: session endpoints return an error when tracking is off
+	LinearSvc     *linear.Syncer      // nil-safe: Linear endpoints report unlinked when nil
+	CodeReviewSvc *codereview.Service // nil-safe: code review endpoints error when nil
 	AgentStore    agent.AgentStore
 }
 

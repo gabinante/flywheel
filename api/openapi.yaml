@@ -1139,6 +1139,233 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StructuredError'
+  /code-reviews:
+    get:
+      operationId: ListCodeReviews
+      summary: List PR review requests
+      parameters:
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: repo
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeReviewListResponse'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+    post:
+      operationId: CreateCodeReviews
+      summary: Queue reviews for the PR URLs or owner/repo#N references in the text
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCodeReviewRequest'
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeReviewListResponse'
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /code-reviews/status:
+    get:
+      operationId: GetCodeReviewStatus
+      summary: Review queue and watcher health
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeReviewStatus'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /code-reviews/feedback:
+    get:
+      operationId: ListFeedbackRounds
+      summary: Reviews that landed on your own PRs
+      parameters:
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackRoundListResponse'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /code-reviews/feedback/{roundID}/state:
+    post:
+      operationId: SetFeedbackRoundState
+      summary: Mark a landed review as addressed or ignored
+      parameters:
+        - name: roundID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetFeedbackRoundStateRequest'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackRound'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /code-reviews/{reviewID}:
+    get:
+      operationId: GetCodeReview
+      summary: Review request detail with findings
+      parameters:
+        - name: reviewID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeReviewRequest'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /code-reviews/{reviewID}/rerun:
+    post:
+      operationId: RerunCodeReview
+      summary: Queue another review attempt
+      parameters:
+        - name: reviewID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeReviewRequest'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /code-reviews/{reviewID}/close:
+    post:
+      operationId: CloseCodeReview
+      summary: Stop watching a PR
+      parameters:
+        - name: reviewID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeReviewRequest'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
 components:
   securitySchemes:
     BearerAuth:
@@ -2156,3 +2383,215 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ProjectLinearLink'
+    CodeReviewFinding:
+      type: object
+      required: [id, attempt, severity, path, line, title, body, status]
+      properties:
+        id:
+          type: string
+        attempt:
+          type: integer
+        severity:
+          type: string
+          description: P0, P1, P2, or P3
+        path:
+          type: string
+        line:
+          type: integer
+        title:
+          type: string
+        body:
+          type: string
+        github_comment_id:
+          type: integer
+          format: int64
+        status:
+          type: string
+          description: pending, posted, in_body, withheld, resolved, or outdated
+    CodeReviewRequest:
+      type: object
+      required: [id, repo, number, url, title, author, origin, harness, state, attempt, watch, dry_run, verdict, summary, findings, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        repo:
+          type: string
+        number:
+          type: integer
+        url:
+          type: string
+        title:
+          type: string
+        author:
+          type: string
+        base_ref:
+          type: string
+        head_ref:
+          type: string
+        head_sha:
+          type: string
+        origin:
+          type: string
+        recipe:
+          type: string
+        harness:
+          type: string
+        model:
+          type: string
+        state:
+          type: string
+        attempt:
+          type: integer
+        watch:
+          type: boolean
+        dry_run:
+          type: boolean
+        verdict:
+          type: string
+        summary:
+          type: string
+        review_url:
+          type: string
+        my_review_state:
+          type: string
+        session_id:
+          type: string
+        error:
+          type: string
+        reviewed_at:
+          type: string
+          format: date-time
+        last_checked_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/CodeReviewFinding'
+    CodeReviewListResponse:
+      type: object
+      required: [requests, total, limit, offset]
+      properties:
+        requests:
+          type: array
+          items:
+            $ref: '#/components/schemas/CodeReviewRequest'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+    CreateCodeReviewRequest:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          description: Free text containing GitHub PR URLs or owner/repo#N references
+        dry_run:
+          type: boolean
+        watch:
+          type: boolean
+        harness:
+          type: string
+          description: codex or claude
+    FeedbackRound:
+      type: object
+      required: [id, repo, number, url, title, reviewer, review_state, review_id, comment_count, state, observed_at]
+      properties:
+        id:
+          type: string
+        repo:
+          type: string
+        number:
+          type: integer
+        url:
+          type: string
+        title:
+          type: string
+        head_sha:
+          type: string
+        reviewer:
+          type: string
+        review_state:
+          type: string
+        review_id:
+          type: integer
+          format: int64
+        comment_count:
+          type: integer
+        body:
+          type: string
+        state:
+          type: string
+          description: new, dispatched, addressed, or ignored
+        ticket_id:
+          type: string
+        session_id:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        submitted_at:
+          type: string
+          format: date-time
+    FeedbackRoundListResponse:
+      type: object
+      required: [rounds]
+      properties:
+        rounds:
+          type: array
+          items:
+            $ref: '#/components/schemas/FeedbackRound'
+    SetFeedbackRoundStateRequest:
+      type: object
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [new, dispatched, addressed, ignored]
+    CodeReviewStatus:
+      type: object
+      required: [enabled, harness, publish, watch_requested, watch_authored, active, queued, watching, new_feedback, reviews_posted, max_concurrent]
+      properties:
+        enabled:
+          type: boolean
+        login:
+          type: string
+        harness:
+          type: string
+        publish:
+          type: boolean
+        watch_requested:
+          type: boolean
+        watch_authored:
+          type: boolean
+        last_queue_run_at:
+          type: string
+          format: date-time
+        last_poll_at:
+          type: string
+          format: date-time
+        last_error:
+          type: string
+        active:
+          type: integer
+        queued:
+          type: integer
+        watching:
+          type: integer
+        new_feedback:
+          type: integer
+        reviews_posted:
+          type: integer
+        max_concurrent:
+          type: integer
+        repo_root:
+          type: string

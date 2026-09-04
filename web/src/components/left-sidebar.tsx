@@ -3,6 +3,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
+  GitPullRequest,
   LayoutDashboard,
   LogOut,
   Building2,
@@ -146,6 +147,12 @@ export function LeftSidebar() {
           icon: ClipboardCheck,
           href: `${projectBase}/reviews`,
           match: `${projectBase}/reviews`,
+        },
+        {
+          label: 'Code Reviews',
+          icon: GitPullRequest,
+          href: `${projectBase}/code-reviews`,
+          match: `${projectBase}/code-reviews`,
         },
         {
           label: 'Sessions',

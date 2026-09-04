@@ -63,6 +63,18 @@ export function useRouteBreadcrumbs(): BreadcrumbItem[] {
           return crumbs
         }
 
+        // Code reviews
+        if (path.includes('/code-reviews')) {
+          crumbs.push({ label: projectLabel, href: projectPath })
+          if (/\/code-reviews\/[^/]+$/.test(path)) {
+            crumbs.push({ label: 'Code Reviews', href: `${projectPath}/code-reviews` })
+            crumbs.push({ label: 'Review' })
+          } else {
+            crumbs.push({ label: 'Code Reviews' })
+          }
+          return crumbs
+        }
+
         // Sessions
         if (path.includes('/sessions')) {
           crumbs.push({ label: projectLabel, href: projectPath })

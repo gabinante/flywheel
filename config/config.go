@@ -74,6 +74,20 @@ func Load() *Config {
 			AgentAPIKey:          resolveAgentAPIKey("ORCHESTRATOR_AGENT_API_KEY", orchestratorDriver),
 			HistoryLimit:         getEnvInt("ORCHESTRATOR_HISTORY_LIMIT", 200),
 		},
+		Review: ReviewConfig{
+			Enabled:        getEnvBool("REVIEW_ENABLED", true),
+			Harness:        getEnv("REVIEW_HARNESS", "codex"),
+			Model:          getEnv("REVIEW_MODEL", ""),
+			Effort:         getEnv("REVIEW_REASONING_EFFORT", ""),
+			Publish:        getEnvBool("REVIEW_PUBLISH", false),
+			PollInterval:   getEnvDuration("REVIEW_POLL_INTERVAL", 2*time.Minute),
+			MaxConcurrent:  getEnvInt("REVIEW_MAX_CONCURRENT", 2),
+			RepoRoot:       getEnv("REVIEW_REPO_ROOT", filepath.Join(homeDir(), "git")),
+			WatchRequested: getEnvBool("REVIEW_WATCH_REQUESTED", true),
+			WatchAuthored:  getEnvBool("REVIEW_WATCH_AUTHORED", true),
+			Timeout:        getEnvDuration("REVIEW_TIMEOUT", 30*time.Minute),
+			SkipDrafts:     getEnvBool("REVIEW_SKIP_DRAFTS", true),
+		},
 		Linear: LinearConfig{
 			APIKey:         getEnv("LINEAR_API_KEY", ""),
 			Enabled:        getEnvBool("LINEAR_SYNC_ENABLED", getEnv("LINEAR_API_KEY", "") != ""),
@@ -159,7 +173,25 @@ type Config struct {
 	Orchestrator              OrchestratorConfig
 	Sessions                  SessionsConfig
 	Linear                    LinearConfig
+	Review                    ReviewConfig
 	RunAcceptanceTestOnSubmit bool
+}
+
+// ReviewConfig controls PR-keyed code review. Publish defaults to false so a fresh
+// install reviews as a dry run until the operator opts into posting to GitHub.
+type ReviewConfig struct {
+	Enabled        bool
+	Harness        string // codex | claude
+	Model          string
+	Effort         string
+	Publish        bool
+	PollInterval   time.Duration
+	MaxConcurrent  int
+	RepoRoot       string
+	WatchRequested bool
+	WatchAuthored  bool
+	Timeout        time.Duration
+	SkipDrafts     bool
 }
 
 // LinearConfig makes Linear the ticket store. When APIKey is set, Flywheel

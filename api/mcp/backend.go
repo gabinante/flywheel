@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"github.com/gabinante/flywheel/internal/agent"
+	"github.com/gabinante/flywheel/internal/codereview"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/project"
@@ -25,7 +26,8 @@ type Backend struct {
 	AgentStore agent.AgentStore
 	Repos      *project.RepositoryService // nil-safe: multi-repo features disabled when nil
 	Workflow   *workflow.Engine
-	Sessions   *sessions.Service // nil-safe: session tools are not registered when nil
+	Sessions   *sessions.Service   // nil-safe: session tools are not registered when nil
+	CodeReview *codereview.Service // nil-safe: code review tools are not registered when nil
 
 	// DefaultAgentID is used as a fallback when agent_id is not passed in args
 	// and not available from HTTP auth context.

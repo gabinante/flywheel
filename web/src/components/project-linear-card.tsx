@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ExternalLink, RefreshCw } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -16,21 +16,23 @@ export function ProjectLinearCard({ projectId }: { projectId: string }) {
   const [err, setErr] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
 
-  const load = useCallback(async () => {
-    const { data, error, response } = await client.GET('/projects/{projectID}/linear', {
-      params: { path: { projectID: projectId } },
-    })
-    if (!response.ok || !data) {
-      setErr(formatApiError(error))
-      return
-    }
-    setErr(null)
-    setLink(data)
-  }, [client, projectId])
-
   useEffect(() => {
-    void load()
-  }, [load])
+    let cancelled = false
+    void client
+      .GET('/projects/{projectID}/linear', { params: { path: { projectID: projectId } } })
+      .then(({ data, error, response }) => {
+        if (cancelled) return
+        if (!response.ok || !data) {
+          setErr(formatApiError(error))
+          return
+        }
+        setErr(null)
+        setLink(data)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [client, projectId])
 
   const syncNow = async () => {
     setSyncing(true)

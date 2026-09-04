@@ -10,6 +10,7 @@ import (
 // --dangerously-skip-permissions, --mcp-config, OAuth token resolution, and
 // the persistent .claude data directory mount.
 type ClaudeDriver struct {
+	model string
 	// CLIPath is the path to the claude binary. Default: "claude".
 	CLIPath string
 }
@@ -20,7 +21,7 @@ func NewClaudeDriver(cfg DriverConfig) *ClaudeDriver {
 	if cliPath == "" {
 		cliPath = "claude"
 	}
-	return &ClaudeDriver{CLIPath: cliPath}
+	return &ClaudeDriver{CLIPath: cliPath, model: cfg.Model}
 }
 
 func (d *ClaudeDriver) Name() string { return "claude" }
@@ -34,13 +35,15 @@ func (d *ClaudeDriver) Executable() string {
 
 // BuildCLIArgs returns the claude CLI invocation for host-mode execution.
 func (d *ClaudeDriver) BuildCLIArgs(systemPrompt, taskMessage string, _ mcpConnection, mcpConfigPath string) []string {
-	return []string{
+	args := []string{
 		"--print",
 		"--dangerously-skip-permissions",
 		"--system-prompt", systemPrompt,
-		taskMessage,
-		"--mcp-config", mcpConfigPath,
 	}
+	if d.model != "" {
+		args = append(args, "--model", d.model)
+	}
+	return append(args, taskMessage, "--mcp-config", mcpConfigPath)
 }
 
 // FormatPrompt passes through unchanged — Claude Code consumes markdown natively.

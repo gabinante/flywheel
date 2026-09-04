@@ -69,6 +69,7 @@ type DriverEnv struct {
 // driverRegistry maps driver names to constructor functions.
 var driverRegistry = map[string]func(cfg DriverConfig) AgentDriver{
 	"claude":  func(cfg DriverConfig) AgentDriver { return NewClaudeDriver(cfg) },
+	"codex":   func(cfg DriverConfig) AgentDriver { return NewCodexDriver(cfg) },
 	"generic": func(cfg DriverConfig) AgentDriver { return NewGenericDriver(cfg) },
 }
 
@@ -79,6 +80,10 @@ type DriverConfig struct {
 
 	// ExtraArgs are additional static arguments to pass to the agent command.
 	ExtraArgs []string
+
+	// Model and ReasoningEffort are passed to harnesses that accept them (claude --model, codex -m / -c model_reasoning_effort).
+	Model           string
+	ReasoningEffort string
 }
 
 // LookupDriver returns an AgentDriver by name from the registry.

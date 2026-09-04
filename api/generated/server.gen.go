@@ -193,6 +193,30 @@ func (e ProjectStatus) Valid() bool {
 	}
 }
 
+// Defines values for SetFeedbackRoundStateRequestState.
+const (
+	SetFeedbackRoundStateRequestStateAddressed  SetFeedbackRoundStateRequestState = "addressed"
+	SetFeedbackRoundStateRequestStateDispatched SetFeedbackRoundStateRequestState = "dispatched"
+	SetFeedbackRoundStateRequestStateIgnored    SetFeedbackRoundStateRequestState = "ignored"
+	SetFeedbackRoundStateRequestStateNew        SetFeedbackRoundStateRequestState = "new"
+)
+
+// Valid indicates whether the value is a known member of the SetFeedbackRoundStateRequestState enum.
+func (e SetFeedbackRoundStateRequestState) Valid() bool {
+	switch e {
+	case SetFeedbackRoundStateRequestStateAddressed:
+		return true
+	case SetFeedbackRoundStateRequestStateDispatched:
+		return true
+	case SetFeedbackRoundStateRequestStateIgnored:
+		return true
+	case SetFeedbackRoundStateRequestStateNew:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StateTransitionEntryActorType.
 const (
 	StateTransitionEntryActorTypeAgent  StateTransitionEntryActorType = "agent"
@@ -621,6 +645,95 @@ type ClaimResponseBody struct {
 	Ticket *Ticket `json:"ticket,omitempty"`
 }
 
+// CodeReviewFinding defines model for CodeReviewFinding.
+type CodeReviewFinding struct {
+	Attempt         int    `json:"attempt"`
+	Body            string `json:"body"`
+	GithubCommentId *int64 `json:"github_comment_id,omitempty"`
+	Id              string `json:"id"`
+	Line            int    `json:"line"`
+	Path            string `json:"path"`
+
+	// Severity P0, P1, P2, or P3
+	Severity string `json:"severity"`
+
+	// Status pending, posted, in_body, withheld, resolved, or outdated
+	Status string `json:"status"`
+	Title  string `json:"title"`
+}
+
+// CodeReviewListResponse defines model for CodeReviewListResponse.
+type CodeReviewListResponse struct {
+	Limit    int                 `json:"limit"`
+	Offset   int                 `json:"offset"`
+	Requests []CodeReviewRequest `json:"requests"`
+	Total    int                 `json:"total"`
+}
+
+// CodeReviewRequest defines model for CodeReviewRequest.
+type CodeReviewRequest struct {
+	Attempt       int                 `json:"attempt"`
+	Author        string              `json:"author"`
+	BaseRef       *string             `json:"base_ref,omitempty"`
+	CreatedAt     time.Time           `json:"created_at"`
+	DryRun        bool                `json:"dry_run"`
+	Error         *string             `json:"error,omitempty"`
+	Findings      []CodeReviewFinding `json:"findings"`
+	Harness       string              `json:"harness"`
+	HeadRef       *string             `json:"head_ref,omitempty"`
+	HeadSha       *string             `json:"head_sha,omitempty"`
+	Id            string              `json:"id"`
+	LastCheckedAt *time.Time          `json:"last_checked_at,omitempty"`
+	Model         *string             `json:"model,omitempty"`
+	MyReviewState *string             `json:"my_review_state,omitempty"`
+	Number        int                 `json:"number"`
+	Origin        string              `json:"origin"`
+	Recipe        *string             `json:"recipe,omitempty"`
+	Repo          string              `json:"repo"`
+	ReviewUrl     *string             `json:"review_url,omitempty"`
+	ReviewedAt    *time.Time          `json:"reviewed_at,omitempty"`
+	SessionId     *string             `json:"session_id,omitempty"`
+	State         string              `json:"state"`
+	Summary       string              `json:"summary"`
+	Title         string              `json:"title"`
+	UpdatedAt     time.Time           `json:"updated_at"`
+	Url           string              `json:"url"`
+	Verdict       string              `json:"verdict"`
+	Watch         bool                `json:"watch"`
+}
+
+// CodeReviewStatus defines model for CodeReviewStatus.
+type CodeReviewStatus struct {
+	Active         int        `json:"active"`
+	Enabled        bool       `json:"enabled"`
+	Harness        string     `json:"harness"`
+	LastError      *string    `json:"last_error,omitempty"`
+	LastPollAt     *time.Time `json:"last_poll_at,omitempty"`
+	LastQueueRunAt *time.Time `json:"last_queue_run_at,omitempty"`
+	Login          *string    `json:"login,omitempty"`
+	MaxConcurrent  int        `json:"max_concurrent"`
+	NewFeedback    int        `json:"new_feedback"`
+	Publish        bool       `json:"publish"`
+	Queued         int        `json:"queued"`
+	RepoRoot       *string    `json:"repo_root,omitempty"`
+	ReviewsPosted  int        `json:"reviews_posted"`
+	WatchAuthored  bool       `json:"watch_authored"`
+	WatchRequested bool       `json:"watch_requested"`
+	Watching       int        `json:"watching"`
+}
+
+// CreateCodeReviewRequest defines model for CreateCodeReviewRequest.
+type CreateCodeReviewRequest struct {
+	DryRun *bool `json:"dry_run,omitempty"`
+
+	// Harness codex or claude
+	Harness *string `json:"harness,omitempty"`
+
+	// Text Free text containing GitHub PR URLs or owner/repo#N references
+	Text  string `json:"text"`
+	Watch *bool  `json:"watch,omitempty"`
+}
+
 // CreateOrgRequest defines model for CreateOrgRequest.
 type CreateOrgRequest struct {
 	Name *string `json:"name,omitempty"`
@@ -781,6 +894,33 @@ type ExecutionTrace struct {
 
 	// TotalCount Total number of steps for this ticket (present when paginated)
 	TotalCount *int `json:"total_count,omitempty"`
+}
+
+// FeedbackRound defines model for FeedbackRound.
+type FeedbackRound struct {
+	Body         *string   `json:"body,omitempty"`
+	CommentCount int       `json:"comment_count"`
+	HeadSha      *string   `json:"head_sha,omitempty"`
+	Id           string    `json:"id"`
+	Number       int       `json:"number"`
+	ObservedAt   time.Time `json:"observed_at"`
+	Repo         string    `json:"repo"`
+	ReviewId     int64     `json:"review_id"`
+	ReviewState  string    `json:"review_state"`
+	Reviewer     string    `json:"reviewer"`
+	SessionId    *string   `json:"session_id,omitempty"`
+
+	// State new, dispatched, addressed, or ignored
+	State       string     `json:"state"`
+	SubmittedAt *time.Time `json:"submitted_at,omitempty"`
+	TicketId    *string    `json:"ticket_id,omitempty"`
+	Title       string     `json:"title"`
+	Url         string     `json:"url"`
+}
+
+// FeedbackRoundListResponse defines model for FeedbackRoundListResponse.
+type FeedbackRoundListResponse struct {
+	Rounds []FeedbackRound `json:"rounds"`
 }
 
 // Lease defines model for Lease.
@@ -962,6 +1102,14 @@ type SessionPrompt struct {
 	Text string    `json:"text"`
 	Ts   time.Time `json:"ts"`
 }
+
+// SetFeedbackRoundStateRequest defines model for SetFeedbackRoundStateRequest.
+type SetFeedbackRoundStateRequest struct {
+	State SetFeedbackRoundStateRequestState `json:"state"`
+}
+
+// SetFeedbackRoundStateRequestState defines model for SetFeedbackRoundStateRequest.State.
+type SetFeedbackRoundStateRequestState string
 
 // StateTransitionEntry defines model for StateTransitionEntry.
 type StateTransitionEntry struct {
@@ -1178,6 +1326,20 @@ type PostGateCallbackJSONBody struct {
 	Metadata *map[string]interface{} `json:"metadata,omitempty"`
 }
 
+// ListCodeReviewsParams defines parameters for ListCodeReviews.
+type ListCodeReviewsParams struct {
+	State  *string `form:"state,omitempty" json:"state,omitempty"`
+	Repo   *string `form:"repo,omitempty" json:"repo,omitempty"`
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int    `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListFeedbackRoundsParams defines parameters for ListFeedbackRounds.
+type ListFeedbackRoundsParams struct {
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+	Limit *int    `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // GetMeStatsHistoryParams defines parameters for GetMeStatsHistory.
 type GetMeStatsHistoryParams struct {
 	// Days Number of days (default 14, max 90).
@@ -1266,6 +1428,12 @@ type GetTraceParams struct {
 // PostGateCallbackJSONRequestBody defines body for PostGateCallback for application/json ContentType.
 type PostGateCallbackJSONRequestBody PostGateCallbackJSONBody
 
+// CreateCodeReviewsJSONRequestBody defines body for CreateCodeReviews for application/json ContentType.
+type CreateCodeReviewsJSONRequestBody = CreateCodeReviewRequest
+
+// SetFeedbackRoundStateJSONRequestBody defines body for SetFeedbackRoundState for application/json ContentType.
+type SetFeedbackRoundStateJSONRequestBody = SetFeedbackRoundStateRequest
+
 // CreateOrgJSONRequestBody defines body for CreateOrg for application/json ContentType.
 type CreateOrgJSONRequestBody = CreateOrgRequest
 
@@ -1316,6 +1484,30 @@ type ServerInterface interface {
 	// PostGateCallback Receive a webhook callback that satisfies a gate condition
 	// (POST /api/v1/gate/callback/{token})
 	PostGateCallback(w http.ResponseWriter, r *http.Request, token string)
+	// ListCodeReviews List PR review requests
+	// (GET /code-reviews)
+	ListCodeReviews(w http.ResponseWriter, r *http.Request, params ListCodeReviewsParams)
+	// CreateCodeReviews Queue reviews for the PR URLs or owner/repo#N references in the text
+	// (POST /code-reviews)
+	CreateCodeReviews(w http.ResponseWriter, r *http.Request)
+	// ListFeedbackRounds Reviews that landed on your own PRs
+	// (GET /code-reviews/feedback)
+	ListFeedbackRounds(w http.ResponseWriter, r *http.Request, params ListFeedbackRoundsParams)
+	// SetFeedbackRoundState Mark a landed review as addressed or ignored
+	// (POST /code-reviews/feedback/{roundID}/state)
+	SetFeedbackRoundState(w http.ResponseWriter, r *http.Request, roundID string)
+	// GetCodeReviewStatus Review queue and watcher health
+	// (GET /code-reviews/status)
+	GetCodeReviewStatus(w http.ResponseWriter, r *http.Request)
+	// GetCodeReview Review request detail with findings
+	// (GET /code-reviews/{reviewID})
+	GetCodeReview(w http.ResponseWriter, r *http.Request, reviewID string)
+	// CloseCodeReview Stop watching a PR
+	// (POST /code-reviews/{reviewID}/close)
+	CloseCodeReview(w http.ResponseWriter, r *http.Request, reviewID string)
+	// RerunCodeReview Queue another review attempt
+	// (POST /code-reviews/{reviewID}/rerun)
+	RerunCodeReview(w http.ResponseWriter, r *http.Request, reviewID string)
 	// GetHealthz Liveness/readiness
 	// (GET /healthz)
 	GetHealthz(w http.ResponseWriter, r *http.Request)
@@ -1452,6 +1644,256 @@ func (siw *ServerInterfaceWrapper) PostGateCallback(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostGateCallback(w, r, token)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCodeReviews operation middleware
+func (siw *ServerInterfaceWrapper) ListCodeReviews(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListCodeReviewsParams
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "repo" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "repo", r.URL.Query(), &params.Repo, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "repo"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "repo", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCodeReviews(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateCodeReviews operation middleware
+func (siw *ServerInterfaceWrapper) CreateCodeReviews(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateCodeReviews(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListFeedbackRounds operation middleware
+func (siw *ServerInterfaceWrapper) ListFeedbackRounds(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListFeedbackRoundsParams
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListFeedbackRounds(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetFeedbackRoundState operation middleware
+func (siw *ServerInterfaceWrapper) SetFeedbackRoundState(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roundID" -------------
+	var roundID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roundID", r.PathValue("roundID"), &roundID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roundID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetFeedbackRoundState(w, r, roundID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCodeReviewStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetCodeReviewStatus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCodeReviewStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCodeReview operation middleware
+func (siw *ServerInterfaceWrapper) GetCodeReview(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reviewID" -------------
+	var reviewID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reviewID", r.PathValue("reviewID"), &reviewID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCodeReview(w, r, reviewID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CloseCodeReview operation middleware
+func (siw *ServerInterfaceWrapper) CloseCodeReview(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reviewID" -------------
+	var reviewID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reviewID", r.PathValue("reviewID"), &reviewID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CloseCodeReview(w, r, reviewID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RerunCodeReview operation middleware
+func (siw *ServerInterfaceWrapper) RerunCodeReview(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reviewID" -------------
+	var reviewID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reviewID", r.PathValue("reviewID"), &reviewID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RerunCodeReview(w, r, reviewID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2759,6 +3201,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/linear/status", wrapper.GetLinearStatus)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectID}/linear", wrapper.GetProjectLinearLink)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/projects/{projectID}/linear/sync", wrapper.SyncProjectLinear)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/code-reviews", wrapper.ListCodeReviews)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/code-reviews", wrapper.CreateCodeReviews)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/code-reviews/status", wrapper.GetCodeReviewStatus)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/code-reviews/feedback", wrapper.ListFeedbackRounds)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/code-reviews/feedback/{roundID}/state", wrapper.SetFeedbackRoundState)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/code-reviews/{reviewID}", wrapper.GetCodeReview)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/code-reviews/{reviewID}/rerun", wrapper.RerunCodeReview)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/code-reviews/{reviewID}/close", wrapper.CloseCodeReview)
 
 	return m
 }
@@ -2796,6 +3246,364 @@ type PostGateCallback404Response struct {
 func (response PostGateCallback404Response) VisitPostGateCallbackResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type ListCodeReviewsRequestObject struct {
+	Params ListCodeReviewsParams
+}
+
+type ListCodeReviewsResponseObject interface {
+	VisitListCodeReviewsResponse(w http.ResponseWriter) error
+}
+
+type ListCodeReviews200JSONResponse CodeReviewListResponse
+
+func (response ListCodeReviews200JSONResponse) VisitListCodeReviewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCodeReviews401JSONResponse StructuredError
+
+func (response ListCodeReviews401JSONResponse) VisitListCodeReviewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCodeReviewsRequestObject struct {
+	Body *CreateCodeReviewsJSONRequestBody
+}
+
+type CreateCodeReviewsResponseObject interface {
+	VisitCreateCodeReviewsResponse(w http.ResponseWriter) error
+}
+
+type CreateCodeReviews201JSONResponse CodeReviewListResponse
+
+func (response CreateCodeReviews201JSONResponse) VisitCreateCodeReviewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCodeReviews400JSONResponse StructuredError
+
+func (response CreateCodeReviews400JSONResponse) VisitCreateCodeReviewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCodeReviews401JSONResponse StructuredError
+
+func (response CreateCodeReviews401JSONResponse) VisitCreateCodeReviewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFeedbackRoundsRequestObject struct {
+	Params ListFeedbackRoundsParams
+}
+
+type ListFeedbackRoundsResponseObject interface {
+	VisitListFeedbackRoundsResponse(w http.ResponseWriter) error
+}
+
+type ListFeedbackRounds200JSONResponse FeedbackRoundListResponse
+
+func (response ListFeedbackRounds200JSONResponse) VisitListFeedbackRoundsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFeedbackRounds401JSONResponse StructuredError
+
+func (response ListFeedbackRounds401JSONResponse) VisitListFeedbackRoundsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetFeedbackRoundStateRequestObject struct {
+	RoundID string `json:"roundID"`
+	Body    *SetFeedbackRoundStateJSONRequestBody
+}
+
+type SetFeedbackRoundStateResponseObject interface {
+	VisitSetFeedbackRoundStateResponse(w http.ResponseWriter) error
+}
+
+type SetFeedbackRoundState200JSONResponse FeedbackRound
+
+func (response SetFeedbackRoundState200JSONResponse) VisitSetFeedbackRoundStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetFeedbackRoundState401JSONResponse StructuredError
+
+func (response SetFeedbackRoundState401JSONResponse) VisitSetFeedbackRoundStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetFeedbackRoundState404JSONResponse StructuredError
+
+func (response SetFeedbackRoundState404JSONResponse) VisitSetFeedbackRoundStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCodeReviewStatusRequestObject struct {
+}
+
+type GetCodeReviewStatusResponseObject interface {
+	VisitGetCodeReviewStatusResponse(w http.ResponseWriter) error
+}
+
+type GetCodeReviewStatus200JSONResponse CodeReviewStatus
+
+func (response GetCodeReviewStatus200JSONResponse) VisitGetCodeReviewStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCodeReviewStatus401JSONResponse StructuredError
+
+func (response GetCodeReviewStatus401JSONResponse) VisitGetCodeReviewStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCodeReviewRequestObject struct {
+	ReviewID string `json:"reviewID"`
+}
+
+type GetCodeReviewResponseObject interface {
+	VisitGetCodeReviewResponse(w http.ResponseWriter) error
+}
+
+type GetCodeReview200JSONResponse CodeReviewRequest
+
+func (response GetCodeReview200JSONResponse) VisitGetCodeReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCodeReview401JSONResponse StructuredError
+
+func (response GetCodeReview401JSONResponse) VisitGetCodeReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCodeReview404JSONResponse StructuredError
+
+func (response GetCodeReview404JSONResponse) VisitGetCodeReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseCodeReviewRequestObject struct {
+	ReviewID string `json:"reviewID"`
+}
+
+type CloseCodeReviewResponseObject interface {
+	VisitCloseCodeReviewResponse(w http.ResponseWriter) error
+}
+
+type CloseCodeReview200JSONResponse CodeReviewRequest
+
+func (response CloseCodeReview200JSONResponse) VisitCloseCodeReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseCodeReview401JSONResponse StructuredError
+
+func (response CloseCodeReview401JSONResponse) VisitCloseCodeReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseCodeReview404JSONResponse StructuredError
+
+func (response CloseCodeReview404JSONResponse) VisitCloseCodeReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RerunCodeReviewRequestObject struct {
+	ReviewID string `json:"reviewID"`
+}
+
+type RerunCodeReviewResponseObject interface {
+	VisitRerunCodeReviewResponse(w http.ResponseWriter) error
+}
+
+type RerunCodeReview200JSONResponse CodeReviewRequest
+
+func (response RerunCodeReview200JSONResponse) VisitRerunCodeReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RerunCodeReview401JSONResponse StructuredError
+
+func (response RerunCodeReview401JSONResponse) VisitRerunCodeReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RerunCodeReview404JSONResponse StructuredError
+
+func (response RerunCodeReview404JSONResponse) VisitRerunCodeReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetHealthzRequestObject struct {
@@ -4396,6 +5204,30 @@ type StrictServerInterface interface {
 	// PostGateCallback Receive a webhook callback that satisfies a gate condition
 	// (POST /api/v1/gate/callback/{token})
 	PostGateCallback(ctx context.Context, request PostGateCallbackRequestObject) (PostGateCallbackResponseObject, error)
+	// ListCodeReviews List PR review requests
+	// (GET /code-reviews)
+	ListCodeReviews(ctx context.Context, request ListCodeReviewsRequestObject) (ListCodeReviewsResponseObject, error)
+	// CreateCodeReviews Queue reviews for the PR URLs or owner/repo#N references in the text
+	// (POST /code-reviews)
+	CreateCodeReviews(ctx context.Context, request CreateCodeReviewsRequestObject) (CreateCodeReviewsResponseObject, error)
+	// ListFeedbackRounds Reviews that landed on your own PRs
+	// (GET /code-reviews/feedback)
+	ListFeedbackRounds(ctx context.Context, request ListFeedbackRoundsRequestObject) (ListFeedbackRoundsResponseObject, error)
+	// SetFeedbackRoundState Mark a landed review as addressed or ignored
+	// (POST /code-reviews/feedback/{roundID}/state)
+	SetFeedbackRoundState(ctx context.Context, request SetFeedbackRoundStateRequestObject) (SetFeedbackRoundStateResponseObject, error)
+	// GetCodeReviewStatus Review queue and watcher health
+	// (GET /code-reviews/status)
+	GetCodeReviewStatus(ctx context.Context, request GetCodeReviewStatusRequestObject) (GetCodeReviewStatusResponseObject, error)
+	// GetCodeReview Review request detail with findings
+	// (GET /code-reviews/{reviewID})
+	GetCodeReview(ctx context.Context, request GetCodeReviewRequestObject) (GetCodeReviewResponseObject, error)
+	// CloseCodeReview Stop watching a PR
+	// (POST /code-reviews/{reviewID}/close)
+	CloseCodeReview(ctx context.Context, request CloseCodeReviewRequestObject) (CloseCodeReviewResponseObject, error)
+	// RerunCodeReview Queue another review attempt
+	// (POST /code-reviews/{reviewID}/rerun)
+	RerunCodeReview(ctx context.Context, request RerunCodeReviewRequestObject) (RerunCodeReviewResponseObject, error)
 	// GetHealthz Liveness/readiness
 	// (GET /healthz)
 	GetHealthz(ctx context.Context, request GetHealthzRequestObject) (GetHealthzResponseObject, error)
@@ -4574,6 +5406,224 @@ func (sh *strictHandler) PostGateCallback(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostGateCallbackResponseObject); ok {
 		if err := validResponse.VisitPostGateCallbackResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListCodeReviews operation middleware
+func (sh *strictHandler) ListCodeReviews(w http.ResponseWriter, r *http.Request, params ListCodeReviewsParams) {
+	var request ListCodeReviewsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCodeReviews(ctx, request.(ListCodeReviewsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCodeReviews")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListCodeReviewsResponseObject); ok {
+		if err := validResponse.VisitListCodeReviewsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateCodeReviews operation middleware
+func (sh *strictHandler) CreateCodeReviews(w http.ResponseWriter, r *http.Request) {
+	var request CreateCodeReviewsRequestObject
+
+	var body CreateCodeReviewsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateCodeReviews(ctx, request.(CreateCodeReviewsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateCodeReviews")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateCodeReviewsResponseObject); ok {
+		if err := validResponse.VisitCreateCodeReviewsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListFeedbackRounds operation middleware
+func (sh *strictHandler) ListFeedbackRounds(w http.ResponseWriter, r *http.Request, params ListFeedbackRoundsParams) {
+	var request ListFeedbackRoundsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListFeedbackRounds(ctx, request.(ListFeedbackRoundsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListFeedbackRounds")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListFeedbackRoundsResponseObject); ok {
+		if err := validResponse.VisitListFeedbackRoundsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetFeedbackRoundState operation middleware
+func (sh *strictHandler) SetFeedbackRoundState(w http.ResponseWriter, r *http.Request, roundID string) {
+	var request SetFeedbackRoundStateRequestObject
+
+	request.RoundID = roundID
+
+	var body SetFeedbackRoundStateJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetFeedbackRoundState(ctx, request.(SetFeedbackRoundStateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetFeedbackRoundState")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetFeedbackRoundStateResponseObject); ok {
+		if err := validResponse.VisitSetFeedbackRoundStateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCodeReviewStatus operation middleware
+func (sh *strictHandler) GetCodeReviewStatus(w http.ResponseWriter, r *http.Request) {
+	var request GetCodeReviewStatusRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCodeReviewStatus(ctx, request.(GetCodeReviewStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCodeReviewStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCodeReviewStatusResponseObject); ok {
+		if err := validResponse.VisitGetCodeReviewStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCodeReview operation middleware
+func (sh *strictHandler) GetCodeReview(w http.ResponseWriter, r *http.Request, reviewID string) {
+	var request GetCodeReviewRequestObject
+
+	request.ReviewID = reviewID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCodeReview(ctx, request.(GetCodeReviewRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCodeReview")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCodeReviewResponseObject); ok {
+		if err := validResponse.VisitGetCodeReviewResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CloseCodeReview operation middleware
+func (sh *strictHandler) CloseCodeReview(w http.ResponseWriter, r *http.Request, reviewID string) {
+	var request CloseCodeReviewRequestObject
+
+	request.ReviewID = reviewID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CloseCodeReview(ctx, request.(CloseCodeReviewRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CloseCodeReview")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CloseCodeReviewResponseObject); ok {
+		if err := validResponse.VisitCloseCodeReviewResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RerunCodeReview operation middleware
+func (sh *strictHandler) RerunCodeReview(w http.ResponseWriter, r *http.Request, reviewID string) {
+	var request RerunCodeReviewRequestObject
+
+	request.ReviewID = reviewID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RerunCodeReview(ctx, request.(RerunCodeReviewRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RerunCodeReview")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RerunCodeReviewResponseObject); ok {
+		if err := validResponse.VisitRerunCodeReviewResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

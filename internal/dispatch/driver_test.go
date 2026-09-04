@@ -217,7 +217,7 @@ func TestLookupDriverUnknown(t *testing.T) {
 	if !strings.Contains(err.Error(), "nonexistent") {
 		t.Errorf("error should mention the driver name, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "claude, generic") {
+	if !strings.Contains(err.Error(), "claude, codex, generic") {
 		t.Errorf("error should list available drivers, got: %v", err)
 	}
 }

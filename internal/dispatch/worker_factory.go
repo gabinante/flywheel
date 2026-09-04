@@ -14,8 +14,10 @@ func NewWorker(cfg Config) Worker {
 		cliPath = cfg.ClaudePath
 	}
 	driver, err := LookupDriver(driverName, DriverConfig{
-		CLIPath:   cliPath,
-		ExtraArgs: cfg.AgentArgs,
+		CLIPath:         cliPath,
+		ExtraArgs:       cfg.AgentArgs,
+		Model:           cfg.AgentModel,
+		ReasoningEffort: cfg.AgentReasoningEffort,
 	})
 	if err != nil {
 		slog.Warn("driver lookup failed, falling back to claude driver", "error", err)

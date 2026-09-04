@@ -192,6 +192,30 @@ func (e ProjectStatus) Valid() bool {
 	}
 }
 
+// Defines values for SetFeedbackRoundStateRequestState.
+const (
+	SetFeedbackRoundStateRequestStateAddressed  SetFeedbackRoundStateRequestState = "addressed"
+	SetFeedbackRoundStateRequestStateDispatched SetFeedbackRoundStateRequestState = "dispatched"
+	SetFeedbackRoundStateRequestStateIgnored    SetFeedbackRoundStateRequestState = "ignored"
+	SetFeedbackRoundStateRequestStateNew        SetFeedbackRoundStateRequestState = "new"
+)
+
+// Valid indicates whether the value is a known member of the SetFeedbackRoundStateRequestState enum.
+func (e SetFeedbackRoundStateRequestState) Valid() bool {
+	switch e {
+	case SetFeedbackRoundStateRequestStateAddressed:
+		return true
+	case SetFeedbackRoundStateRequestStateDispatched:
+		return true
+	case SetFeedbackRoundStateRequestStateIgnored:
+		return true
+	case SetFeedbackRoundStateRequestStateNew:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StateTransitionEntryActorType.
 const (
 	StateTransitionEntryActorTypeAgent  StateTransitionEntryActorType = "agent"
@@ -620,6 +644,95 @@ type ClaimResponseBody struct {
 	Ticket *Ticket `json:"ticket,omitempty"`
 }
 
+// CodeReviewFinding defines model for CodeReviewFinding.
+type CodeReviewFinding struct {
+	Attempt         int    `json:"attempt"`
+	Body            string `json:"body"`
+	GithubCommentId *int64 `json:"github_comment_id,omitempty"`
+	Id              string `json:"id"`
+	Line            int    `json:"line"`
+	Path            string `json:"path"`
+
+	// Severity P0, P1, P2, or P3
+	Severity string `json:"severity"`
+
+	// Status pending, posted, in_body, withheld, resolved, or outdated
+	Status string `json:"status"`
+	Title  string `json:"title"`
+}
+
+// CodeReviewListResponse defines model for CodeReviewListResponse.
+type CodeReviewListResponse struct {
+	Limit    int                 `json:"limit"`
+	Offset   int                 `json:"offset"`
+	Requests []CodeReviewRequest `json:"requests"`
+	Total    int                 `json:"total"`
+}
+
+// CodeReviewRequest defines model for CodeReviewRequest.
+type CodeReviewRequest struct {
+	Attempt       int                 `json:"attempt"`
+	Author        string              `json:"author"`
+	BaseRef       *string             `json:"base_ref,omitempty"`
+	CreatedAt     time.Time           `json:"created_at"`
+	DryRun        bool                `json:"dry_run"`
+	Error         *string             `json:"error,omitempty"`
+	Findings      []CodeReviewFinding `json:"findings"`
+	Harness       string              `json:"harness"`
+	HeadRef       *string             `json:"head_ref,omitempty"`
+	HeadSha       *string             `json:"head_sha,omitempty"`
+	Id            string              `json:"id"`
+	LastCheckedAt *time.Time          `json:"last_checked_at,omitempty"`
+	Model         *string             `json:"model,omitempty"`
+	MyReviewState *string             `json:"my_review_state,omitempty"`
+	Number        int                 `json:"number"`
+	Origin        string              `json:"origin"`
+	Recipe        *string             `json:"recipe,omitempty"`
+	Repo          string              `json:"repo"`
+	ReviewUrl     *string             `json:"review_url,omitempty"`
+	ReviewedAt    *time.Time          `json:"reviewed_at,omitempty"`
+	SessionId     *string             `json:"session_id,omitempty"`
+	State         string              `json:"state"`
+	Summary       string              `json:"summary"`
+	Title         string              `json:"title"`
+	UpdatedAt     time.Time           `json:"updated_at"`
+	Url           string              `json:"url"`
+	Verdict       string              `json:"verdict"`
+	Watch         bool                `json:"watch"`
+}
+
+// CodeReviewStatus defines model for CodeReviewStatus.
+type CodeReviewStatus struct {
+	Active         int        `json:"active"`
+	Enabled        bool       `json:"enabled"`
+	Harness        string     `json:"harness"`
+	LastError      *string    `json:"last_error,omitempty"`
+	LastPollAt     *time.Time `json:"last_poll_at,omitempty"`
+	LastQueueRunAt *time.Time `json:"last_queue_run_at,omitempty"`
+	Login          *string    `json:"login,omitempty"`
+	MaxConcurrent  int        `json:"max_concurrent"`
+	NewFeedback    int        `json:"new_feedback"`
+	Publish        bool       `json:"publish"`
+	Queued         int        `json:"queued"`
+	RepoRoot       *string    `json:"repo_root,omitempty"`
+	ReviewsPosted  int        `json:"reviews_posted"`
+	WatchAuthored  bool       `json:"watch_authored"`
+	WatchRequested bool       `json:"watch_requested"`
+	Watching       int        `json:"watching"`
+}
+
+// CreateCodeReviewRequest defines model for CreateCodeReviewRequest.
+type CreateCodeReviewRequest struct {
+	DryRun *bool `json:"dry_run,omitempty"`
+
+	// Harness codex or claude
+	Harness *string `json:"harness,omitempty"`
+
+	// Text Free text containing GitHub PR URLs or owner/repo#N references
+	Text  string `json:"text"`
+	Watch *bool  `json:"watch,omitempty"`
+}
+
 // CreateOrgRequest defines model for CreateOrgRequest.
 type CreateOrgRequest struct {
 	Name *string `json:"name,omitempty"`
@@ -780,6 +893,33 @@ type ExecutionTrace struct {
 
 	// TotalCount Total number of steps for this ticket (present when paginated)
 	TotalCount *int `json:"total_count,omitempty"`
+}
+
+// FeedbackRound defines model for FeedbackRound.
+type FeedbackRound struct {
+	Body         *string   `json:"body,omitempty"`
+	CommentCount int       `json:"comment_count"`
+	HeadSha      *string   `json:"head_sha,omitempty"`
+	Id           string    `json:"id"`
+	Number       int       `json:"number"`
+	ObservedAt   time.Time `json:"observed_at"`
+	Repo         string    `json:"repo"`
+	ReviewId     int64     `json:"review_id"`
+	ReviewState  string    `json:"review_state"`
+	Reviewer     string    `json:"reviewer"`
+	SessionId    *string   `json:"session_id,omitempty"`
+
+	// State new, dispatched, addressed, or ignored
+	State       string     `json:"state"`
+	SubmittedAt *time.Time `json:"submitted_at,omitempty"`
+	TicketId    *string    `json:"ticket_id,omitempty"`
+	Title       string     `json:"title"`
+	Url         string     `json:"url"`
+}
+
+// FeedbackRoundListResponse defines model for FeedbackRoundListResponse.
+type FeedbackRoundListResponse struct {
+	Rounds []FeedbackRound `json:"rounds"`
 }
 
 // Lease defines model for Lease.
@@ -961,6 +1101,14 @@ type SessionPrompt struct {
 	Text string    `json:"text"`
 	Ts   time.Time `json:"ts"`
 }
+
+// SetFeedbackRoundStateRequest defines model for SetFeedbackRoundStateRequest.
+type SetFeedbackRoundStateRequest struct {
+	State SetFeedbackRoundStateRequestState `json:"state"`
+}
+
+// SetFeedbackRoundStateRequestState defines model for SetFeedbackRoundStateRequest.State.
+type SetFeedbackRoundStateRequestState string
 
 // StateTransitionEntry defines model for StateTransitionEntry.
 type StateTransitionEntry struct {
@@ -1177,6 +1325,20 @@ type PostGateCallbackJSONBody struct {
 	Metadata *map[string]interface{} `json:"metadata,omitempty"`
 }
 
+// ListCodeReviewsParams defines parameters for ListCodeReviews.
+type ListCodeReviewsParams struct {
+	State  *string `form:"state,omitempty" json:"state,omitempty"`
+	Repo   *string `form:"repo,omitempty" json:"repo,omitempty"`
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int    `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListFeedbackRoundsParams defines parameters for ListFeedbackRounds.
+type ListFeedbackRoundsParams struct {
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+	Limit *int    `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // GetMeStatsHistoryParams defines parameters for GetMeStatsHistory.
 type GetMeStatsHistoryParams struct {
 	// Days Number of days (default 14, max 90).
@@ -1264,6 +1426,12 @@ type GetTraceParams struct {
 
 // PostGateCallbackJSONRequestBody defines body for PostGateCallback for application/json ContentType.
 type PostGateCallbackJSONRequestBody PostGateCallbackJSONBody
+
+// CreateCodeReviewsJSONRequestBody defines body for CreateCodeReviews for application/json ContentType.
+type CreateCodeReviewsJSONRequestBody = CreateCodeReviewRequest
+
+// SetFeedbackRoundStateJSONRequestBody defines body for SetFeedbackRoundState for application/json ContentType.
+type SetFeedbackRoundStateJSONRequestBody = SetFeedbackRoundStateRequest
 
 // CreateOrgJSONRequestBody defines body for CreateOrg for application/json ContentType.
 type CreateOrgJSONRequestBody = CreateOrgRequest
@@ -1397,6 +1565,64 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/v1/gate/callback/{token} (the `PostGateCallback` operationId).
 	PostGateCallback(ctx context.Context, token string, body PostGateCallbackJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListCodeReviews List PR review requests
+	//
+	// Corresponds with GET /code-reviews (the `ListCodeReviews` operationId).
+	ListCodeReviews(ctx context.Context, params *ListCodeReviewsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateCodeReviewsWithBody Queue reviews for the PR URLs or owner/repo#N references in the text
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /code-reviews (the `CreateCodeReviews` operationId).
+	CreateCodeReviewsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateCodeReviews Queue reviews for the PR URLs or owner/repo#N references in the text
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /code-reviews (the `CreateCodeReviews` operationId).
+	CreateCodeReviews(ctx context.Context, body CreateCodeReviewsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListFeedbackRounds Reviews that landed on your own PRs
+	//
+	// Corresponds with GET /code-reviews/feedback (the `ListFeedbackRounds` operationId).
+	ListFeedbackRounds(ctx context.Context, params *ListFeedbackRoundsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetFeedbackRoundStateWithBody Mark a landed review as addressed or ignored
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /code-reviews/feedback/{roundID}/state (the `SetFeedbackRoundState` operationId).
+	SetFeedbackRoundStateWithBody(ctx context.Context, roundID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetFeedbackRoundState Mark a landed review as addressed or ignored
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /code-reviews/feedback/{roundID}/state (the `SetFeedbackRoundState` operationId).
+	SetFeedbackRoundState(ctx context.Context, roundID string, body SetFeedbackRoundStateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetCodeReviewStatus Review queue and watcher health
+	//
+	// Corresponds with GET /code-reviews/status (the `GetCodeReviewStatus` operationId).
+	GetCodeReviewStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetCodeReview Review request detail with findings
+	//
+	// Corresponds with GET /code-reviews/{reviewID} (the `GetCodeReview` operationId).
+	GetCodeReview(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CloseCodeReview Stop watching a PR
+	//
+	// Corresponds with POST /code-reviews/{reviewID}/close (the `CloseCodeReview` operationId).
+	CloseCodeReview(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RerunCodeReview Queue another review attempt
+	//
+	// Corresponds with POST /code-reviews/{reviewID}/rerun (the `RerunCodeReview` operationId).
+	RerunCodeReview(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetHealthz Liveness/readiness
 	//
@@ -1660,6 +1886,164 @@ func (c *Client) PostGateCallbackWithBody(ctx context.Context, token string, con
 // Corresponds with POST /api/v1/gate/callback/{token} (the `PostGateCallback` operationId).
 func (c *Client) PostGateCallback(ctx context.Context, token string, body PostGateCallbackJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostGateCallbackRequest(c.Server, token, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListCodeReviews List PR review requests
+//
+// Corresponds with GET /code-reviews (the `ListCodeReviews` operationId).
+func (c *Client) ListCodeReviews(ctx context.Context, params *ListCodeReviewsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCodeReviewsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateCodeReviewsWithBody Queue reviews for the PR URLs or owner/repo#N references in the text
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /code-reviews (the `CreateCodeReviews` operationId).
+func (c *Client) CreateCodeReviewsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateCodeReviewsRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateCodeReviews Queue reviews for the PR URLs or owner/repo#N references in the text
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /code-reviews (the `CreateCodeReviews` operationId).
+func (c *Client) CreateCodeReviews(ctx context.Context, body CreateCodeReviewsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateCodeReviewsRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListFeedbackRounds Reviews that landed on your own PRs
+//
+// Corresponds with GET /code-reviews/feedback (the `ListFeedbackRounds` operationId).
+func (c *Client) ListFeedbackRounds(ctx context.Context, params *ListFeedbackRoundsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListFeedbackRoundsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetFeedbackRoundStateWithBody Mark a landed review as addressed or ignored
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /code-reviews/feedback/{roundID}/state (the `SetFeedbackRoundState` operationId).
+func (c *Client) SetFeedbackRoundStateWithBody(ctx context.Context, roundID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetFeedbackRoundStateRequestWithBody(c.Server, roundID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetFeedbackRoundState Mark a landed review as addressed or ignored
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /code-reviews/feedback/{roundID}/state (the `SetFeedbackRoundState` operationId).
+func (c *Client) SetFeedbackRoundState(ctx context.Context, roundID string, body SetFeedbackRoundStateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetFeedbackRoundStateRequest(c.Server, roundID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetCodeReviewStatus Review queue and watcher health
+//
+// Corresponds with GET /code-reviews/status (the `GetCodeReviewStatus` operationId).
+func (c *Client) GetCodeReviewStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCodeReviewStatusRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetCodeReview Review request detail with findings
+//
+// Corresponds with GET /code-reviews/{reviewID} (the `GetCodeReview` operationId).
+func (c *Client) GetCodeReview(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCodeReviewRequest(c.Server, reviewID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CloseCodeReview Stop watching a PR
+//
+// Corresponds with POST /code-reviews/{reviewID}/close (the `CloseCodeReview` operationId).
+func (c *Client) CloseCodeReview(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCloseCodeReviewRequest(c.Server, reviewID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RerunCodeReview Queue another review attempt
+//
+// Corresponds with POST /code-reviews/{reviewID}/rerun (the `RerunCodeReview` operationId).
+func (c *Client) RerunCodeReview(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRerunCodeReviewRequest(c.Server, reviewID)
 	if err != nil {
 		return nil, err
 	}
@@ -2460,6 +2844,378 @@ func NewPostGateCallbackRequestWithBody(server string, token string, contentType
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListCodeReviewsRequest constructs an http.Request for the ListCodeReviews method
+func NewListCodeReviewsRequest(server string, params *ListCodeReviewsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/code-reviews")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "state", *params.State, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Repo != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "repo", *params.Repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "offset", *params.Offset, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateCodeReviewsRequest calls the generic CreateCodeReviews builder with application/json body
+func NewCreateCodeReviewsRequest(server string, body CreateCodeReviewsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateCodeReviewsRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateCodeReviewsRequestWithBody constructs an http.Request for the CreateCodeReviews method, with any body, and a specified content type
+func NewCreateCodeReviewsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/code-reviews")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListFeedbackRoundsRequest constructs an http.Request for the ListFeedbackRounds method
+func NewListFeedbackRoundsRequest(server string, params *ListFeedbackRoundsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/code-reviews/feedback")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "state", *params.State, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetFeedbackRoundStateRequest calls the generic SetFeedbackRoundState builder with application/json body
+func NewSetFeedbackRoundStateRequest(server string, roundID string, body SetFeedbackRoundStateJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetFeedbackRoundStateRequestWithBody(server, roundID, "application/json", bodyReader)
+}
+
+// NewSetFeedbackRoundStateRequestWithBody constructs an http.Request for the SetFeedbackRoundState method, with any body, and a specified content type
+func NewSetFeedbackRoundStateRequestWithBody(server string, roundID string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "roundID", roundID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/code-reviews/feedback/%s/state", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetCodeReviewStatusRequest constructs an http.Request for the GetCodeReviewStatus method
+func NewGetCodeReviewStatusRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/code-reviews/status")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetCodeReviewRequest constructs an http.Request for the GetCodeReview method
+func NewGetCodeReviewRequest(server string, reviewID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewID", reviewID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/code-reviews/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCloseCodeReviewRequest constructs an http.Request for the CloseCodeReview method
+func NewCloseCodeReviewRequest(server string, reviewID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewID", reviewID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/code-reviews/%s/close", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRerunCodeReviewRequest constructs an http.Request for the RerunCodeReview method
+func NewRerunCodeReviewRequest(server string, reviewID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewID", reviewID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/code-reviews/%s/rerun", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -4239,6 +4995,76 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/v1/gate/callback/{token} (the `PostGateCallback` operationId).
 	PostGateCallbackWithResponse(ctx context.Context, token string, body PostGateCallbackJSONRequestBody, reqEditors ...RequestEditorFn) (*PostGateCallbackResponse, error)
 
+	// ListCodeReviewsWithResponse List PR review requests
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /code-reviews (the `ListCodeReviews` operationId).
+	ListCodeReviewsWithResponse(ctx context.Context, params *ListCodeReviewsParams, reqEditors ...RequestEditorFn) (*ListCodeReviewsResponse, error)
+
+	// CreateCodeReviewsWithBodyWithResponse Queue reviews for the PR URLs or owner/repo#N references in the text
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /code-reviews (the `CreateCodeReviews` operationId).
+	CreateCodeReviewsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateCodeReviewsResponse, error)
+
+	// CreateCodeReviewsWithResponse Queue reviews for the PR URLs or owner/repo#N references in the text
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /code-reviews (the `CreateCodeReviews` operationId).
+	CreateCodeReviewsWithResponse(ctx context.Context, body CreateCodeReviewsJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateCodeReviewsResponse, error)
+
+	// ListFeedbackRoundsWithResponse Reviews that landed on your own PRs
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /code-reviews/feedback (the `ListFeedbackRounds` operationId).
+	ListFeedbackRoundsWithResponse(ctx context.Context, params *ListFeedbackRoundsParams, reqEditors ...RequestEditorFn) (*ListFeedbackRoundsResponse, error)
+
+	// SetFeedbackRoundStateWithBodyWithResponse Mark a landed review as addressed or ignored
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /code-reviews/feedback/{roundID}/state (the `SetFeedbackRoundState` operationId).
+	SetFeedbackRoundStateWithBodyWithResponse(ctx context.Context, roundID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetFeedbackRoundStateResponse, error)
+
+	// SetFeedbackRoundStateWithResponse Mark a landed review as addressed or ignored
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /code-reviews/feedback/{roundID}/state (the `SetFeedbackRoundState` operationId).
+	SetFeedbackRoundStateWithResponse(ctx context.Context, roundID string, body SetFeedbackRoundStateJSONRequestBody, reqEditors ...RequestEditorFn) (*SetFeedbackRoundStateResponse, error)
+
+	// GetCodeReviewStatusWithResponse Review queue and watcher health
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /code-reviews/status (the `GetCodeReviewStatus` operationId).
+	GetCodeReviewStatusWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetCodeReviewStatusResponse, error)
+
+	// GetCodeReviewWithResponse Review request detail with findings
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /code-reviews/{reviewID} (the `GetCodeReview` operationId).
+	GetCodeReviewWithResponse(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*GetCodeReviewResponse, error)
+
+	// CloseCodeReviewWithResponse Stop watching a PR
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /code-reviews/{reviewID}/close (the `CloseCodeReview` operationId).
+	CloseCodeReviewWithResponse(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*CloseCodeReviewResponse, error)
+
+	// RerunCodeReviewWithResponse Queue another review attempt
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /code-reviews/{reviewID}/rerun (the `RerunCodeReview` operationId).
+	RerunCodeReviewWithResponse(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*RerunCodeReviewResponse, error)
+
 	// GetHealthzWithResponse Liveness/readiness
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -4582,6 +5408,425 @@ func (r PostGateCallbackResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r PostGateCallbackResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListCodeReviewsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CodeReviewListResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListCodeReviewsResponse) GetJSON200() *CodeReviewListResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListCodeReviewsResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r ListCodeReviewsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCodeReviewsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCodeReviewsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListCodeReviewsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateCodeReviewsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *CodeReviewListResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *StructuredError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateCodeReviewsResponse) GetJSON201() *CodeReviewListResponse {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateCodeReviewsResponse) GetJSON400() *StructuredError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateCodeReviewsResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateCodeReviewsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateCodeReviewsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateCodeReviewsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateCodeReviewsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListFeedbackRoundsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *FeedbackRoundListResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListFeedbackRoundsResponse) GetJSON200() *FeedbackRoundListResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListFeedbackRoundsResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r ListFeedbackRoundsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListFeedbackRoundsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListFeedbackRoundsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListFeedbackRoundsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SetFeedbackRoundStateResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *FeedbackRound
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetFeedbackRoundStateResponse) GetJSON200() *FeedbackRound {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r SetFeedbackRoundStateResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r SetFeedbackRoundStateResponse) GetJSON404() *StructuredError {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r SetFeedbackRoundStateResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetFeedbackRoundStateResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetFeedbackRoundStateResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetFeedbackRoundStateResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetCodeReviewStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CodeReviewStatus
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetCodeReviewStatusResponse) GetJSON200() *CodeReviewStatus {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetCodeReviewStatusResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r GetCodeReviewStatusResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCodeReviewStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCodeReviewStatusResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetCodeReviewStatusResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetCodeReviewResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CodeReviewRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetCodeReviewResponse) GetJSON200() *CodeReviewRequest {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetCodeReviewResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetCodeReviewResponse) GetJSON404() *StructuredError {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetCodeReviewResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCodeReviewResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCodeReviewResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetCodeReviewResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CloseCodeReviewResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CodeReviewRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CloseCodeReviewResponse) GetJSON200() *CodeReviewRequest {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CloseCodeReviewResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CloseCodeReviewResponse) GetJSON404() *StructuredError {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r CloseCodeReviewResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CloseCodeReviewResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CloseCodeReviewResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CloseCodeReviewResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RerunCodeReviewResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CodeReviewRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RerunCodeReviewResponse) GetJSON200() *CodeReviewRequest {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r RerunCodeReviewResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r RerunCodeReviewResponse) GetJSON404() *StructuredError {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r RerunCodeReviewResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RerunCodeReviewResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RerunCodeReviewResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RerunCodeReviewResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -6454,6 +7699,136 @@ func (c *ClientWithResponses) PostGateCallbackWithResponse(ctx context.Context, 
 	return ParsePostGateCallbackResponse(rsp)
 }
 
+// ListCodeReviewsWithResponse List PR review requests
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /code-reviews (the `ListCodeReviews` operationId).
+func (c *ClientWithResponses) ListCodeReviewsWithResponse(ctx context.Context, params *ListCodeReviewsParams, reqEditors ...RequestEditorFn) (*ListCodeReviewsResponse, error) {
+	rsp, err := c.ListCodeReviews(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCodeReviewsResponse(rsp)
+}
+
+// CreateCodeReviewsWithBodyWithResponse Queue reviews for the PR URLs or owner/repo#N references in the text
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /code-reviews (the `CreateCodeReviews` operationId).
+func (c *ClientWithResponses) CreateCodeReviewsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateCodeReviewsResponse, error) {
+	rsp, err := c.CreateCodeReviewsWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateCodeReviewsResponse(rsp)
+}
+
+// CreateCodeReviewsWithResponse Queue reviews for the PR URLs or owner/repo#N references in the text
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /code-reviews (the `CreateCodeReviews` operationId).
+func (c *ClientWithResponses) CreateCodeReviewsWithResponse(ctx context.Context, body CreateCodeReviewsJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateCodeReviewsResponse, error) {
+	rsp, err := c.CreateCodeReviews(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateCodeReviewsResponse(rsp)
+}
+
+// ListFeedbackRoundsWithResponse Reviews that landed on your own PRs
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /code-reviews/feedback (the `ListFeedbackRounds` operationId).
+func (c *ClientWithResponses) ListFeedbackRoundsWithResponse(ctx context.Context, params *ListFeedbackRoundsParams, reqEditors ...RequestEditorFn) (*ListFeedbackRoundsResponse, error) {
+	rsp, err := c.ListFeedbackRounds(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListFeedbackRoundsResponse(rsp)
+}
+
+// SetFeedbackRoundStateWithBodyWithResponse Mark a landed review as addressed or ignored
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /code-reviews/feedback/{roundID}/state (the `SetFeedbackRoundState` operationId).
+func (c *ClientWithResponses) SetFeedbackRoundStateWithBodyWithResponse(ctx context.Context, roundID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetFeedbackRoundStateResponse, error) {
+	rsp, err := c.SetFeedbackRoundStateWithBody(ctx, roundID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetFeedbackRoundStateResponse(rsp)
+}
+
+// SetFeedbackRoundStateWithResponse Mark a landed review as addressed or ignored
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /code-reviews/feedback/{roundID}/state (the `SetFeedbackRoundState` operationId).
+func (c *ClientWithResponses) SetFeedbackRoundStateWithResponse(ctx context.Context, roundID string, body SetFeedbackRoundStateJSONRequestBody, reqEditors ...RequestEditorFn) (*SetFeedbackRoundStateResponse, error) {
+	rsp, err := c.SetFeedbackRoundState(ctx, roundID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetFeedbackRoundStateResponse(rsp)
+}
+
+// GetCodeReviewStatusWithResponse Review queue and watcher health
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /code-reviews/status (the `GetCodeReviewStatus` operationId).
+func (c *ClientWithResponses) GetCodeReviewStatusWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetCodeReviewStatusResponse, error) {
+	rsp, err := c.GetCodeReviewStatus(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCodeReviewStatusResponse(rsp)
+}
+
+// GetCodeReviewWithResponse Review request detail with findings
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /code-reviews/{reviewID} (the `GetCodeReview` operationId).
+func (c *ClientWithResponses) GetCodeReviewWithResponse(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*GetCodeReviewResponse, error) {
+	rsp, err := c.GetCodeReview(ctx, reviewID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCodeReviewResponse(rsp)
+}
+
+// CloseCodeReviewWithResponse Stop watching a PR
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /code-reviews/{reviewID}/close (the `CloseCodeReview` operationId).
+func (c *ClientWithResponses) CloseCodeReviewWithResponse(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*CloseCodeReviewResponse, error) {
+	rsp, err := c.CloseCodeReview(ctx, reviewID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCloseCodeReviewResponse(rsp)
+}
+
+// RerunCodeReviewWithResponse Queue another review attempt
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /code-reviews/{reviewID}/rerun (the `RerunCodeReview` operationId).
+func (c *ClientWithResponses) RerunCodeReviewWithResponse(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*RerunCodeReviewResponse, error) {
+	rsp, err := c.RerunCodeReview(ctx, reviewID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRerunCodeReviewResponse(rsp)
+}
+
 // GetHealthzWithResponse Liveness/readiness
 //
 // Returns a wrapper object for the known response body format(s).
@@ -7086,6 +8461,305 @@ func ParsePostGateCallbackResponse(rsp *http.Response) (*PostGateCallbackRespons
 
 	case rsp.StatusCode == 404:
 		break // No content-type
+
+	}
+
+	return response, nil
+}
+
+// ParseListCodeReviewsResponse parses an HTTP response from a ListCodeReviewsWithResponse call
+func ParseListCodeReviewsResponse(rsp *http.Response) (*ListCodeReviewsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCodeReviewsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CodeReviewListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateCodeReviewsResponse parses an HTTP response from a CreateCodeReviewsWithResponse call
+func ParseCreateCodeReviewsResponse(rsp *http.Response) (*CreateCodeReviewsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateCodeReviewsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest CodeReviewListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListFeedbackRoundsResponse parses an HTTP response from a ListFeedbackRoundsWithResponse call
+func ParseListFeedbackRoundsResponse(rsp *http.Response) (*ListFeedbackRoundsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListFeedbackRoundsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest FeedbackRoundListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetFeedbackRoundStateResponse parses an HTTP response from a SetFeedbackRoundStateWithResponse call
+func ParseSetFeedbackRoundStateResponse(rsp *http.Response) (*SetFeedbackRoundStateResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetFeedbackRoundStateResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest FeedbackRound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetCodeReviewStatusResponse parses an HTTP response from a GetCodeReviewStatusWithResponse call
+func ParseGetCodeReviewStatusResponse(rsp *http.Response) (*GetCodeReviewStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCodeReviewStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CodeReviewStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetCodeReviewResponse parses an HTTP response from a GetCodeReviewWithResponse call
+func ParseGetCodeReviewResponse(rsp *http.Response) (*GetCodeReviewResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCodeReviewResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CodeReviewRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCloseCodeReviewResponse parses an HTTP response from a CloseCodeReviewWithResponse call
+func ParseCloseCodeReviewResponse(rsp *http.Response) (*CloseCodeReviewResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CloseCodeReviewResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CodeReviewRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRerunCodeReviewResponse parses an HTTP response from a RerunCodeReviewWithResponse call
+func ParseRerunCodeReviewResponse(rsp *http.Response) (*RerunCodeReviewResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RerunCodeReviewResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CodeReviewRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	}
 

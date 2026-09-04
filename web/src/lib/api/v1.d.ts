@@ -470,6 +470,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/code-reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List PR review requests */
+        get: operations["ListCodeReviews"];
+        put?: never;
+        /** Queue reviews for the PR URLs or owner/repo#N references in the text */
+        post: operations["CreateCodeReviews"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/code-reviews/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Review queue and watcher health */
+        get: operations["GetCodeReviewStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/code-reviews/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reviews that landed on your own PRs */
+        get: operations["ListFeedbackRounds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/code-reviews/feedback/{roundID}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a landed review as addressed or ignored */
+        post: operations["SetFeedbackRoundState"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/code-reviews/{reviewID}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Review request detail with findings */
+        get: operations["GetCodeReview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/code-reviews/{reviewID}/rerun": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue another review attempt */
+        post: operations["RerunCodeReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/code-reviews/{reviewID}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop watching a PR */
+        post: operations["CloseCodeReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1030,6 +1150,117 @@ export interface components {
             /** Format: int64 */
             last_duration_ms: number;
             links: components["schemas"]["ProjectLinearLink"][];
+        };
+        CodeReviewFinding: {
+            id: string;
+            attempt: number;
+            /** @description P0, P1, P2, or P3 */
+            severity: string;
+            path: string;
+            line: number;
+            title: string;
+            body: string;
+            /** Format: int64 */
+            github_comment_id?: number;
+            /** @description pending, posted, in_body, withheld, resolved, or outdated */
+            status: string;
+        };
+        CodeReviewRequest: {
+            id: string;
+            repo: string;
+            number: number;
+            url: string;
+            title: string;
+            author: string;
+            base_ref?: string;
+            head_ref?: string;
+            head_sha?: string;
+            origin: string;
+            recipe?: string;
+            harness: string;
+            model?: string;
+            state: string;
+            attempt: number;
+            watch: boolean;
+            dry_run: boolean;
+            verdict: string;
+            summary: string;
+            review_url?: string;
+            my_review_state?: string;
+            session_id?: string;
+            error?: string;
+            /** Format: date-time */
+            reviewed_at?: string;
+            /** Format: date-time */
+            last_checked_at?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            findings: components["schemas"]["CodeReviewFinding"][];
+        };
+        CodeReviewListResponse: {
+            requests: components["schemas"]["CodeReviewRequest"][];
+            total: number;
+            limit: number;
+            offset: number;
+        };
+        CreateCodeReviewRequest: {
+            /** @description Free text containing GitHub PR URLs or owner/repo#N references */
+            text: string;
+            dry_run?: boolean;
+            watch?: boolean;
+            /** @description codex or claude */
+            harness?: string;
+        };
+        FeedbackRound: {
+            id: string;
+            repo: string;
+            number: number;
+            url: string;
+            title: string;
+            head_sha?: string;
+            reviewer: string;
+            review_state: string;
+            /** Format: int64 */
+            review_id: number;
+            comment_count: number;
+            body?: string;
+            /** @description new, dispatched, addressed, or ignored */
+            state: string;
+            ticket_id?: string;
+            session_id?: string;
+            /** Format: date-time */
+            observed_at: string;
+            /** Format: date-time */
+            submitted_at?: string;
+        };
+        FeedbackRoundListResponse: {
+            rounds: components["schemas"]["FeedbackRound"][];
+        };
+        SetFeedbackRoundStateRequest: {
+            /** @enum {string} */
+            state: "new" | "dispatched" | "addressed" | "ignored";
+        };
+        CodeReviewStatus: {
+            enabled: boolean;
+            login?: string;
+            harness: string;
+            publish: boolean;
+            watch_requested: boolean;
+            watch_authored: boolean;
+            /** Format: date-time */
+            last_queue_run_at?: string;
+            /** Format: date-time */
+            last_poll_at?: string;
+            last_error?: string;
+            active: number;
+            queued: number;
+            watching: number;
+            new_feedback: number;
+            reviews_posted: number;
+            max_concurrent: number;
+            repo_root?: string;
         };
     };
     responses: never;
@@ -2466,6 +2697,307 @@ export interface operations {
             };
             /** @description Internal error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    ListCodeReviews: {
+        parameters: {
+            query?: {
+                state?: string;
+                repo?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodeReviewListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    CreateCodeReviews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCodeReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodeReviewListResponse"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    GetCodeReviewStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodeReviewStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    ListFeedbackRounds: {
+        parameters: {
+            query?: {
+                state?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackRoundListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    SetFeedbackRoundState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roundID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetFeedbackRoundStateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackRound"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    GetCodeReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reviewID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodeReviewRequest"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    RerunCodeReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reviewID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodeReviewRequest"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    CloseCodeReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reviewID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodeReviewRequest"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

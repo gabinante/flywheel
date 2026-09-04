@@ -1,0 +1,416 @@
+// Package harness runs the local coding agents — Codex and Claude Code — as
+// headless, single-turn processes and normalizes their output: final text,
+// optional schema-conforming JSON, the harness's own session id, and token usage.
+// Dispatch workers and code review both build on it; the harness for a phase is
+// configuration, never a vendor API.
+package harness
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+// Kind names a harness.
+type Kind string
+
+const (
+	Codex      Kind = "codex"
+	ClaudeCode Kind = "claude_code"
+)
+
+// ParseKind accepts the config spellings used across Flywheel.
+func ParseKind(s string) (Kind, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "codex":
+		return Codex, nil
+	case "claude", "claude_code", "claude-code", "claudecode":
+		return ClaudeCode, nil
+	}
+	return "", fmt.Errorf("unknown harness %q (want codex or claude)", s)
+}
+
+// Sandbox levels.
+const (
+	SandboxReadOnly       = "read-only"
+	SandboxWorkspaceWrite = "workspace-write"
+)
+
+// MCPServer is an MCP endpoint to expose to the agent.
+type MCPServer struct {
+	Name    string
+	URL     string
+	Headers map[string]string
+}
+
+// Spec describes one headless run.
+type Spec struct {
+	Harness      Kind
+	Model        string
+	Effort       string
+	WorkDir      string
+	SystemPrompt string
+	Prompt       string
+	OutputSchema json.RawMessage // when set, the final message must conform and is returned in Result.Structured
+	Sandbox      string          // SandboxReadOnly (default) or SandboxWorkspaceWrite
+	Timeout      time.Duration   // default 30m
+	MCP          []MCPServer     // optional MCP servers (Codex: replaces the user's configured servers for this run)
+	Binary       string          // override executable
+	Env          []string        // extra KEY=VALUE entries
+}
+
+// Result is the normalized outcome.
+type Result struct {
+	Harness           Kind
+	ExternalSessionID string // Codex thread id / Claude session id
+	Output            string // final agent message
+	Structured        json.RawMessage
+	TokensIn          int64
+	TokensOut         int64
+	CostUSD           float64
+	Duration          time.Duration
+	ExitCode          int
+	Stderr            string
+	Command           string
+	Model             string
+}
+
+// Runner executes Specs.
+type Runner interface {
+	Run(ctx context.Context, spec Spec) (*Result, error)
+}
+
+// Config holds binary locations.
+type Config struct {
+	CodexBin  string // default "codex"
+	ClaudeBin string // default "claude"
+}
+
+// CLIRunner runs harnesses as subprocesses.
+type CLIRunner struct {
+	cfg Config
+}
+
+// New returns a CLIRunner.
+func New(cfg Config) *CLIRunner {
+	if cfg.CodexBin == "" {
+		cfg.CodexBin = "codex"
+	}
+	if cfg.ClaudeBin == "" {
+		cfg.ClaudeBin = "claude"
+	}
+	return &CLIRunner{cfg: cfg}
+}
+
+// Run executes the spec.
+func (r *CLIRunner) Run(ctx context.Context, spec Spec) (*Result, error) {
+	if spec.Timeout <= 0 {
+		spec.Timeout = 30 * time.Minute
+	}
+	if spec.Sandbox == "" {
+		spec.Sandbox = SandboxReadOnly
+	}
+	switch spec.Harness {
+	case Codex:
+		return r.runCodex(ctx, spec)
+	case ClaudeCode:
+		return r.runClaude(ctx, spec)
+	}
+	return nil, fmt.Errorf("harness: unsupported harness %q", spec.Harness)
+}
+
+// fullPrompt prepends the system prompt for harnesses without a system-prompt flag.
+func fullPrompt(spec Spec) string {
+	if strings.TrimSpace(spec.SystemPrompt) == "" {
+		return spec.Prompt
+	}
+	return "# Instructions\n\n" + strings.TrimSpace(spec.SystemPrompt) + "\n\n# Task\n\n" + spec.Prompt
+}
+
+func tomlString(s string) string {
+	b, _ := json.Marshal(s) // JSON string escaping is valid TOML basic-string escaping for our inputs
+	return string(b)
+}
+
+// ---- Codex ---------------------------------------------------------------
+
+type codexEvent struct {
+	Type     string `json:"type"`
+	ThreadID string `json:"thread_id"`
+	Item     *struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	} `json:"item"`
+	Usage *struct {
+		InputTokens       int64 `json:"input_tokens"`
+		CachedInputTokens int64 `json:"cached_input_tokens"`
+		OutputTokens      int64 `json:"output_tokens"`
+	} `json:"usage"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+func (r *CLIRunner) runCodex(ctx context.Context, spec Spec) (*Result, error) {
+	bin := spec.Binary
+	if bin == "" {
+		bin = r.cfg.CodexBin
+	}
+	tmp, err := os.MkdirTemp("", "flywheel-codex-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmp)
+	lastPath := filepath.Join(tmp, "last.txt")
+	args := []string{"exec", "--json", "-s", spec.Sandbox, "-c", "approval_policy=never", "-o", lastPath}
+	if spec.WorkDir != "" {
+		args = append(args, "-C", spec.WorkDir)
+	}
+	if spec.Model != "" {
+		args = append(args, "-m", spec.Model)
+	}
+	if spec.Effort != "" {
+		args = append(args, "-c", "model_reasoning_effort="+tomlString(spec.Effort))
+	}
+	// Do not load the operator's interactive MCP servers into headless runs; expose only what the spec asks for.
+	args = append(args, "-c", "mcp_servers={}")
+	for _, m := range spec.MCP {
+		args = append(args, "-c", fmt.Sprintf("mcp_servers.%s.url=%s", m.Name, tomlString(m.URL)))
+		if len(m.Headers) > 0 {
+			var parts []string
+			for k, v := range m.Headers {
+				parts = append(parts, tomlString(k)+" = "+tomlString(v))
+			}
+			args = append(args, "-c", fmt.Sprintf("mcp_servers.%s.http_headers={ %s }", m.Name, strings.Join(parts, ", ")))
+		}
+	}
+	if len(spec.OutputSchema) > 0 {
+		schemaPath := filepath.Join(tmp, "schema.json")
+		if err := os.WriteFile(schemaPath, spec.OutputSchema, 0o600); err != nil {
+			return nil, err
+		}
+		args = append(args, "--output-schema", schemaPath)
+	}
+	args = append(args, "-") // prompt on stdin
+
+	cctx, cancel := context.WithTimeout(ctx, spec.Timeout)
+	defer cancel()
+	cmd := exec.CommandContext(cctx, bin, args...)
+	cmd.Stdin = strings.NewReader(fullPrompt(spec))
+	cmd.Env = append(os.Environ(), spec.Env...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	start := time.Now()
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("harness: start codex: %w", err)
+	}
+	res := &Result{Harness: Codex, Command: bin + " " + strings.Join(args, " "), Model: spec.Model}
+	sc := bufio.NewScanner(stdout)
+	sc.Buffer(make([]byte, 1<<20), 64<<20)
+	var lastErr string
+	for sc.Scan() {
+		var ev codexEvent
+		if json.Unmarshal(sc.Bytes(), &ev) != nil {
+			continue
+		}
+		switch ev.Type {
+		case "thread.started":
+			res.ExternalSessionID = ev.ThreadID
+		case "item.completed":
+			if ev.Item != nil && ev.Item.Type == "agent_message" {
+				res.Output = ev.Item.Text
+			}
+		case "turn.completed":
+			if ev.Usage != nil {
+				res.TokensIn += ev.Usage.InputTokens + ev.Usage.CachedInputTokens
+				res.TokensOut += ev.Usage.OutputTokens
+			}
+		case "error", "turn.failed":
+			if ev.Error != nil {
+				lastErr = ev.Error.Message
+			}
+		}
+	}
+	waitErr := cmd.Wait()
+	res.Duration = time.Since(start)
+	res.Stderr = truncate(stderr.String(), 4000)
+	if exitErr, ok := waitErr.(*exec.ExitError); ok {
+		res.ExitCode = exitErr.ExitCode()
+	}
+	if b, err := os.ReadFile(lastPath); err == nil && len(bytes.TrimSpace(b)) > 0 {
+		res.Output = strings.TrimSpace(string(b))
+	}
+	if len(spec.OutputSchema) > 0 && json.Valid([]byte(res.Output)) {
+		res.Structured = json.RawMessage(res.Output)
+	}
+	if waitErr != nil {
+		if errors.Is(cctx.Err(), context.DeadlineExceeded) {
+			return res, fmt.Errorf("harness: codex timed out after %s", spec.Timeout)
+		}
+		if lastErr == "" {
+			lastErr = firstLine(stderr.String())
+		}
+		return res, fmt.Errorf("harness: codex exited %d: %s", res.ExitCode, lastErr)
+	}
+	return res, nil
+}
+
+// ---- Claude Code ---------------------------------------------------------
+
+type claudeResult struct {
+	Type             string          `json:"type"`
+	Subtype          string          `json:"subtype"`
+	IsError          bool            `json:"is_error"`
+	Result           string          `json:"result"`
+	SessionID        string          `json:"session_id"`
+	StructuredOutput json.RawMessage `json:"structured_output"`
+	TotalCostUSD     float64         `json:"total_cost_usd"`
+	DurationMS       int64           `json:"duration_ms"`
+	Usage            struct {
+		InputTokens              int64 `json:"input_tokens"`
+		OutputTokens             int64 `json:"output_tokens"`
+		CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
+		CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
+	} `json:"usage"`
+}
+
+func (r *CLIRunner) runClaude(ctx context.Context, spec Spec) (*Result, error) {
+	bin := spec.Binary
+	if bin == "" {
+		bin = r.cfg.ClaudeBin
+	}
+	args := []string{"-p", "--output-format", "json"}
+	switch spec.Sandbox {
+	case SandboxWorkspaceWrite:
+		args = append(args, "--permission-mode", "acceptEdits")
+	default:
+		args = append(args, "--permission-mode", "plan")
+	}
+	if spec.Model != "" {
+		args = append(args, "--model", spec.Model)
+	}
+	if strings.TrimSpace(spec.SystemPrompt) != "" {
+		args = append(args, "--append-system-prompt", spec.SystemPrompt)
+	}
+	if len(spec.OutputSchema) > 0 {
+		args = append(args, "--json-schema", string(spec.OutputSchema))
+	}
+	var mcpPath string
+	if len(spec.MCP) > 0 {
+		tmp, err := os.MkdirTemp("", "flywheel-claude-")
+		if err != nil {
+			return nil, err
+		}
+		defer os.RemoveAll(tmp)
+		servers := map[string]any{}
+		var allowed []string
+		for _, m := range spec.MCP {
+			servers[m.Name] = map[string]any{"type": "http", "url": m.URL, "headers": m.Headers}
+			allowed = append(allowed, "mcp__"+m.Name+"__*")
+		}
+		b, _ := json.Marshal(map[string]any{"mcpServers": servers})
+		mcpPath = filepath.Join(tmp, "mcp.json")
+		if err := os.WriteFile(mcpPath, b, 0o600); err != nil {
+			return nil, err
+		}
+		args = append(args, "--mcp-config", mcpPath, "--allowedTools", strings.Join(allowed, ","))
+	}
+	args = append(args, spec.Prompt)
+
+	cctx, cancel := context.WithTimeout(ctx, spec.Timeout)
+	defer cancel()
+	cmd := exec.CommandContext(cctx, bin, args...)
+	if spec.WorkDir != "" {
+		cmd.Dir = spec.WorkDir
+	}
+	env := append(os.Environ(), spec.Env...)
+	// Prevent nested-session detection and force the harness's own login session.
+	env = filterEnv(env, "CLAUDECODE")
+	env = append(env, "CLAUDE_CODE_ENTRYPOINT=flywheel-dispatch")
+	cmd.Env = env
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	start := time.Now()
+	runErr := cmd.Run()
+	res := &Result{Harness: ClaudeCode, Command: bin + " " + strings.Join(redactArgs(args), " "), Model: spec.Model, Duration: time.Since(start), Stderr: truncate(stderr.String(), 4000)}
+	if exitErr, ok := runErr.(*exec.ExitError); ok {
+		res.ExitCode = exitErr.ExitCode()
+	}
+	var cr claudeResult
+	if err := json.Unmarshal(bytes.TrimSpace(stdout.Bytes()), &cr); err == nil {
+		res.ExternalSessionID = cr.SessionID
+		res.Output = cr.Result
+		res.TokensIn = cr.Usage.InputTokens + cr.Usage.CacheReadInputTokens + cr.Usage.CacheCreationInputTokens
+		res.TokensOut = cr.Usage.OutputTokens
+		res.CostUSD = cr.TotalCostUSD
+		if len(cr.StructuredOutput) > 0 && string(cr.StructuredOutput) != "null" {
+			res.Structured = cr.StructuredOutput
+		} else if len(spec.OutputSchema) > 0 && json.Valid([]byte(cr.Result)) {
+			res.Structured = json.RawMessage(cr.Result)
+		}
+		if cr.IsError {
+			return res, fmt.Errorf("harness: claude reported an error: %s", truncate(cr.Result, 300))
+		}
+	} else if runErr == nil {
+		res.Output = strings.TrimSpace(stdout.String())
+	}
+	if runErr != nil {
+		if errors.Is(cctx.Err(), context.DeadlineExceeded) {
+			return res, fmt.Errorf("harness: claude timed out after %s", spec.Timeout)
+		}
+		return res, fmt.Errorf("harness: claude exited %d: %s", res.ExitCode, firstLine(stderr.String()))
+	}
+	return res, nil
+}
+
+func filterEnv(env []string, prefix string) []string {
+	out := env[:0:0]
+	for _, kv := range env {
+		if strings.HasPrefix(kv, prefix+"=") {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
+}
+
+// redactArgs hides the (long) prompt and schema in the recorded command line.
+func redactArgs(args []string) []string {
+	out := make([]string, len(args))
+	for i, a := range args {
+		if len(a) > 120 {
+			out[i] = a[:60] + "…"
+		} else {
+			out[i] = a
+		}
+	}
+	return out
+}
+
+func firstLine(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	return truncate(s, 300)
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
+}

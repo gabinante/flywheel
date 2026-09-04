@@ -65,7 +65,7 @@ func (st *Store) Upsert(ctx context.Context, sess *Session) error {
 			started_at, last_activity_at, ended_at, ingest_offset, metadata)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
 		ON CONFLICT (harness, external_id) DO UPDATE SET
-			origin             = EXCLUDED.origin,
+			origin             = CASE WHEN agent_sessions.origin IN ('dispatched','automation') AND EXCLUDED.origin = 'interactive' THEN agent_sessions.origin ELSE EXCLUDED.origin END,
 			parent_external_id = CASE WHEN EXCLUDED.parent_external_id <> '' THEN EXCLUDED.parent_external_id ELSE agent_sessions.parent_external_id END,
 			cwd                = CASE WHEN EXCLUDED.cwd <> '' THEN EXCLUDED.cwd ELSE agent_sessions.cwd END,
 			repo               = CASE WHEN EXCLUDED.repo <> '' THEN EXCLUDED.repo ELSE agent_sessions.repo END,

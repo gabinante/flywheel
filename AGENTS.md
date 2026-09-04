@@ -27,6 +27,8 @@ This file is the shared operating guide for coding agents working in this repo.
 - `cmd/server`: the single server binary. Serves REST, MCP (`/mcp`), and the web UI.
 - `internal/`: core services.
   - `dispatch/`: CLI worker runner, `claude`/`codex`/`generic` drivers, worktrees, prompt assembly, merge loop.
+  - `harness/`: headless single-turn runs of Codex (`codex exec --json`) and Claude Code (`claude -p`) with structured output.
+  - `codereview/`: PR-keyed review queue, `gh`-backed GitHub client, detached review worktrees, review-requested / watch / feedback pollers.
   - `orchestrator/`: command-center planning conversation.
   - `workflow/`: workflow definitions, phases (`agent`, `gate`, `external`, `action`), engine, templates.
   - `gate/`: automated gate checkers (GitHub checks, human approval, HTTP, webhook).

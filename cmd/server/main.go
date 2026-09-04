@@ -19,9 +19,11 @@ import (
 	"github.com/gabinante/flywheel/events"
 	"github.com/gabinante/flywheel/internal/agent"
 	"github.com/gabinante/flywheel/internal/auth"
+	"github.com/gabinante/flywheel/internal/codereview"
 	"github.com/gabinante/flywheel/internal/dispatch"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/gate"
+	"github.com/gabinante/flywheel/internal/harness"
 	"github.com/gabinante/flywheel/internal/linear"
 	"github.com/gabinante/flywheel/internal/orchestrator"
 	"github.com/gabinante/flywheel/internal/org"
@@ -222,6 +224,28 @@ func run(ctx context.Context, cfg *config.Config) {
 	})
 	sessionsSvc.Start(ctx)
 
+	// Code review: PR-keyed reviews by a local harness, posted through the operator's gh CLI.
+	harnessCfg := harness.Config{ClaudeBin: cfg.Dispatch.ClaudePath}
+	if cfg.Dispatch.AgentDriver == "codex" && cfg.Dispatch.AgentCLIPath != "" {
+		harnessCfg.CodexBin = cfg.Dispatch.AgentCLIPath
+	}
+	harnessRunner := harness.New(harnessCfg)
+	codeReviewSvc := codereview.New(codereview.NewStore(pool), codereview.NewGitHub(""), harnessRunner, sessionsSvc, bus, codereview.Config{
+		Enabled:        cfg.Review.Enabled,
+		Harness:        cfg.Review.Harness,
+		Model:          cfg.Review.Model,
+		Effort:         cfg.Review.Effort,
+		Publish:        cfg.Review.Publish,
+		PollInterval:   cfg.Review.PollInterval,
+		MaxConcurrent:  cfg.Review.MaxConcurrent,
+		RepoRoot:       cfg.Review.RepoRoot,
+		WatchRequested: cfg.Review.WatchRequested,
+		WatchAuthored:  cfg.Review.WatchAuthored,
+		ReviewTimeout:  cfg.Review.Timeout,
+		SkipDrafts:     cfg.Review.SkipDrafts,
+	})
+	codeReviewSvc.Start(ctx)
+
 	strictServer := &rest.StrictServer{
 		OrgSvc:        orgSvc,
 		ProjectSvc:    projectSvc,
@@ -232,6 +256,7 @@ func run(ctx context.Context, cfg *config.Config) {
 		ReviewSvc:     reviewSvc,
 		SessionsSvc:   sessionsSvc,
 		LinearSvc:     linearSvc,
+		CodeReviewSvc: codeReviewSvc,
 		AgentStore:    agentStore,
 	}
 
@@ -283,6 +308,7 @@ func run(ctx context.Context, cfg *config.Config) {
 		Repos:      repoSvc,
 		Workflow:   workflowEngine,
 		Sessions:   sessionsSvc,
+		CodeReview: codeReviewSvc,
 	})
 	if err != nil {
 		slog.Error("mcp server init failed", "error", err)
