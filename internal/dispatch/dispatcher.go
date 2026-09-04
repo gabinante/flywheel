@@ -136,6 +136,8 @@ type Config struct {
 // (pattern-based SubscribePattern) for at-least-once delivery.
 type Dispatcher struct {
 	cfg                  Config
+	enabled              atomic.Bool     // dispatch on/off at runtime (operator setting)
+	runCtx               context.Context // set by Start; used to kick a reconcile on enable
 	bus                  events.Bus
 	durableBus           events.DurableEventBus // nil if bus doesn't support durability
 	tickets              TicketGetter
@@ -189,7 +191,65 @@ func New(cfg Config, bus events.Bus, tickets TicketGetter, projects ProjectGette
 	if durable, ok := bus.(events.DurableEventBus); ok {
 		d.durableBus = durable
 	}
+	d.enabled.Store(true)
 	return d
+}
+
+// Enabled reports whether the dispatcher is picking up tickets.
+func (d *Dispatcher) Enabled() bool { return d.enabled.Load() }
+
+// SetEnabled turns dispatching on or off at runtime. Turning it on triggers an
+// immediate reconcile so waiting tickets are picked up without delay; turning it off
+// lets running workers finish but starts no new ones.
+func (d *Dispatcher) SetEnabled(on bool) {
+	was := d.enabled.Swap(on)
+	if on && !was && d.runCtx != nil {
+		go d.reconcile(d.runCtx)
+	}
+	slog.Info("dispatch: enabled changed", "enabled", on)
+}
+
+// Runtime is the operator-adjustable part of the dispatcher configuration.
+type Runtime struct {
+	Enabled    bool
+	MaxWorkers int
+	Driver     string
+	Model      string
+	Effort     string
+	ClaudePath string
+	CodexPath  string
+}
+
+// Apply updates the runtime worker configuration: concurrency, the default
+// harness/model/effort and binaries used for new workers. Running workers are unaffected.
+func (d *Dispatcher) Apply(rt Runtime) {
+	d.mu.Lock()
+	if rt.MaxWorkers > 0 {
+		d.cfg.MaxWorkers = rt.MaxWorkers
+	}
+	if rt.Driver != "" {
+		d.cfg.AgentDriver = rt.Driver
+	}
+	d.cfg.AgentModel = rt.Model
+	d.cfg.AgentReasoningEffort = rt.Effort
+	if rt.ClaudePath != "" {
+		d.cfg.ClaudePath = rt.ClaudePath
+	}
+	switch d.cfg.AgentDriver {
+	case "codex":
+		d.cfg.AgentCLIPath = rt.CodexPath
+	case "claude":
+		d.cfg.AgentCLIPath = ""
+	}
+	cfg := d.cfg
+	d.mu.Unlock()
+	worker := NewWorker(cfg)
+	router := NewProjectWorkerRouter(cfg)
+	d.mu.Lock()
+	d.worker = worker
+	d.workerRouter = router
+	d.mu.Unlock()
+	slog.Info("dispatch: runtime config applied", "max_workers", cfg.MaxWorkers, "driver", cfg.AgentDriver, "model", cfg.AgentModel, "effort", cfg.AgentReasoningEffort)
 }
 
 // Start subscribes to events and begins dispatching. Call Stop to shut down.
@@ -199,6 +259,7 @@ func (d *Dispatcher) Start(ctx context.Context) {
 	// Derive an internal context so Stop() can cancel background goroutines
 	// even if the caller's context is still alive.
 	ctx, d.stopCancel = context.WithCancel(ctx)
+	d.runCtx = ctx
 
 	if d.durableBus != nil {
 		// Use pattern-based subscriptions for durable delivery.
@@ -403,6 +464,9 @@ func (d *Dispatcher) reconcile(ctx context.Context) bool {
 }
 
 func (d *Dispatcher) scanPending(ctx context.Context) {
+	if !d.enabled.Load() {
+		return
+	}
 	// Small delay to let the server finish starting.
 	select {
 	case <-ctx.Done():
@@ -857,6 +921,9 @@ func (d *Dispatcher) handleTicketInputProvided(ctx context.Context, e events.Eve
 
 func (d *Dispatcher) tryDispatch(ctx context.Context, t *ticket.Ticket) {
 	if t.State != ticket.StateDraft {
+		return
+	}
+	if !d.enabled.Load() {
 		return
 	}
 

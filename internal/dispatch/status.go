@@ -50,7 +50,7 @@ func (d *Dispatcher) GetStatus(ctx context.Context, projectID string) Status {
 	d.mu.Unlock()
 
 	s := Status{
-		Enabled:         true,
+		Enabled:         d.enabled.Load(),
 		ActiveWorkers:   len(ids),
 		MaxWorkers:      d.cfg.MaxWorkers,
 		ActiveTicketIDs: ids,
@@ -63,6 +63,9 @@ func (d *Dispatcher) GetStatus(ctx context.Context, projectID string) Status {
 
 	if s.ActiveWorkers == 0 {
 		s.IdleReason = d.determineIdleReason(ctx, projectID, &s, diag)
+		if !s.Enabled {
+			s.IdleReason = "dispatch_disabled"
+		}
 	}
 
 	return s

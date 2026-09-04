@@ -1580,7 +1580,31 @@ export interface components {
             roundup_project_id: string;
             default_health: string;
         };
+        HarnessDefaults: {
+            /** @description Executable name or path */
+            bin: string;
+            /** @description Default model when a workflow leaves it blank */
+            model: string;
+            reasoning_effort: string;
+        };
+        HarnessSettings: {
+            claude: components["schemas"]["HarnessDefaults"];
+            codex: components["schemas"]["HarnessDefaults"];
+        };
+        DispatchSettings: {
+            enabled: boolean;
+            max_workers: number;
+            /** @description claude | codex | generic */
+            driver: string;
+            model: string;
+            reasoning_effort: string;
+            worktree_dir: string;
+            /** @description Whether workers have a Flywheel API key for MCP (minted automatically) */
+            worker_key_set: boolean;
+        };
         OperatorSettings: {
+            harnesses: components["schemas"]["HarnessSettings"];
+            dispatch: components["schemas"]["DispatchSettings"];
             linear: components["schemas"]["LinearSettings"];
             review: components["schemas"]["ReviewSettings"];
             feedback: components["schemas"]["FeedbackSettings"];
@@ -1598,6 +1622,8 @@ export interface components {
             sync_interval_seconds: number;
         };
         UpdateOperatorSettingsRequest: {
+            harnesses?: components["schemas"]["HarnessSettings"];
+            dispatch?: components["schemas"]["DispatchSettings"];
             linear: components["schemas"]["UpdateLinearSettings"];
             review: components["schemas"]["ReviewSettings"];
             feedback: components["schemas"]["FeedbackSettings"];

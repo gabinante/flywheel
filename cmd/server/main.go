@@ -233,11 +233,7 @@ func run(ctx context.Context, cfg *config.Config) {
 	sessionsSvc.Start(ctx)
 
 	// Code review: PR-keyed reviews by a local harness, posted through the operator's gh CLI.
-	harnessCfg := harness.Config{ClaudeBin: cfg.Dispatch.ClaudePath}
-	if cfg.Dispatch.AgentDriver == "codex" && cfg.Dispatch.AgentCLIPath != "" {
-		harnessCfg.CodexBin = cfg.Dispatch.AgentCLIPath
-	}
-	harnessRunner := harness.New(harnessCfg)
+	harnessRunner := harness.New(eff.RunnerConfig())
 	reviewCfg, feedbackCfg := eff.ReviewConfig()
 	reviewCfg.ReviewTimeout, feedbackCfg.Timeout = cfg.Review.Timeout, cfg.Feedback.Timeout
 	codeReviewSvc := codereview.New(codereview.NewStore(pool), codereview.NewGitHub(""), harnessRunner, sessionsSvc, bus, reviewCfg)
@@ -254,6 +250,7 @@ func run(ctx context.Context, cfg *config.Config) {
 
 	// Settings saved in the UI apply live, without a restart.
 	settingsSvc.OnChange(func(next settings.Settings) {
+		harnessRunner.Reconfigure(next.RunnerConfig())
 		key, lc := next.LinearConfig()
 		linearSvc.Reconfigure(key, lc)
 		rc, fc := next.ReviewConfig()
@@ -350,39 +347,60 @@ func run(ctx context.Context, cfg *config.Config) {
 		AgentSvc:  agentSvc,
 	}
 
-	// Dispatcher: background workers for tickets in agent phases.
-	var dispatcher *dispatch.Dispatcher
-	if cfg.Dispatch.Enabled {
-		dispatcher = dispatch.New(dispatch.Config{
-			MaxWorkers:           cfg.Dispatch.MaxWorkers,
-			ClaudePath:           cfg.Dispatch.ClaudePath,
-			WorktreeDir:          cfg.Dispatch.WorktreeDir,
-			RepoDir:              repoDir,
-			ServerURL:            cfg.Auth.BaseURL,
-			AgentID:              "dispatch-worker",
-			APIKey:               cfg.Dispatch.APIKey,
-			ProjectID:            cfg.Dispatch.ProjectID,
-			AutoApprove:          cfg.Dispatch.AutoApproveOnAcceptancePass,
-			AgentRunner:          cfg.Dispatch.AgentRunner,
-			AgentDriver:          cfg.Dispatch.AgentDriver,
-			AgentCLIPath:         cfg.Dispatch.AgentCLIPath,
-			AgentModel:           cfg.Dispatch.AgentModel,
-			AgentReasoningEffort: cfg.Dispatch.AgentReasoningEffort,
-			AgentAPIKey:          cfg.Dispatch.AgentAPIKey,
-			ReconcileInterval:    cfg.Dispatch.ReconcileInterval,
-			TraceSvc:             execSvc,
-		}, bus, ticketSvc, projectSvc)
-		dispatcher.SetLeaseReleaser(queueSvc)
-		dispatcher.SetFailureSummarizer(ticketSvc)
-		dispatcher.SetTicketTransitioner(ticketSvc)
-		dispatcher.SetWorkflowEngine(workflowEngine)
-		dispatcher.SetExternalExecutor(externalExecutor)
-		dispatcher.SetActionRegistry(workflow.NewActionRegistry())
-		dispatcher.SetCheckerRegistry(checkerRegistry)
-		dispatcher.SetOutputPatcher(ticketStore)
-		dispatcher.SetWorkflowPhaseUpdater(ticketStore)
-		dispatcher.Start(ctx)
+	// Dispatcher: background workers for tickets in agent phases. Always constructed;
+	// whether it picks up tickets is an operator setting applied live.
+	dcfg := eff.Dispatch
+	drt := eff.DispatchRuntime()
+	if dcfg.WorkerAPIKey == "" {
+		// Workers reach Flywheel's MCP endpoint with this key. Mint one once and keep it in settings.
+		if _, key, err := agentSvc.RegisterAgent(ctx, "dispatch-worker", agent.TypeClaude); err == nil && key != "" {
+			next := settingsSvc.Current()
+			next.Dispatch.WorkerAPIKey = key
+			if saved, err := settingsSvc.Update(ctx, next); err == nil {
+				eff, dcfg, drt = saved, saved.Dispatch, saved.DispatchRuntime()
+				slog.Info("dispatch: minted worker API key (agent dispatch-worker)")
+			} else {
+				slog.Warn("dispatch: could not persist worker API key", "error", err)
+			}
+		} else if err != nil {
+			slog.Warn("dispatch: could not mint worker API key", "error", err)
+		}
 	}
+	dispatcher := dispatch.New(dispatch.Config{
+		MaxWorkers:           drt.MaxWorkers,
+		ClaudePath:           drt.ClaudePath,
+		WorktreeDir:          firstNonEmpty(dcfg.WorktreeDir, cfg.Dispatch.WorktreeDir),
+		RepoDir:              repoDir,
+		ServerURL:            cfg.Auth.BaseURL,
+		AgentID:              "dispatch-worker",
+		APIKey:               dcfg.WorkerAPIKey,
+		ProjectID:            cfg.Dispatch.ProjectID,
+		AutoApprove:          cfg.Dispatch.AutoApproveOnAcceptancePass,
+		AgentRunner:          cfg.Dispatch.AgentRunner,
+		AgentDriver:          drt.Driver,
+		AgentCLIPath:         map[bool]string{true: drt.CodexPath, false: ""}[drt.Driver == "codex"],
+		AgentModel:           drt.Model,
+		AgentReasoningEffort: drt.Effort,
+		AgentAPIKey:          cfg.Dispatch.AgentAPIKey,
+		ReconcileInterval:    cfg.Dispatch.ReconcileInterval,
+		TraceSvc:             execSvc,
+	}, bus, ticketSvc, projectSvc)
+	dispatcher.SetLeaseReleaser(queueSvc)
+	dispatcher.SetFailureSummarizer(ticketSvc)
+	dispatcher.SetTicketTransitioner(ticketSvc)
+	dispatcher.SetWorkflowEngine(workflowEngine)
+	dispatcher.SetExternalExecutor(externalExecutor)
+	dispatcher.SetActionRegistry(workflow.NewActionRegistry())
+	dispatcher.SetCheckerRegistry(checkerRegistry)
+	dispatcher.SetOutputPatcher(ticketStore)
+	dispatcher.SetWorkflowPhaseUpdater(ticketStore)
+	dispatcher.SetEnabled(dcfg.Enabled)
+	dispatcher.Start(ctx)
+	settingsSvc.OnChange(func(next settings.Settings) {
+		rt := next.DispatchRuntime()
+		dispatcher.Apply(rt)
+		dispatcher.SetEnabled(rt.Enabled)
+	})
 
 	// Start durable bus delivery after all subscriptions are registered.
 	if err := bus.Start(ctx); err != nil {
@@ -471,4 +489,13 @@ func autoGenerateSecret() string {
 	b := make([]byte, 32)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }

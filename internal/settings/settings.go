@@ -18,6 +18,8 @@ import (
 
 	"github.com/gabinante/flywheel/config"
 	"github.com/gabinante/flywheel/internal/codereview"
+	"github.com/gabinante/flywheel/internal/dispatch"
+	"github.com/gabinante/flywheel/internal/harness"
 	"github.com/gabinante/flywheel/internal/linear"
 	"github.com/gabinante/flywheel/internal/report"
 )
@@ -28,7 +30,61 @@ type Settings struct {
 	Review   ReviewSettings   `json:"review"`
 	Feedback FeedbackSettings `json:"feedback"`
 	Report   ReportSettings   `json:"report"`
+	Dispatch DispatchSettings `json:"dispatch"`
+	Harness  HarnessSettings  `json:"harnesses"`
 	Layout   LayoutSettings   `json:"layout"` // UI arrangement (not shown on the settings page)
+}
+
+// HarnessSettings holds per-harness binaries and default model/effort. Review,
+// feedback and dispatch pick a harness and only override these when set.
+type HarnessSettings struct {
+	Claude HarnessDefaults `json:"claude"`
+	Codex  HarnessDefaults `json:"codex"`
+}
+
+// HarnessDefaults is one harness's configuration.
+type HarnessDefaults struct {
+	Bin             string `json:"bin"`
+	Model           string `json:"model"`
+	ReasoningEffort string `json:"reasoning_effort"`
+}
+
+// Defaults returns the defaults for a harness name ("claude"/"claude_code" or "codex").
+func (h HarnessSettings) Defaults(name string) HarnessDefaults {
+	switch strings.ToLower(name) {
+	case "codex":
+		return h.Codex
+	default:
+		return h.Claude
+	}
+}
+
+// Resolve fills a blank model/effort from the harness defaults.
+func (h HarnessSettings) Resolve(name, model, effort string) (string, string) {
+	d := h.Defaults(name)
+	if model == "" {
+		model = d.Model
+	}
+	if effort == "" {
+		effort = d.ReasoningEffort
+	}
+	return model, effort
+}
+
+// RunnerConfig converts to the harness runner's config.
+func (s Settings) RunnerConfig() harness.Config {
+	return harness.Config{ClaudeBin: s.Harness.Claude.Bin, CodexBin: s.Harness.Codex.Bin}
+}
+
+// DispatchSettings configures the ticket dispatcher (implementation workers).
+type DispatchSettings struct {
+	Enabled         bool   `json:"enabled"`
+	MaxWorkers      int    `json:"max_workers"`
+	Driver          string `json:"driver"` // claude | codex | generic
+	Model           string `json:"model"`
+	ReasoningEffort string `json:"reasoning_effort"`
+	WorktreeDir     string `json:"worktree_dir"`
+	WorkerAPIKey    string `json:"worker_api_key"` // Flywheel key workers use for MCP; minted on first boot, never returned
 }
 
 // LayoutSettings holds the operator's UI arrangement.
@@ -102,12 +158,25 @@ func FromConfig(cfg *config.Config) Settings {
 			RepoRoot: cfg.Review.RepoRoot,
 		},
 		Feedback: FeedbackSettings{Harness: cfg.Feedback.Harness, Model: cfg.Feedback.Model, ReasoningEffort: cfg.Feedback.Effort, AutoAddress: cfg.Feedback.AutoAddress},
+		Dispatch: DispatchSettings{
+			Enabled: cfg.Dispatch.Enabled, MaxWorkers: cfg.Dispatch.MaxWorkers, Driver: cfg.Dispatch.AgentDriver, Model: cfg.Dispatch.AgentModel,
+			ReasoningEffort: cfg.Dispatch.AgentReasoningEffort, WorktreeDir: cfg.Dispatch.WorktreeDir, WorkerAPIKey: cfg.Dispatch.APIKey,
+		},
+		Harness: harnessDefaultsFromConfig(cfg),
 		Report: ReportSettings{
 			ProjectUpdatesEnabled: cfg.Report.ProjectUpdatesEnabled, ProjectUpdateIntervalHours: int(cfg.Report.ProjectUpdateInterval / time.Hour),
 			WeeklyEnabled: cfg.Report.WeeklyEnabled, WeeklyDay: cfg.Report.WeeklyDay, WeeklyHour: cfg.Report.WeeklyHour,
 			RoundupDocumentID: cfg.Report.RoundupDocumentID, RoundupProjectID: cfg.Report.RoundupProjectID, DefaultHealth: cfg.Report.DefaultHealth,
 		},
 	}
+}
+
+func harnessDefaultsFromConfig(cfg *config.Config) HarnessSettings {
+	h := HarnessSettings{Claude: HarnessDefaults{Bin: cfg.Dispatch.ClaudePath}, Codex: HarnessDefaults{Bin: "codex"}}
+	if cfg.Dispatch.AgentDriver == "codex" && cfg.Dispatch.AgentCLIPath != "" {
+		h.Codex.Bin = cfg.Dispatch.AgentCLIPath
+	}
+	return h
 }
 
 // Normalize fills invalid or empty values with safe defaults.
@@ -142,6 +211,18 @@ func (s *Settings) Normalize() {
 	if s.Linear.ProjectIDs == nil {
 		s.Linear.ProjectIDs = []string{}
 	}
+	if s.Dispatch.MaxWorkers <= 0 {
+		s.Dispatch.MaxWorkers = 4
+	}
+	if s.Harness.Claude.Bin == "" {
+		s.Harness.Claude.Bin = "claude"
+	}
+	if s.Harness.Codex.Bin == "" {
+		s.Harness.Codex.Bin = "codex"
+	}
+	if s.Dispatch.Driver == "" {
+		s.Dispatch.Driver = "claude"
+	}
 	if s.Layout.ProjectSections == nil {
 		s.Layout.ProjectSections = []ProjectSection{}
 	}
@@ -162,16 +243,29 @@ func (s Settings) LinearConfig() (string, linear.Config) {
 	}
 }
 
-// ReviewConfig converts to the code review service's configs.
+// ReviewConfig converts to the code review service's configs, filling blank
+// model/effort from the harness defaults.
 func (s Settings) ReviewConfig() (codereview.Config, codereview.FeedbackConfig) {
+	rm, re := s.Harness.Resolve(s.Review.Harness, s.Review.Model, s.Review.ReasoningEffort)
+	fm, fe := s.Harness.Resolve(s.Feedback.Harness, s.Feedback.Model, s.Feedback.ReasoningEffort)
 	return codereview.Config{
-			Enabled: s.Review.Enabled, Harness: s.Review.Harness, Model: s.Review.Model, Effort: s.Review.ReasoningEffort,
+			Enabled: s.Review.Enabled, Harness: s.Review.Harness, Model: rm, Effort: re,
 			Publish: s.Review.Publish, PollInterval: time.Duration(s.Review.PollIntervalSeconds) * time.Second,
 			MaxConcurrent: s.Review.MaxConcurrent, RepoRoot: s.Review.RepoRoot, WatchRequested: s.Review.WatchRequested,
 			WatchAuthored: s.Review.WatchAuthored, SkipDrafts: s.Review.SkipDrafts,
 		}, codereview.FeedbackConfig{
-			Harness: s.Feedback.Harness, Model: s.Feedback.Model, Effort: s.Feedback.ReasoningEffort, AutoAddress: s.Feedback.AutoAddress,
+			Harness: s.Feedback.Harness, Model: fm, Effort: fe, AutoAddress: s.Feedback.AutoAddress,
 		}
+}
+
+// DispatchRuntime converts to the dispatcher's runtime configuration, filling blank
+// model/effort from the harness defaults for the chosen driver.
+func (s Settings) DispatchRuntime() dispatch.Runtime {
+	m, e := s.Harness.Resolve(s.Dispatch.Driver, s.Dispatch.Model, s.Dispatch.ReasoningEffort)
+	return dispatch.Runtime{
+		Enabled: s.Dispatch.Enabled, MaxWorkers: s.Dispatch.MaxWorkers, Driver: s.Dispatch.Driver, Model: m, Effort: e,
+		ClaudePath: s.Harness.Claude.Bin, CodexPath: s.Harness.Codex.Bin,
+	}
 }
 
 // ReportConfig converts to the report service's config.
@@ -245,6 +339,16 @@ func Load(ctx context.Context, store *Store, defaults Settings) (*Service, error
 			// A key set in the environment still applies when the saved row has none.
 			if s.current.Linear.APIKey == "" && defaults.Linear.APIKey != "" {
 				s.current.Linear.APIKey = defaults.Linear.APIKey
+			}
+			if s.current.Dispatch.WorkerAPIKey == "" {
+				s.current.Dispatch.WorkerAPIKey = defaults.Dispatch.WorkerAPIKey
+			}
+			if s.current.Dispatch.WorktreeDir == "" {
+				s.current.Dispatch.WorktreeDir = defaults.Dispatch.WorktreeDir
+			}
+			if s.current.Dispatch.MaxWorkers == 0 && s.current.Dispatch.Driver == "" {
+				// Row predates dispatch settings: seed from the environment.
+				s.current.Dispatch = defaults.Dispatch
 			}
 		}
 	}
@@ -331,6 +435,11 @@ func validate(s Settings) error {
 	case report.HealthOnTrack, report.HealthAtRisk, report.HealthOffTrack:
 	default:
 		return errors.New("report.default_health must be onTrack, atRisk, or offTrack")
+	}
+	switch strings.ToLower(s.Dispatch.Driver) {
+	case "claude", "codex", "generic":
+	default:
+		return errors.New("dispatch.driver must be claude, codex, or generic")
 	}
 	if s.Linear.APIKey != "" && !strings.HasPrefix(s.Linear.APIKey, "lin_") {
 		return errors.New("linear.api_key does not look like a Linear personal API key (lin_api_…)")

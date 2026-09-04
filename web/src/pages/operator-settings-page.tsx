@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Activity, FileText, GitPullRequest, KeyRound, MessageSquareReply, Save, Settings as SettingsIcon } from 'lucide-react'
+import { Activity, Bot, Cpu, FileText, GitPullRequest, KeyRound, MessageSquareReply, Save, Settings as SettingsIcon } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -19,9 +19,11 @@ type LinearStatus = components['schemas']['LinearStatus']
 type CodeReviewStatus = components['schemas']['CodeReviewStatus']
 type Project = components['schemas']['Project']
 
-type SectionID = 'linear' | 'review' | 'feedback' | 'reports'
+type SectionID = 'models' | 'dispatch' | 'linear' | 'review' | 'feedback' | 'reports'
 
 const SECTIONS: Array<{ id: SectionID; label: string; description: string; icon: React.ComponentType<{ className?: string }> }> = [
+  { id: 'models', label: 'Models & harnesses', description: 'Claude Code and Codex binaries and the default model and effort each uses.', icon: Cpu },
+  { id: 'dispatch', label: 'Dispatch', description: 'Whether tickets are picked up by implementation workers, and which harness runs them.', icon: Bot },
   { id: 'linear', label: 'Linear', description: 'Personal API key and sync of the projects you lead.', icon: KeyRound },
   { id: 'review', label: 'Code review', description: 'Harness, publishing, and the review-requested / re-review watchers.', icon: GitPullRequest },
   { id: 'feedback', label: 'PR feedback', description: 'How review comments on your PRs get addressed.', icon: MessageSquareReply },
@@ -32,6 +34,7 @@ const HARNESSES = [
   { value: 'codex', label: 'Codex' },
   { value: 'claude', label: 'Claude Code' },
 ]
+const DRIVERS = [...HARNESSES, { value: 'generic', label: 'Generic CLI' }]
 const EFFORTS = ['', 'low', 'medium', 'high', 'xhigh'].map((v) => ({ value: v || 'default', label: v || 'Harness default' }))
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((d) => ({ value: d, label: d }))
 const HEALTHS = [
@@ -53,6 +56,8 @@ function toRequest(s: OperatorSettings, apiKey: string, clearKey: boolean): Upda
     review: s.review,
     feedback: s.feedback,
     report: s.report,
+    dispatch: s.dispatch,
+    harnesses: s.harnesses,
   }
 }
 
@@ -166,7 +171,8 @@ export function OperatorSettingsPage() {
     )
   }
 
-  const { linear, review, feedback, report } = settings
+  const { linear, review, feedback, report, dispatch, harnesses } = settings
+  const harnessDefault = (h: string) => (h === 'codex' ? harnesses.codex : harnesses.claude)
 
   return (
     <div className="mx-auto w-full max-w-[1500px] space-y-6 p-6 xl:px-10">
@@ -216,6 +222,104 @@ export function OperatorSettingsPage() {
         </nav>
 
         <div className="space-y-6">
+          {section === 'models' && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">Models &amp; harnesses</CardTitle>
+                <CardDescription>
+                  Flywheel never calls a model provider directly: it runs the two local harnesses, which carry their own logins. Set the
+                  executable and the default model and reasoning effort for each here. Code review, PR feedback, and dispatch choose a
+                  harness and inherit these unless they set their own.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {(['claude', 'codex'] as const).map((h) => {
+                  const d = harnesses[h]
+                  const label = h === 'claude' ? 'Claude Code' : 'Codex'
+                  return (
+                    <div key={h} className="space-y-3 rounded-xl border border-white/5 bg-white/[0.02] p-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{label}</span>
+                        <span className="text-xs text-muted-foreground">
+                          used by{' '}
+                          {[review.harness === h && 'code review', feedback.harness === h && 'PR feedback', dispatch.driver === h && 'dispatch'].filter(Boolean).join(', ') ||
+                            'nothing yet'}
+                        </span>
+                      </div>
+                      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        <Field label="Executable" htmlFor={`${h}-bin`} hint={h === 'claude' ? 'e.g. claude, or an absolute path' : 'e.g. codex, or an absolute path'}>
+                          <Input id={`${h}-bin`} value={d.bin} onChange={(e) => update('harnesses', { [h]: { ...d, bin: e.target.value } })} />
+                        </Field>
+                        <Field label="Default model" htmlFor={`${h}-model`} hint={h === 'claude' ? 'Blank uses the CLI default (e.g. claude-fable-5-1).' : 'Blank uses the CLI default (e.g. gpt-5.6-sol).'}>
+                          <Input id={`${h}-model`} value={d.model} onChange={(e) => update('harnesses', { [h]: { ...d, model: e.target.value } })} />
+                        </Field>
+                        <Field label="Default reasoning effort" htmlFor={`${h}-effort`}>
+                          <StyledSelect
+                            className="h-9 w-full min-w-0"
+                            id={`${h}-effort`}
+                            value={d.reasoning_effort || 'default'}
+                            onValueChange={(v) => update('harnesses', { [h]: { ...d, reasoning_effort: v === 'default' ? '' : v } })}
+                            options={EFFORTS}
+                          />
+                        </Field>
+                      </div>
+                    </div>
+                  )
+                })}
+              </CardContent>
+            </Card>
+          )}
+
+          {section === 'dispatch' && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  Dispatch
+                  <StatusBadge ok={dispatch.enabled} okLabel="Picking up tickets" offLabel="Off — tickets wait" />
+                </CardTitle>
+                <CardDescription>
+                  The dispatcher runs implementation workers for tickets in agent phases, in a worktree per ticket under{' '}
+                  <code>{dispatch.worktree_dir || '~/git'}/&lt;repo&gt;-worktrees/</code>. Projects can still opt out individually. Workers reach
+                  Flywheel over MCP with a key that is minted automatically{dispatch.worker_key_set ? ' (present)' : ' (missing — restart the server to mint one)'}.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Toggle
+                  id="dispatch-enabled"
+                  label="Dispatch enabled"
+                  hint="Off = nothing is picked up; tickets stay where they are. On = waiting tickets start immediately."
+                  checked={dispatch.enabled}
+                  onChange={(v) => update('dispatch', { enabled: v })}
+                />
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  <Field label="Default harness" htmlFor="dispatch-driver" hint="Used unless a project's worker roles say otherwise.">
+                    <StyledSelect className="h-9 w-full min-w-0" id="dispatch-driver" value={dispatch.driver} onValueChange={(v) => update('dispatch', { driver: v })} options={DRIVERS} />
+                  </Field>
+                  <Field label="Model" htmlFor="dispatch-model" hint={`Blank uses the harness default${harnessDefault(dispatch.driver).model ? ` (${harnessDefault(dispatch.driver).model})` : ''}.`}>
+                    <Input id="dispatch-model" value={dispatch.model} onChange={(e) => update('dispatch', { model: e.target.value })} />
+                  </Field>
+                  <Field label="Reasoning effort" htmlFor="dispatch-effort">
+                    <StyledSelect
+                      className="h-9 w-full min-w-0"
+                      id="dispatch-effort"
+                      value={dispatch.reasoning_effort || 'default'}
+                      onValueChange={(v) => update('dispatch', { reasoning_effort: v === 'default' ? '' : v })}
+                      options={EFFORTS}
+                    />
+                  </Field>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Max concurrent workers" htmlFor="dispatch-max" hint="Across all projects; each project can set a lower cap.">
+                    <Input id="dispatch-max" type="number" min={1} value={dispatch.max_workers} onChange={(e) => update('dispatch', { max_workers: Number(e.target.value) || 1 })} />
+                  </Field>
+                  <Field label="Worktree root" htmlFor="dispatch-root" hint="Applies to new workers after a server restart.">
+                    <Input id="dispatch-root" value={dispatch.worktree_dir} onChange={(e) => update('dispatch', { worktree_dir: e.target.value })} />
+                  </Field>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {section === 'linear' && (
             <Card>
               <CardHeader>
@@ -330,7 +434,7 @@ export function OperatorSettingsPage() {
                   <Field label="Harness" htmlFor="review-harness">
                     <StyledSelect className="h-9 w-full min-w-0" id="review-harness" value={review.harness} onValueChange={(v) => update('review', { harness: v })} options={HARNESSES} />
                   </Field>
-                  <Field label="Model" htmlFor="review-model" hint="Blank uses the harness default.">
+                  <Field label="Model" htmlFor="review-model" hint={`Blank uses the harness default${harnessDefault(review.harness).model ? ` (${harnessDefault(review.harness).model})` : ''}.`}>
                     <Input id="review-model" value={review.model} onChange={(e) => update('review', { model: e.target.value })} placeholder="e.g. gpt-5.6-sol" />
                   </Field>
                   <Field label="Reasoning effort" htmlFor="review-effort">
@@ -411,7 +515,7 @@ export function OperatorSettingsPage() {
                   <Field label="Harness" htmlFor="feedback-harness">
                     <StyledSelect className="h-9 w-full min-w-0" id="feedback-harness" value={feedback.harness} onValueChange={(v) => update('feedback', { harness: v })} options={HARNESSES} />
                   </Field>
-                  <Field label="Model" htmlFor="feedback-model" hint="Blank uses the harness default.">
+                  <Field label="Model" htmlFor="feedback-model" hint={`Blank uses the harness default${harnessDefault(feedback.harness).model ? ` (${harnessDefault(feedback.harness).model})` : ''}.`}>
                     <Input id="feedback-model" value={feedback.model} onChange={(e) => update('feedback', { model: e.target.value })} />
                   </Field>
                   <Field label="Reasoning effort" htmlFor="feedback-effort">

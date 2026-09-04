@@ -31,6 +31,14 @@ func settingsToGen(s settings.Settings, saved bool) generated.OperatorSettings {
 			WeeklyEnabled: s.Report.WeeklyEnabled, WeeklyDay: s.Report.WeeklyDay, WeeklyHour: s.Report.WeeklyHour,
 			RoundupDocumentId: s.Report.RoundupDocumentID, RoundupProjectId: s.Report.RoundupProjectID, DefaultHealth: s.Report.DefaultHealth,
 		},
+		Harnesses: generated.HarnessSettings{
+			Claude: generated.HarnessDefaults{Bin: s.Harness.Claude.Bin, Model: s.Harness.Claude.Model, ReasoningEffort: s.Harness.Claude.ReasoningEffort},
+			Codex:  generated.HarnessDefaults{Bin: s.Harness.Codex.Bin, Model: s.Harness.Codex.Model, ReasoningEffort: s.Harness.Codex.ReasoningEffort},
+		},
+		Dispatch: generated.DispatchSettings{
+			Enabled: s.Dispatch.Enabled, MaxWorkers: s.Dispatch.MaxWorkers, Driver: s.Dispatch.Driver, Model: s.Dispatch.Model,
+			ReasoningEffort: s.Dispatch.ReasoningEffort, WorktreeDir: s.Dispatch.WorktreeDir, WorkerKeySet: s.Dispatch.WorkerAPIKey != "",
+		},
 	}
 }
 
@@ -88,6 +96,24 @@ func (s *StrictServer) UpdateOperatorSettings(ctx context.Context, req generated
 		},
 	}
 	next.Layout = cur.Layout // the settings page never edits the layout
+	next.Harness = cur.Harness
+	if b.Harnesses != nil {
+		next.Harness = settings.HarnessSettings{
+			Claude: settings.HarnessDefaults{Bin: strings.TrimSpace(b.Harnesses.Claude.Bin), Model: strings.TrimSpace(b.Harnesses.Claude.Model), ReasoningEffort: strings.TrimSpace(b.Harnesses.Claude.ReasoningEffort)},
+			Codex:  settings.HarnessDefaults{Bin: strings.TrimSpace(b.Harnesses.Codex.Bin), Model: strings.TrimSpace(b.Harnesses.Codex.Model), ReasoningEffort: strings.TrimSpace(b.Harnesses.Codex.ReasoningEffort)},
+		}
+	}
+	next.Dispatch = cur.Dispatch // keep the worker key and anything the client did not send
+	if b.Dispatch != nil {
+		next.Dispatch.Enabled = b.Dispatch.Enabled
+		next.Dispatch.MaxWorkers = b.Dispatch.MaxWorkers
+		next.Dispatch.Driver = strings.ToLower(strings.TrimSpace(b.Dispatch.Driver))
+		next.Dispatch.Model = strings.TrimSpace(b.Dispatch.Model)
+		next.Dispatch.ReasoningEffort = strings.TrimSpace(b.Dispatch.ReasoningEffort)
+		if wd := strings.TrimSpace(b.Dispatch.WorktreeDir); wd != "" {
+			next.Dispatch.WorktreeDir = wd
+		}
+	}
 	if b.Linear.ClearApiKey != nil && *b.Linear.ClearApiKey {
 		next.Linear.APIKey = ""
 	}

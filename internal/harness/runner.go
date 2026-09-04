@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -96,7 +97,27 @@ type Config struct {
 
 // CLIRunner runs harnesses as subprocesses.
 type CLIRunner struct {
+	mu  sync.RWMutex
 	cfg Config
+}
+
+// Reconfigure swaps the binaries at runtime (operator settings).
+func (r *CLIRunner) Reconfigure(cfg Config) {
+	if cfg.CodexBin == "" {
+		cfg.CodexBin = "codex"
+	}
+	if cfg.ClaudeBin == "" {
+		cfg.ClaudeBin = "claude"
+	}
+	r.mu.Lock()
+	r.cfg = cfg
+	r.mu.Unlock()
+}
+
+func (r *CLIRunner) conf() Config {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.cfg
 }
 
 // New returns a CLIRunner.
@@ -162,7 +183,7 @@ type codexEvent struct {
 func (r *CLIRunner) runCodex(ctx context.Context, spec Spec) (*Result, error) {
 	bin := spec.Binary
 	if bin == "" {
-		bin = r.cfg.CodexBin
+		bin = r.conf().CodexBin
 	}
 	tmp, err := os.MkdirTemp("", "flywheel-codex-")
 	if err != nil {
@@ -289,7 +310,7 @@ type claudeResult struct {
 func (r *CLIRunner) runClaude(ctx context.Context, spec Spec) (*Result, error) {
 	bin := spec.Binary
 	if bin == "" {
-		bin = r.cfg.ClaudeBin
+		bin = r.conf().ClaudeBin
 	}
 	args := []string{"-p", "--output-format", "json"}
 	switch spec.Sandbox {

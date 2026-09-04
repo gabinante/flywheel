@@ -869,6 +869,20 @@ type DispatchRolePolicy struct {
 // DispatchRolePolicySelectionMode ordered tries workers in the configured order; any rotates across the configured workers.
 type DispatchRolePolicySelectionMode string
 
+// DispatchSettings defines model for DispatchSettings.
+type DispatchSettings struct {
+	// Driver claude | codex | generic
+	Driver          string `json:"driver"`
+	Enabled         bool   `json:"enabled"`
+	MaxWorkers      int    `json:"max_workers"`
+	Model           string `json:"model"`
+	ReasoningEffort string `json:"reasoning_effort"`
+
+	// WorkerKeySet Whether workers have a Flywheel API key for MCP (minted automatically)
+	WorkerKeySet bool   `json:"worker_key_set"`
+	WorktreeDir  string `json:"worktree_dir"`
+}
+
 // DispatchWorkerProfile defines model for DispatchWorkerProfile.
 type DispatchWorkerProfile struct {
 	// ApiBaseUrl Base URL override for API-native workers.
@@ -984,6 +998,22 @@ type FeedbackSettings struct {
 	ReasoningEffort string `json:"reasoning_effort"`
 }
 
+// HarnessDefaults defines model for HarnessDefaults.
+type HarnessDefaults struct {
+	// Bin Executable name or path
+	Bin string `json:"bin"`
+
+	// Model Default model when a workflow leaves it blank
+	Model           string `json:"model"`
+	ReasoningEffort string `json:"reasoning_effort"`
+}
+
+// HarnessSettings defines model for HarnessSettings.
+type HarnessSettings struct {
+	Claude HarnessDefaults `json:"claude"`
+	Codex  HarnessDefaults `json:"codex"`
+}
+
 // Layout defines model for Layout.
 type Layout struct {
 	ProjectSections []ProjectSection `json:"project_sections"`
@@ -1082,10 +1112,12 @@ type Objective struct {
 
 // OperatorSettings defines model for OperatorSettings.
 type OperatorSettings struct {
-	Feedback FeedbackSettings `json:"feedback"`
-	Linear   LinearSettings   `json:"linear"`
-	Report   ReportSettings   `json:"report"`
-	Review   ReviewSettings   `json:"review"`
+	Dispatch  DispatchSettings `json:"dispatch"`
+	Feedback  FeedbackSettings `json:"feedback"`
+	Harnesses HarnessSettings  `json:"harnesses"`
+	Linear    LinearSettings   `json:"linear"`
+	Report    ReportSettings   `json:"report"`
+	Review    ReviewSettings   `json:"review"`
 
 	// Saved False until settings were saved from the UI (values come from the environment)
 	Saved bool `json:"saved"`
@@ -1539,10 +1571,12 @@ type UpdateLinearSettings struct {
 
 // UpdateOperatorSettingsRequest defines model for UpdateOperatorSettingsRequest.
 type UpdateOperatorSettingsRequest struct {
-	Feedback FeedbackSettings     `json:"feedback"`
-	Linear   UpdateLinearSettings `json:"linear"`
-	Report   ReportSettings       `json:"report"`
-	Review   ReviewSettings       `json:"review"`
+	Dispatch  *DispatchSettings    `json:"dispatch,omitempty"`
+	Feedback  FeedbackSettings     `json:"feedback"`
+	Harnesses *HarnessSettings     `json:"harnesses,omitempty"`
+	Linear    UpdateLinearSettings `json:"linear"`
+	Report    ReportSettings       `json:"report"`
+	Review    ReviewSettings       `json:"review"`
 }
 
 // UpdateProjectRequest defines model for UpdateProjectRequest.

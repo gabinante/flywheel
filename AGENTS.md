@@ -44,8 +44,10 @@ This file is the shared operating guide for coding agents working in this repo.
 
 ## Operator settings
 
-- Linear API key/sync, code review (harness, publish, watchers), PR-feedback auto-address, and report posting are
-  edited in the UI at `/settings` and stored in Postgres (`operator_settings`, one JSONB row). The matching env vars
+- Linear API key/sync, code review (harness, publish, watchers), PR-feedback auto-address, report posting, dispatch
+  (on/off, concurrency, driver) and harness defaults (binary, model, effort per harness) are edited in the UI at
+  `/settings` and stored in Postgres (`operator_settings`, one JSONB row). The dispatcher's worker MCP key is minted
+  once and kept there too. The matching env vars
   are only defaults for a fresh install; after the first save the stored row wins, and changes apply live.
 - `internal/settings` owns the model; services expose `Apply`/`Reconfigure` and are wired in `cmd/server/main.go`.
 - There is a single organization. It is not shown as a navigation level: `/orgs` forwards to its project list and

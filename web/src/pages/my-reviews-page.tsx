@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ClipboardCheck, RefreshCw } from 'lucide-react'
 
+import { AutoReviewToggle } from '@/components/auto-review-toggle'
+
 import { PRCardRow } from '@/components/pr-card-row'
 import { reviewStateLabel } from '@/lib/pr-format'
 import { Badge } from '@/components/ui/badge'
@@ -98,6 +100,8 @@ export function MyReviewsPage() {
           Refresh
         </Button>
       </div>
+
+      <AutoReviewToggle />
 
       {err && <p className="text-sm text-destructive">{err}</p>}
       {!data && !err && <p className="text-sm text-muted-foreground">Asking GitHub…</p>}

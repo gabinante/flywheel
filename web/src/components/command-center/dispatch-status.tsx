@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 
 const IDLE_REASON_LABELS: Record<string, string> = {
   all_work_complete: 'All tickets resolved',
+  dispatch_disabled: 'Dispatch is off — turn it on in Settings → Dispatch',
   dispatch_disabled_project: 'Dispatch disabled',
   no_repo_configured: 'No repository configured',
   at_capacity: 'All worker slots in use',

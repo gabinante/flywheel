@@ -3214,10 +3214,54 @@ components:
           type: string
         default_health:
           type: string
+    HarnessDefaults:
+      type: object
+      required: [bin, model, reasoning_effort]
+      properties:
+        bin:
+          type: string
+          description: Executable name or path
+        model:
+          type: string
+          description: Default model when a workflow leaves it blank
+        reasoning_effort:
+          type: string
+    HarnessSettings:
+      type: object
+      required: [claude, codex]
+      properties:
+        claude:
+          $ref: '#/components/schemas/HarnessDefaults'
+        codex:
+          $ref: '#/components/schemas/HarnessDefaults'
+    DispatchSettings:
+      type: object
+      required: [enabled, max_workers, driver, model, reasoning_effort, worktree_dir, worker_key_set]
+      properties:
+        enabled:
+          type: boolean
+        max_workers:
+          type: integer
+        driver:
+          type: string
+          description: claude | codex | generic
+        model:
+          type: string
+        reasoning_effort:
+          type: string
+        worktree_dir:
+          type: string
+        worker_key_set:
+          type: boolean
+          description: Whether workers have a Flywheel API key for MCP (minted automatically)
     OperatorSettings:
       type: object
-      required: [linear, review, feedback, report, saved]
+      required: [linear, review, feedback, report, dispatch, harnesses, saved]
       properties:
+        harnesses:
+          $ref: '#/components/schemas/HarnessSettings'
+        dispatch:
+          $ref: '#/components/schemas/DispatchSettings'
         linear:
           $ref: '#/components/schemas/LinearSettings'
         review:
@@ -3252,6 +3296,10 @@ components:
       type: object
       required: [linear, review, feedback, report]
       properties:
+        harnesses:
+          $ref: '#/components/schemas/HarnessSettings'
+        dispatch:
+          $ref: '#/components/schemas/DispatchSettings'
         linear:
           $ref: '#/components/schemas/UpdateLinearSettings'
         review:
