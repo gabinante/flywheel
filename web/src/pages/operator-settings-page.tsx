@@ -58,7 +58,7 @@ function toRequest(s: OperatorSettings, apiKey: string, clearKey: boolean): Upda
 
 function Field({ label, hint, children, htmlFor }: { label: string; hint?: string; children: React.ReactNode; htmlFor?: string }) {
   return (
-    <div className="space-y-1.5">
+    <div className="min-w-0 space-y-1.5">
       <Label htmlFor={htmlFor} className="text-xs uppercase tracking-wide text-muted-foreground">
         {label}
       </Label>
@@ -167,7 +167,7 @@ export function OperatorSettingsPage() {
   const { linear, review, feedback, report } = settings
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-6">
+    <div className="mx-auto w-full max-w-[1500px] space-y-6 p-6 xl:px-10">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold">
@@ -189,7 +189,7 @@ export function OperatorSettingsPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
+      <div className="grid gap-8 lg:grid-cols-[240px_minmax(0,1fr)]">
         <nav className="space-y-1">
           {SECTIONS.map((s) => {
             const Icon = s.icon
@@ -324,15 +324,16 @@ export function OperatorSettingsPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <Toggle id="review-enabled" label="Code review enabled" checked={review.enabled} onChange={(v) => update('review', { enabled: v })} />
-                <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   <Field label="Harness" htmlFor="review-harness">
-                    <StyledSelect id="review-harness" value={review.harness} onValueChange={(v) => update('review', { harness: v })} options={HARNESSES} />
+                    <StyledSelect className="h-9 w-full min-w-0" id="review-harness" value={review.harness} onValueChange={(v) => update('review', { harness: v })} options={HARNESSES} />
                   </Field>
                   <Field label="Model" htmlFor="review-model" hint="Blank uses the harness default.">
                     <Input id="review-model" value={review.model} onChange={(e) => update('review', { model: e.target.value })} placeholder="e.g. gpt-5.6-sol" />
                   </Field>
                   <Field label="Reasoning effort" htmlFor="review-effort">
                     <StyledSelect
+                      className="h-9 w-full min-w-0"
                       id="review-effort"
                       value={review.reasoning_effort || 'default'}
                       onValueChange={(v) => update('review', { reasoning_effort: v === 'default' ? '' : v })}
@@ -362,7 +363,7 @@ export function OperatorSettingsPage() {
                   onChange={(v) => update('review', { watch_authored: v })}
                 />
                 <Toggle id="review-skip-drafts" label="Skip draft PRs" checked={review.skip_drafts} onChange={(v) => update('review', { skip_drafts: v })} />
-                <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   <Field label="Max concurrent reviews" htmlFor="review-max">
                     <Input id="review-max" type="number" min={1} value={review.max_concurrent} onChange={(e) => update('review', { max_concurrent: Number(e.target.value) || 1 })} />
                   </Field>
@@ -404,15 +405,16 @@ export function OperatorSettingsPage() {
                   checked={feedback.auto_address}
                   onChange={(v) => update('feedback', { auto_address: v })}
                 />
-                <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   <Field label="Harness" htmlFor="feedback-harness">
-                    <StyledSelect id="feedback-harness" value={feedback.harness} onValueChange={(v) => update('feedback', { harness: v })} options={HARNESSES} />
+                    <StyledSelect className="h-9 w-full min-w-0" id="feedback-harness" value={feedback.harness} onValueChange={(v) => update('feedback', { harness: v })} options={HARNESSES} />
                   </Field>
                   <Field label="Model" htmlFor="feedback-model" hint="Blank uses the harness default.">
                     <Input id="feedback-model" value={feedback.model} onChange={(e) => update('feedback', { model: e.target.value })} />
                   </Field>
                   <Field label="Reasoning effort" htmlFor="feedback-effort">
                     <StyledSelect
+                      className="h-9 w-full min-w-0"
                       id="feedback-effort"
                       value={feedback.reasoning_effort || 'default'}
                       onValueChange={(v) => update('feedback', { reasoning_effort: v === 'default' ? '' : v })}
@@ -447,12 +449,12 @@ export function OperatorSettingsPage() {
                   checked={report.project_updates_enabled}
                   onChange={(v) => update('report', { project_updates_enabled: v })}
                 />
-                <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   <Field label="Update interval (hours)" htmlFor="report-interval">
                     <Input id="report-interval" type="number" min={1} value={report.project_update_interval_hours} onChange={(e) => update('report', { project_update_interval_hours: Number(e.target.value) || 48 })} />
                   </Field>
                   <Field label="Default health" htmlFor="report-health">
-                    <StyledSelect id="report-health" value={report.default_health} onValueChange={(v) => update('report', { default_health: v })} options={HEALTHS} />
+                    <StyledSelect className="h-9 w-full min-w-0" id="report-health" value={report.default_health} onValueChange={(v) => update('report', { default_health: v })} options={HEALTHS} />
                   </Field>
                 </div>
                 <Toggle
@@ -464,7 +466,7 @@ export function OperatorSettingsPage() {
                 />
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Weekly day" htmlFor="report-day">
-                    <StyledSelect id="report-day" value={report.weekly_day} onValueChange={(v) => update('report', { weekly_day: v })} options={WEEKDAYS} />
+                    <StyledSelect className="h-9 w-full min-w-0" id="report-day" value={report.weekly_day} onValueChange={(v) => update('report', { weekly_day: v })} options={WEEKDAYS} />
                   </Field>
                   <Field label="Hour (local, 0–23)" htmlFor="report-hour">
                     <Input id="report-hour" type="number" min={0} max={23} value={report.weekly_hour} onChange={(e) => update('report', { weekly_hour: Number(e.target.value) || 0 })} />
@@ -476,6 +478,7 @@ export function OperatorSettingsPage() {
                   </Field>
                   <Field label="Roundup project" htmlFor="report-project" hint="Flywheel project whose Linear project also gets the roundup as an update.">
                     <StyledSelect
+                      className="h-9 w-full min-w-0"
                       id="report-project"
                       value={report.roundup_project_id || 'none'}
                       onValueChange={(v) => update('report', { roundup_project_id: v === 'none' ? '' : v })}
