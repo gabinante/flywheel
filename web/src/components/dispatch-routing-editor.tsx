@@ -45,16 +45,14 @@ type DispatchConfigDraft = {
 
 const RUNNER_OPTIONS = [
   { value: 'inherit', label: 'Inherit' },
-  { value: 'cli', label: 'CLI' },
-  { value: 'docker', label: 'Docker' },
-  { value: 'openai-responses', label: 'OpenAI Responses' },
-  { value: 'openai-compatible', label: 'OpenAI Compatible' },
+  { value: 'cli', label: 'CLI (local harness)' },
 ] as const
 
 const DRIVER_OPTIONS = [
-  { value: 'inherit', label: 'Inherit' },
-  { value: 'claude', label: 'Claude' },
-  { value: 'generic', label: 'Generic' },
+  { value: 'inherit', label: 'Inherit (dispatch default)' },
+  { value: 'claude', label: 'Claude Code' },
+  { value: 'codex', label: 'Codex' },
+  { value: 'generic', label: 'Generic CLI' },
 ] as const
 
 const SELECTION_OPTIONS = [
@@ -272,6 +270,7 @@ function parseDriverValue(
 ): DispatchWorkerProfile['driver'] | undefined {
   switch (value) {
     case 'claude':
+    case 'codex':
     case 'generic':
       return value
     default:
@@ -634,7 +633,7 @@ export function DispatchRoutingEditor({
                           onChange={(event) =>
                             updateWorker(index, { cli_path: event.target.value })
                           }
-                          placeholder="claude"
+                          placeholder={worker.driver === 'codex' ? 'codex (from Models & harnesses)' : worker.driver === 'generic' ? '/path/to/agent' : 'claude (from Models & harnesses)'}
                         />
                       </Label>
                       <Label>
@@ -644,7 +643,7 @@ export function DispatchRoutingEditor({
                           onChange={(event) =>
                             updateWorker(index, { model: event.target.value })
                           }
-                          placeholder="claude-sonnet-4-6 or qwen2.5-coder"
+                          placeholder={worker.driver === 'codex' ? 'blank = Codex default from Models & harnesses' : 'blank = harness default from Models & harnesses'}
                         />
                       </Label>
                       <Label>
@@ -668,6 +667,8 @@ export function DispatchRoutingEditor({
                           rows={3}
                         />
                       </Label>
+                      {worker.driver === 'generic' ? (
+                        <>
                       <Label>
                         API base URL
                         <Input
@@ -690,6 +691,8 @@ export function DispatchRoutingEditor({
                           placeholder="OPENAI_API_KEY or CLAUDE_FALLBACK_API_KEY"
                         />
                       </Label>
+                        </>
+                      ) : null}
                     </div>
                     <div className="flex items-center gap-3">
                       <div className="flex items-center gap-2">

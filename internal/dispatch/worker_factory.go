@@ -10,8 +10,16 @@ func NewWorker(cfg Config) Worker {
 		driverName = "claude"
 	}
 	cliPath := cfg.AgentCLIPath
-	if cliPath == "" && driverName == "claude" {
-		cliPath = cfg.ClaudePath
+	if cliPath == "" {
+		switch driverName {
+		case "claude":
+			cliPath = cfg.ClaudePath
+		case "codex":
+			cliPath = cfg.CodexPath
+			if cliPath == "" {
+				cliPath = "codex"
+			}
+		}
 	}
 	driver, err := LookupDriver(driverName, DriverConfig{
 		CLIPath:         cliPath,

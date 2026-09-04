@@ -150,8 +150,14 @@ func (r *ProjectWorkerRouter) profileWorker(profile project.DispatchWorkerProfil
 	if profile.Runner != "" {
 		cfg.AgentRunner = profile.Runner
 	}
-	if profile.Driver != "" {
+	if profile.Driver != "" && profile.Driver != cfg.AgentDriver {
+		// Switching harness: the base driver's model, effort and executable do not carry over.
 		cfg.AgentDriver = profile.Driver
+		cfg.AgentCLIPath = ""
+		cfg.AgentModel, cfg.AgentReasoningEffort = "", ""
+		if d, ok := cfg.DriverDefaults[profile.Driver]; ok {
+			cfg.AgentModel, cfg.AgentReasoningEffort = d.Model, d.Effort
+		}
 	}
 	if profile.CLIPath != "" {
 		cfg.AgentCLIPath = profile.CLIPath

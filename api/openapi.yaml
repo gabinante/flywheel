@@ -2288,7 +2288,7 @@ components:
           enum: [cli, docker, openai-responses, openai-compatible]
         driver:
           type: string
-          enum: [claude, generic]
+          enum: [claude, generic, codex]
         cli_path:
           type: string
           description: Override binary path when using a CLI or Docker-backed worker.

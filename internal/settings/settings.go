@@ -356,6 +356,10 @@ func (s Settings) DispatchRuntime() dispatch.Runtime {
 	return dispatch.Runtime{
 		Enabled: s.Dispatch.Enabled, MaxWorkers: s.Dispatch.MaxWorkers, Driver: s.Dispatch.Driver, Model: m, Effort: e,
 		ClaudePath: s.Harness.Claude.Bin, CodexPath: s.Harness.Codex.Bin, Workers: s.Workers.Normalized(),
+		Defaults: map[string]dispatch.DriverDefaults{
+			"claude": {Model: s.Harness.Claude.Model, Effort: s.Harness.Claude.ReasoningEffort},
+			"codex":  {Model: s.Harness.Codex.Model, Effort: s.Harness.Codex.ReasoningEffort},
+		},
 	}
 }
 

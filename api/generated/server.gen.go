@@ -109,6 +109,7 @@ func (e DispatchRolePolicySelectionMode) Valid() bool {
 // Defines values for DispatchWorkerProfileDriver.
 const (
 	DispatchWorkerProfileDriverClaude  DispatchWorkerProfileDriver = "claude"
+	DispatchWorkerProfileDriverCodex   DispatchWorkerProfileDriver = "codex"
 	DispatchWorkerProfileDriverGeneric DispatchWorkerProfileDriver = "generic"
 )
 
@@ -116,6 +117,8 @@ const (
 func (e DispatchWorkerProfileDriver) Valid() bool {
 	switch e {
 	case DispatchWorkerProfileDriverClaude:
+		return true
+	case DispatchWorkerProfileDriverCodex:
 		return true
 	case DispatchWorkerProfileDriverGeneric:
 		return true

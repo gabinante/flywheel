@@ -127,8 +127,10 @@ type Config struct {
 	AgentReasoningEffort string   // API-native reasoning effort
 	AgentAPIBaseURL      string   // API-native base URL
 	AgentAPIKey          string
-	AgentSystemPrompt    string // worker profile base prompt, prepended to the role prompt
-	ScanLimit            int    // max tickets per scan phase (default 50, 0 = unlimited)
+	AgentSystemPrompt    string                    // worker profile base prompt, prepended to the role prompt
+	CodexPath            string                    // codex executable for profiles that select the codex driver (default "codex")
+	DriverDefaults       map[string]DriverDefaults // per-driver default model/effort (from Settings → Models & harnesses)
+	ScanLimit            int                       // max tickets per scan phase (default 50, 0 = unlimited)
 	TraceSvc             TraceAppender
 }
 
@@ -210,6 +212,13 @@ func (d *Dispatcher) SetEnabled(on bool) {
 	slog.Info("dispatch: enabled changed", "enabled", on)
 }
 
+// DriverDefaults are the harness-level defaults a worker profile inherits when it
+// leaves model or effort blank.
+type DriverDefaults struct {
+	Model  string
+	Effort string
+}
+
 // Runtime is the operator-adjustable part of the dispatcher configuration.
 type Runtime struct {
 	Enabled    bool
@@ -219,7 +228,8 @@ type Runtime struct {
 	Effort     string
 	ClaudePath string
 	CodexPath  string
-	Workers    project.DispatchConfig // shared worker library
+	Defaults   map[string]DriverDefaults // per-driver default model/effort
+	Workers    project.DispatchConfig    // shared worker library
 }
 
 // Apply updates the runtime worker configuration: concurrency, the default
@@ -237,6 +247,10 @@ func (d *Dispatcher) Apply(rt Runtime) {
 	if rt.ClaudePath != "" {
 		d.cfg.ClaudePath = rt.ClaudePath
 	}
+	if rt.CodexPath != "" {
+		d.cfg.CodexPath = rt.CodexPath
+	}
+	d.cfg.DriverDefaults = rt.Defaults
 	switch d.cfg.AgentDriver {
 	case "codex":
 		d.cfg.AgentCLIPath = rt.CodexPath
