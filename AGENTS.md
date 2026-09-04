@@ -50,6 +50,10 @@ This file is the shared operating guide for coding agents working in this repo.
   once and kept there too. The matching env vars
   are only defaults for a fresh install; after the first save the stored row wins, and changes apply live.
 - `internal/settings` owns the model; services expose `Apply`/`Reconfigure` and are wired in `cmd/server/main.go`.
+- Built-in agent prompts (code reviewer, feedback addresser, orchestrator, dispatch worker types, ticket reviewer,
+  conflict resolver) live in `internal/prompts`: each service registers its default at init and reads
+  `prompts.Text(id)` at run time; overrides are edited at Settings → Prompts (`GET/PUT /prompts`) and stored in
+  operator settings. Do not hard-code a role preamble in a new service — register it.
 - There is a single organization. It is not shown as a navigation level: `/orgs` forwards to its project list and
   projects are the main separation.
 

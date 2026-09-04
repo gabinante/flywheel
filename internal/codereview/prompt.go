@@ -3,6 +3,7 @@ package codereview
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/gabinante/flywheel/internal/prompts"
 	"sort"
 	"strings"
 )
@@ -192,4 +193,10 @@ func short(sha string) string {
 		return sha[:8]
 	}
 	return sha
+}
+
+func init() {
+	prompts.Register(prompts.Prompt{ID: "code_review", Name: "Code reviewer", Order: 10,
+		Description: "System prompt for PR-keyed code reviews: what to flag, severities, tone. The per-PR task (diff path, files, prior findings) is appended automatically.",
+		UsedBy:      "Code review", Default: ReviewSystemPrompt})
 }

@@ -29,6 +29,7 @@ import (
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/progress"
 	"github.com/gabinante/flywheel/internal/project"
+	"github.com/gabinante/flywheel/internal/prompts"
 	"github.com/gabinante/flywheel/internal/queue"
 	"github.com/gabinante/flywheel/internal/report"
 	"github.com/gabinante/flywheel/internal/review"
@@ -212,6 +213,7 @@ func run(ctx context.Context, cfg *config.Config) {
 		os.Exit(1)
 	}
 	eff := settingsSvc.Current()
+	prompts.SetOverrides(eff.Prompts)
 
 	// Linear as the ticket store: discover led projects, mirror issues, push changes back.
 	linearKey, linearCfg := eff.LinearConfig()
@@ -251,6 +253,7 @@ func run(ctx context.Context, cfg *config.Config) {
 
 	// Settings saved in the UI apply live, without a restart.
 	settingsSvc.OnChange(func(next settings.Settings) {
+		prompts.SetOverrides(next.Prompts)
 		harnessRunner.Reconfigure(next.RunnerConfig())
 		key, lc := next.LinearConfig()
 		linearSvc.Reconfigure(key, lc)

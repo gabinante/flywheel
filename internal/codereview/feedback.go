@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/gabinante/flywheel/internal/prompts"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -109,7 +110,7 @@ func (s *Service) runAddressFeedback(ctx context.Context, round *FeedbackRound) 
 	started := time.Now()
 	res, runErr := s.runner.Run(ctx, harness.Spec{
 		Harness: kind, Model: fb.Model, Effort: fb.Effort, WorkDir: wt,
-		SystemPrompt: withPrefix(fb.PromptPrefix, FeedbackSystemPrompt), Prompt: prompt, Sandbox: harness.SandboxWorkspaceWrite, Timeout: fb.Timeout,
+		SystemPrompt: withPrefix(fb.PromptPrefix, prompts.Text("pr_feedback")), Prompt: prompt, Sandbox: harness.SandboxWorkspaceWrite, Timeout: fb.Timeout,
 	})
 	sessionID := ""
 	if s.sessions != nil && res != nil && res.ExternalSessionID != "" {
@@ -181,4 +182,10 @@ func withPrefix(prefix, base string) string {
 		return base
 	}
 	return strings.TrimSpace(prefix) + "\n\n" + base
+}
+
+func init() {
+	prompts.Register(prompts.Prompt{ID: "pr_feedback", Name: "PR feedback addresser", Order: 20,
+		Description: "System prompt for addressing review feedback on your own PRs: read threads, fix, test, push, reply, re-request review.",
+		UsedBy:      "PR feedback", Default: FeedbackSystemPrompt})
 }

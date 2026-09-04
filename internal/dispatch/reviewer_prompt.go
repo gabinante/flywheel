@@ -2,6 +2,7 @@ package dispatch
 
 import (
 	"fmt"
+	"github.com/gabinante/flywheel/internal/prompts"
 	"strings"
 
 	"github.com/gabinante/flywheel/internal/project"
@@ -13,8 +14,8 @@ import (
 func AssembleReviewerPrompt(proj *project.Project, t *ticket.Ticket, serverURL, agentID string) string {
 	var b strings.Builder
 
-	b.WriteString("You are a code reviewer for a Flywheel ticket. ")
-	b.WriteString("Your job is to review the pull request, check the code, and approve or reject.\n\n")
+	b.WriteString(prompts.Text("ticket_reviewer"))
+	b.WriteString("\n\n")
 
 	// Project context
 	if proj.ContextPack.SystemPrompt != "" {
@@ -96,4 +97,10 @@ func buildReviewerTaskPrompt(ticketID string) string {
 			"You MUST use the Flywheel MCP tools to approve or reject.",
 		ticketID,
 	)
+}
+
+func init() {
+	prompts.Register(prompts.Prompt{ID: "ticket_reviewer", Name: "Ticket reviewer (validation phase)", Order: 60,
+		Description: "Role line for the worker that reviews a dispatched ticket's PR and approves or rejects it.",
+		UsedBy:      "Dispatch (validation)", Default: "You are a code reviewer for a Flywheel ticket. Your job is to review the pull request, check the code, and approve or reject."})
 }

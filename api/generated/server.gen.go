@@ -1248,6 +1248,20 @@ type ProjectSection struct {
 	ProjectIds []string `json:"project_ids"`
 }
 
+// PromptDefinition defines model for PromptDefinition.
+type PromptDefinition struct {
+	Customized  bool   `json:"customized"`
+	DefaultText string `json:"default_text"`
+	Description string `json:"description"`
+	Id          string `json:"id"`
+	Name        string `json:"name"`
+	Override    string `json:"override"`
+
+	// Text Effective prompt (override when set, else default)
+	Text   string `json:"text"`
+	UsedBy string `json:"used_by"`
+}
+
 // PullRequestCard defines model for PullRequestCard.
 type PullRequestCard struct {
 	Additions             int                `json:"additions"`
@@ -1764,6 +1778,11 @@ type ListWorkStreamsParams struct {
 // ListWorkStreamsParamsStatus defines parameters for ListWorkStreams.
 type ListWorkStreamsParamsStatus string
 
+// UpdatePromptJSONBody defines parameters for UpdatePrompt.
+type UpdatePromptJSONBody struct {
+	Text string `json:"text"`
+}
+
 // ListReportsParams defines parameters for ListReports.
 type ListReportsParams struct {
 	ProjectId *string `form:"project_id,omitempty" json:"project_id,omitempty"`
@@ -1875,6 +1894,9 @@ type CreateWorkStreamJSONRequestBody = CreateWorkStreamRequest
 
 // UpdateWorkStreamJSONRequestBody defines body for UpdateWorkStream for application/json ContentType.
 type UpdateWorkStreamJSONRequestBody = UpdateWorkStreamRequest
+
+// UpdatePromptJSONRequestBody defines body for UpdatePrompt for application/json ContentType.
+type UpdatePromptJSONRequestBody UpdatePromptJSONBody
 
 // PostWeeklyRoundupJSONRequestBody defines body for PostWeeklyRoundup for application/json ContentType.
 type PostWeeklyRoundupJSONRequestBody = PostReportRequest
@@ -2046,6 +2068,12 @@ type ServerInterface interface {
 
 	// (PATCH /projects/{projectID}/work-streams/{workStreamID})
 	UpdateWorkStream(w http.ResponseWriter, r *http.Request, projectID string, workStreamID string)
+	// ListPrompts Built-in agent prompts (base prompts of the default workers) with any overrides
+	// (GET /prompts)
+	ListPrompts(w http.ResponseWriter, r *http.Request)
+	// UpdatePrompt Override a built-in prompt (empty text restores the default); applies live
+	// (PUT /prompts/{promptID})
+	UpdatePrompt(w http.ResponseWriter, r *http.Request, promptID string)
 	// ListReports Reports composed or posted to Linear
 	// (GET /reports)
 	ListReports(w http.ResponseWriter, r *http.Request, params ListReportsParams)
@@ -3355,6 +3383,46 @@ func (siw *ServerInterfaceWrapper) UpdateWorkStream(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ListPrompts operation middleware
+func (siw *ServerInterfaceWrapper) ListPrompts(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPrompts(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdatePrompt operation middleware
+func (siw *ServerInterfaceWrapper) UpdatePrompt(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "promptID" -------------
+	var promptID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "promptID", r.PathValue("promptID"), &promptID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "promptID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdatePrompt(w, r, promptID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListReports operation middleware
 func (siw *ServerInterfaceWrapper) ListReports(w http.ResponseWriter, r *http.Request) {
 
@@ -4285,6 +4353,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/code-reviews/{reviewID}/messages", wrapper.ListCodeReviewMessages)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/code-reviews/{reviewID}/messages", wrapper.AskCodeReview)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/sessions/{sessionID}/continue", wrapper.ContinueSession)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/prompts", wrapper.ListPrompts)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/prompts/{promptID}", wrapper.UpdatePrompt)
 
 	return m
 }
@@ -6276,6 +6346,80 @@ func (response UpdateWorkStream500JSONResponse) VisitUpdateWorkStreamResponse(w 
 	return err
 }
 
+type ListPromptsRequestObject struct {
+}
+
+type ListPromptsResponseObject interface {
+	VisitListPromptsResponse(w http.ResponseWriter) error
+}
+
+type ListPrompts200JSONResponse struct {
+	Items []PromptDefinition `json:"items"`
+}
+
+func (response ListPrompts200JSONResponse) VisitListPromptsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPrompts401JSONResponse StructuredError
+
+func (response ListPrompts401JSONResponse) VisitListPromptsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdatePromptRequestObject struct {
+	PromptID string `json:"promptID"`
+	Body     *UpdatePromptJSONRequestBody
+}
+
+type UpdatePromptResponseObject interface {
+	VisitUpdatePromptResponse(w http.ResponseWriter) error
+}
+
+type UpdatePrompt200JSONResponse PromptDefinition
+
+func (response UpdatePrompt200JSONResponse) VisitUpdatePromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdatePrompt404JSONResponse StructuredError
+
+func (response UpdatePrompt404JSONResponse) VisitUpdatePromptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListReportsRequestObject struct {
 	Params ListReportsParams
 }
@@ -7390,6 +7534,12 @@ type StrictServerInterface interface {
 
 	// (PATCH /projects/{projectID}/work-streams/{workStreamID})
 	UpdateWorkStream(ctx context.Context, request UpdateWorkStreamRequestObject) (UpdateWorkStreamResponseObject, error)
+	// ListPrompts Built-in agent prompts (base prompts of the default workers) with any overrides
+	// (GET /prompts)
+	ListPrompts(ctx context.Context, request ListPromptsRequestObject) (ListPromptsResponseObject, error)
+	// UpdatePrompt Override a built-in prompt (empty text restores the default); applies live
+	// (PUT /prompts/{promptID})
+	UpdatePrompt(ctx context.Context, request UpdatePromptRequestObject) (UpdatePromptResponseObject, error)
 	// ListReports Reports composed or posted to Linear
 	// (GET /reports)
 	ListReports(ctx context.Context, request ListReportsRequestObject) (ListReportsResponseObject, error)
@@ -8757,6 +8907,63 @@ func (sh *strictHandler) UpdateWorkStream(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateWorkStreamResponseObject); ok {
 		if err := validResponse.VisitUpdateWorkStreamResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPrompts operation middleware
+func (sh *strictHandler) ListPrompts(w http.ResponseWriter, r *http.Request) {
+	var request ListPromptsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPrompts(ctx, request.(ListPromptsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPrompts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPromptsResponseObject); ok {
+		if err := validResponse.VisitListPromptsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdatePrompt operation middleware
+func (sh *strictHandler) UpdatePrompt(w http.ResponseWriter, r *http.Request, promptID string) {
+	var request UpdatePromptRequestObject
+
+	request.PromptID = promptID
+
+	var body UpdatePromptJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdatePrompt(ctx, request.(UpdatePromptRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdatePrompt")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdatePromptResponseObject); ok {
+		if err := validResponse.VisitUpdatePromptResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/gabinante/flywheel/internal/prompts"
 	"strings"
 	"sync"
 	"time"
@@ -692,11 +693,8 @@ func (s *Service) InjectSystemEvent(ctx context.Context, projectID, category, su
 
 func buildConversationTask(proj *project.Project, messages []Message) string {
 	var b strings.Builder
-	b.WriteString("You are operating inside the Flywheel command center.\n\n")
-	b.WriteString("Your job is to converse with the human, inspect the project, and create or update work streams and tickets when enough clarity exists.\n")
-	b.WriteString("If the request is still ambiguous, ask the shortest set of clarification questions that will unblock ticket authoring.\n")
-	b.WriteString("If enough clarity exists, create the work in Flywheel during this turn instead of only describing a plan.\n")
-	b.WriteString("Do not execute coding work yourself. Stay at the orchestration layer.\n\n")
+	b.WriteString(prompts.Text("orchestrator_turn"))
+	b.WriteString("\n\n")
 	b.WriteString(fmt.Sprintf("Project: %s (%s)\n\n", proj.Name, proj.ID))
 	b.WriteString("Conversation so far (oldest first):\n\n")
 	for _, msg := range messages {
@@ -724,4 +722,17 @@ func runnerNameFromConfig(cfg dispatch.Config) string {
 		return strings.TrimSpace(cfg.AgentRunner)
 	}
 	return "cli"
+}
+
+const defaultOrchestratorTurnPrompt = `You are operating inside the Flywheel command center.
+
+Your job is to converse with the human, inspect the project, and create or update work streams and tickets when enough clarity exists.
+If the request is still ambiguous, ask the shortest set of clarification questions that will unblock ticket authoring.
+If enough clarity exists, create the work in Flywheel during this turn instead of only describing a plan.
+Do not execute coding work yourself. Stay at the orchestration layer.`
+
+func init() {
+	prompts.Register(prompts.Prompt{ID: "orchestrator_turn", Name: "Orchestrator turn instructions", Order: 41,
+		Description: "Prepended to every command-center turn, before the conversation transcript.",
+		UsedBy:      "Command Center", Default: defaultOrchestratorTurnPrompt})
 }

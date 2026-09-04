@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/gabinante/flywheel/internal/prompts"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -404,7 +405,7 @@ func (s *Service) process(ctx context.Context, req *Request) {
 	started := time.Now()
 	res, runErr := s.runner.Run(ctx, harness.Spec{
 		Harness: kind, Model: req.Model, Effort: req.ReasoningEffort, WorkDir: wt,
-		SystemPrompt: withPrefix(cfg.PromptPrefix, ReviewSystemPrompt), Prompt: prompt, OutputSchema: FindingsSchema,
+		SystemPrompt: withPrefix(cfg.PromptPrefix, prompts.Text("code_review")), Prompt: prompt, OutputSchema: FindingsSchema,
 		Sandbox: harness.SandboxReadOnly, Timeout: cfg.ReviewTimeout,
 	})
 	s.recordSession(ctx, req, pr, kind, res, prompt, started)

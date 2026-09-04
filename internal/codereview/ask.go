@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/gabinante/flywheel/internal/prompts"
 	"log/slog"
 	"strings"
 	"time"
@@ -58,7 +59,7 @@ func (s *Service) Ask(ctx context.Context, reviewID, message string) (*Message, 
 	}
 	spec := harness.Spec{
 		Harness: kind, Model: firstNonEmpty(req.Model, cfg.Model), Effort: firstNonEmpty(req.ReasoningEffort, cfg.Effort), WorkDir: wt,
-		SystemPrompt: AskSystemPrompt, Prompt: prompt, Sandbox: harness.SandboxFull, Timeout: 20 * time.Minute, Resume: resume,
+		SystemPrompt: prompts.Text("review_conversation"), Prompt: prompt, Sandbox: harness.SandboxFull, Timeout: 20 * time.Minute, Resume: resume,
 	}
 	res, runErr := s.runner.Run(ctx, spec)
 	if runErr != nil && (res == nil || strings.TrimSpace(res.Output) == "") && resume != "" {
@@ -145,4 +146,10 @@ func tail(s string, n int) string {
 		return s
 	}
 	return "…" + s[len(s)-n:]
+}
+
+func init() {
+	prompts.Register(prompts.Prompt{ID: "review_conversation", Name: "Reviewer conversation", Order: 30,
+		Description: "Frames the follow-up chat with the agent that reviewed a PR (Talk to the reviewer), including permission to post via gh when asked.",
+		UsedBy:      "Code review detail", Default: AskSystemPrompt})
 }

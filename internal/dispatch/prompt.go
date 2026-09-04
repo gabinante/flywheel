@@ -2,6 +2,7 @@ package dispatch
 
 import (
 	"fmt"
+	"github.com/gabinante/flywheel/internal/prompts"
 	"strings"
 
 	"github.com/gabinante/flywheel/internal/project"
@@ -85,10 +86,9 @@ This audit trail is append-only and enables post-hoc investigation of any anomal
 func AssembleCoordinatorPrompt(proj *project.Project, serverURL, agentID string) string {
 	var b strings.Builder
 
-	// Role with explicit constraint declaration
-	b.WriteString("You are a Flywheel **coordinator**. Your role is to translate human intent ")
-	b.WriteString("into structured ticket DAGs that worker agents execute. You are the bridge ")
-	b.WriteString("between natural language goals and precise engineering work.\n\n")
+	// Role with explicit constraint declaration (operator-editable: Settings → Prompts)
+	b.WriteString(prompts.Text("orchestrator"))
+	b.WriteString("\n\n")
 
 	// Defense layers (injected BEFORE any external content)
 	b.WriteString(coordinatorContentDefensePrompt)
@@ -144,9 +144,9 @@ func AssembleCoordinatorPrompt(proj *project.Project, serverURL, agentID string)
 func AssembleWorkerPrompt(proj *project.Project, t *ticket.Ticket, depOutputs map[string]map[string]any, serverURL, agentID string) string {
 	var b strings.Builder
 
-	// Role
-	b.WriteString("You are a coding agent executing a Flywheel ticket. ")
-	b.WriteString("Use the Flywheel MCP tools to manage your ticket lifecycle.\n\n")
+	// Role (operator-editable: Settings → Prompts)
+	b.WriteString(prompts.Text("dispatch_worker"))
+	b.WriteString("\n\n")
 
 	// Project context
 	if proj.ContextPack.SystemPrompt != "" {
@@ -271,4 +271,18 @@ func AssembleWorkerPrompt(proj *project.Project, t *ticket.Ticket, depOutputs ma
 	b.WriteString(fmt.Sprintf("**Agent ID:** %s\n", agentID))
 
 	return b.String()
+}
+
+const (
+	defaultOrchestratorPrompt   = "You are a Flywheel **coordinator**. Your role is to translate human intent into structured ticket DAGs that worker agents execute. You are the bridge between natural language goals and precise engineering work."
+	defaultDispatchWorkerPrompt = "You are a coding agent executing a Flywheel ticket. Use the Flywheel MCP tools to manage your ticket lifecycle."
+)
+
+func init() {
+	prompts.Register(prompts.Prompt{ID: "orchestrator", Name: "Orchestrator (command center planner)", Order: 40,
+		Description: "Role preamble for the command-center planner. The content-defense rules, project context, workflow steps and tool scope are appended automatically and cannot be edited here.",
+		UsedBy:      "Command Center", Default: defaultOrchestratorPrompt})
+	prompts.Register(prompts.Prompt{ID: "dispatch_worker", Name: "Dispatch worker (generic)", Order: 50,
+		Description: "Role line for untyped implementation workers. Project context pack and ticket details follow.",
+		UsedBy:      "Dispatch", Default: defaultDispatchWorkerPrompt})
 }

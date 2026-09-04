@@ -1247,6 +1247,20 @@ type ProjectSection struct {
 	ProjectIds []string `json:"project_ids"`
 }
 
+// PromptDefinition defines model for PromptDefinition.
+type PromptDefinition struct {
+	Customized  bool   `json:"customized"`
+	DefaultText string `json:"default_text"`
+	Description string `json:"description"`
+	Id          string `json:"id"`
+	Name        string `json:"name"`
+	Override    string `json:"override"`
+
+	// Text Effective prompt (override when set, else default)
+	Text   string `json:"text"`
+	UsedBy string `json:"used_by"`
+}
+
 // PullRequestCard defines model for PullRequestCard.
 type PullRequestCard struct {
 	Additions             int                `json:"additions"`
@@ -1763,6 +1777,11 @@ type ListWorkStreamsParams struct {
 // ListWorkStreamsParamsStatus defines parameters for ListWorkStreams.
 type ListWorkStreamsParamsStatus string
 
+// UpdatePromptJSONBody defines parameters for UpdatePrompt.
+type UpdatePromptJSONBody struct {
+	Text string `json:"text"`
+}
+
 // ListReportsParams defines parameters for ListReports.
 type ListReportsParams struct {
 	ProjectId *string `form:"project_id,omitempty" json:"project_id,omitempty"`
@@ -1874,6 +1893,9 @@ type CreateWorkStreamJSONRequestBody = CreateWorkStreamRequest
 
 // UpdateWorkStreamJSONRequestBody defines body for UpdateWorkStream for application/json ContentType.
 type UpdateWorkStreamJSONRequestBody = UpdateWorkStreamRequest
+
+// UpdatePromptJSONRequestBody defines body for UpdatePrompt for application/json ContentType.
+type UpdatePromptJSONRequestBody UpdatePromptJSONBody
 
 // PostWeeklyRoundupJSONRequestBody defines body for PostWeeklyRoundup for application/json ContentType.
 type PostWeeklyRoundupJSONRequestBody = PostReportRequest
@@ -2305,6 +2327,25 @@ type ClientInterface interface {
 	// UpdateWorkStream performs a PATCH /projects/{projectID}/work-streams/{workStreamID} (the `UpdateWorkStream` operationId) request.
 	// Takes a body of the `application/json` content type.
 	UpdateWorkStream(ctx context.Context, projectID string, workStreamID string, body UpdateWorkStreamJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListPrompts Built-in agent prompts (base prompts of the default workers) with any overrides
+	//
+	// Corresponds with GET /prompts (the `ListPrompts` operationId).
+	ListPrompts(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdatePromptWithBody Override a built-in prompt (empty text restores the default); applies live
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /prompts/{promptID} (the `UpdatePrompt` operationId).
+	UpdatePromptWithBody(ctx context.Context, promptID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdatePrompt Override a built-in prompt (empty text restores the default); applies live
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /prompts/{promptID} (the `UpdatePrompt` operationId).
+	UpdatePrompt(ctx context.Context, promptID string, body UpdatePromptJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListReports Reports composed or posted to Linear
 	//
@@ -3398,6 +3439,55 @@ func (c *Client) UpdateWorkStreamWithBody(ctx context.Context, projectID string,
 // Takes a body of the `application/json` content type.
 func (c *Client) UpdateWorkStream(ctx context.Context, projectID string, workStreamID string, body UpdateWorkStreamJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateWorkStreamRequest(c.Server, projectID, workStreamID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListPrompts Built-in agent prompts (base prompts of the default workers) with any overrides
+//
+// Corresponds with GET /prompts (the `ListPrompts` operationId).
+func (c *Client) ListPrompts(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListPromptsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdatePromptWithBody Override a built-in prompt (empty text restores the default); applies live
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /prompts/{promptID} (the `UpdatePrompt` operationId).
+func (c *Client) UpdatePromptWithBody(ctx context.Context, promptID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdatePromptRequestWithBody(c.Server, promptID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdatePrompt Override a built-in prompt (empty text restores the default); applies live
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /prompts/{promptID} (the `UpdatePrompt` operationId).
+func (c *Client) UpdatePrompt(ctx context.Context, promptID string, body UpdatePromptJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdatePromptRequest(c.Server, promptID, body)
 	if err != nil {
 		return nil, err
 	}
@@ -5852,6 +5942,80 @@ func NewUpdateWorkStreamRequestWithBody(server string, projectID string, workStr
 	return req, nil
 }
 
+// NewListPromptsRequest constructs an http.Request for the ListPrompts method
+func NewListPromptsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/prompts")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdatePromptRequest calls the generic UpdatePrompt builder with application/json body
+func NewUpdatePromptRequest(server string, promptID string, body UpdatePromptJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdatePromptRequestWithBody(server, promptID, "application/json", bodyReader)
+}
+
+// NewUpdatePromptRequestWithBody constructs an http.Request for the UpdatePrompt method, with any body, and a specified content type
+func NewUpdatePromptRequestWithBody(server string, promptID string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "promptID", promptID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/prompts/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListReportsRequest constructs an http.Request for the ListReports method
 func NewListReportsRequest(server string, params *ListReportsParams) (*http.Request, error) {
 	var err error
@@ -7422,6 +7586,27 @@ type ClientWithResponsesInterface interface {
 	// UpdateWorkStreamWithResponse performs a PATCH /projects/{projectID}/work-streams/{workStreamID} (the `UpdateWorkStream` operationId) request.
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	UpdateWorkStreamWithResponse(ctx context.Context, projectID string, workStreamID string, body UpdateWorkStreamJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateWorkStreamResponse, error)
+
+	// ListPromptsWithResponse Built-in agent prompts (base prompts of the default workers) with any overrides
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /prompts (the `ListPrompts` operationId).
+	ListPromptsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListPromptsResponse, error)
+
+	// UpdatePromptWithBodyWithResponse Override a built-in prompt (empty text restores the default); applies live
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /prompts/{promptID} (the `UpdatePrompt` operationId).
+	UpdatePromptWithBodyWithResponse(ctx context.Context, promptID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdatePromptResponse, error)
+
+	// UpdatePromptWithResponse Override a built-in prompt (empty text restores the default); applies live
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /prompts/{promptID} (the `UpdatePrompt` operationId).
+	UpdatePromptWithResponse(ctx context.Context, promptID string, body UpdatePromptJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdatePromptResponse, error)
 
 	// ListReportsWithResponse Reports composed or posted to Linear
 	//
@@ -9974,6 +10159,106 @@ func (r UpdateWorkStreamResponse) ContentType() string {
 	return ""
 }
 
+type ListPromptsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Items []PromptDefinition `json:"items"`
+	}
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListPromptsResponse) GetJSON200() *struct {
+	Items []PromptDefinition `json:"items"`
+} {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListPromptsResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r ListPromptsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListPromptsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListPromptsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListPromptsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdatePromptResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PromptDefinition
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdatePromptResponse) GetJSON200() *PromptDefinition {
+	return r.JSON200
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UpdatePromptResponse) GetJSON404() *StructuredError {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdatePromptResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdatePromptResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdatePromptResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdatePromptResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListReportsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -11849,6 +12134,45 @@ func (c *ClientWithResponses) UpdateWorkStreamWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseUpdateWorkStreamResponse(rsp)
+}
+
+// ListPromptsWithResponse Built-in agent prompts (base prompts of the default workers) with any overrides
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /prompts (the `ListPrompts` operationId).
+func (c *ClientWithResponses) ListPromptsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListPromptsResponse, error) {
+	rsp, err := c.ListPrompts(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListPromptsResponse(rsp)
+}
+
+// UpdatePromptWithBodyWithResponse Override a built-in prompt (empty text restores the default); applies live
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /prompts/{promptID} (the `UpdatePrompt` operationId).
+func (c *ClientWithResponses) UpdatePromptWithBodyWithResponse(ctx context.Context, promptID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdatePromptResponse, error) {
+	rsp, err := c.UpdatePromptWithBody(ctx, promptID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdatePromptResponse(rsp)
+}
+
+// UpdatePromptWithResponse Override a built-in prompt (empty text restores the default); applies live
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /prompts/{promptID} (the `UpdatePrompt` operationId).
+func (c *ClientWithResponses) UpdatePromptWithResponse(ctx context.Context, promptID string, body UpdatePromptJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdatePromptResponse, error) {
+	rsp, err := c.UpdatePrompt(ctx, promptID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdatePromptResponse(rsp)
 }
 
 // ListReportsWithResponse Reports composed or posted to Linear
@@ -13911,6 +14235,74 @@ func ParseUpdateWorkStreamResponse(rsp *http.Response) (*UpdateWorkStreamRespons
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListPromptsResponse parses an HTTP response from a ListPromptsWithResponse call
+func ParseListPromptsResponse(rsp *http.Response) (*ListPromptsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListPromptsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Items []PromptDefinition `json:"items"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdatePromptResponse parses an HTTP response from a UpdatePromptWithResponse call
+func ParseUpdatePromptResponse(rsp *http.Response) (*UpdatePromptResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdatePromptResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PromptDefinition
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	}
 

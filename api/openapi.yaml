@@ -1991,6 +1991,62 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StructuredError'
+  /prompts:
+    get:
+      operationId: ListPrompts
+      summary: Built-in agent prompts (base prompts of the default workers) with any overrides
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PromptDefinition'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /prompts/{promptID}:
+    put:
+      operationId: UpdatePrompt
+      summary: Override a built-in prompt (empty text restores the default); applies live
+      parameters:
+        - name: promptID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptDefinition'
+        "404":
+          description: Unknown prompt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
 components:
   securitySchemes:
     BearerAuth:
@@ -3755,3 +3811,24 @@ components:
         created_at:
           type: string
           format: date-time
+    PromptDefinition:
+      type: object
+      required: [id, name, description, used_by, default_text, override, text, customized]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        used_by:
+          type: string
+        default_text:
+          type: string
+        override:
+          type: string
+        text:
+          type: string
+          description: Effective prompt (override when set, else default)
+        customized:
+          type: boolean

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Activity, Bot, Cpu, FileText, GitPullRequest, KeyRound, MessageSquareReply, Save, ServerCog, Settings as SettingsIcon } from 'lucide-react'
+import { Activity, Bot, Cpu, FileText, GitPullRequest, KeyRound, MessageSquareReply, Save, ScrollText, ServerCog, Settings as SettingsIcon } from 'lucide-react'
+
+import { PromptLibrary } from '@/components/prompt-library'
 
 import { DispatchRoutingEditor } from '@/components/dispatch-routing-editor'
 import { ROLE_OPTIONS } from '@/lib/dispatch-roles'
@@ -23,11 +25,12 @@ type CodeReviewStatus = components['schemas']['CodeReviewStatus']
 type Project = components['schemas']['Project']
 type HarnessStatus = components['schemas']['HarnessStatus']
 
-type SectionID = 'models' | 'workers' | 'dispatch' | 'linear' | 'review' | 'feedback' | 'reports'
+type SectionID = 'models' | 'workers' | 'prompts' | 'dispatch' | 'linear' | 'review' | 'feedback' | 'reports'
 
 const SECTIONS: Array<{ id: SectionID; label: string; description: string; icon: React.ComponentType<{ className?: string }> }> = [
   { id: 'models', label: 'Models & harnesses', description: 'Claude Code and Codex binaries and the default model and effort each uses.', icon: Cpu },
   { id: 'workers', label: 'Workers & roles', description: 'Shared worker profiles, roles, and which worker each role routes to. Projects inherit these.', icon: ServerCog },
+  { id: 'prompts', label: 'Prompts', description: 'The base prompt of every default worker: reviewer, feedback addresser, orchestrator, dispatch worker types.', icon: ScrollText },
   { id: 'dispatch', label: 'Dispatch', description: 'Whether tickets are picked up by implementation workers, and which harness runs them.', icon: Bot },
   { id: 'linear', label: 'Linear', description: 'Personal API key and sync of the projects you lead.', icon: KeyRound },
   { id: 'review', label: 'Code review', description: 'Harness, publishing, and the review-requested / re-review watchers.', icon: GitPullRequest },
@@ -341,6 +344,8 @@ export function OperatorSettingsPage() {
               }}
             />
           )}
+
+          {section === 'prompts' && <PromptLibrary />}
 
           {section === 'dispatch' && (
             <Card>

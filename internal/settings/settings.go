@@ -34,6 +34,7 @@ type Settings struct {
 	Dispatch DispatchSettings       `json:"dispatch"`
 	Harness  HarnessSettings        `json:"harnesses"`
 	Workers  project.DispatchConfig `json:"workers"` // shared worker profiles, roles and routing policies
+	Prompts  map[string]string      `json:"prompts"` // overrides of built-in prompts by id (see internal/prompts)
 	Layout   LayoutSettings         `json:"layout"`  // UI arrangement (not shown on the settings page)
 }
 
@@ -282,6 +283,9 @@ func (s *Settings) Normalize() {
 		s.Dispatch.Driver = "claude"
 	}
 	s.Workers = s.Workers.Normalized()
+	if s.Prompts == nil {
+		s.Prompts = map[string]string{}
+	}
 	if s.Layout.ProjectSections == nil {
 		s.Layout.ProjectSections = []ProjectSection{}
 	}
@@ -480,6 +484,22 @@ func (s *Service) Update(ctx context.Context, next Settings) (Settings, error) {
 	slog.Info("settings: updated", "linear_enabled", next.Linear.Enabled && next.Linear.APIKey != "", "review_publish", next.Review.Publish,
 		"review_watch_requested", next.Review.WatchRequested, "feedback_auto", next.Feedback.AutoAddress)
 	return next, nil
+}
+
+// UpdatePrompt sets (or clears, when text is empty) the override for one built-in prompt.
+func (s *Service) UpdatePrompt(ctx context.Context, id, text string) (Settings, error) {
+	next := s.Current()
+	m := map[string]string{}
+	for k, v := range next.Prompts {
+		m[k] = v
+	}
+	if strings.TrimSpace(text) == "" {
+		delete(m, id)
+	} else {
+		m[id] = text
+	}
+	next.Prompts = m
+	return s.Update(ctx, next)
 }
 
 // UpdateLayout replaces only the UI layout, leaving the operational settings untouched.

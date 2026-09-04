@@ -2,6 +2,7 @@ package dispatch
 
 import (
 	"fmt"
+	"github.com/gabinante/flywheel/internal/prompts"
 	"strings"
 
 	"github.com/gabinante/flywheel/internal/ticket"
@@ -11,7 +12,8 @@ import (
 func assembleConflictResolverPrompt(t *ticket.Ticket, prURL, branch string) string {
 	var b strings.Builder
 
-	b.WriteString("You are a conflict resolution agent. Your ONLY job is to rebase a feature branch onto main and resolve any merge conflicts.\n\n")
+	b.WriteString(prompts.Text("conflict_resolver"))
+	b.WriteString("\n\n")
 
 	b.WriteString("## Context\n\n")
 	b.WriteString(fmt.Sprintf("- **Ticket:** %s — %s\n", t.ID, t.Title))
@@ -41,4 +43,10 @@ func assembleConflictResolverPrompt(t *ticket.Ticket, prURL, branch string) stri
 	b.WriteString("- Do NOT call any MCP tools. This is a pure git operation.\n")
 
 	return b.String()
+}
+
+func init() {
+	prompts.Register(prompts.Prompt{ID: "conflict_resolver", Name: "Conflict resolver", Order: 70,
+		Description: "Role line for the agent that rebases a ticket branch onto main and resolves merge conflicts. The step-by-step instructions are appended automatically.",
+		UsedBy:      "Dispatch (merge)", Default: "You are a conflict resolution agent. Your ONLY job is to rebase a feature branch onto main and resolve any merge conflicts."})
 }

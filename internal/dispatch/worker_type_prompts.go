@@ -2,6 +2,7 @@ package dispatch
 
 import (
 	"fmt"
+	"github.com/gabinante/flywheel/internal/prompts"
 	"sort"
 	"strings"
 
@@ -151,7 +152,7 @@ func AssembleTypedWorkerPrompt(wt WorkerType, proj *project.Project, t *ticket.T
 }
 
 // workerTypeRolePreamble returns the role description for each worker type.
-func workerTypeRolePreamble(wt WorkerType) string {
+func defaultWorkerTypeRolePreamble(wt WorkerType) string {
 	switch wt {
 	case WorkerTypePlanner:
 		return "You are a **planner** agent for a Flywheel ticket. " +
@@ -541,4 +542,30 @@ func buildProgressBlock(t *ticket.Ticket) string {
 
 	b.WriteString("\n")
 	return b.String()
+}
+
+// workerTypeRolePreamble returns the operator-editable role preamble for a worker type.
+func workerTypeRolePreamble(wt WorkerType) string {
+	if t := prompts.Text("dispatch_" + string(wt)); t != "" {
+		return t
+	}
+	return defaultWorkerTypeRolePreamble(wt)
+}
+
+var workerTypePromptMeta = []struct {
+	wt    WorkerType
+	name  string
+	order int
+}{
+	{WorkerTypePlanner, "Planner", 51}, {WorkerTypeDecomposer, "Decomposer", 52}, {WorkerTypeExecutor, "Executor", 53},
+	{WorkerTypeValidator, "Validator", 54}, {WorkerTypeDeployer, "Deployer", 55}, {WorkerTypeInvestigator, "Investigator", 56},
+	{WorkerTypeOperator, "Operator", 57},
+}
+
+func init() {
+	for _, m := range workerTypePromptMeta {
+		prompts.Register(prompts.Prompt{ID: "dispatch_" + string(m.wt), Name: "Dispatch worker: " + m.name, Order: m.order,
+			Description: "Role preamble for the " + strings.ToLower(m.name) + " worker type. Project context, ticket details, dependency outputs and the MCP protocol are appended automatically.",
+			UsedBy:      "Dispatch (" + string(m.wt) + " phases)", Default: defaultWorkerTypeRolePreamble(m.wt)})
+	}
 }
