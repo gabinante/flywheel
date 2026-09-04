@@ -33,7 +33,7 @@ make dev
 # Server at http://localhost:8090
 ```
 
-For a full **operations runbook** (run locally, migrations, DB/Redis inspection, health and logs, OAuth/MCP troubleshooting), see **docs/troubleshooting.md**.
+For a full **operations runbook** (run locally, migrations, DB/Redis inspection, health and logs, MCP troubleshooting), see **docs/troubleshooting.md**.
 
 **Typical REST flow**
 
@@ -120,6 +120,8 @@ operator JWT as `Authorization: Bearer <token>`. `agent_id` is inferred from the
 | `submit_ticket` | Submit outputs; move to awaiting_review. |
 | `escalate_ticket` | Ask for human help; move to needs_human. |
 | `renew_lease` | Extend lease TTL. |
+| `list_sessions` | List tracked Claude Code / Codex sessions (filters: harness, origin, repo, branch, status, q). |
+| `link_session` | Link a session to a PR (`owner/repo#N`), Linear issue (`KEY-N`), ticket, or review. |
 
 ---
 

@@ -40,6 +40,30 @@ func (e CreateReviewRequestDecision) Valid() bool {
 	}
 }
 
+// Defines values for CreateSessionLinkRequestKind.
+const (
+	CreateSessionLinkRequestKindLinearIssue CreateSessionLinkRequestKind = "linear_issue"
+	CreateSessionLinkRequestKindPr          CreateSessionLinkRequestKind = "pr"
+	CreateSessionLinkRequestKindReview      CreateSessionLinkRequestKind = "review"
+	CreateSessionLinkRequestKindTicket      CreateSessionLinkRequestKind = "ticket"
+)
+
+// Valid indicates whether the value is a known member of the CreateSessionLinkRequestKind enum.
+func (e CreateSessionLinkRequestKind) Valid() bool {
+	switch e {
+	case CreateSessionLinkRequestKindLinearIssue:
+		return true
+	case CreateSessionLinkRequestKindPr:
+		return true
+	case CreateSessionLinkRequestKindReview:
+		return true
+	case CreateSessionLinkRequestKindTicket:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateTicketRequestType.
 const (
 	CreateTicketRequestTypeBug    CreateTicketRequestType = "bug"
@@ -484,6 +508,104 @@ func (e ListWorkStreamsParamsStatus) Valid() bool {
 	}
 }
 
+// Defines values for ListSessionsParamsHarness.
+const (
+	ListSessionsParamsHarnessClaudeCode ListSessionsParamsHarness = "claude_code"
+	ListSessionsParamsHarnessCodex      ListSessionsParamsHarness = "codex"
+)
+
+// Valid indicates whether the value is a known member of the ListSessionsParamsHarness enum.
+func (e ListSessionsParamsHarness) Valid() bool {
+	switch e {
+	case ListSessionsParamsHarnessClaudeCode:
+		return true
+	case ListSessionsParamsHarnessCodex:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListSessionsParamsOrigin.
+const (
+	ListSessionsParamsOriginAutomation  ListSessionsParamsOrigin = "automation"
+	ListSessionsParamsOriginDispatched  ListSessionsParamsOrigin = "dispatched"
+	ListSessionsParamsOriginInteractive ListSessionsParamsOrigin = "interactive"
+	ListSessionsParamsOriginSubagent    ListSessionsParamsOrigin = "subagent"
+)
+
+// Valid indicates whether the value is a known member of the ListSessionsParamsOrigin enum.
+func (e ListSessionsParamsOrigin) Valid() bool {
+	switch e {
+	case ListSessionsParamsOriginAutomation:
+		return true
+	case ListSessionsParamsOriginDispatched:
+		return true
+	case ListSessionsParamsOriginInteractive:
+		return true
+	case ListSessionsParamsOriginSubagent:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListSessionsParamsStatus.
+const (
+	ListSessionsParamsStatusActive ListSessionsParamsStatus = "active"
+	ListSessionsParamsStatusEnded  ListSessionsParamsStatus = "ended"
+	ListSessionsParamsStatusIdle   ListSessionsParamsStatus = "idle"
+)
+
+// Valid indicates whether the value is a known member of the ListSessionsParamsStatus enum.
+func (e ListSessionsParamsStatus) Valid() bool {
+	switch e {
+	case ListSessionsParamsStatusActive:
+		return true
+	case ListSessionsParamsStatusEnded:
+		return true
+	case ListSessionsParamsStatusIdle:
+		return true
+	default:
+		return false
+	}
+}
+
+// AgentSession One tracked Claude Code or Codex session.
+type AgentSession struct {
+	Branch  string     `json:"branch"`
+	Cwd     string     `json:"cwd"`
+	EndedAt *time.Time `json:"ended_at,omitempty"`
+
+	// ExternalId The harness's own session or thread id
+	ExternalId  string `json:"external_id"`
+	FirstPrompt string `json:"first_prompt"`
+
+	// Harness claude_code or codex
+	Harness        string                  `json:"harness"`
+	Id             string                  `json:"id"`
+	LastActivityAt time.Time               `json:"last_activity_at"`
+	Links          []SessionLink           `json:"links"`
+	Metadata       *map[string]interface{} `json:"metadata,omitempty"`
+	Model          string                  `json:"model"`
+
+	// Origin interactive, dispatched, automation, or subagent
+	Origin          string    `json:"origin"`
+	ParentSessionId *string   `json:"parent_session_id,omitempty"`
+	PromptCount     int       `json:"prompt_count"`
+	ReasoningEffort string    `json:"reasoning_effort"`
+	Repo            string    `json:"repo"`
+	StartedAt       time.Time `json:"started_at"`
+
+	// Status active, idle, or ended (derived from recency)
+	Status         string `json:"status"`
+	Title          string `json:"title"`
+	TokensIn       int64  `json:"tokens_in"`
+	TokensOut      int64  `json:"tokens_out"`
+	ToolCallCount  int    `json:"tool_call_count"`
+	TranscriptPath string `json:"transcript_path"`
+}
+
 // ClaimRequest defines model for ClaimRequest.
 type ClaimRequest struct {
 	AgentId string `json:"agent_id"`
@@ -529,6 +651,15 @@ type CreateReviewRequest struct {
 
 // CreateReviewRequestDecision approved moves awaiting_validation → validated; rejected moves awaiting_validation → executing; reopened moves closed → draft (re-opens ticket for new lifecycle).
 type CreateReviewRequestDecision string
+
+// CreateSessionLinkRequest defines model for CreateSessionLinkRequest.
+type CreateSessionLinkRequest struct {
+	Kind CreateSessionLinkRequestKind `json:"kind"`
+	Ref  string                       `json:"ref"`
+}
+
+// CreateSessionLinkRequestKind defines model for CreateSessionLinkRequest.Kind.
+type CreateSessionLinkRequestKind string
 
 // CreateTicketRequest defines model for CreateTicketRequest.
 type CreateTicketRequest struct {
@@ -752,6 +883,58 @@ type RenewLeaseResponseBody struct {
 type ResolveEscalationRequest struct {
 	Answer     string  `json:"answer"`
 	ReviewerId *string `json:"reviewer_id,omitempty"`
+}
+
+// SessionCollectorStatus defines model for SessionCollectorStatus.
+type SessionCollectorStatus struct {
+	ByHarness      map[string]int `json:"by_harness"`
+	ClaudeDir      string         `json:"claude_dir"`
+	CodexDir       string         `json:"codex_dir"`
+	Enabled        bool           `json:"enabled"`
+	LastDurationMs int64          `json:"last_duration_ms"`
+	LastError      *string        `json:"last_error,omitempty"`
+	LastRunAt      *time.Time     `json:"last_run_at,omitempty"`
+	SessionsTotal  int            `json:"sessions_total"`
+}
+
+// SessionDetail defines model for SessionDetail.
+type SessionDetail struct {
+	Children []AgentSession  `json:"children"`
+	Prompts  []SessionPrompt `json:"prompts"`
+
+	// Session One tracked Claude Code or Codex session.
+	Session AgentSession `json:"session"`
+}
+
+// SessionLink defines model for SessionLink.
+type SessionLink struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Kind pr, linear_issue, ticket, or review
+	Kind string `json:"kind"`
+
+	// Ref owner/repo#123, KEY-123, ticket id, or review request id
+	Ref       string `json:"ref"`
+	SessionId string `json:"session_id"`
+
+	// Source inferred, explicit, or dispatch
+	Source string `json:"source"`
+}
+
+// SessionListResponse defines model for SessionListResponse.
+type SessionListResponse struct {
+	Limit    int            `json:"limit"`
+	Offset   int            `json:"offset"`
+	Sessions []AgentSession `json:"sessions"`
+	Total    int            `json:"total"`
+}
+
+// SessionPrompt defines model for SessionPrompt.
+type SessionPrompt struct {
+	Role string    `json:"role"`
+	Seq  int       `json:"seq"`
+	Text string    `json:"text"`
+	Ts   time.Time `json:"ts"`
 }
 
 // StateTransitionEntry defines model for StateTransitionEntry.
@@ -979,6 +1162,33 @@ type ListWorkStreamsParams struct {
 // ListWorkStreamsParamsStatus defines parameters for ListWorkStreams.
 type ListWorkStreamsParamsStatus string
 
+// ListSessionsParams defines parameters for ListSessions.
+type ListSessionsParams struct {
+	Harness *ListSessionsParamsHarness `form:"harness,omitempty" json:"harness,omitempty"`
+	Origin  *ListSessionsParamsOrigin  `form:"origin,omitempty" json:"origin,omitempty"`
+
+	// Repo Repository as owner/name or bare name.
+	Repo   *string                   `form:"repo,omitempty" json:"repo,omitempty"`
+	Branch *string                   `form:"branch,omitempty" json:"branch,omitempty"`
+	Status *ListSessionsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// Q Full-text search over prompts, title, repo, branch, and linked refs.
+	Q                *string    `form:"q,omitempty" json:"q,omitempty"`
+	Since            *time.Time `form:"since,omitempty" json:"since,omitempty"`
+	IncludeSubagents *bool      `form:"include_subagents,omitempty" json:"include_subagents,omitempty"`
+	Limit            *int       `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset           *int       `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListSessionsParamsHarness defines parameters for ListSessions.
+type ListSessionsParamsHarness string
+
+// ListSessionsParamsOrigin defines parameters for ListSessions.
+type ListSessionsParamsOrigin string
+
+// ListSessionsParamsStatus defines parameters for ListSessions.
+type ListSessionsParamsStatus string
+
 // ReleaseLeaseJSONBody defines parameters for ReleaseLease.
 type ReleaseLeaseJSONBody struct {
 	LeaseToken *string `json:"lease_token,omitempty"`
@@ -1021,6 +1231,9 @@ type CreateWorkStreamJSONRequestBody = CreateWorkStreamRequest
 
 // UpdateWorkStreamJSONRequestBody defines body for UpdateWorkStream for application/json ContentType.
 type UpdateWorkStreamJSONRequestBody = UpdateWorkStreamRequest
+
+// CreateSessionLinkJSONRequestBody defines body for CreateSessionLink for application/json ContentType.
+type CreateSessionLinkJSONRequestBody = CreateSessionLinkRequest
 
 // UpdateTicketJSONRequestBody defines body for UpdateTicket for application/json ContentType.
 type UpdateTicketJSONRequestBody = UpdateTicketRequest
@@ -1105,6 +1318,18 @@ type ServerInterface interface {
 
 	// (PATCH /projects/{projectID}/work-streams/{workStreamID})
 	UpdateWorkStream(w http.ResponseWriter, r *http.Request, projectID string, workStreamID string)
+	// ListSessions List tracked Claude Code and Codex sessions
+	// (GET /sessions)
+	ListSessions(w http.ResponseWriter, r *http.Request, params ListSessionsParams)
+	// GetSessionCollectorStatus Health of the session ingestion loop
+	// (GET /sessions/collector)
+	GetSessionCollectorStatus(w http.ResponseWriter, r *http.Request)
+	// GetSession Session detail with prompts, links, and subagent children
+	// (GET /sessions/{sessionID})
+	GetSession(w http.ResponseWriter, r *http.Request, sessionID string)
+	// CreateSessionLink Link a session to a PR, Linear issue, ticket, or review
+	// (POST /sessions/{sessionID}/links)
+	CreateSessionLink(w http.ResponseWriter, r *http.Request, sessionID string)
 
 	// (GET /tickets/{ticketID})
 	GetTicket(w http.ResponseWriter, r *http.Request, ticketID string)
@@ -1704,6 +1929,222 @@ func (siw *ServerInterfaceWrapper) UpdateWorkStream(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ListSessions operation middleware
+func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSessionsParams
+
+	// ------------- Optional query parameter "harness" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "harness", r.URL.Query(), &params.Harness, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "harness"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "harness", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "origin" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "origin", r.URL.Query(), &params.Origin, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "origin"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "origin", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "repo" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "repo", r.URL.Query(), &params.Repo, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "repo"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "repo", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", r.URL.Query(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "branch"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "branch", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "since" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "since", r.URL.Query(), &params.Since, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "since"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "since", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "include_subagents" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "include_subagents", r.URL.Query(), &params.IncludeSubagents, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "include_subagents"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "include_subagents", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSessions(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSessionCollectorStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetSessionCollectorStatus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSessionCollectorStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSession operation middleware
+func (siw *ServerInterfaceWrapper) GetSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "sessionID" -------------
+	var sessionID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionID", r.PathValue("sessionID"), &sessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSession(w, r, sessionID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateSessionLink operation middleware
+func (siw *ServerInterfaceWrapper) CreateSessionLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "sessionID" -------------
+	var sessionID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionID", r.PathValue("sessionID"), &sessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateSessionLink(w, r, sessionID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetTicket operation middleware
 func (siw *ServerInterfaceWrapper) GetTicket(w http.ResponseWriter, r *http.Request) {
 
@@ -2168,6 +2609,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tickets/{ticketID}/lease/renew", wrapper.RenewLease)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/tickets/{ticketID}/lease", wrapper.ReleaseLease)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/gate/callback/{token}", wrapper.PostGateCallback)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/sessions", wrapper.ListSessions)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/sessions/collector", wrapper.GetSessionCollectorStatus)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/sessions/{sessionID}", wrapper.GetSession)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/sessions/{sessionID}/links", wrapper.CreateSessionLink)
 
 	return m
 }
@@ -3019,6 +3464,206 @@ func (response UpdateWorkStream500JSONResponse) VisitUpdateWorkStreamResponse(w 
 	return err
 }
 
+type ListSessionsRequestObject struct {
+	Params ListSessionsParams
+}
+
+type ListSessionsResponseObject interface {
+	VisitListSessionsResponse(w http.ResponseWriter) error
+}
+
+type ListSessions200JSONResponse SessionListResponse
+
+func (response ListSessions200JSONResponse) VisitListSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessions401JSONResponse StructuredError
+
+func (response ListSessions401JSONResponse) VisitListSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessions500JSONResponse StructuredError
+
+func (response ListSessions500JSONResponse) VisitListSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSessionCollectorStatusRequestObject struct {
+}
+
+type GetSessionCollectorStatusResponseObject interface {
+	VisitGetSessionCollectorStatusResponse(w http.ResponseWriter) error
+}
+
+type GetSessionCollectorStatus200JSONResponse SessionCollectorStatus
+
+func (response GetSessionCollectorStatus200JSONResponse) VisitGetSessionCollectorStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSessionCollectorStatus401JSONResponse StructuredError
+
+func (response GetSessionCollectorStatus401JSONResponse) VisitGetSessionCollectorStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSessionRequestObject struct {
+	SessionID string `json:"sessionID"`
+}
+
+type GetSessionResponseObject interface {
+	VisitGetSessionResponse(w http.ResponseWriter) error
+}
+
+type GetSession200JSONResponse SessionDetail
+
+func (response GetSession200JSONResponse) VisitGetSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSession401JSONResponse StructuredError
+
+func (response GetSession401JSONResponse) VisitGetSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSession404JSONResponse StructuredError
+
+func (response GetSession404JSONResponse) VisitGetSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSessionLinkRequestObject struct {
+	SessionID string `json:"sessionID"`
+	Body      *CreateSessionLinkJSONRequestBody
+}
+
+type CreateSessionLinkResponseObject interface {
+	VisitCreateSessionLinkResponse(w http.ResponseWriter) error
+}
+
+type CreateSessionLink201JSONResponse SessionLink
+
+func (response CreateSessionLink201JSONResponse) VisitCreateSessionLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSessionLink400JSONResponse StructuredError
+
+func (response CreateSessionLink400JSONResponse) VisitCreateSessionLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSessionLink401JSONResponse StructuredError
+
+func (response CreateSessionLink401JSONResponse) VisitCreateSessionLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSessionLink404JSONResponse StructuredError
+
+func (response CreateSessionLink404JSONResponse) VisitCreateSessionLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetTicketRequestObject struct {
 	TicketID string `json:"ticketID"`
 }
@@ -3513,6 +4158,18 @@ type StrictServerInterface interface {
 
 	// (PATCH /projects/{projectID}/work-streams/{workStreamID})
 	UpdateWorkStream(ctx context.Context, request UpdateWorkStreamRequestObject) (UpdateWorkStreamResponseObject, error)
+	// ListSessions List tracked Claude Code and Codex sessions
+	// (GET /sessions)
+	ListSessions(ctx context.Context, request ListSessionsRequestObject) (ListSessionsResponseObject, error)
+	// GetSessionCollectorStatus Health of the session ingestion loop
+	// (GET /sessions/collector)
+	GetSessionCollectorStatus(ctx context.Context, request GetSessionCollectorStatusRequestObject) (GetSessionCollectorStatusResponseObject, error)
+	// GetSession Session detail with prompts, links, and subagent children
+	// (GET /sessions/{sessionID})
+	GetSession(ctx context.Context, request GetSessionRequestObject) (GetSessionResponseObject, error)
+	// CreateSessionLink Link a session to a PR, Linear issue, ticket, or review
+	// (POST /sessions/{sessionID}/links)
+	CreateSessionLink(ctx context.Context, request CreateSessionLinkRequestObject) (CreateSessionLinkResponseObject, error)
 
 	// (GET /tickets/{ticketID})
 	GetTicket(ctx context.Context, request GetTicketRequestObject) (GetTicketResponseObject, error)
@@ -4153,6 +4810,115 @@ func (sh *strictHandler) UpdateWorkStream(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateWorkStreamResponseObject); ok {
 		if err := validResponse.VisitUpdateWorkStreamResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSessions operation middleware
+func (sh *strictHandler) ListSessions(w http.ResponseWriter, r *http.Request, params ListSessionsParams) {
+	var request ListSessionsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSessions(ctx, request.(ListSessionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSessions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSessionsResponseObject); ok {
+		if err := validResponse.VisitListSessionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSessionCollectorStatus operation middleware
+func (sh *strictHandler) GetSessionCollectorStatus(w http.ResponseWriter, r *http.Request) {
+	var request GetSessionCollectorStatusRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSessionCollectorStatus(ctx, request.(GetSessionCollectorStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSessionCollectorStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSessionCollectorStatusResponseObject); ok {
+		if err := validResponse.VisitGetSessionCollectorStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSession operation middleware
+func (sh *strictHandler) GetSession(w http.ResponseWriter, r *http.Request, sessionID string) {
+	var request GetSessionRequestObject
+
+	request.SessionID = sessionID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSession(ctx, request.(GetSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSessionResponseObject); ok {
+		if err := validResponse.VisitGetSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateSessionLink operation middleware
+func (sh *strictHandler) CreateSessionLink(w http.ResponseWriter, r *http.Request, sessionID string) {
+	var request CreateSessionLinkRequestObject
+
+	request.SessionID = sessionID
+
+	var body CreateSessionLinkJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateSessionLink(ctx, request.(CreateSessionLinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateSessionLink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateSessionLinkResponseObject); ok {
+		if err := validResponse.VisitCreateSessionLinkResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

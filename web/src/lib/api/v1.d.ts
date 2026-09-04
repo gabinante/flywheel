@@ -351,6 +351,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List tracked Claude Code and Codex sessions */
+        get: operations["ListSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sessions/collector": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Health of the session ingestion loop */
+        get: operations["GetSessionCollectorStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sessions/{sessionID}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Session detail with prompts, links, and subagent children */
+        get: operations["GetSession"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sessions/{sessionID}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Link a session to a PR, Linear issue, ticket, or review */
+        post: operations["CreateSessionLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -778,6 +846,91 @@ export interface components {
             outcome?: "success" | "failed" | "skipped";
             metadata?: {
                 [key: string]: unknown;
+            };
+        };
+        /** @description One tracked Claude Code or Codex session. */
+        AgentSession: {
+            id: string;
+            /** @description claude_code or codex */
+            harness: string;
+            /** @description The harness's own session or thread id */
+            external_id: string;
+            /** @description interactive, dispatched, automation, or subagent */
+            origin: string;
+            parent_session_id?: string;
+            cwd: string;
+            repo: string;
+            branch: string;
+            model: string;
+            reasoning_effort: string;
+            title: string;
+            first_prompt: string;
+            transcript_path: string;
+            /** Format: int64 */
+            tokens_in: number;
+            /** Format: int64 */
+            tokens_out: number;
+            prompt_count: number;
+            tool_call_count: number;
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            last_activity_at: string;
+            /** Format: date-time */
+            ended_at?: string;
+            /** @description active, idle, or ended (derived from recency) */
+            status: string;
+            links: components["schemas"]["SessionLink"][];
+            metadata?: {
+                [key: string]: unknown;
+            };
+        };
+        SessionLink: {
+            session_id: string;
+            /** @description pr, linear_issue, ticket, or review */
+            kind: string;
+            /** @description owner/repo#123, KEY-123, ticket id, or review request id */
+            ref: string;
+            /** @description inferred, explicit, or dispatch */
+            source: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        SessionPrompt: {
+            seq: number;
+            role: string;
+            text: string;
+            /** Format: date-time */
+            ts: string;
+        };
+        SessionDetail: {
+            session: components["schemas"]["AgentSession"];
+            prompts: components["schemas"]["SessionPrompt"][];
+            children: components["schemas"]["AgentSession"][];
+        };
+        SessionListResponse: {
+            sessions: components["schemas"]["AgentSession"][];
+            total: number;
+            limit: number;
+            offset: number;
+        };
+        CreateSessionLinkRequest: {
+            /** @enum {string} */
+            kind: "pr" | "linear_issue" | "ticket" | "review";
+            ref: string;
+        };
+        SessionCollectorStatus: {
+            enabled: boolean;
+            claude_dir: string;
+            codex_dir: string;
+            /** Format: date-time */
+            last_run_at?: string;
+            last_error?: string;
+            /** Format: int64 */
+            last_duration_ms: number;
+            sessions_total: number;
+            by_harness: {
+                [key: string]: number;
             };
         };
     };
@@ -1928,6 +2081,179 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    ListSessions: {
+        parameters: {
+            query?: {
+                harness?: "claude_code" | "codex";
+                origin?: "interactive" | "dispatched" | "automation" | "subagent";
+                /** @description Repository as owner/name or bare name. */
+                repo?: string;
+                branch?: string;
+                status?: "active" | "idle" | "ended";
+                /** @description Full-text search over prompts, title, repo, branch, and linked refs. */
+                q?: string;
+                since?: string;
+                include_subagents?: boolean;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Internal error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    GetSessionCollectorStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionCollectorStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    GetSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    CreateSessionLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSessionLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionLink"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
             };
         };
     };

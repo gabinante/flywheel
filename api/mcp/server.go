@@ -53,6 +53,7 @@ func NewServer(b *Backend) (*mcp.Server, error) {
 	})
 	RegisterTools(server, b)
 	RegisterRepoTools(server, b)
+	RegisterSessionTools(server, b)
 	registerResources(server)
 	return server, nil
 }

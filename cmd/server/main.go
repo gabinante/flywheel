@@ -28,6 +28,7 @@ import (
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
 	"github.com/gabinante/flywheel/internal/review"
+	"github.com/gabinante/flywheel/internal/sessions"
 	"github.com/gabinante/flywheel/internal/ticket"
 	"github.com/gabinante/flywheel/internal/user"
 	"github.com/gabinante/flywheel/internal/workflow"
@@ -194,6 +195,15 @@ func run(ctx context.Context, cfg *config.Config) {
 	reviewSvc := review.NewService(reviewStore, ticketSvc, bus)
 	userStore := user.NewStore(pool)
 
+	// Session tracking: ingest Claude Code and Codex sessions from their local stores.
+	sessionsSvc := sessions.NewService(sessions.NewStore(pool), sessions.Config{
+		Enabled:   cfg.Sessions.Enabled,
+		ClaudeDir: cfg.Sessions.ClaudeDir,
+		CodexDir:  cfg.Sessions.CodexDir,
+		Interval:  cfg.Sessions.Interval,
+	})
+	sessionsSvc.Start(ctx)
+
 	strictServer := &rest.StrictServer{
 		OrgSvc:        orgSvc,
 		ProjectSvc:    projectSvc,
@@ -202,6 +212,7 @@ func run(ctx context.Context, cfg *config.Config) {
 		QueueSvc:      queueSvc,
 		TraceSvc:      execSvc,
 		ReviewSvc:     reviewSvc,
+		SessionsSvc:   sessionsSvc,
 		AgentStore:    agentStore,
 	}
 
@@ -252,6 +263,7 @@ func run(ctx context.Context, cfg *config.Config) {
 		AgentStore: agentStore,
 		Repos:      repoSvc,
 		Workflow:   workflowEngine,
+		Sessions:   sessionsSvc,
 	})
 	if err != nil {
 		slog.Error("mcp server init failed", "error", err)

@@ -7,6 +7,7 @@ import {
   LogOut,
   Building2,
   Settings,
+  TerminalSquare,
   Ticket,
   Workflow,
 } from 'lucide-react'
@@ -145,6 +146,12 @@ export function LeftSidebar() {
           icon: ClipboardCheck,
           href: `${projectBase}/reviews`,
           match: `${projectBase}/reviews`,
+        },
+        {
+          label: 'Sessions',
+          icon: TerminalSquare,
+          href: `${projectBase}/sessions`,
+          match: `${projectBase}/sessions`,
         },
         {
           label: 'Work Streams',

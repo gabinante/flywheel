@@ -7,6 +7,7 @@ import (
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
 	"github.com/gabinante/flywheel/internal/review"
+	"github.com/gabinante/flywheel/internal/sessions"
 	"github.com/gabinante/flywheel/internal/ticket"
 	"github.com/gabinante/flywheel/internal/workflow"
 	"github.com/gabinante/flywheel/internal/workstream"
@@ -24,6 +25,7 @@ type Backend struct {
 	AgentStore agent.AgentStore
 	Repos      *project.RepositoryService // nil-safe: multi-repo features disabled when nil
 	Workflow   *workflow.Engine
+	Sessions   *sessions.Service // nil-safe: session tools are not registered when nil
 
 	// DefaultAgentID is used as a fallback when agent_id is not passed in args
 	// and not available from HTTP auth context.

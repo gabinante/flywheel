@@ -15,6 +15,8 @@ import { ProjectsPage } from '@/pages/projects-page'
 import { TicketsPage } from '@/pages/tickets-page'
 import { TicketDetailPage } from '@/pages/ticket-detail-page'
 import { ReviewsPage } from '@/pages/reviews-page'
+import { SessionsPage } from '@/pages/sessions-page'
+import { SessionDetailPage } from '@/pages/session-detail-page'
 import { ProjectSettingsPage } from '@/pages/project-settings-page'
 import { WorkStreamsPage } from '@/pages/work-streams-page'
 import { ProjectCreatePage } from '@/pages/project-create-page'
@@ -143,6 +145,14 @@ export default function App() {
                   <Route
                     path="/orgs/:orgId/projects/:projectId/reviews"
                     element={<ReviewsPage />}
+                  />
+                  <Route
+                    path="/orgs/:orgId/projects/:projectId/sessions"
+                    element={<SessionsPage />}
+                  />
+                  <Route
+                    path="/orgs/:orgId/projects/:projectId/sessions/:sessionId"
+                    element={<SessionDetailPage />}
                   />
                   <Route
                     path="/orgs/:orgId/projects/:projectId/work-streams/new"

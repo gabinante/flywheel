@@ -39,6 +39,30 @@ func (e CreateReviewRequestDecision) Valid() bool {
 	}
 }
 
+// Defines values for CreateSessionLinkRequestKind.
+const (
+	CreateSessionLinkRequestKindLinearIssue CreateSessionLinkRequestKind = "linear_issue"
+	CreateSessionLinkRequestKindPr          CreateSessionLinkRequestKind = "pr"
+	CreateSessionLinkRequestKindReview      CreateSessionLinkRequestKind = "review"
+	CreateSessionLinkRequestKindTicket      CreateSessionLinkRequestKind = "ticket"
+)
+
+// Valid indicates whether the value is a known member of the CreateSessionLinkRequestKind enum.
+func (e CreateSessionLinkRequestKind) Valid() bool {
+	switch e {
+	case CreateSessionLinkRequestKindLinearIssue:
+		return true
+	case CreateSessionLinkRequestKindPr:
+		return true
+	case CreateSessionLinkRequestKindReview:
+		return true
+	case CreateSessionLinkRequestKindTicket:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateTicketRequestType.
 const (
 	CreateTicketRequestTypeBug    CreateTicketRequestType = "bug"
@@ -483,6 +507,104 @@ func (e ListWorkStreamsParamsStatus) Valid() bool {
 	}
 }
 
+// Defines values for ListSessionsParamsHarness.
+const (
+	ListSessionsParamsHarnessClaudeCode ListSessionsParamsHarness = "claude_code"
+	ListSessionsParamsHarnessCodex      ListSessionsParamsHarness = "codex"
+)
+
+// Valid indicates whether the value is a known member of the ListSessionsParamsHarness enum.
+func (e ListSessionsParamsHarness) Valid() bool {
+	switch e {
+	case ListSessionsParamsHarnessClaudeCode:
+		return true
+	case ListSessionsParamsHarnessCodex:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListSessionsParamsOrigin.
+const (
+	ListSessionsParamsOriginAutomation  ListSessionsParamsOrigin = "automation"
+	ListSessionsParamsOriginDispatched  ListSessionsParamsOrigin = "dispatched"
+	ListSessionsParamsOriginInteractive ListSessionsParamsOrigin = "interactive"
+	ListSessionsParamsOriginSubagent    ListSessionsParamsOrigin = "subagent"
+)
+
+// Valid indicates whether the value is a known member of the ListSessionsParamsOrigin enum.
+func (e ListSessionsParamsOrigin) Valid() bool {
+	switch e {
+	case ListSessionsParamsOriginAutomation:
+		return true
+	case ListSessionsParamsOriginDispatched:
+		return true
+	case ListSessionsParamsOriginInteractive:
+		return true
+	case ListSessionsParamsOriginSubagent:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListSessionsParamsStatus.
+const (
+	ListSessionsParamsStatusActive ListSessionsParamsStatus = "active"
+	ListSessionsParamsStatusEnded  ListSessionsParamsStatus = "ended"
+	ListSessionsParamsStatusIdle   ListSessionsParamsStatus = "idle"
+)
+
+// Valid indicates whether the value is a known member of the ListSessionsParamsStatus enum.
+func (e ListSessionsParamsStatus) Valid() bool {
+	switch e {
+	case ListSessionsParamsStatusActive:
+		return true
+	case ListSessionsParamsStatusEnded:
+		return true
+	case ListSessionsParamsStatusIdle:
+		return true
+	default:
+		return false
+	}
+}
+
+// AgentSession One tracked Claude Code or Codex session.
+type AgentSession struct {
+	Branch  string     `json:"branch"`
+	Cwd     string     `json:"cwd"`
+	EndedAt *time.Time `json:"ended_at,omitempty"`
+
+	// ExternalId The harness's own session or thread id
+	ExternalId  string `json:"external_id"`
+	FirstPrompt string `json:"first_prompt"`
+
+	// Harness claude_code or codex
+	Harness        string                  `json:"harness"`
+	Id             string                  `json:"id"`
+	LastActivityAt time.Time               `json:"last_activity_at"`
+	Links          []SessionLink           `json:"links"`
+	Metadata       *map[string]interface{} `json:"metadata,omitempty"`
+	Model          string                  `json:"model"`
+
+	// Origin interactive, dispatched, automation, or subagent
+	Origin          string    `json:"origin"`
+	ParentSessionId *string   `json:"parent_session_id,omitempty"`
+	PromptCount     int       `json:"prompt_count"`
+	ReasoningEffort string    `json:"reasoning_effort"`
+	Repo            string    `json:"repo"`
+	StartedAt       time.Time `json:"started_at"`
+
+	// Status active, idle, or ended (derived from recency)
+	Status         string `json:"status"`
+	Title          string `json:"title"`
+	TokensIn       int64  `json:"tokens_in"`
+	TokensOut      int64  `json:"tokens_out"`
+	ToolCallCount  int    `json:"tool_call_count"`
+	TranscriptPath string `json:"transcript_path"`
+}
+
 // ClaimRequest defines model for ClaimRequest.
 type ClaimRequest struct {
 	AgentId string `json:"agent_id"`
@@ -528,6 +650,15 @@ type CreateReviewRequest struct {
 
 // CreateReviewRequestDecision approved moves awaiting_validation → validated; rejected moves awaiting_validation → executing; reopened moves closed → draft (re-opens ticket for new lifecycle).
 type CreateReviewRequestDecision string
+
+// CreateSessionLinkRequest defines model for CreateSessionLinkRequest.
+type CreateSessionLinkRequest struct {
+	Kind CreateSessionLinkRequestKind `json:"kind"`
+	Ref  string                       `json:"ref"`
+}
+
+// CreateSessionLinkRequestKind defines model for CreateSessionLinkRequest.Kind.
+type CreateSessionLinkRequestKind string
 
 // CreateTicketRequest defines model for CreateTicketRequest.
 type CreateTicketRequest struct {
@@ -751,6 +882,58 @@ type RenewLeaseResponseBody struct {
 type ResolveEscalationRequest struct {
 	Answer     string  `json:"answer"`
 	ReviewerId *string `json:"reviewer_id,omitempty"`
+}
+
+// SessionCollectorStatus defines model for SessionCollectorStatus.
+type SessionCollectorStatus struct {
+	ByHarness      map[string]int `json:"by_harness"`
+	ClaudeDir      string         `json:"claude_dir"`
+	CodexDir       string         `json:"codex_dir"`
+	Enabled        bool           `json:"enabled"`
+	LastDurationMs int64          `json:"last_duration_ms"`
+	LastError      *string        `json:"last_error,omitempty"`
+	LastRunAt      *time.Time     `json:"last_run_at,omitempty"`
+	SessionsTotal  int            `json:"sessions_total"`
+}
+
+// SessionDetail defines model for SessionDetail.
+type SessionDetail struct {
+	Children []AgentSession  `json:"children"`
+	Prompts  []SessionPrompt `json:"prompts"`
+
+	// Session One tracked Claude Code or Codex session.
+	Session AgentSession `json:"session"`
+}
+
+// SessionLink defines model for SessionLink.
+type SessionLink struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Kind pr, linear_issue, ticket, or review
+	Kind string `json:"kind"`
+
+	// Ref owner/repo#123, KEY-123, ticket id, or review request id
+	Ref       string `json:"ref"`
+	SessionId string `json:"session_id"`
+
+	// Source inferred, explicit, or dispatch
+	Source string `json:"source"`
+}
+
+// SessionListResponse defines model for SessionListResponse.
+type SessionListResponse struct {
+	Limit    int            `json:"limit"`
+	Offset   int            `json:"offset"`
+	Sessions []AgentSession `json:"sessions"`
+	Total    int            `json:"total"`
+}
+
+// SessionPrompt defines model for SessionPrompt.
+type SessionPrompt struct {
+	Role string    `json:"role"`
+	Seq  int       `json:"seq"`
+	Text string    `json:"text"`
+	Ts   time.Time `json:"ts"`
 }
 
 // StateTransitionEntry defines model for StateTransitionEntry.
@@ -978,6 +1161,33 @@ type ListWorkStreamsParams struct {
 // ListWorkStreamsParamsStatus defines parameters for ListWorkStreams.
 type ListWorkStreamsParamsStatus string
 
+// ListSessionsParams defines parameters for ListSessions.
+type ListSessionsParams struct {
+	Harness *ListSessionsParamsHarness `form:"harness,omitempty" json:"harness,omitempty"`
+	Origin  *ListSessionsParamsOrigin  `form:"origin,omitempty" json:"origin,omitempty"`
+
+	// Repo Repository as owner/name or bare name.
+	Repo   *string                   `form:"repo,omitempty" json:"repo,omitempty"`
+	Branch *string                   `form:"branch,omitempty" json:"branch,omitempty"`
+	Status *ListSessionsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// Q Full-text search over prompts, title, repo, branch, and linked refs.
+	Q                *string    `form:"q,omitempty" json:"q,omitempty"`
+	Since            *time.Time `form:"since,omitempty" json:"since,omitempty"`
+	IncludeSubagents *bool      `form:"include_subagents,omitempty" json:"include_subagents,omitempty"`
+	Limit            *int       `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset           *int       `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListSessionsParamsHarness defines parameters for ListSessions.
+type ListSessionsParamsHarness string
+
+// ListSessionsParamsOrigin defines parameters for ListSessions.
+type ListSessionsParamsOrigin string
+
+// ListSessionsParamsStatus defines parameters for ListSessions.
+type ListSessionsParamsStatus string
+
 // ReleaseLeaseJSONBody defines parameters for ReleaseLease.
 type ReleaseLeaseJSONBody struct {
 	LeaseToken *string `json:"lease_token,omitempty"`
@@ -1020,6 +1230,9 @@ type CreateWorkStreamJSONRequestBody = CreateWorkStreamRequest
 
 // UpdateWorkStreamJSONRequestBody defines body for UpdateWorkStream for application/json ContentType.
 type UpdateWorkStreamJSONRequestBody = UpdateWorkStreamRequest
+
+// CreateSessionLinkJSONRequestBody defines body for CreateSessionLink for application/json ContentType.
+type CreateSessionLinkJSONRequestBody = CreateSessionLinkRequest
 
 // UpdateTicketJSONRequestBody defines body for UpdateTicket for application/json ContentType.
 type UpdateTicketJSONRequestBody = UpdateTicketRequest
@@ -1241,6 +1454,35 @@ type ClientInterface interface {
 	// UpdateWorkStream performs a PATCH /projects/{projectID}/work-streams/{workStreamID} (the `UpdateWorkStream` operationId) request.
 	// Takes a body of the `application/json` content type.
 	UpdateWorkStream(ctx context.Context, projectID string, workStreamID string, body UpdateWorkStreamJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSessions List tracked Claude Code and Codex sessions
+	//
+	// Corresponds with GET /sessions (the `ListSessions` operationId).
+	ListSessions(ctx context.Context, params *ListSessionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSessionCollectorStatus Health of the session ingestion loop
+	//
+	// Corresponds with GET /sessions/collector (the `GetSessionCollectorStatus` operationId).
+	GetSessionCollectorStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSession Session detail with prompts, links, and subagent children
+	//
+	// Corresponds with GET /sessions/{sessionID} (the `GetSession` operationId).
+	GetSession(ctx context.Context, sessionID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSessionLinkWithBody Link a session to a PR, Linear issue, ticket, or review
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /sessions/{sessionID}/links (the `CreateSessionLink` operationId).
+	CreateSessionLinkWithBody(ctx context.Context, sessionID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSessionLink Link a session to a PR, Linear issue, ticket, or review
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /sessions/{sessionID}/links (the `CreateSessionLink` operationId).
+	CreateSessionLink(ctx context.Context, sessionID string, body CreateSessionLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetTicket performs a GET /tickets/{ticketID} (the `GetTicket` operationId) request.
 	GetTicket(ctx context.Context, ticketID string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1720,6 +1962,85 @@ func (c *Client) UpdateWorkStreamWithBody(ctx context.Context, projectID string,
 // Takes a body of the `application/json` content type.
 func (c *Client) UpdateWorkStream(ctx context.Context, projectID string, workStreamID string, body UpdateWorkStreamJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateWorkStreamRequest(c.Server, projectID, workStreamID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListSessions List tracked Claude Code and Codex sessions
+//
+// Corresponds with GET /sessions (the `ListSessions` operationId).
+func (c *Client) ListSessions(ctx context.Context, params *ListSessionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSessionsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetSessionCollectorStatus Health of the session ingestion loop
+//
+// Corresponds with GET /sessions/collector (the `GetSessionCollectorStatus` operationId).
+func (c *Client) GetSessionCollectorStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSessionCollectorStatusRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetSession Session detail with prompts, links, and subagent children
+//
+// Corresponds with GET /sessions/{sessionID} (the `GetSession` operationId).
+func (c *Client) GetSession(ctx context.Context, sessionID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSessionRequest(c.Server, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateSessionLinkWithBody Link a session to a PR, Linear issue, ticket, or review
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /sessions/{sessionID}/links (the `CreateSessionLink` operationId).
+func (c *Client) CreateSessionLinkWithBody(ctx context.Context, sessionID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSessionLinkRequestWithBody(c.Server, sessionID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateSessionLink Link a session to a PR, Linear issue, ticket, or review
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /sessions/{sessionID}/links (the `CreateSessionLink` operationId).
+func (c *Client) CreateSessionLink(ctx context.Context, sessionID string, body CreateSessionLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSessionLinkRequest(c.Server, sessionID, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2864,6 +3185,276 @@ func NewUpdateWorkStreamRequestWithBody(server string, projectID string, workStr
 	return req, nil
 }
 
+// NewListSessionsRequest constructs an http.Request for the ListSessions method
+func NewListSessionsRequest(server string, params *ListSessionsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sessions")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Harness != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "harness", *params.Harness, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Origin != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "origin", *params.Origin, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Repo != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "repo", *params.Repo, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Branch != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "branch", *params.Branch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Status != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "status", *params.Status, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Since != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "since", *params.Since, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.IncludeSubagents != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "include_subagents", *params.IncludeSubagents, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "offset", *params.Offset, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSessionCollectorStatusRequest constructs an http.Request for the GetSessionCollectorStatus method
+func NewGetSessionCollectorStatusRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sessions/collector")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSessionRequest constructs an http.Request for the GetSession method
+func NewGetSessionRequest(server string, sessionID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "sessionID", sessionID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sessions/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateSessionLinkRequest calls the generic CreateSessionLink builder with application/json body
+func NewCreateSessionLinkRequest(server string, sessionID string, body CreateSessionLinkJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateSessionLinkRequestWithBody(server, sessionID, "application/json", bodyReader)
+}
+
+// NewCreateSessionLinkRequestWithBody constructs an http.Request for the CreateSessionLink method, with any body, and a specified content type
+func NewCreateSessionLinkRequestWithBody(server string, sessionID string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "sessionID", sessionID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sessions/%s/links", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetTicketRequest constructs an http.Request for the GetTicket method
 func NewGetTicketRequest(server string, ticketID string) (*http.Request, error) {
 	var err error
@@ -3571,6 +4162,41 @@ type ClientWithResponsesInterface interface {
 	// UpdateWorkStreamWithResponse performs a PATCH /projects/{projectID}/work-streams/{workStreamID} (the `UpdateWorkStream` operationId) request.
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	UpdateWorkStreamWithResponse(ctx context.Context, projectID string, workStreamID string, body UpdateWorkStreamJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateWorkStreamResponse, error)
+
+	// ListSessionsWithResponse List tracked Claude Code and Codex sessions
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /sessions (the `ListSessions` operationId).
+	ListSessionsWithResponse(ctx context.Context, params *ListSessionsParams, reqEditors ...RequestEditorFn) (*ListSessionsResponse, error)
+
+	// GetSessionCollectorStatusWithResponse Health of the session ingestion loop
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /sessions/collector (the `GetSessionCollectorStatus` operationId).
+	GetSessionCollectorStatusWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetSessionCollectorStatusResponse, error)
+
+	// GetSessionWithResponse Session detail with prompts, links, and subagent children
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /sessions/{sessionID} (the `GetSession` operationId).
+	GetSessionWithResponse(ctx context.Context, sessionID string, reqEditors ...RequestEditorFn) (*GetSessionResponse, error)
+
+	// CreateSessionLinkWithBodyWithResponse Link a session to a PR, Linear issue, ticket, or review
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /sessions/{sessionID}/links (the `CreateSessionLink` operationId).
+	CreateSessionLinkWithBodyWithResponse(ctx context.Context, sessionID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSessionLinkResponse, error)
+
+	// CreateSessionLinkWithResponse Link a session to a PR, Linear issue, ticket, or review
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /sessions/{sessionID}/links (the `CreateSessionLink` operationId).
+	CreateSessionLinkWithResponse(ctx context.Context, sessionID string, body CreateSessionLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSessionLinkResponse, error)
 
 	// GetTicketWithResponse performs a GET /tickets/{ticketID} (the `GetTicket` operationId) request.
 	//
@@ -4687,6 +5313,226 @@ func (r UpdateWorkStreamResponse) ContentType() string {
 	return ""
 }
 
+type ListSessionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SessionListResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListSessionsResponse) GetJSON200() *SessionListResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListSessionsResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListSessionsResponse) GetJSON500() *StructuredError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListSessionsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSessionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSessionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListSessionsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetSessionCollectorStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SessionCollectorStatus
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSessionCollectorStatusResponse) GetJSON200() *SessionCollectorStatus {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetSessionCollectorStatusResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSessionCollectorStatusResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSessionCollectorStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSessionCollectorStatusResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSessionCollectorStatusResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetSessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SessionDetail
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSessionResponse) GetJSON200() *SessionDetail {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetSessionResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetSessionResponse) GetJSON404() *StructuredError {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSessionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSessionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateSessionLinkResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *SessionLink
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *StructuredError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *StructuredError
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateSessionLinkResponse) GetJSON201() *SessionLink {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateSessionLinkResponse) GetJSON400() *StructuredError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateSessionLinkResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CreateSessionLinkResponse) GetJSON404() *StructuredError {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateSessionLinkResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateSessionLinkResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateSessionLinkResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateSessionLinkResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetTicketResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5500,6 +6346,71 @@ func (c *ClientWithResponses) UpdateWorkStreamWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseUpdateWorkStreamResponse(rsp)
+}
+
+// ListSessionsWithResponse List tracked Claude Code and Codex sessions
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /sessions (the `ListSessions` operationId).
+func (c *ClientWithResponses) ListSessionsWithResponse(ctx context.Context, params *ListSessionsParams, reqEditors ...RequestEditorFn) (*ListSessionsResponse, error) {
+	rsp, err := c.ListSessions(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSessionsResponse(rsp)
+}
+
+// GetSessionCollectorStatusWithResponse Health of the session ingestion loop
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /sessions/collector (the `GetSessionCollectorStatus` operationId).
+func (c *ClientWithResponses) GetSessionCollectorStatusWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetSessionCollectorStatusResponse, error) {
+	rsp, err := c.GetSessionCollectorStatus(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSessionCollectorStatusResponse(rsp)
+}
+
+// GetSessionWithResponse Session detail with prompts, links, and subagent children
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /sessions/{sessionID} (the `GetSession` operationId).
+func (c *ClientWithResponses) GetSessionWithResponse(ctx context.Context, sessionID string, reqEditors ...RequestEditorFn) (*GetSessionResponse, error) {
+	rsp, err := c.GetSession(ctx, sessionID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSessionResponse(rsp)
+}
+
+// CreateSessionLinkWithBodyWithResponse Link a session to a PR, Linear issue, ticket, or review
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /sessions/{sessionID}/links (the `CreateSessionLink` operationId).
+func (c *ClientWithResponses) CreateSessionLinkWithBodyWithResponse(ctx context.Context, sessionID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSessionLinkResponse, error) {
+	rsp, err := c.CreateSessionLinkWithBody(ctx, sessionID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSessionLinkResponse(rsp)
+}
+
+// CreateSessionLinkWithResponse Link a session to a PR, Linear issue, ticket, or review
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /sessions/{sessionID}/links (the `CreateSessionLink` operationId).
+func (c *ClientWithResponses) CreateSessionLinkWithResponse(ctx context.Context, sessionID string, body CreateSessionLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSessionLinkResponse, error) {
+	rsp, err := c.CreateSessionLink(ctx, sessionID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSessionLinkResponse(rsp)
 }
 
 // GetTicketWithResponse performs a GET /tickets/{ticketID} (the `GetTicket` operationId) request.
@@ -6408,6 +7319,166 @@ func ParseUpdateWorkStreamResponse(rsp *http.Response) (*UpdateWorkStreamRespons
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSessionsResponse parses an HTTP response from a ListSessionsWithResponse call
+func ParseListSessionsResponse(rsp *http.Response) (*ListSessionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSessionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SessionListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSessionCollectorStatusResponse parses an HTTP response from a GetSessionCollectorStatusWithResponse call
+func ParseGetSessionCollectorStatusResponse(rsp *http.Response) (*GetSessionCollectorStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSessionCollectorStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SessionCollectorStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSessionResponse parses an HTTP response from a GetSessionWithResponse call
+func ParseGetSessionResponse(rsp *http.Response) (*GetSessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SessionDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateSessionLinkResponse parses an HTTP response from a CreateSessionLinkWithResponse call
+func ParseCreateSessionLinkResponse(rsp *http.Response) (*CreateSessionLinkResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateSessionLinkResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest SessionLink
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	}
 

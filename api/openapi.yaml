@@ -896,6 +896,163 @@ paths:
                     type: string
         "404":
           description: Token not found or expired
+  /sessions:
+    get:
+      operationId: ListSessions
+      summary: List tracked Claude Code and Codex sessions
+      parameters:
+        - name: harness
+          in: query
+          schema:
+            type: string
+            enum: [claude_code, codex]
+        - name: origin
+          in: query
+          schema:
+            type: string
+            enum: [interactive, dispatched, automation, subagent]
+        - name: repo
+          in: query
+          description: Repository as owner/name or bare name.
+          schema:
+            type: string
+        - name: branch
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, idle, ended]
+        - name: q
+          in: query
+          description: Full-text search over prompts, title, repo, branch, and linked refs.
+          schema:
+            type: string
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: include_subagents
+          in: query
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionListResponse'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "500":
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /sessions/collector:
+    get:
+      operationId: GetSessionCollectorStatus
+      summary: Health of the session ingestion loop
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionCollectorStatus'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /sessions/{sessionID}:
+    get:
+      operationId: GetSession
+      summary: Session detail with prompts, links, and subagent children
+      parameters:
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionDetail'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /sessions/{sessionID}/links:
+    post:
+      operationId: CreateSessionLink
+      summary: Link a session to a PR, Linear issue, ticket, or review
+      parameters:
+        - name: sessionID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionLinkRequest'
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionLink'
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
 components:
   securitySchemes:
     BearerAuth:
@@ -1667,3 +1824,158 @@ components:
         metadata:
           type: object
           additionalProperties: true
+    AgentSession:
+      type: object
+      description: One tracked Claude Code or Codex session.
+      required: [id, harness, external_id, origin, cwd, repo, branch, model, reasoning_effort, title, first_prompt, transcript_path, tokens_in, tokens_out, prompt_count, tool_call_count, started_at, last_activity_at, status, links]
+      properties:
+        id:
+          type: string
+        harness:
+          type: string
+          description: claude_code or codex
+        external_id:
+          type: string
+          description: The harness's own session or thread id
+        origin:
+          type: string
+          description: interactive, dispatched, automation, or subagent
+        parent_session_id:
+          type: string
+        cwd:
+          type: string
+        repo:
+          type: string
+        branch:
+          type: string
+        model:
+          type: string
+        reasoning_effort:
+          type: string
+        title:
+          type: string
+        first_prompt:
+          type: string
+        transcript_path:
+          type: string
+        tokens_in:
+          type: integer
+          format: int64
+        tokens_out:
+          type: integer
+          format: int64
+        prompt_count:
+          type: integer
+        tool_call_count:
+          type: integer
+        started_at:
+          type: string
+          format: date-time
+        last_activity_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          description: active, idle, or ended (derived from recency)
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionLink'
+        metadata:
+          type: object
+          additionalProperties: true
+    SessionLink:
+      type: object
+      required: [session_id, kind, ref, source, created_at]
+      properties:
+        session_id:
+          type: string
+        kind:
+          type: string
+          description: pr, linear_issue, ticket, or review
+        ref:
+          type: string
+          description: owner/repo#123, KEY-123, ticket id, or review request id
+        source:
+          type: string
+          description: inferred, explicit, or dispatch
+        created_at:
+          type: string
+          format: date-time
+    SessionPrompt:
+      type: object
+      required: [seq, role, text, ts]
+      properties:
+        seq:
+          type: integer
+        role:
+          type: string
+        text:
+          type: string
+        ts:
+          type: string
+          format: date-time
+    SessionDetail:
+      type: object
+      required: [session, prompts, children]
+      properties:
+        session:
+          $ref: '#/components/schemas/AgentSession'
+        prompts:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionPrompt'
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentSession'
+    SessionListResponse:
+      type: object
+      required: [sessions, total, limit, offset]
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentSession'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+    CreateSessionLinkRequest:
+      type: object
+      required: [kind, ref]
+      properties:
+        kind:
+          type: string
+          enum: [pr, linear_issue, ticket, review]
+        ref:
+          type: string
+    SessionCollectorStatus:
+      type: object
+      required: [enabled, claude_dir, codex_dir, last_duration_ms, sessions_total, by_harness]
+      properties:
+        enabled:
+          type: boolean
+        claude_dir:
+          type: string
+        codex_dir:
+          type: string
+        last_run_at:
+          type: string
+          format: date-time
+        last_error:
+          type: string
+        last_duration_ms:
+          type: integer
+          format: int64
+        sessions_total:
+          type: integer
+        by_harness:
+          type: object
+          additionalProperties:
+            type: integer

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -72,6 +73,12 @@ func Load() *Config {
 			AgentReasoningEffort: getEnv("ORCHESTRATOR_AGENT_REASONING_EFFORT", ""),
 			AgentAPIKey:          resolveAgentAPIKey("ORCHESTRATOR_AGENT_API_KEY", orchestratorDriver),
 			HistoryLimit:         getEnvInt("ORCHESTRATOR_HISTORY_LIMIT", 200),
+		},
+		Sessions: SessionsConfig{
+			Enabled:   getEnvBool("SESSIONS_ENABLED", true),
+			ClaudeDir: getEnv("SESSIONS_CLAUDE_DIR", filepath.Join(homeDir(), ".claude", "projects")),
+			CodexDir:  getEnv("SESSIONS_CODEX_DIR", filepath.Join(homeDir(), ".codex")),
+			Interval:  getEnvDuration("SESSIONS_POLL_INTERVAL", 10*time.Second),
 		},
 		RunAcceptanceTestOnSubmit: getEnvBool("RUN_ACCEPTANCE_TEST_ON_SUBMIT", false),
 	}
@@ -143,7 +150,16 @@ type Config struct {
 	Auth                      AuthConfig
 	Dispatch                  DispatchConfig
 	Orchestrator              OrchestratorConfig
+	Sessions                  SessionsConfig
 	RunAcceptanceTestOnSubmit bool
+}
+
+// SessionsConfig controls ingestion of Claude Code and Codex sessions from their local stores.
+type SessionsConfig struct {
+	Enabled   bool
+	ClaudeDir string        // Claude Code transcripts (default ~/.claude/projects)
+	CodexDir  string        // CODEX_HOME (default ~/.codex)
+	Interval  time.Duration // poll interval (default 10s)
 }
 
 type DispatchConfig struct {
@@ -294,4 +310,11 @@ func dispatchValidateRunner(name string) error {
 		}
 	}
 	return fmt.Errorf("unknown agent runner %q (available: %s)", name, strings.Join(dispatch.AvailableRunners(), ", "))
+}
+
+func homeDir() string {
+	if h, err := os.UserHomeDir(); err == nil {
+		return h
+	}
+	return "."
 }
