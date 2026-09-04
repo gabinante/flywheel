@@ -735,6 +735,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/prs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The operator's open pull requests across all repos (plus merges from the last 7 days) */
+        get: operations["GetMyPullRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Open PRs requesting the operator's review, and open PRs the operator has reviewed */
+        get: operations["GetMyReviews"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every recurring, scheduled, or pending automation with its timing */
+        get: operations["ListScheduledActions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/{actionID}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run a scheduled action now */
+        post: operations["RunScheduledAction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1515,6 +1583,94 @@ export interface components {
             tables_touched: {
                 [key: string]: number;
             };
+        };
+        ReviewerState: {
+            login: string;
+            state: string;
+            /** Format: date-time */
+            submitted_at?: string;
+        };
+        FeedbackDigest: {
+            new: number;
+            dispatched: number;
+            addressed: number;
+            last_reviewer: string;
+            last_state: string;
+            /** Format: date-time */
+            last_at?: string;
+            latest_id: string;
+        };
+        PullRequestCard: {
+            repo: string;
+            number: number;
+            title: string;
+            url: string;
+            author: string;
+            is_draft: boolean;
+            state: string;
+            head_ref: string;
+            base_ref: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            merged_at?: string;
+            review_decision: string;
+            checks: string;
+            mergeable: string;
+            additions: number;
+            deletions: number;
+            changed_files: number;
+            labels: string[];
+            reviews: components["schemas"]["ReviewerState"][];
+            requested_reviewers: string[];
+            my_review_state: string;
+            review_requested_from_me: boolean;
+            linear_refs: string[];
+            sessions: number;
+            review?: components["schemas"]["CodeReviewRequest"];
+            feedback?: components["schemas"]["FeedbackDigest"];
+        };
+        MyPullRequests: {
+            login: string;
+            /** Format: date-time */
+            fetched_at: string;
+            open: components["schemas"]["PullRequestCard"][];
+            merged: components["schemas"]["PullRequestCard"][];
+        };
+        MyReviews: {
+            login: string;
+            /** Format: date-time */
+            fetched_at: string;
+            requested: components["schemas"]["PullRequestCard"][];
+            reviewed: components["schemas"]["PullRequestCard"][];
+        };
+        ScheduledAction: {
+            id: string;
+            name: string;
+            description: string;
+            /** @enum {string} */
+            kind: "recurring" | "scheduled" | "pending";
+            enabled: boolean;
+            interval_seconds?: number;
+            /** Format: date-time */
+            last_run_at?: string;
+            /** Format: date-time */
+            next_run_at?: string;
+            last_error?: string;
+            detail?: string;
+            count?: number;
+            project_id?: string;
+            runnable: boolean;
+            /** @description Running it posts to GitHub or Linear */
+            outward: boolean;
+            settings_section?: string;
+        };
+        ScheduledActions: {
+            /** Format: date-time */
+            now: string;
+            items: components["schemas"]["ScheduledAction"][];
         };
     };
     responses: never;
@@ -3698,6 +3854,137 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    GetMyPullRequests: {
+        parameters: {
+            query?: {
+                refresh?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyPullRequests"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    GetMyReviews: {
+        parameters: {
+            query?: {
+                refresh?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyReviews"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    ListScheduledActions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduledActions"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    RunScheduledAction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                actionID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ran; returns the refreshed action */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduledAction"];
+                };
+            };
+            /** @description Run failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Unknown action */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

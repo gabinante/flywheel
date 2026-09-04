@@ -32,6 +32,7 @@ import (
 	"github.com/gabinante/flywheel/internal/queue"
 	"github.com/gabinante/flywheel/internal/report"
 	"github.com/gabinante/flywheel/internal/review"
+	"github.com/gabinante/flywheel/internal/schedule"
 	"github.com/gabinante/flywheel/internal/sessions"
 	"github.com/gabinante/flywheel/internal/settings"
 	"github.com/gabinante/flywheel/internal/ticket"
@@ -260,6 +261,8 @@ func run(ctx context.Context, cfg *config.Config) {
 		reportSvc.Apply(next.ReportConfig())
 	})
 
+	scheduleSvc := schedule.New(schedule.Deps{Linear: linearSvc, Sessions: sessionsSvc, Reviews: codeReviewSvc, Reports: reportSvc, Settings: settingsSvc})
+
 	strictServer := &rest.StrictServer{
 		OrgSvc:        orgSvc,
 		ProjectSvc:    projectSvc,
@@ -273,6 +276,7 @@ func run(ctx context.Context, cfg *config.Config) {
 		CodeReviewSvc: codeReviewSvc,
 		ReportSvc:     reportSvc,
 		SettingsSvc:   settingsSvc,
+		ScheduleSvc:   scheduleSvc,
 		AgentStore:    agentStore,
 	}
 

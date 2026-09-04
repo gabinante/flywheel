@@ -861,3 +861,6 @@ func (s *Syncer) PostProjectUpdate(ctx context.Context, projectID, body, health 
 
 // Client exposes the underlying API client (nil when Linear is not configured).
 func (s *Syncer) Client() *Client { return s.cl() }
+
+// Interval reports the inbound poll interval.
+func (s *Syncer) Interval() time.Duration { return s.conf().Interval }

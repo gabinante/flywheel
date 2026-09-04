@@ -214,6 +214,27 @@ func (e ProjectStatus) Valid() bool {
 	}
 }
 
+// Defines values for ScheduledActionKind.
+const (
+	ScheduledActionKindPending   ScheduledActionKind = "pending"
+	ScheduledActionKindRecurring ScheduledActionKind = "recurring"
+	ScheduledActionKindScheduled ScheduledActionKind = "scheduled"
+)
+
+// Valid indicates whether the value is a known member of the ScheduledActionKind enum.
+func (e ScheduledActionKind) Valid() bool {
+	switch e {
+	case ScheduledActionKindPending:
+		return true
+	case ScheduledActionKindRecurring:
+		return true
+	case ScheduledActionKindScheduled:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SetFeedbackRoundStateRequestState.
 const (
 	SetFeedbackRoundStateRequestStateAddressed  SetFeedbackRoundStateRequestState = "addressed"
@@ -917,6 +938,17 @@ type ExecutionTrace struct {
 	TotalCount *int `json:"total_count,omitempty"`
 }
 
+// FeedbackDigest defines model for FeedbackDigest.
+type FeedbackDigest struct {
+	Addressed    int        `json:"addressed"`
+	Dispatched   int        `json:"dispatched"`
+	LastAt       *time.Time `json:"last_at,omitempty"`
+	LastReviewer string     `json:"last_reviewer"`
+	LastState    string     `json:"last_state"`
+	LatestId     string     `json:"latest_id"`
+	New          int        `json:"new"`
+}
+
 // FeedbackRound defines model for FeedbackRound.
 type FeedbackRound struct {
 	Body         *string   `json:"body,omitempty"`
@@ -1020,6 +1052,22 @@ type MergeProjectRequest struct {
 	Into string `json:"into"`
 }
 
+// MyPullRequests defines model for MyPullRequests.
+type MyPullRequests struct {
+	FetchedAt time.Time         `json:"fetched_at"`
+	Login     string            `json:"login"`
+	Merged    []PullRequestCard `json:"merged"`
+	Open      []PullRequestCard `json:"open"`
+}
+
+// MyReviews defines model for MyReviews.
+type MyReviews struct {
+	FetchedAt time.Time         `json:"fetched_at"`
+	Login     string            `json:"login"`
+	Requested []PullRequestCard `json:"requested"`
+	Reviewed  []PullRequestCard `json:"reviewed"`
+}
+
 // Objective defines model for Objective.
 type Objective struct {
 	AcceptanceTest  *string   `json:"acceptance_test,omitempty"`
@@ -1117,6 +1165,37 @@ type ProjectMergeResult struct {
 	WorkStreamsMoved int            `json:"work_streams_moved"`
 }
 
+// PullRequestCard defines model for PullRequestCard.
+type PullRequestCard struct {
+	Additions             int                `json:"additions"`
+	Author                string             `json:"author"`
+	BaseRef               string             `json:"base_ref"`
+	ChangedFiles          int                `json:"changed_files"`
+	Checks                string             `json:"checks"`
+	CreatedAt             time.Time          `json:"created_at"`
+	Deletions             int                `json:"deletions"`
+	Feedback              *FeedbackDigest    `json:"feedback,omitempty"`
+	HeadRef               string             `json:"head_ref"`
+	IsDraft               bool               `json:"is_draft"`
+	Labels                []string           `json:"labels"`
+	LinearRefs            []string           `json:"linear_refs"`
+	Mergeable             string             `json:"mergeable"`
+	MergedAt              *time.Time         `json:"merged_at,omitempty"`
+	MyReviewState         string             `json:"my_review_state"`
+	Number                int                `json:"number"`
+	Repo                  string             `json:"repo"`
+	RequestedReviewers    []string           `json:"requested_reviewers"`
+	Review                *CodeReviewRequest `json:"review,omitempty"`
+	ReviewDecision        string             `json:"review_decision"`
+	ReviewRequestedFromMe bool               `json:"review_requested_from_me"`
+	Reviews               []ReviewerState    `json:"reviews"`
+	Sessions              int                `json:"sessions"`
+	State                 string             `json:"state"`
+	Title                 string             `json:"title"`
+	UpdatedAt             time.Time          `json:"updated_at"`
+	Url                   string             `json:"url"`
+}
+
 // RenewLeaseRequest defines model for RenewLeaseRequest.
 type RenewLeaseRequest struct {
 	LeaseToken string `json:"lease_token"`
@@ -1180,6 +1259,43 @@ type ReviewSettings struct {
 	SkipDrafts          bool   `json:"skip_drafts"`
 	WatchAuthored       bool   `json:"watch_authored"`
 	WatchRequested      bool   `json:"watch_requested"`
+}
+
+// ReviewerState defines model for ReviewerState.
+type ReviewerState struct {
+	Login       string     `json:"login"`
+	State       string     `json:"state"`
+	SubmittedAt *time.Time `json:"submitted_at,omitempty"`
+}
+
+// ScheduledAction defines model for ScheduledAction.
+type ScheduledAction struct {
+	Count           *int                `json:"count,omitempty"`
+	Description     string              `json:"description"`
+	Detail          *string             `json:"detail,omitempty"`
+	Enabled         bool                `json:"enabled"`
+	Id              string              `json:"id"`
+	IntervalSeconds *int                `json:"interval_seconds,omitempty"`
+	Kind            ScheduledActionKind `json:"kind"`
+	LastError       *string             `json:"last_error,omitempty"`
+	LastRunAt       *time.Time          `json:"last_run_at,omitempty"`
+	Name            string              `json:"name"`
+	NextRunAt       *time.Time          `json:"next_run_at,omitempty"`
+
+	// Outward Running it posts to GitHub or Linear
+	Outward         bool    `json:"outward"`
+	ProjectId       *string `json:"project_id,omitempty"`
+	Runnable        bool    `json:"runnable"`
+	SettingsSection *string `json:"settings_section,omitempty"`
+}
+
+// ScheduledActionKind defines model for ScheduledAction.Kind.
+type ScheduledActionKind string
+
+// ScheduledActions defines model for ScheduledActions.
+type ScheduledActions struct {
+	Items []ScheduledAction `json:"items"`
+	Now   time.Time         `json:"now"`
 }
 
 // SessionCollectorStatus defines model for SessionCollectorStatus.
@@ -1496,6 +1612,16 @@ type ListFeedbackRoundsParams struct {
 	Limit *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// GetMyPullRequestsParams defines parameters for GetMyPullRequests.
+type GetMyPullRequestsParams struct {
+	Refresh *bool `form:"refresh,omitempty" json:"refresh,omitempty"`
+}
+
+// GetMyReviewsParams defines parameters for GetMyReviews.
+type GetMyReviewsParams struct {
+	Refresh *bool `form:"refresh,omitempty" json:"refresh,omitempty"`
+}
+
 // GetMeStatsHistoryParams defines parameters for GetMeStatsHistory.
 type GetMeStatsHistoryParams struct {
 	// Days Number of days (default 14, max 90).
@@ -1701,6 +1827,12 @@ type ServerInterface interface {
 	// GetLinearStatus Health of the Linear sync and the linked projects
 	// (GET /linear/status)
 	GetLinearStatus(w http.ResponseWriter, r *http.Request)
+	// GetMyPullRequests The operator's open pull requests across all repos (plus merges from the last 7 days)
+	// (GET /me/prs)
+	GetMyPullRequests(w http.ResponseWriter, r *http.Request, params GetMyPullRequestsParams)
+	// GetMyReviews Open PRs requesting the operator's review, and open PRs the operator has reviewed
+	// (GET /me/reviews)
+	GetMyReviews(w http.ResponseWriter, r *http.Request, params GetMyReviewsParams)
 	// GetMeStats Lifetime stats for the authenticated agent (tickets created, reviews approved/rejected). For gamification.
 	// (GET /me/stats)
 	GetMeStats(w http.ResponseWriter, r *http.Request)
@@ -1785,6 +1917,12 @@ type ServerInterface interface {
 	// PreviewWeeklyRoundup Render this week's roundup without posting
 	// (GET /reports/weekly/preview)
 	PreviewWeeklyRoundup(w http.ResponseWriter, r *http.Request, params PreviewWeeklyRoundupParams)
+	// ListScheduledActions Every recurring, scheduled, or pending automation with its timing
+	// (GET /schedule)
+	ListScheduledActions(w http.ResponseWriter, r *http.Request)
+	// RunScheduledAction Run a scheduled action now
+	// (POST /schedule/{actionID}/run)
+	RunScheduledAction(w http.ResponseWriter, r *http.Request, actionID string)
 	// ListSessions List tracked Claude Code and Codex sessions
 	// (GET /sessions)
 	ListSessions(w http.ResponseWriter, r *http.Request, params ListSessionsParams)
@@ -2165,6 +2303,72 @@ func (siw *ServerInterfaceWrapper) GetLinearStatus(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetLinearStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMyPullRequests operation middleware
+func (siw *ServerInterfaceWrapper) GetMyPullRequests(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetMyPullRequestsParams
+
+	// ------------- Optional query parameter "refresh" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "refresh", r.URL.Query(), &params.Refresh, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "refresh"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "refresh", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyPullRequests(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMyReviews operation middleware
+func (siw *ServerInterfaceWrapper) GetMyReviews(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetMyReviewsParams
+
+	// ------------- Optional query parameter "refresh" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "refresh", r.URL.Query(), &params.Refresh, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "refresh"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "refresh", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyReviews(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2980,6 +3184,46 @@ func (siw *ServerInterfaceWrapper) PreviewWeeklyRoundup(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// ListScheduledActions operation middleware
+func (siw *ServerInterfaceWrapper) ListScheduledActions(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListScheduledActions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RunScheduledAction operation middleware
+func (siw *ServerInterfaceWrapper) RunScheduledAction(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "actionID" -------------
+	var actionID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "actionID", r.PathValue("actionID"), &actionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "actionID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RunScheduledAction(w, r, actionID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListSessions operation middleware
 func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.Request) {
 
@@ -3727,6 +3971,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/projects/{projectID}/reports/status-update", wrapper.PostProjectUpdate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/settings", wrapper.GetOperatorSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/settings", wrapper.UpdateOperatorSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/prs", wrapper.GetMyPullRequests)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/reviews", wrapper.GetMyReviews)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/schedule", wrapper.ListScheduledActions)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/schedule/{actionID}/run", wrapper.RunScheduledAction)
 
 	return m
 }
@@ -4227,6 +4475,78 @@ func (response GetLinearStatus200JSONResponse) VisitGetLinearStatusResponse(w ht
 type GetLinearStatus401JSONResponse StructuredError
 
 func (response GetLinearStatus401JSONResponse) VisitGetLinearStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyPullRequestsRequestObject struct {
+	Params GetMyPullRequestsParams
+}
+
+type GetMyPullRequestsResponseObject interface {
+	VisitGetMyPullRequestsResponse(w http.ResponseWriter) error
+}
+
+type GetMyPullRequests200JSONResponse MyPullRequests
+
+func (response GetMyPullRequests200JSONResponse) VisitGetMyPullRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyPullRequests401JSONResponse StructuredError
+
+func (response GetMyPullRequests401JSONResponse) VisitGetMyPullRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyReviewsRequestObject struct {
+	Params GetMyReviewsParams
+}
+
+type GetMyReviewsResponseObject interface {
+	VisitGetMyReviewsResponse(w http.ResponseWriter) error
+}
+
+type GetMyReviews200JSONResponse MyReviews
+
+func (response GetMyReviews200JSONResponse) VisitGetMyReviewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyReviews401JSONResponse StructuredError
+
+func (response GetMyReviews401JSONResponse) VisitGetMyReviewsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -5532,6 +5852,91 @@ func (response PreviewWeeklyRoundup401JSONResponse) VisitPreviewWeeklyRoundupRes
 	return err
 }
 
+type ListScheduledActionsRequestObject struct {
+}
+
+type ListScheduledActionsResponseObject interface {
+	VisitListScheduledActionsResponse(w http.ResponseWriter) error
+}
+
+type ListScheduledActions200JSONResponse ScheduledActions
+
+func (response ListScheduledActions200JSONResponse) VisitListScheduledActionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListScheduledActions401JSONResponse StructuredError
+
+func (response ListScheduledActions401JSONResponse) VisitListScheduledActionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunScheduledActionRequestObject struct {
+	ActionID string `json:"actionID"`
+}
+
+type RunScheduledActionResponseObject interface {
+	VisitRunScheduledActionResponse(w http.ResponseWriter) error
+}
+
+type RunScheduledAction200JSONResponse ScheduledAction
+
+func (response RunScheduledAction200JSONResponse) VisitRunScheduledActionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunScheduledAction400JSONResponse StructuredError
+
+func (response RunScheduledAction400JSONResponse) VisitRunScheduledActionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RunScheduledAction404JSONResponse StructuredError
+
+func (response RunScheduledAction404JSONResponse) VisitRunScheduledActionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListSessionsRequestObject struct {
 	Params ListSessionsParams
 }
@@ -6287,6 +6692,12 @@ type StrictServerInterface interface {
 	// GetLinearStatus Health of the Linear sync and the linked projects
 	// (GET /linear/status)
 	GetLinearStatus(ctx context.Context, request GetLinearStatusRequestObject) (GetLinearStatusResponseObject, error)
+	// GetMyPullRequests The operator's open pull requests across all repos (plus merges from the last 7 days)
+	// (GET /me/prs)
+	GetMyPullRequests(ctx context.Context, request GetMyPullRequestsRequestObject) (GetMyPullRequestsResponseObject, error)
+	// GetMyReviews Open PRs requesting the operator's review, and open PRs the operator has reviewed
+	// (GET /me/reviews)
+	GetMyReviews(ctx context.Context, request GetMyReviewsRequestObject) (GetMyReviewsResponseObject, error)
 	// GetMeStats Lifetime stats for the authenticated agent (tickets created, reviews approved/rejected). For gamification.
 	// (GET /me/stats)
 	GetMeStats(ctx context.Context, request GetMeStatsRequestObject) (GetMeStatsResponseObject, error)
@@ -6371,6 +6782,12 @@ type StrictServerInterface interface {
 	// PreviewWeeklyRoundup Render this week's roundup without posting
 	// (GET /reports/weekly/preview)
 	PreviewWeeklyRoundup(ctx context.Context, request PreviewWeeklyRoundupRequestObject) (PreviewWeeklyRoundupResponseObject, error)
+	// ListScheduledActions Every recurring, scheduled, or pending automation with its timing
+	// (GET /schedule)
+	ListScheduledActions(ctx context.Context, request ListScheduledActionsRequestObject) (ListScheduledActionsResponseObject, error)
+	// RunScheduledAction Run a scheduled action now
+	// (POST /schedule/{actionID}/run)
+	RunScheduledAction(ctx context.Context, request RunScheduledActionRequestObject) (RunScheduledActionResponseObject, error)
 	// ListSessions List tracked Claude Code and Codex sessions
 	// (GET /sessions)
 	ListSessions(ctx context.Context, request ListSessionsRequestObject) (ListSessionsResponseObject, error)
@@ -6781,6 +7198,58 @@ func (sh *strictHandler) GetLinearStatus(w http.ResponseWriter, r *http.Request)
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetLinearStatusResponseObject); ok {
 		if err := validResponse.VisitGetLinearStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMyPullRequests operation middleware
+func (sh *strictHandler) GetMyPullRequests(w http.ResponseWriter, r *http.Request, params GetMyPullRequestsParams) {
+	var request GetMyPullRequestsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMyPullRequests(ctx, request.(GetMyPullRequestsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMyPullRequests")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMyPullRequestsResponseObject); ok {
+		if err := validResponse.VisitGetMyPullRequestsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMyReviews operation middleware
+func (sh *strictHandler) GetMyReviews(w http.ResponseWriter, r *http.Request, params GetMyReviewsParams) {
+	var request GetMyReviewsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMyReviews(ctx, request.(GetMyReviewsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMyReviews")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMyReviewsResponseObject); ok {
+		if err := validResponse.VisitGetMyReviewsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -7589,6 +8058,56 @@ func (sh *strictHandler) PreviewWeeklyRoundup(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PreviewWeeklyRoundupResponseObject); ok {
 		if err := validResponse.VisitPreviewWeeklyRoundupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListScheduledActions operation middleware
+func (sh *strictHandler) ListScheduledActions(w http.ResponseWriter, r *http.Request) {
+	var request ListScheduledActionsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListScheduledActions(ctx, request.(ListScheduledActionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListScheduledActions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListScheduledActionsResponseObject); ok {
+		if err := validResponse.VisitListScheduledActionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RunScheduledAction operation middleware
+func (sh *strictHandler) RunScheduledAction(w http.ResponseWriter, r *http.Request, actionID string) {
+	var request RunScheduledActionRequestObject
+
+	request.ActionID = actionID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RunScheduledAction(ctx, request.(RunScheduledActionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RunScheduledAction")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RunScheduledActionResponseObject); ok {
+		if err := validResponse.VisitRunScheduledActionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

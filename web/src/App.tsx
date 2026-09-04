@@ -13,6 +13,9 @@ import { queryClient } from '@/lib/query-client'
 import { HomePage } from '@/pages/home-page'
 import { OrgsPage } from '@/pages/orgs-page'
 import { OperatorSettingsPage } from '@/pages/operator-settings-page'
+import { MyPRsPage } from '@/pages/my-prs-page'
+import { MyReviewsPage } from '@/pages/my-reviews-page'
+import { SchedulePage } from '@/pages/schedule-page'
 import { ProjectsPage } from '@/pages/projects-page'
 import { TicketsPage } from '@/pages/tickets-page'
 import { TicketDetailPage } from '@/pages/ticket-detail-page'
@@ -135,6 +138,9 @@ export default function App() {
                   <Route element={<SlugRedirect />}>
                   <Route path="/orgs" element={<OrgsGate />} />
                   <Route path="/settings" element={<OperatorSettingsPage />} />
+                  <Route path="/my/prs" element={<MyPRsPage />} />
+                  <Route path="/my/reviews" element={<MyReviewsPage />} />
+                  <Route path="/schedule" element={<SchedulePage />} />
                   <Route
                     path="/orgs/:orgId/projects"
                     element={<ProjectsPage />}

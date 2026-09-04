@@ -163,3 +163,9 @@ func (s *Service) Record(ctx context.Context, sess *Session) error {
 func (s *Service) StatsSince(ctx context.Context, since, until time.Time, repos []string) ([]HarnessStats, error) {
 	return s.store.StatsSince(ctx, since, until, repos)
 }
+
+// Interval reports how often the collectors run.
+func (s *Service) Interval() time.Duration { return s.cfg.Interval }
+
+// Enabled reports whether ingestion is on.
+func (s *Service) Enabled() bool { return s.cfg.Enabled }

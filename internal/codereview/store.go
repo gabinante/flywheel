@@ -404,3 +404,24 @@ func prefixCols(prefix, cols string) string {
 	}
 	return strings.Join(parts, ", ")
 }
+
+// UpdateFeedbackRoundsByPR moves every round of a PR in fromState to toState and
+// returns the affected ids. Addressing feedback covers the whole PR, so sibling
+// rounds (one per push from a bot, several reviewers) travel together.
+func (s *Store) UpdateFeedbackRoundsByPR(ctx context.Context, repo string, number int, fromState, toState, sessionID string) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `UPDATE pr_feedback_rounds SET state = $4, session_id = COALESCE(NULLIF($5,''), session_id)
+		WHERE repo = $1 AND number = $2 AND state = $3 RETURNING id`, repo, number, fromState, toState, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}

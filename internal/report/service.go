@@ -399,3 +399,73 @@ func (s *Service) PostWeeklyRoundup(ctx context.Context, weekOf time.Time, bodyO
 func (s *Service) List(ctx context.Context, projectID, kind string, limit int) ([]*Report, error) {
 	return s.d.Store.List(ctx, projectID, kind, limit)
 }
+
+// ProjectUpdateDue describes the next automatic status update for a linked project.
+type ProjectUpdateDue struct {
+	ProjectID   string
+	ProjectName string
+	LastPosted  *time.Time
+	NextDue     time.Time
+}
+
+// Schedule describes what the report scheduler will do next.
+type Schedule struct {
+	ProjectUpdatesEnabled bool
+	Interval              time.Duration
+	Projects              []ProjectUpdateDue
+	WeeklyEnabled         bool
+	WeeklyDay             time.Weekday
+	WeeklyHour            int
+	NextWeekly            time.Time
+	WeeklyPostedThisWeek  bool
+	LinearConnected       bool
+}
+
+// Schedule computes the upcoming report work as of now.
+func (s *Service) Schedule(ctx context.Context, now time.Time) Schedule {
+	cfg := s.conf()
+	out := Schedule{
+		ProjectUpdatesEnabled: cfg.ProjectUpdatesEnabled, Interval: cfg.ProjectUpdateInterval,
+		WeeklyEnabled: cfg.WeeklyEnabled, WeeklyDay: cfg.WeeklyDay, WeeklyHour: cfg.WeeklyHour,
+		LinearConnected: s.d.Linear != nil && s.d.Linear.Enabled(),
+	}
+	if s.d.Linear != nil {
+		if links, err := s.d.Linear.Links(ctx); err == nil {
+			for _, l := range links {
+				due := ProjectUpdateDue{ProjectID: l.ProjectID, ProjectName: l.LinearProjectName}
+				if s.d.Projects != nil {
+					if p, err := s.d.Projects.GetProject(ctx, l.ProjectID); err == nil && p != nil {
+						due.ProjectName = p.Name
+					}
+				}
+				if last, err := s.d.Store.LastPosted(ctx, l.ProjectID, KindProjectUpdate); err == nil && last != nil {
+					due.LastPosted = last
+					due.NextDue = last.Add(cfg.ProjectUpdateInterval)
+				} else {
+					due.NextDue = now
+				}
+				out.Projects = append(out.Projects, due)
+			}
+		}
+	}
+	// Next weekly slot: this week's day/hour if still ahead and not posted; else next week.
+	next := time.Date(now.Year(), now.Month(), now.Day(), cfg.WeeklyHour, 0, 0, 0, now.Location())
+	for next.Weekday() != cfg.WeeklyDay {
+		next = next.AddDate(0, 0, 1)
+	}
+	start, _ := WeekWindow(now)
+	if done, err := s.d.Store.WeeklyPosted(ctx, start); err == nil && done {
+		out.WeeklyPostedThisWeek = true
+	}
+	if next.Before(now) || out.WeeklyPostedThisWeek && sameWeek(next, now) {
+		next = next.AddDate(0, 0, 7)
+	}
+	out.NextWeekly = next
+	return out
+}
+
+func sameWeek(a, b time.Time) bool {
+	sa, _ := WeekWindow(a)
+	sb, _ := WeekWindow(b)
+	return sa.Equal(sb)
+}

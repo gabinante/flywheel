@@ -54,6 +54,7 @@ type Service struct {
 	fb FeedbackConfig
 
 	cfgMu     sync.RWMutex // guards cfg, fb, ws.Root
+	mine      mineCache
 	mu        sync.Mutex
 	status    PollerStatus
 	active    int32

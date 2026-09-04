@@ -84,44 +84,103 @@ function ReviewRow({ r, base }: { r: CodeReviewRequest; base: string }) {
   )
 }
 
-function FeedbackRow({
-  f,
+type FeedbackGroup = {
+  key: string
+  repo: string
+  number: number
+  url: string
+  title: string
+  rounds: FeedbackRound[]
+  newIds: string[]
+  latest: FeedbackRound
+  changesRequested: boolean
+  comments: number
+  reviewers: string[]
+  dispatched: boolean
+}
+
+/** One card per PR: Bugbot posts a review per push and several people may review, but the
+ * fix is one pass over the PR — so rounds are grouped and actions apply to all of them. */
+function groupFeedback(rounds: FeedbackRound[]): FeedbackGroup[] {
+  const byPR = new Map<string, FeedbackGroup>()
+  for (const f of rounds) {
+    const key = `${f.repo}#${f.number}`
+    let g = byPR.get(key)
+    if (!g) {
+      g = { key, repo: f.repo, number: f.number, url: f.url, title: f.title, rounds: [], newIds: [], latest: f, changesRequested: false, comments: 0, reviewers: [], dispatched: false }
+      byPR.set(key, g)
+    }
+    g.rounds.push(f)
+    if (f.state === 'new') g.newIds.push(f.id)
+    if (f.state === 'dispatched') g.dispatched = true
+    if (f.review_state === 'CHANGES_REQUESTED') g.changesRequested = true
+    g.comments += f.comment_count
+    if (!g.reviewers.includes(f.reviewer)) g.reviewers.push(f.reviewer)
+    const at = (x: FeedbackRound) => new Date(x.submitted_at ?? x.observed_at).getTime()
+    if (at(f) > at(g.latest)) g.latest = f
+  }
+  return [...byPR.values()].sort((a, b) => new Date(b.latest.submitted_at ?? b.latest.observed_at).getTime() - new Date(a.latest.submitted_at ?? a.latest.observed_at).getTime())
+}
+
+function FeedbackGroupRow({
+  g,
   onState,
   onAddress,
   harness,
 }: {
-  f: FeedbackRound
-  onState: (id: string, state: 'ignored' | 'addressed') => void
+  g: FeedbackGroup
+  onState: (ids: string[], state: 'ignored' | 'addressed') => void
   onAddress: (id: string) => void
   harness: string
 }) {
+  const [open, setOpen] = useState(false)
+  const latestAt = g.latest.submitted_at ?? g.latest.observed_at
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-xs">
-      <MessageSquareWarning className={cn('size-4', f.review_state === 'CHANGES_REQUESTED' ? 'text-amber-300' : 'text-muted-foreground')} />
-      <a href={f.url} target="_blank" rel="noreferrer" className="font-mono text-muted-foreground hover:underline">
-        {f.repo}#{f.number}
-      </a>
-      <span className="truncate text-sm">{f.title}</span>
-      <Badge variant="outline" className={cn('h-5 px-1.5 text-[10px]', f.review_state === 'CHANGES_REQUESTED' ? STATE_CLASS.changes_requested : f.review_state === 'APPROVED' ? STATE_CLASS.approved : STATE_CLASS.commented)}>
-        {f.review_state.toLowerCase().replace('_', ' ')}
-      </Badge>
-      <span className="text-muted-foreground">
-        by {f.reviewer} · {f.comment_count} comment{f.comment_count === 1 ? '' : 's'} · {relativeTime(f.submitted_at ?? f.observed_at)}
-      </span>
-      <Badge variant="muted" className="h-5 px-1.5 text-[10px]">{f.state}</Badge>
-      {f.state === 'dispatched' && <span className="ml-auto text-[11px] text-sky-300">addressing…</span>}
-      {f.state === 'new' && (
-        <span className="ml-auto flex gap-1">
-          <Button size="sm" className="h-6 px-2 text-[11px]" onClick={() => onAddress(f.id)}>
-            Address with {harness}
-          </Button>
-          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={() => onState(f.id, 'addressed')}>
-            Mark addressed
-          </Button>
-          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={() => onState(f.id, 'ignored')}>
-            Ignore
-          </Button>
-        </span>
+    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <MessageSquareWarning className={cn('size-4', g.changesRequested ? 'text-amber-300' : 'text-muted-foreground')} />
+        <a href={g.url} target="_blank" rel="noreferrer" className="font-mono text-muted-foreground hover:underline">
+          {g.repo}#{g.number}
+        </a>
+        <span className="truncate text-sm">{g.title}</span>
+        <Badge variant="outline" className={cn('h-5 px-1.5 text-[10px]', g.changesRequested ? STATE_CLASS.changes_requested : STATE_CLASS.commented)}>
+          {g.changesRequested ? 'changes requested' : 'commented'}
+        </Badge>
+        <button type="button" onClick={() => setOpen((v) => !v)} className="text-muted-foreground hover:text-foreground hover:underline">
+          {g.rounds.length === 1
+            ? `by ${g.reviewers[0]} · ${g.comments} comment${g.comments === 1 ? '' : 's'}`
+            : `${g.rounds.length} reviews by ${g.reviewers.join(', ')} · ${g.comments} comment${g.comments === 1 ? '' : 's'}`}
+          {' · '}
+          {relativeTime(latestAt)}
+        </button>
+        {g.dispatched && <span className="ml-auto text-[11px] text-sky-300">addressing…</span>}
+        {!g.dispatched && g.newIds.length > 0 && (
+          <span className="ml-auto flex gap-1">
+            <Button size="sm" className="h-6 px-2 text-[11px]" onClick={() => onAddress(g.latest.state === 'new' ? g.latest.id : g.newIds[0])}>
+              Address with {harness}
+            </Button>
+            <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={() => onState(g.newIds, 'addressed')}>
+              Mark addressed
+            </Button>
+            <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={() => onState(g.newIds, 'ignored')}>
+              Ignore
+            </Button>
+          </span>
+        )}
+      </div>
+      {open && g.rounds.length > 1 && (
+        <ul className="mt-2 space-y-1 border-t border-white/5 pt-2 text-muted-foreground">
+          {g.rounds.map((f) => (
+            <li key={f.id} className="flex flex-wrap items-center gap-2">
+              <span className="font-mono text-[10px]">{(f.head_sha ?? "").slice(0, 7)}</span>
+              <span>{f.reviewer}</span>
+              <span>{f.review_state.toLowerCase().replace('_', ' ')}</span>
+              <span>{f.comment_count} comment{f.comment_count === 1 ? '' : 's'}</span>
+              <span>{relativeTime(f.submitted_at ?? f.observed_at)}</span>
+              <Badge variant="muted" className="h-4 px-1 text-[10px]">{f.state}</Badge>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   )
@@ -184,8 +243,8 @@ export function CodeReviewsPage() {
     refresh()
   }
 
-  const setFeedbackState = async (id: string, st: 'ignored' | 'addressed') => {
-    await client.POST('/code-reviews/feedback/{roundID}/state', { params: { path: { roundID: id } }, body: { state: st } })
+  const setFeedbackState = async (ids: string[], st: 'ignored' | 'addressed') => {
+    await Promise.all(ids.map((id) => client.POST('/code-reviews/feedback/{roundID}/state', { params: { path: { roundID: id } }, body: { state: st } })))
     refresh()
   }
 
@@ -267,8 +326,8 @@ export function CodeReviewsPage() {
       {feedback.length > 0 && (
         <section className="flex flex-col gap-2">
           <h2 className="text-sm font-medium text-muted-foreground">Reviews landed on your PRs</h2>
-          {feedback.map((f) => (
-            <FeedbackRow key={f.id} f={f} onState={setFeedbackState} onAddress={addressFeedback} harness="Claude Code" />
+          {groupFeedback(feedback).map((g) => (
+            <FeedbackGroupRow key={g.key} g={g} onState={setFeedbackState} onAddress={addressFeedback} harness="Claude Code" />
           ))}
         </section>
       )}

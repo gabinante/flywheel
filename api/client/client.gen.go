@@ -213,6 +213,27 @@ func (e ProjectStatus) Valid() bool {
 	}
 }
 
+// Defines values for ScheduledActionKind.
+const (
+	ScheduledActionKindPending   ScheduledActionKind = "pending"
+	ScheduledActionKindRecurring ScheduledActionKind = "recurring"
+	ScheduledActionKindScheduled ScheduledActionKind = "scheduled"
+)
+
+// Valid indicates whether the value is a known member of the ScheduledActionKind enum.
+func (e ScheduledActionKind) Valid() bool {
+	switch e {
+	case ScheduledActionKindPending:
+		return true
+	case ScheduledActionKindRecurring:
+		return true
+	case ScheduledActionKindScheduled:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SetFeedbackRoundStateRequestState.
 const (
 	SetFeedbackRoundStateRequestStateAddressed  SetFeedbackRoundStateRequestState = "addressed"
@@ -916,6 +937,17 @@ type ExecutionTrace struct {
 	TotalCount *int `json:"total_count,omitempty"`
 }
 
+// FeedbackDigest defines model for FeedbackDigest.
+type FeedbackDigest struct {
+	Addressed    int        `json:"addressed"`
+	Dispatched   int        `json:"dispatched"`
+	LastAt       *time.Time `json:"last_at,omitempty"`
+	LastReviewer string     `json:"last_reviewer"`
+	LastState    string     `json:"last_state"`
+	LatestId     string     `json:"latest_id"`
+	New          int        `json:"new"`
+}
+
 // FeedbackRound defines model for FeedbackRound.
 type FeedbackRound struct {
 	Body         *string   `json:"body,omitempty"`
@@ -1019,6 +1051,22 @@ type MergeProjectRequest struct {
 	Into string `json:"into"`
 }
 
+// MyPullRequests defines model for MyPullRequests.
+type MyPullRequests struct {
+	FetchedAt time.Time         `json:"fetched_at"`
+	Login     string            `json:"login"`
+	Merged    []PullRequestCard `json:"merged"`
+	Open      []PullRequestCard `json:"open"`
+}
+
+// MyReviews defines model for MyReviews.
+type MyReviews struct {
+	FetchedAt time.Time         `json:"fetched_at"`
+	Login     string            `json:"login"`
+	Requested []PullRequestCard `json:"requested"`
+	Reviewed  []PullRequestCard `json:"reviewed"`
+}
+
 // Objective defines model for Objective.
 type Objective struct {
 	AcceptanceTest  *string   `json:"acceptance_test,omitempty"`
@@ -1116,6 +1164,37 @@ type ProjectMergeResult struct {
 	WorkStreamsMoved int            `json:"work_streams_moved"`
 }
 
+// PullRequestCard defines model for PullRequestCard.
+type PullRequestCard struct {
+	Additions             int                `json:"additions"`
+	Author                string             `json:"author"`
+	BaseRef               string             `json:"base_ref"`
+	ChangedFiles          int                `json:"changed_files"`
+	Checks                string             `json:"checks"`
+	CreatedAt             time.Time          `json:"created_at"`
+	Deletions             int                `json:"deletions"`
+	Feedback              *FeedbackDigest    `json:"feedback,omitempty"`
+	HeadRef               string             `json:"head_ref"`
+	IsDraft               bool               `json:"is_draft"`
+	Labels                []string           `json:"labels"`
+	LinearRefs            []string           `json:"linear_refs"`
+	Mergeable             string             `json:"mergeable"`
+	MergedAt              *time.Time         `json:"merged_at,omitempty"`
+	MyReviewState         string             `json:"my_review_state"`
+	Number                int                `json:"number"`
+	Repo                  string             `json:"repo"`
+	RequestedReviewers    []string           `json:"requested_reviewers"`
+	Review                *CodeReviewRequest `json:"review,omitempty"`
+	ReviewDecision        string             `json:"review_decision"`
+	ReviewRequestedFromMe bool               `json:"review_requested_from_me"`
+	Reviews               []ReviewerState    `json:"reviews"`
+	Sessions              int                `json:"sessions"`
+	State                 string             `json:"state"`
+	Title                 string             `json:"title"`
+	UpdatedAt             time.Time          `json:"updated_at"`
+	Url                   string             `json:"url"`
+}
+
 // RenewLeaseRequest defines model for RenewLeaseRequest.
 type RenewLeaseRequest struct {
 	LeaseToken string `json:"lease_token"`
@@ -1179,6 +1258,43 @@ type ReviewSettings struct {
 	SkipDrafts          bool   `json:"skip_drafts"`
 	WatchAuthored       bool   `json:"watch_authored"`
 	WatchRequested      bool   `json:"watch_requested"`
+}
+
+// ReviewerState defines model for ReviewerState.
+type ReviewerState struct {
+	Login       string     `json:"login"`
+	State       string     `json:"state"`
+	SubmittedAt *time.Time `json:"submitted_at,omitempty"`
+}
+
+// ScheduledAction defines model for ScheduledAction.
+type ScheduledAction struct {
+	Count           *int                `json:"count,omitempty"`
+	Description     string              `json:"description"`
+	Detail          *string             `json:"detail,omitempty"`
+	Enabled         bool                `json:"enabled"`
+	Id              string              `json:"id"`
+	IntervalSeconds *int                `json:"interval_seconds,omitempty"`
+	Kind            ScheduledActionKind `json:"kind"`
+	LastError       *string             `json:"last_error,omitempty"`
+	LastRunAt       *time.Time          `json:"last_run_at,omitempty"`
+	Name            string              `json:"name"`
+	NextRunAt       *time.Time          `json:"next_run_at,omitempty"`
+
+	// Outward Running it posts to GitHub or Linear
+	Outward         bool    `json:"outward"`
+	ProjectId       *string `json:"project_id,omitempty"`
+	Runnable        bool    `json:"runnable"`
+	SettingsSection *string `json:"settings_section,omitempty"`
+}
+
+// ScheduledActionKind defines model for ScheduledAction.Kind.
+type ScheduledActionKind string
+
+// ScheduledActions defines model for ScheduledActions.
+type ScheduledActions struct {
+	Items []ScheduledAction `json:"items"`
+	Now   time.Time         `json:"now"`
 }
 
 // SessionCollectorStatus defines model for SessionCollectorStatus.
@@ -1493,6 +1609,16 @@ type ListCodeReviewsParams struct {
 type ListFeedbackRoundsParams struct {
 	State *string `form:"state,omitempty" json:"state,omitempty"`
 	Limit *int    `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetMyPullRequestsParams defines parameters for GetMyPullRequests.
+type GetMyPullRequestsParams struct {
+	Refresh *bool `form:"refresh,omitempty" json:"refresh,omitempty"`
+}
+
+// GetMyReviewsParams defines parameters for GetMyReviews.
+type GetMyReviewsParams struct {
+	Refresh *bool `form:"refresh,omitempty" json:"refresh,omitempty"`
 }
 
 // GetMeStatsHistoryParams defines parameters for GetMeStatsHistory.
@@ -1823,6 +1949,16 @@ type ClientInterface interface {
 	// Corresponds with GET /linear/status (the `GetLinearStatus` operationId).
 	GetLinearStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetMyPullRequests The operator's open pull requests across all repos (plus merges from the last 7 days)
+	//
+	// Corresponds with GET /me/prs (the `GetMyPullRequests` operationId).
+	GetMyPullRequests(ctx context.Context, params *GetMyPullRequestsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetMyReviews Open PRs requesting the operator's review, and open PRs the operator has reviewed
+	//
+	// Corresponds with GET /me/reviews (the `GetMyReviews` operationId).
+	GetMyReviews(ctx context.Context, params *GetMyReviewsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetMeStats Lifetime stats for the authenticated agent (tickets created, reviews approved/rejected). For gamification.
 	//
 	// Corresponds with GET /me/stats (the `GetMeStats` operationId).
@@ -2025,6 +2161,16 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /reports/weekly/preview (the `PreviewWeeklyRoundup` operationId).
 	PreviewWeeklyRoundup(ctx context.Context, params *PreviewWeeklyRoundupParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListScheduledActions Every recurring, scheduled, or pending automation with its timing
+	//
+	// Corresponds with GET /schedule (the `ListScheduledActions` operationId).
+	ListScheduledActions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RunScheduledAction Run a scheduled action now
+	//
+	// Corresponds with POST /schedule/{actionID}/run (the `RunScheduledAction` operationId).
+	RunScheduledAction(ctx context.Context, actionID string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListSessions List tracked Claude Code and Codex sessions
 	//
@@ -2383,6 +2529,36 @@ func (c *Client) GetHealthz(ctx context.Context, reqEditors ...RequestEditorFn) 
 // Corresponds with GET /linear/status (the `GetLinearStatus` operationId).
 func (c *Client) GetLinearStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetLinearStatusRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetMyPullRequests The operator's open pull requests across all repos (plus merges from the last 7 days)
+//
+// Corresponds with GET /me/prs (the `GetMyPullRequests` operationId).
+func (c *Client) GetMyPullRequests(ctx context.Context, params *GetMyPullRequestsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetMyPullRequestsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetMyReviews Open PRs requesting the operator's review, and open PRs the operator has reviewed
+//
+// Corresponds with GET /me/reviews (the `GetMyReviews` operationId).
+func (c *Client) GetMyReviews(ctx context.Context, params *GetMyReviewsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetMyReviewsRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -2976,6 +3152,36 @@ func (c *Client) PostWeeklyRoundup(ctx context.Context, body PostWeeklyRoundupJS
 // Corresponds with GET /reports/weekly/preview (the `PreviewWeeklyRoundup` operationId).
 func (c *Client) PreviewWeeklyRoundup(ctx context.Context, params *PreviewWeeklyRoundupParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPreviewWeeklyRoundupRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListScheduledActions Every recurring, scheduled, or pending automation with its timing
+//
+// Corresponds with GET /schedule (the `ListScheduledActions` operationId).
+func (c *Client) ListScheduledActions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListScheduledActionsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RunScheduledAction Run a scheduled action now
+//
+// Corresponds with POST /schedule/{actionID}/run (the `RunScheduledAction` operationId).
+func (c *Client) RunScheduledAction(ctx context.Context, actionID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRunScheduledActionRequest(c.Server, actionID)
 	if err != nil {
 		return nil, err
 	}
@@ -3862,6 +4068,114 @@ func NewGetLinearStatusRequest(server string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetMyPullRequestsRequest constructs an http.Request for the GetMyPullRequests method
+func NewGetMyPullRequestsRequest(server string, params *GetMyPullRequestsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/me/prs")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Refresh != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "refresh", *params.Refresh, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetMyReviewsRequest constructs an http.Request for the GetMyReviews method
+func NewGetMyReviewsRequest(server string, params *GetMyReviewsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/me/reviews")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Refresh != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "refresh", *params.Refresh, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -5130,6 +5444,67 @@ func NewPreviewWeeklyRoundupRequest(server string, params *PreviewWeeklyRoundupP
 	return req, nil
 }
 
+// NewListScheduledActionsRequest constructs an http.Request for the ListScheduledActions method
+func NewListScheduledActionsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/schedule")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRunScheduledActionRequest constructs an http.Request for the RunScheduledAction method
+func NewRunScheduledActionRequest(server string, actionID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "actionID", actionID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/schedule/%s/run", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListSessionsRequest constructs an http.Request for the ListSessions method
 func NewListSessionsRequest(server string, params *ListSessionsParams) (*http.Request, error) {
 	var err error
@@ -6132,6 +6507,20 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /linear/status (the `GetLinearStatus` operationId).
 	GetLinearStatusWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetLinearStatusResponse, error)
 
+	// GetMyPullRequestsWithResponse The operator's open pull requests across all repos (plus merges from the last 7 days)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /me/prs (the `GetMyPullRequests` operationId).
+	GetMyPullRequestsWithResponse(ctx context.Context, params *GetMyPullRequestsParams, reqEditors ...RequestEditorFn) (*GetMyPullRequestsResponse, error)
+
+	// GetMyReviewsWithResponse Open PRs requesting the operator's review, and open PRs the operator has reviewed
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /me/reviews (the `GetMyReviews` operationId).
+	GetMyReviewsWithResponse(ctx context.Context, params *GetMyReviewsParams, reqEditors ...RequestEditorFn) (*GetMyReviewsResponse, error)
+
 	// GetMeStatsWithResponse Lifetime stats for the authenticated agent (tickets created, reviews approved/rejected). For gamification.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -6378,6 +6767,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /reports/weekly/preview (the `PreviewWeeklyRoundup` operationId).
 	PreviewWeeklyRoundupWithResponse(ctx context.Context, params *PreviewWeeklyRoundupParams, reqEditors ...RequestEditorFn) (*PreviewWeeklyRoundupResponse, error)
+
+	// ListScheduledActionsWithResponse Every recurring, scheduled, or pending automation with its timing
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /schedule (the `ListScheduledActions` operationId).
+	ListScheduledActionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListScheduledActionsResponse, error)
+
+	// RunScheduledActionWithResponse Run a scheduled action now
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /schedule/{actionID}/run (the `RunScheduledAction` operationId).
+	RunScheduledActionWithResponse(ctx context.Context, actionID string, reqEditors ...RequestEditorFn) (*RunScheduledActionResponse, error)
 
 	// ListSessionsWithResponse List tracked Claude Code and Codex sessions
 	//
@@ -7139,6 +7542,102 @@ func (r GetLinearStatusResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetLinearStatusResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetMyPullRequestsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *MyPullRequests
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetMyPullRequestsResponse) GetJSON200() *MyPullRequests {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetMyPullRequestsResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r GetMyPullRequestsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetMyPullRequestsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetMyPullRequestsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetMyPullRequestsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetMyReviewsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *MyReviews
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetMyReviewsResponse) GetJSON200() *MyReviews {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetMyReviewsResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r GetMyReviewsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetMyReviewsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetMyReviewsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetMyReviewsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -8622,6 +9121,109 @@ func (r PreviewWeeklyRoundupResponse) ContentType() string {
 	return ""
 }
 
+type ListScheduledActionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ScheduledActions
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListScheduledActionsResponse) GetJSON200() *ScheduledActions {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListScheduledActionsResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r ListScheduledActionsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListScheduledActionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListScheduledActionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListScheduledActionsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RunScheduledActionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ScheduledAction
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *StructuredError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RunScheduledActionResponse) GetJSON200() *ScheduledAction {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r RunScheduledActionResponse) GetJSON400() *StructuredError {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r RunScheduledActionResponse) GetJSON404() *StructuredError {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r RunScheduledActionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RunScheduledActionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RunScheduledActionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RunScheduledActionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListSessionsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -9627,6 +10229,32 @@ func (c *ClientWithResponses) GetLinearStatusWithResponse(ctx context.Context, r
 	return ParseGetLinearStatusResponse(rsp)
 }
 
+// GetMyPullRequestsWithResponse The operator's open pull requests across all repos (plus merges from the last 7 days)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /me/prs (the `GetMyPullRequests` operationId).
+func (c *ClientWithResponses) GetMyPullRequestsWithResponse(ctx context.Context, params *GetMyPullRequestsParams, reqEditors ...RequestEditorFn) (*GetMyPullRequestsResponse, error) {
+	rsp, err := c.GetMyPullRequests(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetMyPullRequestsResponse(rsp)
+}
+
+// GetMyReviewsWithResponse Open PRs requesting the operator's review, and open PRs the operator has reviewed
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /me/reviews (the `GetMyReviews` operationId).
+func (c *ClientWithResponses) GetMyReviewsWithResponse(ctx context.Context, params *GetMyReviewsParams, reqEditors ...RequestEditorFn) (*GetMyReviewsResponse, error) {
+	rsp, err := c.GetMyReviews(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetMyReviewsResponse(rsp)
+}
+
 // GetMeStatsWithResponse Lifetime stats for the authenticated agent (tickets created, reviews approved/rejected). For gamification.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -10106,6 +10734,32 @@ func (c *ClientWithResponses) PreviewWeeklyRoundupWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParsePreviewWeeklyRoundupResponse(rsp)
+}
+
+// ListScheduledActionsWithResponse Every recurring, scheduled, or pending automation with its timing
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /schedule (the `ListScheduledActions` operationId).
+func (c *ClientWithResponses) ListScheduledActionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListScheduledActionsResponse, error) {
+	rsp, err := c.ListScheduledActions(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListScheduledActionsResponse(rsp)
+}
+
+// RunScheduledActionWithResponse Run a scheduled action now
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /schedule/{actionID}/run (the `RunScheduledAction` operationId).
+func (c *ClientWithResponses) RunScheduledActionWithResponse(ctx context.Context, actionID string, reqEditors ...RequestEditorFn) (*RunScheduledActionResponse, error) {
+	rsp, err := c.RunScheduledAction(ctx, actionID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRunScheduledActionResponse(rsp)
 }
 
 // ListSessionsWithResponse List tracked Claude Code and Codex sessions
@@ -10822,6 +11476,72 @@ func ParseGetLinearStatusResponse(rsp *http.Response) (*GetLinearStatusResponse,
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest LinearStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetMyPullRequestsResponse parses an HTTP response from a GetMyPullRequestsWithResponse call
+func ParseGetMyPullRequestsResponse(rsp *http.Response) (*GetMyPullRequestsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetMyPullRequestsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MyPullRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetMyReviewsResponse parses an HTTP response from a GetMyReviewsWithResponse call
+func ParseGetMyReviewsResponse(rsp *http.Response) (*GetMyReviewsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetMyReviewsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MyReviews
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -11893,6 +12613,79 @@ func ParsePreviewWeeklyRoundupResponse(rsp *http.Response) (*PreviewWeeklyRoundu
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListScheduledActionsResponse parses an HTTP response from a ListScheduledActionsWithResponse call
+func ParseListScheduledActionsResponse(rsp *http.Response) (*ListScheduledActionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListScheduledActionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ScheduledActions
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRunScheduledActionResponse parses an HTTP response from a RunScheduledActionWithResponse call
+func ParseRunScheduledActionResponse(rsp *http.Response) (*RunScheduledActionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RunScheduledActionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ScheduledAction
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	}
 

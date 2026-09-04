@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Activity, FileText, GitPullRequest, KeyRound, MessageSquareReply, Save, Settings as SettingsIcon } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
@@ -91,7 +91,9 @@ export function OperatorSettingsPage() {
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [err, setErr] = useState<string | null>(null)
-  const [section, setSection] = useState<SectionID>('linear')
+  const [params] = useSearchParams()
+  const initial = params.get('section')
+  const [section, setSection] = useState<SectionID>(SECTIONS.some((s) => s.id === initial) ? (initial as SectionID) : 'linear')
   const [linearStatus, setLinearStatus] = useState<LinearStatus | null>(null)
   const [reviewStatus, setReviewStatus] = useState<CodeReviewStatus | null>(null)
   const [projects, setProjects] = useState<Project[]>([])

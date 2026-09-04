@@ -68,6 +68,8 @@ func (s *Service) AddressFeedback(ctx context.Context, roundID string) (*Feedbac
 	if round.State == "dispatched" {
 		return round, errors.New("feedback is already being addressed")
 	}
+	// One run addresses every unresolved thread on the PR, so all of its new rounds go along.
+	_, _ = s.store.UpdateFeedbackRoundsByPR(ctx, round.Repo, round.Number, "new", "dispatched", "")
 	_ = s.store.UpdateFeedbackRound(ctx, round.ID, "dispatched", "", "")
 	round.State = "dispatched"
 	go s.runAddressFeedback(context.WithoutCancel(ctx), round)
@@ -77,7 +79,7 @@ func (s *Service) AddressFeedback(ctx context.Context, roundID string) (*Feedbac
 func (s *Service) runAddressFeedback(ctx context.Context, round *FeedbackRound) {
 	fail := func(err error) {
 		slog.Warn("codereview: address feedback failed", "pr", round.Ref(), "error", err)
-		_ = s.store.UpdateFeedbackRound(ctx, round.ID, "new", "", "")
+		_, _ = s.store.UpdateFeedbackRoundsByPR(ctx, round.Repo, round.Number, "dispatched", "new", "")
 	}
 	login, _ := s.gh.Login(ctx)
 	pr, err := s.gh.ViewPR(ctx, round.Repo, round.Number, login)
@@ -86,7 +88,7 @@ func (s *Service) runAddressFeedback(ctx context.Context, round *FeedbackRound) 
 		return
 	}
 	if pr.State != "OPEN" {
-		_ = s.store.UpdateFeedbackRound(ctx, round.ID, "ignored", "", "")
+		_, _ = s.store.UpdateFeedbackRoundsByPR(ctx, round.Repo, round.Number, "dispatched", "ignored", "")
 		return
 	}
 	wt, err := s.ws.PrepareBranch(ctx, round.Repo, pr.HeadRef, round.Number)
@@ -128,11 +130,11 @@ func (s *Service) runAddressFeedback(ctx context.Context, round *FeedbackRound) 
 		}
 	}
 	if runErr != nil {
-		_ = s.store.UpdateFeedbackRound(ctx, round.ID, "new", "", sessionID)
+		_, _ = s.store.UpdateFeedbackRoundsByPR(ctx, round.Repo, round.Number, "dispatched", "new", sessionID)
 		slog.Warn("codereview: address feedback run failed", "pr", round.Ref(), "error", runErr)
 		return
 	}
-	_ = s.store.UpdateFeedbackRound(ctx, round.ID, "addressed", "", sessionID)
+	_, _ = s.store.UpdateFeedbackRoundsByPR(ctx, round.Repo, round.Number, "dispatched", "addressed", sessionID)
 	slog.Info("codereview: addressed review feedback", "pr", round.Ref(), "reviewer", round.Reviewer, "session", sessionID)
 }
 

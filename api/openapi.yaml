@@ -1696,6 +1696,96 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StructuredError'
+  /me/prs:
+    get:
+      operationId: GetMyPullRequests
+      summary: The operator's open pull requests across all repos (plus merges from the last 7 days)
+      parameters:
+        - name: refresh
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyPullRequests'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /me/reviews:
+    get:
+      operationId: GetMyReviews
+      summary: Open PRs requesting the operator's review, and open PRs the operator has reviewed
+      parameters:
+        - name: refresh
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyReviews'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /schedule:
+    get:
+      operationId: ListScheduledActions
+      summary: Every recurring, scheduled, or pending automation with its timing
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduledActions'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /schedule/{actionID}/run:
+    post:
+      operationId: RunScheduledAction
+      summary: Run a scheduled action now
+      parameters:
+        - name: actionID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ran; returns the refreshed action
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduledAction'
+        "400":
+          description: Run failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "404":
+          description: Unknown action
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
 components:
   securitySchemes:
     BearerAuth:
@@ -3133,3 +3223,185 @@ components:
           type: object
           additionalProperties:
             type: integer
+    ReviewerState:
+      type: object
+      required: [login, state]
+      properties:
+        login:
+          type: string
+        state:
+          type: string
+        submitted_at:
+          type: string
+          format: date-time
+    FeedbackDigest:
+      type: object
+      required: [new, dispatched, addressed, last_reviewer, last_state, latest_id]
+      properties:
+        new:
+          type: integer
+        dispatched:
+          type: integer
+        addressed:
+          type: integer
+        last_reviewer:
+          type: string
+        last_state:
+          type: string
+        last_at:
+          type: string
+          format: date-time
+        latest_id:
+          type: string
+    PullRequestCard:
+      type: object
+      required: [repo, number, title, url, author, is_draft, state, head_ref, base_ref, created_at, updated_at, review_decision, checks, mergeable, additions, deletions, changed_files, labels, reviews, requested_reviewers, my_review_state, review_requested_from_me, linear_refs, sessions]
+      properties:
+        repo:
+          type: string
+        number:
+          type: integer
+        title:
+          type: string
+        url:
+          type: string
+        author:
+          type: string
+        is_draft:
+          type: boolean
+        state:
+          type: string
+        head_ref:
+          type: string
+        base_ref:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        merged_at:
+          type: string
+          format: date-time
+        review_decision:
+          type: string
+        checks:
+          type: string
+        mergeable:
+          type: string
+        additions:
+          type: integer
+        deletions:
+          type: integer
+        changed_files:
+          type: integer
+        labels:
+          type: array
+          items:
+            type: string
+        reviews:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviewerState'
+        requested_reviewers:
+          type: array
+          items:
+            type: string
+        my_review_state:
+          type: string
+        review_requested_from_me:
+          type: boolean
+        linear_refs:
+          type: array
+          items:
+            type: string
+        sessions:
+          type: integer
+        review:
+          $ref: '#/components/schemas/CodeReviewRequest'
+        feedback:
+          $ref: '#/components/schemas/FeedbackDigest'
+    MyPullRequests:
+      type: object
+      required: [login, fetched_at, open, merged]
+      properties:
+        login:
+          type: string
+        fetched_at:
+          type: string
+          format: date-time
+        open:
+          type: array
+          items:
+            $ref: '#/components/schemas/PullRequestCard'
+        merged:
+          type: array
+          items:
+            $ref: '#/components/schemas/PullRequestCard'
+    MyReviews:
+      type: object
+      required: [login, fetched_at, requested, reviewed]
+      properties:
+        login:
+          type: string
+        fetched_at:
+          type: string
+          format: date-time
+        requested:
+          type: array
+          items:
+            $ref: '#/components/schemas/PullRequestCard'
+        reviewed:
+          type: array
+          items:
+            $ref: '#/components/schemas/PullRequestCard'
+    ScheduledAction:
+      type: object
+      required: [id, name, description, kind, enabled, runnable, outward]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        kind:
+          type: string
+          enum: [recurring, scheduled, pending]
+        enabled:
+          type: boolean
+        interval_seconds:
+          type: integer
+        last_run_at:
+          type: string
+          format: date-time
+        next_run_at:
+          type: string
+          format: date-time
+        last_error:
+          type: string
+        detail:
+          type: string
+        count:
+          type: integer
+        project_id:
+          type: string
+        runnable:
+          type: boolean
+        outward:
+          type: boolean
+          description: Running it posts to GitHub or Linear
+        settings_section:
+          type: string
+    ScheduledActions:
+      type: object
+      required: [now, items]
+      properties:
+        now:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduledAction'

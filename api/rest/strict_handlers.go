@@ -21,6 +21,7 @@ import (
 	"github.com/gabinante/flywheel/internal/queue"
 	"github.com/gabinante/flywheel/internal/report"
 	"github.com/gabinante/flywheel/internal/review"
+	"github.com/gabinante/flywheel/internal/schedule"
 	"github.com/gabinante/flywheel/internal/sessions"
 	"github.com/gabinante/flywheel/internal/settings"
 	"github.com/gabinante/flywheel/internal/ticket"
@@ -42,6 +43,7 @@ type StrictServer struct {
 	CodeReviewSvc *codereview.Service // nil-safe: code review endpoints error when nil
 	ReportSvc     *report.Service     // nil-safe: report endpoints error when nil
 	SettingsSvc   *settings.Service   // nil-safe: settings endpoints error when nil
+	ScheduleSvc   *schedule.Service   // nil-safe: schedule endpoints error when nil
 	AgentStore    agent.AgentStore
 }
 

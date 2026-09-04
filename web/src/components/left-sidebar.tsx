@@ -1,5 +1,6 @@
 import {
   Activity,
+  CalendarClock,
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
@@ -289,6 +290,18 @@ export function LeftSidebar() {
                 href: '/orgs',
                 match: '/orgs',
               },
+            ]}
+            expanded={isExpanded}
+            currentPath={currentPath}
+          />
+        )}
+        {token && (
+          <NavSection
+            title="Across projects"
+            items={[
+              { label: 'My PRs', icon: GitPullRequest, href: '/my/prs', match: '/my/prs' },
+              { label: 'My Reviews', icon: ClipboardCheck, href: '/my/reviews', match: '/my/reviews' },
+              { label: 'Scheduled actions', icon: CalendarClock, href: '/schedule', match: '/schedule' },
             ]}
             expanded={isExpanded}
             currentPath={currentPath}

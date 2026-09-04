@@ -28,6 +28,10 @@ export function useRouteBreadcrumbs(): BreadcrumbItem[] {
 
     const crumbs: BreadcrumbItem[] = []
 
+    // Cross-project views
+    if (path === '/my/prs') return [{ label: 'My PRs' }]
+    if (path === '/my/reviews') return [{ label: 'My Reviews' }]
+    if (path === '/schedule') return [{ label: 'Scheduled actions' }]
     // Settings (operator-level)
     if (path.startsWith('/settings')) {
       crumbs.push({ label: 'Settings' })
