@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -81,6 +82,15 @@ type WorkflowResolver interface {
 	ResolveForProject(ctx context.Context, orgID, projectID string) (workflowID string, version int, firstPhaseID string, err error)
 }
 
+// ExternalRefLookup resolves external tracker projections for tickets. Implemented
+// by the Linear store; optional.
+type ExternalRefLookup interface {
+	// RefsByTicketIDs returns projections keyed by ticket ID.
+	RefsByTicketIDs(ctx context.Context, ticketIDs []string) (map[string]*ExternalRef, error)
+	// TicketIDByIdentifier resolves an external identifier (e.g. RLETD-465) to a ticket ID, or "".
+	TicketIDByIdentifier(ctx context.Context, identifier string) (string, error)
+}
+
 // Service provides ticket operations.
 type Service struct {
 	store              TicketStore
@@ -93,6 +103,13 @@ type Service struct {
 	acceptanceRunner   AcceptanceRunner
 	autoApproveOnPass  bool
 	workflowResolver   WorkflowResolver
+	externalRefs       ExternalRefLookup
+}
+
+// SetExternalRefLookup enables external-tracker projections on read paths and
+// lets GetTicket accept external identifiers such as RLETD-465.
+func (s *Service) SetExternalRefLookup(l ExternalRefLookup) {
+	s.externalRefs = l
 }
 
 // NewService returns a new Service. The store parameter accepts any TicketStore
@@ -238,12 +255,156 @@ func (s *Service) CreateTicket(ctx context.Context, projectID, title string, typ
 
 // GetTicket returns a ticket by ID.
 func (s *Service) GetTicket(ctx context.Context, id string) (*Ticket, error) {
-	return s.store.GetByID(ctx, id)
+	if s.externalRefs != nil && externalIdentifierRe.MatchString(id) {
+		if resolved, err := s.externalRefs.TicketIDByIdentifier(ctx, id); err == nil && resolved != "" {
+			id = resolved
+		}
+	}
+	t, err := s.store.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	s.attachExternal(ctx, []*Ticket{t})
+	return t, nil
 }
 
 // ListTickets returns all tickets for a project. If workStreamID is non-empty, filters by work stream. If state is non-empty, filters by state.
 func (s *Service) ListTickets(ctx context.Context, projectID string, workStreamID string, state State) ([]*Ticket, error) {
-	return s.store.GetByProject(ctx, projectID, workStreamID, state)
+	list, err := s.store.GetByProject(ctx, projectID, workStreamID, state)
+	if err != nil {
+		return nil, err
+	}
+	s.attachExternal(ctx, list)
+	return list, nil
+}
+
+// externalIdentifierRe matches Linear-style identifiers (KEY-123).
+var externalIdentifierRe = regexp.MustCompile(`^[A-Z][A-Z0-9]{1,9}-\d{1,6}$`)
+
+// attachExternal fills Ticket.External from the lookup; failures are ignored.
+func (s *Service) attachExternal(ctx context.Context, tickets []*Ticket) {
+	if s.externalRefs == nil || len(tickets) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(tickets))
+	for _, t := range tickets {
+		if t != nil {
+			ids = append(ids, t.ID)
+		}
+	}
+	refs, err := s.externalRefs.RefsByTicketIDs(ctx, ids)
+	if err != nil {
+		return
+	}
+	for _, t := range tickets {
+		if t != nil {
+			t.External = refs[t.ID]
+		}
+	}
+}
+
+// ExternalImport describes an issue imported from an external tracker.
+type ExternalImport struct {
+	ProjectID  string
+	Title      string
+	Type       TicketType
+	Priority   Priority
+	State      State
+	Objective  Objective
+	Provider   string
+	Identifier string
+	CreatedAt  time.Time
+	TargetRepo string
+}
+
+// ImportExternal creates a ticket mirroring an external issue. Unlike CreateTicket
+// it does not require acceptance criteria and starts in the mapped state. The
+// ticket.created event carries external_provider so sync subscribers can ignore it.
+func (s *Service) ImportExternal(ctx context.Context, in ExternalImport) (*Ticket, error) {
+	p, err := s.project.GetProject(ctx, in.ProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("project: %w", err)
+	}
+	seq, err := s.store.NextSequence(ctx, in.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	created := in.CreatedAt
+	if created.IsZero() {
+		created = now
+	}
+	state := in.State
+	if !isKnownState(state) {
+		state = StateDraft
+	}
+	typ := in.Type
+	if typ == "" {
+		typ = TypeTask
+	}
+	t := &Ticket{
+		ID:         p.Slug + "-" + strconv.FormatInt(seq, 10),
+		ProjectID:  in.ProjectID,
+		Title:      in.Title,
+		Type:       typ,
+		Priority:   in.Priority,
+		State:      state,
+		Version:    1,
+		Objective:  in.Objective,
+		Inputs:     map[string]any{},
+		Outputs:    map[string]any{},
+		DependsOn:  []string{},
+		TargetRepo: in.TargetRepo,
+		CreatedBy:  in.Provider,
+		CreatedAt:  created,
+		UpdatedAt:  now,
+	}
+	if err := s.store.Create(ctx, t); err != nil {
+		return nil, err
+	}
+	_ = s.bus.Publish(ctx, events.NewEvent(events.EventTicketCreated, map[string]any{
+		"ticket_id":           t.ID,
+		"project_id":          t.ProjectID,
+		"state":               string(t.State),
+		"external_provider":   in.Provider,
+		"external_identifier": in.Identifier,
+	}))
+	return t, nil
+}
+
+// SetStateFromExternal applies a state observed in the external tracker without
+// running the Flywheel state machine. It records the transition and publishes
+// ticket.updated so the UI and command center see the change.
+func (s *Service) SetStateFromExternal(ctx context.Context, id string, newState State, provider string) error {
+	if !isKnownState(newState) {
+		return fmt.Errorf("invalid state %q", newState)
+	}
+	t, err := s.store.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if t.State == newState {
+		return nil
+	}
+	if err := s.store.UpdateState(ctx, t.ID, t.Version, newState, t.AssignedTo); err != nil {
+		return err
+	}
+	if s.transitionStore != nil {
+		_ = s.transitionStore.Record(ctx, t.ID, t.State, newState, "external_sync", Actor{Type: "system", ID: provider})
+	}
+	_ = s.bus.Publish(ctx, events.NewEvent(events.EventTicketUpdated, map[string]any{
+		"ticket_id":         t.ID,
+		"project_id":        t.ProjectID,
+		"from_state":        string(t.State),
+		"state":             string(newState),
+		"external_provider": provider,
+	}))
+	return nil
+}
+
+// UpdateTitleAndObjective replaces a ticket's title and objective (used by external sync).
+func (s *Service) UpdateTitleAndObjective(ctx context.Context, id, title string, obj Objective) error {
+	return s.store.UpdateTitleAndObjective(ctx, id, title, obj)
 }
 
 // CountTicketsCreatedBy returns how many tickets the given agent created (lifetime).
@@ -689,4 +850,14 @@ func triggerToEventType(trigger string, newState State) string {
 	default:
 		return ""
 	}
+}
+
+// isKnownState reports whether s is one of the canonical ticket states.
+func isKnownState(s State) bool {
+	for _, k := range AllStates() {
+		if k == s {
+			return true
+		}
+	}
+	return false
 }

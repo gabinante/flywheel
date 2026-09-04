@@ -22,6 +22,7 @@ import (
 	"github.com/gabinante/flywheel/internal/dispatch"
 	"github.com/gabinante/flywheel/internal/execution"
 	"github.com/gabinante/flywheel/internal/gate"
+	"github.com/gabinante/flywheel/internal/linear"
 	"github.com/gabinante/flywheel/internal/orchestrator"
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/progress"
@@ -138,6 +139,10 @@ func run(ctx context.Context, cfg *config.Config) {
 		ticketSvc.SetAutoApproveOnPass(true)
 	}
 
+	// Linear projections: ticket reads carry their Linear issue and accept identifiers.
+	linearStore := linear.NewStore(pool)
+	ticketSvc.SetExternalRefLookup(linearStore)
+
 	// Workflow engine: configurable pipelines per system/org/project.
 	workflowStore := workflow.NewStore(pool)
 	workflowEngine := workflow.NewEngine(workflowStore, ticketStore)
@@ -195,6 +200,19 @@ func run(ctx context.Context, cfg *config.Config) {
 	reviewSvc := review.NewService(reviewStore, ticketSvc, bus)
 	userStore := user.NewStore(pool)
 
+	// Linear as the ticket store: discover led projects, mirror issues, push changes back.
+	var linearClient *linear.Client
+	if cfg.Linear.APIKey != "" && cfg.Linear.Enabled {
+		linearClient = linear.NewClient(cfg.Linear.APIKey, "")
+	}
+	linearSvc := linear.NewSyncer(linearClient, linearStore, ticketSvc, projectSvc, bus, linear.Config{
+		Enabled:        cfg.Linear.Enabled,
+		ProjectIDs:     cfg.Linear.ProjectIDs,
+		Interval:       cfg.Linear.Interval,
+		DefaultTeamKey: cfg.Linear.DefaultTeamKey,
+	})
+	linearSvc.Start(ctx)
+
 	// Session tracking: ingest Claude Code and Codex sessions from their local stores.
 	sessionsSvc := sessions.NewService(sessions.NewStore(pool), sessions.Config{
 		Enabled:   cfg.Sessions.Enabled,
@@ -213,6 +231,7 @@ func run(ctx context.Context, cfg *config.Config) {
 		TraceSvc:      execSvc,
 		ReviewSvc:     reviewSvc,
 		SessionsSvc:   sessionsSvc,
+		LinearSvc:     linearSvc,
 		AgentStore:    agentStore,
 	}
 

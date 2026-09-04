@@ -289,7 +289,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"required":             []string{"project_id"},
 		"additionalProperties": false,
 	}}, wrap(listTicketsHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "get_ticket", Description: "Get the full ticket payload: objective, success criteria, acceptance test, context pack, dependency outputs (from tickets this one depends on), prior attempts, and human answers. This is the main input for doing the work. Call after claim_ticket and before start_ticket to load everything you need. If the ticket has a work_stream and the project has repo_url, the response may include git_instruction (checkout branch, or create branch + update_work_stream if branch is not set yet).", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "get_ticket", Description: "Get the full ticket payload (ticket_id also accepts a Linear identifier such as RLETD-465 when the project mirrors Linear): objective, success criteria, acceptance test, context pack, dependency outputs (from tickets this one depends on), prior attempts, and human answers. This is the main input for doing the work. Call after claim_ticket and before start_ticket to load everything you need. If the ticket has a work_stream and the project has repo_url, the response may include git_instruction (checkout branch, or create branch + update_work_stream if branch is not set yet).", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"ticket_id": map[string]any{"type": "string", "description": "Ticket ID"},

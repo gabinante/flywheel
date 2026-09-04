@@ -935,6 +935,11 @@ paths:
           schema:
             type: string
             format: date-time
+        - name: ref
+          in: query
+          description: Only sessions linked to this ref (owner/repo#N, KEY-N, ticket id).
+          schema:
+            type: string
         - name: include_subagents
           in: query
           schema:
@@ -1049,6 +1054,87 @@ paths:
                 $ref: '#/components/schemas/StructuredError'
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /linear/status:
+    get:
+      operationId: GetLinearStatus
+      summary: Health of the Linear sync and the linked projects
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LinearStatus'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /projects/{projectID}/linear:
+    get:
+      operationId: GetProjectLinearLink
+      summary: The Linear project this Flywheel project mirrors, if any
+      parameters:
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectLinearLink'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+  /projects/{projectID}/linear/sync:
+    post:
+      operationId: SyncProjectLinear
+      summary: Pull updated Linear issues for this project now
+      parameters:
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectLinearLink'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "500":
+          description: Internal error
           content:
             application/json:
               schema:
@@ -1478,6 +1564,46 @@ components:
           type: string
           format: date-time
         updated_at:
+          type: string
+          format: date-time
+        external:
+          $ref: '#/components/schemas/TicketExternalRef'
+    TicketExternalRef:
+      type: object
+      description: Projection of the external tracker issue (Linear) this ticket mirrors.
+      required: [provider, external_id, identifier, priority, synced_at]
+      properties:
+        provider:
+          type: string
+        external_id:
+          type: string
+        identifier:
+          type: string
+          description: e.g. RLETD-465
+        url:
+          type: string
+        state_name:
+          type: string
+        state_type:
+          type: string
+          description: triage, backlog, unstarted, started, completed, or canceled
+        assignee:
+          type: string
+        team_key:
+          type: string
+        priority:
+          type: integer
+          description: Linear priority 0 (none) to 4 (low)
+        labels:
+          type: array
+          items:
+            type: string
+        branch_name:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+        synced_at:
           type: string
           format: date-time
     ProjectRepository:
@@ -1979,3 +2105,54 @@ components:
           type: object
           additionalProperties:
             type: integer
+    ProjectLinearLink:
+      type: object
+      required: [project_id, linked, team_keys, ticket_count]
+      properties:
+        project_id:
+          type: string
+        linked:
+          type: boolean
+        linear_project_id:
+          type: string
+        linear_project_name:
+          type: string
+        linear_project_url:
+          type: string
+        team_keys:
+          type: array
+          items:
+            type: string
+        synced_at:
+          type: string
+          format: date-time
+        last_error:
+          type: string
+        ticket_count:
+          type: integer
+    LinearStatus:
+      type: object
+      required: [enabled, projects_linked, tickets_linked, last_duration_ms, links]
+      properties:
+        enabled:
+          type: boolean
+        viewer_name:
+          type: string
+        viewer_email:
+          type: string
+        projects_linked:
+          type: integer
+        tickets_linked:
+          type: integer
+        last_run_at:
+          type: string
+          format: date-time
+        last_error:
+          type: string
+        last_duration_ms:
+          type: integer
+          format: int64
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectLinearLink'

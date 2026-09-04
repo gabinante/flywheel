@@ -89,6 +89,9 @@ func (s *StrictServer) ListSessions(ctx context.Context, req generated.ListSessi
 	if p.Since != nil {
 		f.Since = p.Since
 	}
+	if p.Ref != nil {
+		f.Ref = strings.TrimSpace(*p.Ref)
+	}
 	if p.IncludeSubagents != nil {
 		f.IncludeSubagents = *p.IncludeSubagents
 	}

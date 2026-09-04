@@ -9,7 +9,9 @@ import {
 } from 'lucide-react'
 
 import { ExecutionTraceCard } from '@/components/execution-trace-card'
+import { LinearRefBadge } from '@/components/linear-ref-badge'
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
+import { TicketSessionsCard } from '@/components/ticket-sessions-card'
 import { ReviewQueueCelebration } from '@/components/review-queue-celebration'
 import { TicketLifecycle } from '@/components/ticket-lifecycle'
 import { TicketOutputsCard } from '@/components/ticket-outputs'
@@ -347,6 +349,7 @@ export function TicketDetailPage() {
             >
               {ticketType}
             </Badge>
+            <LinearRefBadge external={ticket.external} />
           </div>
 
           {/* Meta row */}
@@ -403,6 +406,8 @@ export function TicketDetailPage() {
           onResolved={() => void reloadTicket()}
         />
       ) : null}
+
+      <TicketSessionsCard refs={[ticket.external?.identifier ?? '', ticket.id ?? '']} base={base} />
 
       {/* ── Objective section ──────────────────────────── */}
       {obj?.description ? (

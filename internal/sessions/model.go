@@ -121,6 +121,7 @@ type Filter struct {
 	Branch           string
 	Status           Status
 	Query            string // full-text over prompts, title, first prompt
+	Ref              string // only sessions linked to this ref (owner/repo#N, KEY-N, ticket id)
 	Since            *time.Time
 	IncludeSubagents bool
 	Limit            int

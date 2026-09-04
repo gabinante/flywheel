@@ -232,6 +232,9 @@ func (st *Store) List(ctx context.Context, f Filter) ([]*Session, int, error) {
 	case StatusEnded:
 		where = append(where, "(s.ended_at IS NOT NULL OR s.last_activity_at <= now() - interval '1 hour')")
 	}
+	if f.Ref != "" {
+		where = append(where, "EXISTS (SELECT 1 FROM session_links sl WHERE sl.session_id = s.id AND sl.ref = "+arg(f.Ref)+")")
+	}
 	if q := strings.TrimSpace(f.Query); q != "" {
 		like := arg("%" + q + "%")
 		ts := arg(q)

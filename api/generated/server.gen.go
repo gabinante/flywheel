@@ -792,6 +792,19 @@ type Lease struct {
 	Token     *string    `json:"token,omitempty"`
 }
 
+// LinearStatus defines model for LinearStatus.
+type LinearStatus struct {
+	Enabled        bool                `json:"enabled"`
+	LastDurationMs int64               `json:"last_duration_ms"`
+	LastError      *string             `json:"last_error,omitempty"`
+	LastRunAt      *time.Time          `json:"last_run_at,omitempty"`
+	Links          []ProjectLinearLink `json:"links"`
+	ProjectsLinked int                 `json:"projects_linked"`
+	TicketsLinked  int                 `json:"tickets_linked"`
+	ViewerEmail    *string             `json:"viewer_email,omitempty"`
+	ViewerName     *string             `json:"viewer_name,omitempty"`
+}
+
 // LogStepRequest defines model for LogStepRequest.
 type LogStepRequest struct {
 	LeaseToken string         `json:"lease_token"`
@@ -868,6 +881,19 @@ type Project struct {
 
 // ProjectStatus active (default) or closed; list endpoints default to active only.
 type ProjectStatus string
+
+// ProjectLinearLink defines model for ProjectLinearLink.
+type ProjectLinearLink struct {
+	LastError         *string    `json:"last_error,omitempty"`
+	LinearProjectId   *string    `json:"linear_project_id,omitempty"`
+	LinearProjectName *string    `json:"linear_project_name,omitempty"`
+	LinearProjectUrl  *string    `json:"linear_project_url,omitempty"`
+	Linked            bool       `json:"linked"`
+	ProjectId         string     `json:"project_id"`
+	SyncedAt          *time.Time `json:"synced_at,omitempty"`
+	TeamKeys          []string   `json:"team_keys"`
+	TicketCount       int        `json:"ticket_count"`
+}
 
 // RenewLeaseRequest defines model for RenewLeaseRequest.
 type RenewLeaseRequest struct {
@@ -969,14 +995,17 @@ type Ticket struct {
 	DependsOn  *[]string  `json:"depends_on,omitempty"`
 
 	// EnvironmentId Compound environment ID (spec v0.2 section 4.1)
-	EnvironmentId *string                 `json:"environment_id,omitempty"`
-	Id            *string                 `json:"id,omitempty"`
-	Inputs        *map[string]interface{} `json:"inputs,omitempty"`
-	Objective     *Objective              `json:"objective,omitempty"`
-	Outputs       *map[string]interface{} `json:"outputs,omitempty"`
-	Priority      *int                    `json:"priority,omitempty"`
-	ProjectId     *string                 `json:"project_id,omitempty"`
-	State         *TicketState            `json:"state,omitempty"`
+	EnvironmentId *string `json:"environment_id,omitempty"`
+
+	// External Projection of the external tracker issue (Linear) this ticket mirrors.
+	External  *TicketExternalRef      `json:"external,omitempty"`
+	Id        *string                 `json:"id,omitempty"`
+	Inputs    *map[string]interface{} `json:"inputs,omitempty"`
+	Objective *Objective              `json:"objective,omitempty"`
+	Outputs   *map[string]interface{} `json:"outputs,omitempty"`
+	Priority  *int                    `json:"priority,omitempty"`
+	ProjectId *string                 `json:"project_id,omitempty"`
+	State     *TicketState            `json:"state,omitempty"`
 
 	// TargetRepo Repository alias for multi-repo projects (from project_repositories). Empty means primary repo.
 	TargetRepo    *string        `json:"target_repo,omitempty"`
@@ -1006,6 +1035,29 @@ type TicketContext struct {
 	HumanAnswers  *[]string                 `json:"human_answers,omitempty"`
 	PriorAttempts *[]map[string]interface{} `json:"prior_attempts,omitempty"`
 	RelevantFiles *[]string                 `json:"relevant_files,omitempty"`
+}
+
+// TicketExternalRef Projection of the external tracker issue (Linear) this ticket mirrors.
+type TicketExternalRef struct {
+	Assignee   *string `json:"assignee,omitempty"`
+	BranchName *string `json:"branch_name,omitempty"`
+	ExternalId string  `json:"external_id"`
+
+	// Identifier e.g. RLETD-465
+	Identifier string    `json:"identifier"`
+	Labels     *[]string `json:"labels,omitempty"`
+
+	// Priority Linear priority 0 (none) to 4 (low)
+	Priority  int     `json:"priority"`
+	Provider  string  `json:"provider"`
+	StateName *string `json:"state_name,omitempty"`
+
+	// StateType triage, backlog, unstarted, started, completed, or canceled
+	StateType *string    `json:"state_type,omitempty"`
+	SyncedAt  time.Time  `json:"synced_at"`
+	TeamKey   *string    `json:"team_key,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+	Url       *string    `json:"url,omitempty"`
 }
 
 // TraceStep defines model for TraceStep.
@@ -1173,11 +1225,14 @@ type ListSessionsParams struct {
 	Status *ListSessionsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
 
 	// Q Full-text search over prompts, title, repo, branch, and linked refs.
-	Q                *string    `form:"q,omitempty" json:"q,omitempty"`
-	Since            *time.Time `form:"since,omitempty" json:"since,omitempty"`
-	IncludeSubagents *bool      `form:"include_subagents,omitempty" json:"include_subagents,omitempty"`
-	Limit            *int       `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset           *int       `form:"offset,omitempty" json:"offset,omitempty"`
+	Q     *string    `form:"q,omitempty" json:"q,omitempty"`
+	Since *time.Time `form:"since,omitempty" json:"since,omitempty"`
+
+	// Ref Only sessions linked to this ref (owner/repo#N, KEY-N, ticket id).
+	Ref              *string `form:"ref,omitempty" json:"ref,omitempty"`
+	IncludeSubagents *bool   `form:"include_subagents,omitempty" json:"include_subagents,omitempty"`
+	Limit            *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset           *int    `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // ListSessionsParamsHarness defines parameters for ListSessions.
@@ -1264,6 +1319,9 @@ type ServerInterface interface {
 	// GetHealthz Liveness/readiness
 	// (GET /healthz)
 	GetHealthz(w http.ResponseWriter, r *http.Request)
+	// GetLinearStatus Health of the Linear sync and the linked projects
+	// (GET /linear/status)
+	GetLinearStatus(w http.ResponseWriter, r *http.Request)
 	// GetMeStats Lifetime stats for the authenticated agent (tickets created, reviews approved/rejected). For gamification.
 	// (GET /me/stats)
 	GetMeStats(w http.ResponseWriter, r *http.Request)
@@ -1294,6 +1352,12 @@ type ServerInterface interface {
 
 	// (GET /projects/{projectID}/escalations)
 	ListEscalations(w http.ResponseWriter, r *http.Request, projectID string)
+	// GetProjectLinearLink The Linear project this Flywheel project mirrors, if any
+	// (GET /projects/{projectID}/linear)
+	GetProjectLinearLink(w http.ResponseWriter, r *http.Request, projectID string)
+	// SyncProjectLinear Pull updated Linear issues for this project now
+	// (POST /projects/{projectID}/linear/sync)
+	SyncProjectLinear(w http.ResponseWriter, r *http.Request, projectID string)
 
 	// (POST /projects/{projectID}/queue/claim)
 	ClaimTicket(w http.ResponseWriter, r *http.Request, projectID string)
@@ -1402,6 +1466,20 @@ func (siw *ServerInterfaceWrapper) GetHealthz(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealthz(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetLinearStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetLinearStatus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetLinearStatus(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1649,6 +1727,58 @@ func (siw *ServerInterfaceWrapper) ListEscalations(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListEscalations(w, r, projectID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProjectLinearLink operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectLinearLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectID" -------------
+	var projectID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectID", r.PathValue("projectID"), &projectID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectLinearLink(w, r, projectID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SyncProjectLinear operation middleware
+func (siw *ServerInterfaceWrapper) SyncProjectLinear(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectID" -------------
+	var projectID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectID", r.PathValue("projectID"), &projectID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SyncProjectLinear(w, r, projectID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2025,6 +2155,19 @@ func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.R
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "since"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "since", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "ref" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "ref", r.URL.Query(), &params.Ref, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "ref"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ref", Err: err})
 		}
 		return
 	}
@@ -2613,6 +2756,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/sessions/collector", wrapper.GetSessionCollectorStatus)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/sessions/{sessionID}", wrapper.GetSession)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/sessions/{sessionID}/links", wrapper.CreateSessionLink)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/linear/status", wrapper.GetLinearStatus)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectID}/linear", wrapper.GetProjectLinearLink)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/projects/{projectID}/linear/sync", wrapper.SyncProjectLinear)
 
 	return m
 }
@@ -2665,6 +2811,41 @@ type GetHealthz200Response struct {
 func (response GetHealthz200Response) VisitGetHealthzResponse(w http.ResponseWriter) error {
 	w.WriteHeader(200)
 	return nil
+}
+
+type GetLinearStatusRequestObject struct {
+}
+
+type GetLinearStatusResponseObject interface {
+	VisitGetLinearStatusResponse(w http.ResponseWriter) error
+}
+
+type GetLinearStatus200JSONResponse LinearStatus
+
+func (response GetLinearStatus200JSONResponse) VisitGetLinearStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLinearStatus401JSONResponse StructuredError
+
+func (response GetLinearStatus401JSONResponse) VisitGetLinearStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetMeStatsRequestObject struct {
@@ -3031,6 +3212,120 @@ func (response ListEscalations200JSONResponse) VisitListEscalationsResponse(w ht
 type ListEscalations500JSONResponse StructuredError
 
 func (response ListEscalations500JSONResponse) VisitListEscalationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectLinearLinkRequestObject struct {
+	ProjectID string `json:"projectID"`
+}
+
+type GetProjectLinearLinkResponseObject interface {
+	VisitGetProjectLinearLinkResponse(w http.ResponseWriter) error
+}
+
+type GetProjectLinearLink200JSONResponse ProjectLinearLink
+
+func (response GetProjectLinearLink200JSONResponse) VisitGetProjectLinearLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectLinearLink401JSONResponse StructuredError
+
+func (response GetProjectLinearLink401JSONResponse) VisitGetProjectLinearLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectLinearLink404JSONResponse StructuredError
+
+func (response GetProjectLinearLink404JSONResponse) VisitGetProjectLinearLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SyncProjectLinearRequestObject struct {
+	ProjectID string `json:"projectID"`
+}
+
+type SyncProjectLinearResponseObject interface {
+	VisitSyncProjectLinearResponse(w http.ResponseWriter) error
+}
+
+type SyncProjectLinear200JSONResponse ProjectLinearLink
+
+func (response SyncProjectLinear200JSONResponse) VisitSyncProjectLinearResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SyncProjectLinear401JSONResponse StructuredError
+
+func (response SyncProjectLinear401JSONResponse) VisitSyncProjectLinearResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SyncProjectLinear404JSONResponse StructuredError
+
+func (response SyncProjectLinear404JSONResponse) VisitSyncProjectLinearResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SyncProjectLinear500JSONResponse StructuredError
+
+func (response SyncProjectLinear500JSONResponse) VisitSyncProjectLinearResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4104,6 +4399,9 @@ type StrictServerInterface interface {
 	// GetHealthz Liveness/readiness
 	// (GET /healthz)
 	GetHealthz(ctx context.Context, request GetHealthzRequestObject) (GetHealthzResponseObject, error)
+	// GetLinearStatus Health of the Linear sync and the linked projects
+	// (GET /linear/status)
+	GetLinearStatus(ctx context.Context, request GetLinearStatusRequestObject) (GetLinearStatusResponseObject, error)
 	// GetMeStats Lifetime stats for the authenticated agent (tickets created, reviews approved/rejected). For gamification.
 	// (GET /me/stats)
 	GetMeStats(ctx context.Context, request GetMeStatsRequestObject) (GetMeStatsResponseObject, error)
@@ -4134,6 +4432,12 @@ type StrictServerInterface interface {
 
 	// (GET /projects/{projectID}/escalations)
 	ListEscalations(ctx context.Context, request ListEscalationsRequestObject) (ListEscalationsResponseObject, error)
+	// GetProjectLinearLink The Linear project this Flywheel project mirrors, if any
+	// (GET /projects/{projectID}/linear)
+	GetProjectLinearLink(ctx context.Context, request GetProjectLinearLinkRequestObject) (GetProjectLinearLinkResponseObject, error)
+	// SyncProjectLinear Pull updated Linear issues for this project now
+	// (POST /projects/{projectID}/linear/sync)
+	SyncProjectLinear(ctx context.Context, request SyncProjectLinearRequestObject) (SyncProjectLinearResponseObject, error)
 
 	// (POST /projects/{projectID}/queue/claim)
 	ClaimTicket(ctx context.Context, request ClaimTicketRequestObject) (ClaimTicketResponseObject, error)
@@ -4294,6 +4598,30 @@ func (sh *strictHandler) GetHealthz(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetHealthzResponseObject); ok {
 		if err := validResponse.VisitGetHealthzResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetLinearStatus operation middleware
+func (sh *strictHandler) GetLinearStatus(w http.ResponseWriter, r *http.Request) {
+	var request GetLinearStatusRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetLinearStatus(ctx, request.(GetLinearStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetLinearStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetLinearStatusResponseObject); ok {
+		if err := validResponse.VisitGetLinearStatusResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -4570,6 +4898,58 @@ func (sh *strictHandler) ListEscalations(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListEscalationsResponseObject); ok {
 		if err := validResponse.VisitListEscalationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectLinearLink operation middleware
+func (sh *strictHandler) GetProjectLinearLink(w http.ResponseWriter, r *http.Request, projectID string) {
+	var request GetProjectLinearLinkRequestObject
+
+	request.ProjectID = projectID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectLinearLink(ctx, request.(GetProjectLinearLinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectLinearLink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectLinearLinkResponseObject); ok {
+		if err := validResponse.VisitGetProjectLinearLinkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SyncProjectLinear operation middleware
+func (sh *strictHandler) SyncProjectLinear(w http.ResponseWriter, r *http.Request, projectID string) {
+	var request SyncProjectLinearRequestObject
+
+	request.ProjectID = projectID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SyncProjectLinear(ctx, request.(SyncProjectLinearRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SyncProjectLinear")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SyncProjectLinearResponseObject); ok {
+		if err := validResponse.VisitSyncProjectLinearResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -74,6 +74,13 @@ func Load() *Config {
 			AgentAPIKey:          resolveAgentAPIKey("ORCHESTRATOR_AGENT_API_KEY", orchestratorDriver),
 			HistoryLimit:         getEnvInt("ORCHESTRATOR_HISTORY_LIMIT", 200),
 		},
+		Linear: LinearConfig{
+			APIKey:         getEnv("LINEAR_API_KEY", ""),
+			Enabled:        getEnvBool("LINEAR_SYNC_ENABLED", getEnv("LINEAR_API_KEY", "") != ""),
+			ProjectIDs:     splitCSV(getEnv("LINEAR_PROJECT_IDS", "")),
+			Interval:       getEnvDuration("LINEAR_SYNC_INTERVAL", 60*time.Second),
+			DefaultTeamKey: getEnv("LINEAR_DEFAULT_TEAM_KEY", ""),
+		},
 		Sessions: SessionsConfig{
 			Enabled:   getEnvBool("SESSIONS_ENABLED", true),
 			ClaudeDir: getEnv("SESSIONS_CLAUDE_DIR", filepath.Join(homeDir(), ".claude", "projects")),
@@ -151,7 +158,19 @@ type Config struct {
 	Dispatch                  DispatchConfig
 	Orchestrator              OrchestratorConfig
 	Sessions                  SessionsConfig
+	Linear                    LinearConfig
 	RunAcceptanceTestOnSubmit bool
+}
+
+// LinearConfig makes Linear the ticket store. When APIKey is set, Flywheel
+// mirrors the Linear projects the operator leads (or ProjectIDs) into projects
+// and tickets, and pushes Flywheel-originated changes back.
+type LinearConfig struct {
+	APIKey         string
+	Enabled        bool
+	ProjectIDs     []string      // explicit Linear project IDs; empty = projects the API key's user leads
+	Interval       time.Duration // poll interval (default 60s)
+	DefaultTeamKey string        // team used when creating issues in a multi-team project
 }
 
 // SessionsConfig controls ingestion of Claude Code and Codex sessions from their local stores.
@@ -317,4 +336,14 @@ func homeDir() string {
 		return h
 	}
 	return "."
+}
+
+func splitCSV(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

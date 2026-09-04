@@ -419,6 +419,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/linear/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Health of the Linear sync and the linked projects */
+        get: operations["GetLinearStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectID}/linear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The Linear project this Flywheel project mirrors, if any */
+        get: operations["GetProjectLinearLink"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectID}/linear/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pull updated Linear issues for this project now */
+        post: operations["SyncProjectLinear"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -656,6 +707,28 @@ export interface components {
             created_at?: string;
             /** Format: date-time */
             updated_at?: string;
+            external?: components["schemas"]["TicketExternalRef"];
+        };
+        /** @description Projection of the external tracker issue (Linear) this ticket mirrors. */
+        TicketExternalRef: {
+            provider: string;
+            external_id: string;
+            /** @description e.g. RLETD-465 */
+            identifier: string;
+            url?: string;
+            state_name?: string;
+            /** @description triage, backlog, unstarted, started, completed, or canceled */
+            state_type?: string;
+            assignee?: string;
+            team_key?: string;
+            /** @description Linear priority 0 (none) to 4 (low) */
+            priority: number;
+            labels?: string[];
+            branch_name?: string;
+            /** Format: date-time */
+            updated_at?: string;
+            /** Format: date-time */
+            synced_at: string;
         };
         ProjectRepository: {
             id?: string;
@@ -932,6 +1005,31 @@ export interface components {
             by_harness: {
                 [key: string]: number;
             };
+        };
+        ProjectLinearLink: {
+            project_id: string;
+            linked: boolean;
+            linear_project_id?: string;
+            linear_project_name?: string;
+            linear_project_url?: string;
+            team_keys: string[];
+            /** Format: date-time */
+            synced_at?: string;
+            last_error?: string;
+            ticket_count: number;
+        };
+        LinearStatus: {
+            enabled: boolean;
+            viewer_name?: string;
+            viewer_email?: string;
+            projects_linked: number;
+            tickets_linked: number;
+            /** Format: date-time */
+            last_run_at?: string;
+            last_error?: string;
+            /** Format: int64 */
+            last_duration_ms: number;
+            links: components["schemas"]["ProjectLinearLink"][];
         };
     };
     responses: never;
@@ -2096,6 +2194,8 @@ export interface operations {
                 /** @description Full-text search over prompts, title, repo, branch, and linked refs. */
                 q?: string;
                 since?: string;
+                /** @description Only sessions linked to this ref (owner/repo#N, KEY-N, ticket id). */
+                ref?: string;
                 include_subagents?: boolean;
                 limit?: number;
                 offset?: number;
@@ -2248,6 +2348,124 @@ export interface operations {
             };
             /** @description Not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    GetLinearStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinearStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    GetProjectLinearLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectLinearLink"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    SyncProjectLinear: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectLinearLink"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Internal error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

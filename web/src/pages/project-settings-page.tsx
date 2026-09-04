@@ -6,6 +6,7 @@ import {
   Copy,
   FileText,
   GitBranch,
+  Link2,
   Monitor,
   Save,
   ServerCog,
@@ -16,6 +17,7 @@ import {
 
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { ProjectBasePromptCard } from '@/components/project-base-prompt-card'
+import { ProjectLinearCard } from '@/components/project-linear-card'
 import { ProjectDispatchRoutingCard } from '@/components/project-dispatch-routing-card'
 import { WorkflowTimelineEditor } from '@/components/workflow-timeline-editor'
 import { Badge } from '@/components/ui/badge'
@@ -38,7 +40,7 @@ import type { components } from '@/lib/api/v1'
 
 type Project = components['schemas']['Project']
 
-type SettingsSectionID = 'dispatch' | 'workers' | 'workflow' | 'prompts'
+type SettingsSectionID = 'dispatch' | 'workers' | 'workflow' | 'prompts' | 'linear'
 
 const SETTINGS_SECTIONS: Array<{
   id: SettingsSectionID
@@ -69,6 +71,12 @@ const SETTINGS_SECTIONS: Array<{
     label: 'Workflow stages',
     description: 'Define the staged ticket lifecycle for this project.',
     icon: Workflow,
+  },
+  {
+    id: 'linear',
+    label: 'Linear',
+    description: 'The Linear project this project mirrors, sync status, and manual sync.',
+    icon: Link2,
   },
 ]
 
@@ -605,6 +613,8 @@ export function ProjectSettingsPage() {
           {selectedSection === 'workflow' ? (
             <WorkflowTimelineEditor projectId={projectId} orgId={orgId} />
           ) : null}
+
+          {selectedSection === 'linear' ? <ProjectLinearCard projectId={projectId} /> : null}
 
           <div className="flex justify-end">
             <Button asChild variant="ghost" size="sm">

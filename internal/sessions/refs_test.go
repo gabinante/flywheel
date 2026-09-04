@@ -44,10 +44,10 @@ func TestRefsFromBranch(t *testing.T) {
 func TestRepoFromOriginURL(t *testing.T) {
 	cases := map[string]string{
 		"git@github.com:joinhandshake/joinera.git":   "joinhandshake/joinera",
-		"https://github.com/gabinante/flywheel":     "gabinante/flywheel",
+		"https://github.com/gabinante/flywheel":      "gabinante/flywheel",
 		"https://github.com/gabinante/flywheel.git/": "gabinante/flywheel",
-		"ssh://git@gitlab.com/org/tool.git":         "tool",
-		"":                                          "",
+		"ssh://git@gitlab.com/org/tool.git":          "tool",
+		"":                                           "",
 	}
 	for in, want := range cases {
 		if got := RepoFromOriginURL(in); got != want {
@@ -62,7 +62,7 @@ func TestRepoFromPath(t *testing.T) {
 		"/Users/g/git/rle-dp-worktrees/deid-validation": "rle-dp",
 		"/Users/g/git/joinera-worktrees/corpus-stats":   "joinera",
 		"/Users/g/git/joinera/.claude/worktrees/x":      "joinera",
-		"/Users/g":                                      "",
+		"/Users/g": "",
 	}
 	for in, want := range cases {
 		if got := RepoFromPath(in); got != want {

@@ -31,6 +31,7 @@ This file is the shared operating guide for coding agents working in this repo.
   - `workflow/`: workflow definitions, phases (`agent`, `gate`, `external`, `action`), engine, templates.
   - `gate/`: automated gate checkers (GitHub checks, human approval, HTTP, webhook).
   - `ticket/`, `workstream/`, `project/`, `org/`, `review/`, `execution/`, `queue/`, `agent/`, `user/`, `auth/`.
+  - `linear/`: Linear as the ticket store — discovers led projects, projects issues onto tickets, files Flywheel tickets as issues, pushes state changes and comments back.
   - `sessions/`: ingests Claude Code (`~/.claude/projects`) and Codex (`~/.codex`) sessions read-only, links them to PRs and Linear issues.
   - `progress/`: bridges ticket lifecycle events into the command center thread.
 - `api/openapi.yaml`: REST contract. `api/rest/`: HTTP handlers. `api/mcp/`: MCP tools and agent guide.

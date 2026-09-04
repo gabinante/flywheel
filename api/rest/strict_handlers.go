@@ -14,6 +14,7 @@ import (
 	"github.com/gabinante/flywheel/internal/agent"
 	apierrors "github.com/gabinante/flywheel/internal/errors"
 	"github.com/gabinante/flywheel/internal/execution"
+	"github.com/gabinante/flywheel/internal/linear"
 	"github.com/gabinante/flywheel/internal/org"
 	"github.com/gabinante/flywheel/internal/project"
 	"github.com/gabinante/flywheel/internal/queue"
@@ -34,6 +35,7 @@ type StrictServer struct {
 	TraceSvc      *execution.Service
 	ReviewSvc     *review.Service
 	SessionsSvc   *sessions.Service // nil-safe: session endpoints return an error when tracking is off
+	LinearSvc     *linear.Syncer    // nil-safe: Linear endpoints report unlinked when nil
 	AgentStore    agent.AgentStore
 }
 
@@ -962,6 +964,9 @@ func ticketToGen(t *ticket.Ticket) generated.Ticket {
 	}
 	if t.WorkStreamID != "" {
 		out.WorkStreamId = &t.WorkStreamID
+	}
+	if t.External != nil {
+		out.External = externalRefToGen(t.External)
 	}
 	return out
 }

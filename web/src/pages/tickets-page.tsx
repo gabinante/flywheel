@@ -19,6 +19,7 @@ import {
   Search,
 } from 'lucide-react'
 
+import { LinearRefBadge } from '@/components/linear-ref-badge'
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -299,6 +300,7 @@ function TicketCard({
             {/* Content */}
             <div className="flex min-w-0 flex-1 flex-col gap-1.5">
               <div className="flex items-center gap-2">
+                <LinearRefBadge external={t.external} showState={false} />
                 <CardTitle className="truncate text-sm">{t.title ?? t.id}</CardTitle>
               </div>
 

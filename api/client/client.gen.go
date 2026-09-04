@@ -791,6 +791,19 @@ type Lease struct {
 	Token     *string    `json:"token,omitempty"`
 }
 
+// LinearStatus defines model for LinearStatus.
+type LinearStatus struct {
+	Enabled        bool                `json:"enabled"`
+	LastDurationMs int64               `json:"last_duration_ms"`
+	LastError      *string             `json:"last_error,omitempty"`
+	LastRunAt      *time.Time          `json:"last_run_at,omitempty"`
+	Links          []ProjectLinearLink `json:"links"`
+	ProjectsLinked int                 `json:"projects_linked"`
+	TicketsLinked  int                 `json:"tickets_linked"`
+	ViewerEmail    *string             `json:"viewer_email,omitempty"`
+	ViewerName     *string             `json:"viewer_name,omitempty"`
+}
+
 // LogStepRequest defines model for LogStepRequest.
 type LogStepRequest struct {
 	LeaseToken string         `json:"lease_token"`
@@ -867,6 +880,19 @@ type Project struct {
 
 // ProjectStatus active (default) or closed; list endpoints default to active only.
 type ProjectStatus string
+
+// ProjectLinearLink defines model for ProjectLinearLink.
+type ProjectLinearLink struct {
+	LastError         *string    `json:"last_error,omitempty"`
+	LinearProjectId   *string    `json:"linear_project_id,omitempty"`
+	LinearProjectName *string    `json:"linear_project_name,omitempty"`
+	LinearProjectUrl  *string    `json:"linear_project_url,omitempty"`
+	Linked            bool       `json:"linked"`
+	ProjectId         string     `json:"project_id"`
+	SyncedAt          *time.Time `json:"synced_at,omitempty"`
+	TeamKeys          []string   `json:"team_keys"`
+	TicketCount       int        `json:"ticket_count"`
+}
 
 // RenewLeaseRequest defines model for RenewLeaseRequest.
 type RenewLeaseRequest struct {
@@ -968,14 +994,17 @@ type Ticket struct {
 	DependsOn  *[]string  `json:"depends_on,omitempty"`
 
 	// EnvironmentId Compound environment ID (spec v0.2 section 4.1)
-	EnvironmentId *string                 `json:"environment_id,omitempty"`
-	Id            *string                 `json:"id,omitempty"`
-	Inputs        *map[string]interface{} `json:"inputs,omitempty"`
-	Objective     *Objective              `json:"objective,omitempty"`
-	Outputs       *map[string]interface{} `json:"outputs,omitempty"`
-	Priority      *int                    `json:"priority,omitempty"`
-	ProjectId     *string                 `json:"project_id,omitempty"`
-	State         *TicketState            `json:"state,omitempty"`
+	EnvironmentId *string `json:"environment_id,omitempty"`
+
+	// External Projection of the external tracker issue (Linear) this ticket mirrors.
+	External  *TicketExternalRef      `json:"external,omitempty"`
+	Id        *string                 `json:"id,omitempty"`
+	Inputs    *map[string]interface{} `json:"inputs,omitempty"`
+	Objective *Objective              `json:"objective,omitempty"`
+	Outputs   *map[string]interface{} `json:"outputs,omitempty"`
+	Priority  *int                    `json:"priority,omitempty"`
+	ProjectId *string                 `json:"project_id,omitempty"`
+	State     *TicketState            `json:"state,omitempty"`
 
 	// TargetRepo Repository alias for multi-repo projects (from project_repositories). Empty means primary repo.
 	TargetRepo    *string        `json:"target_repo,omitempty"`
@@ -1005,6 +1034,29 @@ type TicketContext struct {
 	HumanAnswers  *[]string                 `json:"human_answers,omitempty"`
 	PriorAttempts *[]map[string]interface{} `json:"prior_attempts,omitempty"`
 	RelevantFiles *[]string                 `json:"relevant_files,omitempty"`
+}
+
+// TicketExternalRef Projection of the external tracker issue (Linear) this ticket mirrors.
+type TicketExternalRef struct {
+	Assignee   *string `json:"assignee,omitempty"`
+	BranchName *string `json:"branch_name,omitempty"`
+	ExternalId string  `json:"external_id"`
+
+	// Identifier e.g. RLETD-465
+	Identifier string    `json:"identifier"`
+	Labels     *[]string `json:"labels,omitempty"`
+
+	// Priority Linear priority 0 (none) to 4 (low)
+	Priority  int     `json:"priority"`
+	Provider  string  `json:"provider"`
+	StateName *string `json:"state_name,omitempty"`
+
+	// StateType triage, backlog, unstarted, started, completed, or canceled
+	StateType *string    `json:"state_type,omitempty"`
+	SyncedAt  time.Time  `json:"synced_at"`
+	TeamKey   *string    `json:"team_key,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+	Url       *string    `json:"url,omitempty"`
 }
 
 // TraceStep defines model for TraceStep.
@@ -1172,11 +1224,14 @@ type ListSessionsParams struct {
 	Status *ListSessionsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
 
 	// Q Full-text search over prompts, title, repo, branch, and linked refs.
-	Q                *string    `form:"q,omitempty" json:"q,omitempty"`
-	Since            *time.Time `form:"since,omitempty" json:"since,omitempty"`
-	IncludeSubagents *bool      `form:"include_subagents,omitempty" json:"include_subagents,omitempty"`
-	Limit            *int       `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset           *int       `form:"offset,omitempty" json:"offset,omitempty"`
+	Q     *string    `form:"q,omitempty" json:"q,omitempty"`
+	Since *time.Time `form:"since,omitempty" json:"since,omitempty"`
+
+	// Ref Only sessions linked to this ref (owner/repo#N, KEY-N, ticket id).
+	Ref              *string `form:"ref,omitempty" json:"ref,omitempty"`
+	IncludeSubagents *bool   `form:"include_subagents,omitempty" json:"include_subagents,omitempty"`
+	Limit            *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset           *int    `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // ListSessionsParamsHarness defines parameters for ListSessions.
@@ -1348,6 +1403,11 @@ type ClientInterface interface {
 	// Corresponds with GET /healthz (the `GetHealthz` operationId).
 	GetHealthz(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetLinearStatus Health of the Linear sync and the linked projects
+	//
+	// Corresponds with GET /linear/status (the `GetLinearStatus` operationId).
+	GetLinearStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetMeStats Lifetime stats for the authenticated agent (tickets created, reviews approved/rejected). For gamification.
 	//
 	// Corresponds with GET /me/stats (the `GetMeStats` operationId).
@@ -1410,6 +1470,16 @@ type ClientInterface interface {
 
 	// ListEscalations performs a GET /projects/{projectID}/escalations (the `ListEscalations` operationId) request.
 	ListEscalations(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetProjectLinearLink The Linear project this Flywheel project mirrors, if any
+	//
+	// Corresponds with GET /projects/{projectID}/linear (the `GetProjectLinearLink` operationId).
+	GetProjectLinearLink(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SyncProjectLinear Pull updated Linear issues for this project now
+	//
+	// Corresponds with POST /projects/{projectID}/linear/sync (the `SyncProjectLinear` operationId).
+	SyncProjectLinear(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ClaimTicketWithBody performs a POST /projects/{projectID}/queue/claim (the `ClaimTicket` operationId) request,
 	// with any type of body and a specified content type.
@@ -1615,6 +1685,21 @@ func (c *Client) GetHealthz(ctx context.Context, reqEditors ...RequestEditorFn) 
 	return c.Client.Do(req)
 }
 
+// GetLinearStatus Health of the Linear sync and the linked projects
+//
+// Corresponds with GET /linear/status (the `GetLinearStatus` operationId).
+func (c *Client) GetLinearStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetLinearStatusRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetMeStats Lifetime stats for the authenticated agent (tickets created, reviews approved/rejected). For gamification.
 //
 // Corresponds with GET /me/stats (the `GetMeStats` operationId).
@@ -1798,6 +1883,36 @@ func (c *Client) UpdateProject(ctx context.Context, projectID string, body Updat
 // ListEscalations performs a GET /projects/{projectID}/escalations (the `ListEscalations` operationId) request.
 func (c *Client) ListEscalations(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListEscalationsRequest(c.Server, projectID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetProjectLinearLink The Linear project this Flywheel project mirrors, if any
+//
+// Corresponds with GET /projects/{projectID}/linear (the `GetProjectLinearLink` operationId).
+func (c *Client) GetProjectLinearLink(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetProjectLinearLinkRequest(c.Server, projectID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SyncProjectLinear Pull updated Linear issues for this project now
+//
+// Corresponds with POST /projects/{projectID}/linear/sync (the `SyncProjectLinear` operationId).
+func (c *Client) SyncProjectLinear(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSyncProjectLinearRequest(c.Server, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -2376,6 +2491,33 @@ func NewGetHealthzRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewGetLinearStatusRequest constructs an http.Request for the GetLinearStatus method
+func NewGetLinearStatusRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/linear/status")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetMeStatsRequest constructs an http.Request for the GetMeStats method
 func NewGetMeStatsRequest(server string) (*http.Request, error) {
 	var err error
@@ -2774,6 +2916,74 @@ func NewListEscalationsRequest(server string, projectID string) (*http.Request, 
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetProjectLinearLinkRequest constructs an http.Request for the GetProjectLinearLink method
+func NewGetProjectLinearLinkRequest(server string, projectID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "projectID", projectID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/projects/%s/linear", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSyncProjectLinearRequest constructs an http.Request for the SyncProjectLinear method
+func NewSyncProjectLinearRequest(server string, projectID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "projectID", projectID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/projects/%s/linear/sync", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -3288,6 +3498,18 @@ func NewListSessionsRequest(server string, params *ListSessionsParams) (*http.Re
 		if params.Since != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "since", *params.Since, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date-time"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Ref != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "ref", *params.Ref, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -4024,6 +4246,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /healthz (the `GetHealthz` operationId).
 	GetHealthzWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthzResponse, error)
 
+	// GetLinearStatusWithResponse Health of the Linear sync and the linked projects
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /linear/status (the `GetLinearStatus` operationId).
+	GetLinearStatusWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetLinearStatusResponse, error)
+
 	// GetMeStatsWithResponse Lifetime stats for the authenticated agent (tickets created, reviews approved/rejected). For gamification.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -4102,6 +4331,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Returns a wrapper object for the known response body format(s).
 	ListEscalationsWithResponse(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*ListEscalationsResponse, error)
+
+	// GetProjectLinearLinkWithResponse The Linear project this Flywheel project mirrors, if any
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /projects/{projectID}/linear (the `GetProjectLinearLink` operationId).
+	GetProjectLinearLinkWithResponse(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*GetProjectLinearLinkResponse, error)
+
+	// SyncProjectLinearWithResponse Pull updated Linear issues for this project now
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /projects/{projectID}/linear/sync (the `SyncProjectLinear` operationId).
+	SyncProjectLinearWithResponse(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*SyncProjectLinearResponse, error)
 
 	// ClaimTicketWithBodyWithResponse performs a POST /projects/{projectID}/queue/claim (the `ClaimTicket` operationId) request,
 	// with any type of body and a specified content type.
@@ -4373,6 +4616,54 @@ func (r GetHealthzResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetHealthzResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetLinearStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *LinearStatus
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetLinearStatusResponse) GetJSON200() *LinearStatus {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetLinearStatusResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r GetLinearStatusResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetLinearStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetLinearStatusResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetLinearStatusResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -4860,6 +5151,123 @@ func (r ListEscalationsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListEscalationsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetProjectLinearLinkResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ProjectLinearLink
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetProjectLinearLinkResponse) GetJSON200() *ProjectLinearLink {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetProjectLinearLinkResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetProjectLinearLinkResponse) GetJSON404() *StructuredError {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetProjectLinearLinkResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetProjectLinearLinkResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetProjectLinearLinkResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetProjectLinearLinkResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SyncProjectLinearResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ProjectLinearLink
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *StructuredError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SyncProjectLinearResponse) GetJSON200() *ProjectLinearLink {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r SyncProjectLinearResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r SyncProjectLinearResponse) GetJSON404() *StructuredError {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r SyncProjectLinearResponse) GetJSON500() *StructuredError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r SyncProjectLinearResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SyncProjectLinearResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SyncProjectLinearResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SyncProjectLinearResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -6059,6 +6467,19 @@ func (c *ClientWithResponses) GetHealthzWithResponse(ctx context.Context, reqEdi
 	return ParseGetHealthzResponse(rsp)
 }
 
+// GetLinearStatusWithResponse Health of the Linear sync and the linked projects
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /linear/status (the `GetLinearStatus` operationId).
+func (c *ClientWithResponses) GetLinearStatusWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetLinearStatusResponse, error) {
+	rsp, err := c.GetLinearStatus(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetLinearStatusResponse(rsp)
+}
+
 // GetMeStatsWithResponse Lifetime stats for the authenticated agent (tickets created, reviews approved/rejected). For gamification.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -6214,6 +6635,32 @@ func (c *ClientWithResponses) ListEscalationsWithResponse(ctx context.Context, p
 		return nil, err
 	}
 	return ParseListEscalationsResponse(rsp)
+}
+
+// GetProjectLinearLinkWithResponse The Linear project this Flywheel project mirrors, if any
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /projects/{projectID}/linear (the `GetProjectLinearLink` operationId).
+func (c *ClientWithResponses) GetProjectLinearLinkWithResponse(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*GetProjectLinearLinkResponse, error) {
+	rsp, err := c.GetProjectLinearLink(ctx, projectID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetProjectLinearLinkResponse(rsp)
+}
+
+// SyncProjectLinearWithResponse Pull updated Linear issues for this project now
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /projects/{projectID}/linear/sync (the `SyncProjectLinear` operationId).
+func (c *ClientWithResponses) SyncProjectLinearWithResponse(ctx context.Context, projectID string, reqEditors ...RequestEditorFn) (*SyncProjectLinearResponse, error) {
+	rsp, err := c.SyncProjectLinear(ctx, projectID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSyncProjectLinearResponse(rsp)
 }
 
 // ClaimTicketWithBodyWithResponse performs a POST /projects/{projectID}/queue/claim (the `ClaimTicket` operationId) request,
@@ -6661,6 +7108,39 @@ func ParseGetHealthzResponse(rsp *http.Response) (*GetHealthzResponse, error) {
 	return response, nil
 }
 
+// ParseGetLinearStatusResponse parses an HTTP response from a GetLinearStatusWithResponse call
+func ParseGetLinearStatusResponse(rsp *http.Response) (*GetLinearStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetLinearStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest LinearStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetMeStatsResponse parses an HTTP response from a GetMeStatsWithResponse call
 func ParseGetMeStatsResponse(rsp *http.Response) (*GetMeStatsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -6985,6 +7465,93 @@ func ParseListEscalationsResponse(rsp *http.Response) (*ListEscalationsResponse,
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetProjectLinearLinkResponse parses an HTTP response from a GetProjectLinearLinkWithResponse call
+func ParseGetProjectLinearLinkResponse(rsp *http.Response) (*GetProjectLinearLinkResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetProjectLinearLinkResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProjectLinearLink
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSyncProjectLinearResponse parses an HTTP response from a SyncProjectLinearWithResponse call
+func ParseSyncProjectLinearResponse(rsp *http.Response) (*SyncProjectLinearResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SyncProjectLinearResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProjectLinearLink
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest StructuredError

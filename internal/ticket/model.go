@@ -105,10 +105,10 @@ type AcceptanceTest = string
 
 // TicketContext holds relevant files, constraints, prior attempts, human answers.
 type TicketContext struct {
-	RelevantFiles []string        `json:"relevant_files,omitempty"`
-	Constraints   []string        `json:"constraints,omitempty"`
+	RelevantFiles []string         `json:"relevant_files,omitempty"`
+	Constraints   []string         `json:"constraints,omitempty"`
 	PriorAttempts []AttemptSummary `json:"prior_attempts,omitempty"`
-	HumanAnswers  []string        `json:"human_answers,omitempty"` // from resolved escalations
+	HumanAnswers  []string         `json:"human_answers,omitempty"` // from resolved escalations
 }
 
 // AttemptSummary is a short summary of a prior execution attempt (for context injection).
@@ -130,29 +130,48 @@ type Lease struct {
 
 // Ticket is the core entity.
 type Ticket struct {
-	ID            string         `json:"id"`
-	ProjectID     string         `json:"project_id"`
-	Title         string         `json:"title"`
-	Type          TicketType     `json:"type"`
-	Priority      Priority       `json:"priority"`
-	State         State          `json:"state"`
-	Environment   Environment    `json:"environment,omitempty"`    // legacy simple environment scope
-	EnvironmentID string         `json:"environment_id,omitempty"` // compound environment ID (spec 4.1)
-	Version       int            `json:"version"`
-	Objective     Objective      `json:"objective"`
-	Context       TicketContext  `json:"ticket_context"`
-	Inputs        map[string]any `json:"inputs"`
-	Outputs       map[string]any `json:"outputs"`
-	DependsOn     []string       `json:"depends_on"`
-	WorkStreamID  string         `json:"work_stream_id,omitempty"`
-	TargetRepo    string         `json:"target_repo,omitempty"`    // repo alias from project_repositories; empty = primary repo
-	AssignedTo    string         `json:"assigned_to,omitempty"`
-	WorkflowID             string         `json:"workflow_id,omitempty"`              // active workflow definition; empty = legacy state machine
+	ID                     string         `json:"id"`
+	ProjectID              string         `json:"project_id"`
+	Title                  string         `json:"title"`
+	Type                   TicketType     `json:"type"`
+	Priority               Priority       `json:"priority"`
+	State                  State          `json:"state"`
+	Environment            Environment    `json:"environment,omitempty"`    // legacy simple environment scope
+	EnvironmentID          string         `json:"environment_id,omitempty"` // compound environment ID (spec 4.1)
+	Version                int            `json:"version"`
+	Objective              Objective      `json:"objective"`
+	Context                TicketContext  `json:"ticket_context"`
+	Inputs                 map[string]any `json:"inputs"`
+	Outputs                map[string]any `json:"outputs"`
+	DependsOn              []string       `json:"depends_on"`
+	WorkStreamID           string         `json:"work_stream_id,omitempty"`
+	TargetRepo             string         `json:"target_repo,omitempty"` // repo alias from project_repositories; empty = primary repo
+	AssignedTo             string         `json:"assigned_to,omitempty"`
+	WorkflowID             string         `json:"workflow_id,omitempty"`               // active workflow definition; empty = legacy state machine
 	WorkflowVersion        int            `json:"workflow_version,omitempty"`          // pinned definition version; 0 = use latest
 	WorkflowPhase          string         `json:"workflow_phase,omitempty"`            // current phase ID within the workflow
 	WorkflowPhaseStatus    string         `json:"workflow_phase_status,omitempty"`     // "", "ready", "running", "blocked"
 	WorkflowPhaseEnteredAt *time.Time     `json:"workflow_phase_entered_at,omitempty"` // when the current phase was entered
 	CreatedBy              string         `json:"created_by"`
-	CreatedAt     time.Time      `json:"created_at"`
-	UpdatedAt     time.Time      `json:"updated_at"`
+	CreatedAt              time.Time      `json:"created_at"`
+	UpdatedAt              time.Time      `json:"updated_at"`
+	External               *ExternalRef   `json:"external,omitempty"` // projection of the external tracker issue this ticket mirrors
+}
+
+// ExternalRef is the projection of an issue in an external tracker (Linear).
+// Linear is the source of truth for these fields; Flywheel refreshes them on sync.
+type ExternalRef struct {
+	Provider   string     `json:"provider"`
+	ExternalID string     `json:"external_id"`
+	Identifier string     `json:"identifier"` // e.g. RLETD-465
+	URL        string     `json:"url,omitempty"`
+	StateName  string     `json:"state_name,omitempty"`
+	StateType  string     `json:"state_type,omitempty"`
+	Assignee   string     `json:"assignee,omitempty"`
+	TeamKey    string     `json:"team_key,omitempty"`
+	Priority   int        `json:"priority"`
+	Labels     []string   `json:"labels,omitempty"`
+	BranchName string     `json:"branch_name,omitempty"`
+	UpdatedAt  *time.Time `json:"updated_at,omitempty"`
+	SyncedAt   time.Time  `json:"synced_at"`
 }
