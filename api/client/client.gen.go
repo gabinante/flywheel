@@ -943,6 +943,14 @@ type FeedbackRoundListResponse struct {
 	Rounds []FeedbackRound `json:"rounds"`
 }
 
+// FeedbackSettings defines model for FeedbackSettings.
+type FeedbackSettings struct {
+	AutoAddress     bool   `json:"auto_address"`
+	Harness         string `json:"harness"`
+	Model           string `json:"model"`
+	ReasoningEffort string `json:"reasoning_effort"`
+}
+
 // Lease defines model for Lease.
 type Lease struct {
 	AgentId   *string    `json:"agent_id,omitempty"`
@@ -950,6 +958,17 @@ type Lease struct {
 	Renewable *bool      `json:"renewable,omitempty"`
 	TicketId  *string    `json:"ticket_id,omitempty"`
 	Token     *string    `json:"token,omitempty"`
+}
+
+// LinearSettings defines model for LinearSettings.
+type LinearSettings struct {
+	// ApiKeyHint Last characters of the stored key, for display
+	ApiKeyHint          string   `json:"api_key_hint"`
+	ApiKeySet           bool     `json:"api_key_set"`
+	DefaultTeamKey      string   `json:"default_team_key"`
+	Enabled             bool     `json:"enabled"`
+	ProjectIds          []string `json:"project_ids"`
+	SyncIntervalSeconds int      `json:"sync_interval_seconds"`
 }
 
 // LinearStatus defines model for LinearStatus.
@@ -999,6 +1018,17 @@ type Objective struct {
 	AcceptanceTest  *string   `json:"acceptance_test,omitempty"`
 	Description     *string   `json:"description,omitempty"`
 	SuccessCriteria *[]string `json:"success_criteria,omitempty"`
+}
+
+// OperatorSettings defines model for OperatorSettings.
+type OperatorSettings struct {
+	Feedback FeedbackSettings `json:"feedback"`
+	Linear   LinearSettings   `json:"linear"`
+	Report   ReportSettings   `json:"report"`
+	Review   ReviewSettings   `json:"review"`
+
+	// Saved False until settings were saved from the UI (values come from the environment)
+	Saved bool `json:"saved"`
 }
 
 // Org defines model for Org.
@@ -1100,10 +1130,37 @@ type ReportListResponse struct {
 	Reports []Report `json:"reports"`
 }
 
+// ReportSettings defines model for ReportSettings.
+type ReportSettings struct {
+	DefaultHealth              string `json:"default_health"`
+	ProjectUpdateIntervalHours int    `json:"project_update_interval_hours"`
+	ProjectUpdatesEnabled      bool   `json:"project_updates_enabled"`
+	RoundupDocumentId          string `json:"roundup_document_id"`
+	RoundupProjectId           string `json:"roundup_project_id"`
+	WeeklyDay                  string `json:"weekly_day"`
+	WeeklyEnabled              bool   `json:"weekly_enabled"`
+	WeeklyHour                 int    `json:"weekly_hour"`
+}
+
 // ResolveEscalationRequest defines model for ResolveEscalationRequest.
 type ResolveEscalationRequest struct {
 	Answer     string  `json:"answer"`
 	ReviewerId *string `json:"reviewer_id,omitempty"`
+}
+
+// ReviewSettings defines model for ReviewSettings.
+type ReviewSettings struct {
+	Enabled             bool   `json:"enabled"`
+	Harness             string `json:"harness"`
+	MaxConcurrent       int    `json:"max_concurrent"`
+	Model               string `json:"model"`
+	PollIntervalSeconds int    `json:"poll_interval_seconds"`
+	Publish             bool   `json:"publish"`
+	ReasoningEffort     string `json:"reasoning_effort"`
+	RepoRoot            string `json:"repo_root"`
+	SkipDrafts          bool   `json:"skip_drafts"`
+	WatchAuthored       bool   `json:"watch_authored"`
+	WatchRequested      bool   `json:"watch_requested"`
 }
 
 // SessionCollectorStatus defines model for SessionCollectorStatus.
@@ -1306,6 +1363,25 @@ type TransitionRequest struct {
 
 // TransitionRequestActor defines model for TransitionRequest.Actor.
 type TransitionRequestActor string
+
+// UpdateLinearSettings defines model for UpdateLinearSettings.
+type UpdateLinearSettings struct {
+	// ApiKey New personal API key; omit or send empty to keep the stored key
+	ApiKey              *string  `json:"api_key,omitempty"`
+	ClearApiKey         *bool    `json:"clear_api_key,omitempty"`
+	DefaultTeamKey      string   `json:"default_team_key"`
+	Enabled             bool     `json:"enabled"`
+	ProjectIds          []string `json:"project_ids"`
+	SyncIntervalSeconds int      `json:"sync_interval_seconds"`
+}
+
+// UpdateOperatorSettingsRequest defines model for UpdateOperatorSettingsRequest.
+type UpdateOperatorSettingsRequest struct {
+	Feedback FeedbackSettings     `json:"feedback"`
+	Linear   UpdateLinearSettings `json:"linear"`
+	Report   ReportSettings       `json:"report"`
+	Review   ReviewSettings       `json:"review"`
+}
 
 // UpdateProjectRequest defines model for UpdateProjectRequest.
 type UpdateProjectRequest struct {
@@ -1540,6 +1616,9 @@ type PostWeeklyRoundupJSONRequestBody = PostReportRequest
 
 // CreateSessionLinkJSONRequestBody defines body for CreateSessionLink for application/json ContentType.
 type CreateSessionLinkJSONRequestBody = CreateSessionLinkRequest
+
+// UpdateOperatorSettingsJSONRequestBody defines body for UpdateOperatorSettings for application/json ContentType.
+type UpdateOperatorSettingsJSONRequestBody = UpdateOperatorSettingsRequest
 
 // UpdateTicketJSONRequestBody defines body for UpdateTicket for application/json ContentType.
 type UpdateTicketJSONRequestBody = UpdateTicketRequest
@@ -1930,6 +2009,25 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /sessions/{sessionID}/links (the `CreateSessionLink` operationId).
 	CreateSessionLink(ctx context.Context, sessionID string, body CreateSessionLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetOperatorSettings Operator settings (Linear, code review, feedback, reports); secrets are masked
+	//
+	// Corresponds with GET /settings (the `GetOperatorSettings` operationId).
+	GetOperatorSettings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateOperatorSettingsWithBody Replace operator settings and apply them to the running services
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /settings (the `UpdateOperatorSettings` operationId).
+	UpdateOperatorSettingsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateOperatorSettings Replace operator settings and apply them to the running services
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /settings (the `UpdateOperatorSettings` operationId).
+	UpdateOperatorSettings(ctx context.Context, body UpdateOperatorSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetTicket performs a GET /tickets/{ticketID} (the `GetTicket` operationId) request.
 	GetTicket(ctx context.Context, ticketID string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2868,6 +2966,55 @@ func (c *Client) CreateSessionLinkWithBody(ctx context.Context, sessionID string
 // Corresponds with POST /sessions/{sessionID}/links (the `CreateSessionLink` operationId).
 func (c *Client) CreateSessionLink(ctx context.Context, sessionID string, body CreateSessionLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateSessionLinkRequest(c.Server, sessionID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetOperatorSettings Operator settings (Linear, code review, feedback, reports); secrets are masked
+//
+// Corresponds with GET /settings (the `GetOperatorSettings` operationId).
+func (c *Client) GetOperatorSettings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetOperatorSettingsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateOperatorSettingsWithBody Replace operator settings and apply them to the running services
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /settings (the `UpdateOperatorSettings` operationId).
+func (c *Client) UpdateOperatorSettingsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateOperatorSettingsRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateOperatorSettings Replace operator settings and apply them to the running services
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /settings (the `UpdateOperatorSettings` operationId).
+func (c *Client) UpdateOperatorSettings(ctx context.Context, body UpdateOperatorSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateOperatorSettingsRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -5129,6 +5276,73 @@ func NewCreateSessionLinkRequestWithBody(server string, sessionID string, conten
 	return req, nil
 }
 
+// NewGetOperatorSettingsRequest constructs an http.Request for the GetOperatorSettings method
+func NewGetOperatorSettingsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/settings")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateOperatorSettingsRequest calls the generic UpdateOperatorSettings builder with application/json body
+func NewUpdateOperatorSettingsRequest(server string, body UpdateOperatorSettingsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateOperatorSettingsRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewUpdateOperatorSettingsRequestWithBody constructs an http.Request for the UpdateOperatorSettings method, with any body, and a specified content type
+func NewUpdateOperatorSettingsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/settings")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetTicketRequest constructs an http.Request for the GetTicket method
 func NewGetTicketRequest(server string, ticketID string) (*http.Request, error) {
 	var err error
@@ -6039,6 +6253,27 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /sessions/{sessionID}/links (the `CreateSessionLink` operationId).
 	CreateSessionLinkWithResponse(ctx context.Context, sessionID string, body CreateSessionLinkJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSessionLinkResponse, error)
+
+	// GetOperatorSettingsWithResponse Operator settings (Linear, code review, feedback, reports); secrets are masked
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /settings (the `GetOperatorSettings` operationId).
+	GetOperatorSettingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetOperatorSettingsResponse, error)
+
+	// UpdateOperatorSettingsWithBodyWithResponse Replace operator settings and apply them to the running services
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /settings (the `UpdateOperatorSettings` operationId).
+	UpdateOperatorSettingsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateOperatorSettingsResponse, error)
+
+	// UpdateOperatorSettingsWithResponse Replace operator settings and apply them to the running services
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /settings (the `UpdateOperatorSettings` operationId).
+	UpdateOperatorSettingsWithResponse(ctx context.Context, body UpdateOperatorSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateOperatorSettingsResponse, error)
 
 	// GetTicketWithResponse performs a GET /tickets/{ticketID} (the `GetTicket` operationId) request.
 	//
@@ -8385,6 +8620,109 @@ func (r CreateSessionLinkResponse) ContentType() string {
 	return ""
 }
 
+type GetOperatorSettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *OperatorSettings
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetOperatorSettingsResponse) GetJSON200() *OperatorSettings {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetOperatorSettingsResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r GetOperatorSettingsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetOperatorSettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetOperatorSettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetOperatorSettingsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateOperatorSettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *OperatorSettings
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *StructuredError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateOperatorSettingsResponse) GetJSON200() *OperatorSettings {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r UpdateOperatorSettingsResponse) GetJSON400() *StructuredError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r UpdateOperatorSettingsResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateOperatorSettingsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateOperatorSettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateOperatorSettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateOperatorSettingsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetTicketResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -9575,6 +9913,45 @@ func (c *ClientWithResponses) CreateSessionLinkWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseCreateSessionLinkResponse(rsp)
+}
+
+// GetOperatorSettingsWithResponse Operator settings (Linear, code review, feedback, reports); secrets are masked
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /settings (the `GetOperatorSettings` operationId).
+func (c *ClientWithResponses) GetOperatorSettingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetOperatorSettingsResponse, error) {
+	rsp, err := c.GetOperatorSettings(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetOperatorSettingsResponse(rsp)
+}
+
+// UpdateOperatorSettingsWithBodyWithResponse Replace operator settings and apply them to the running services
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /settings (the `UpdateOperatorSettings` operationId).
+func (c *ClientWithResponses) UpdateOperatorSettingsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateOperatorSettingsResponse, error) {
+	rsp, err := c.UpdateOperatorSettingsWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateOperatorSettingsResponse(rsp)
+}
+
+// UpdateOperatorSettingsWithResponse Replace operator settings and apply them to the running services
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /settings (the `UpdateOperatorSettings` operationId).
+func (c *ClientWithResponses) UpdateOperatorSettingsWithResponse(ctx context.Context, body UpdateOperatorSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateOperatorSettingsResponse, error) {
+	rsp, err := c.UpdateOperatorSettings(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateOperatorSettingsResponse(rsp)
 }
 
 // GetTicketWithResponse performs a GET /tickets/{ticketID} (the `GetTicket` operationId) request.
@@ -11371,6 +11748,79 @@ func ParseCreateSessionLinkResponse(rsp *http.Response) (*CreateSessionLinkRespo
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetOperatorSettingsResponse parses an HTTP response from a GetOperatorSettingsWithResponse call
+func ParseGetOperatorSettingsResponse(rsp *http.Response) (*GetOperatorSettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetOperatorSettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OperatorSettings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateOperatorSettingsResponse parses an HTTP response from a UpdateOperatorSettingsWithResponse call
+func ParseUpdateOperatorSettingsResponse(rsp *http.Response) (*UpdateOperatorSettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateOperatorSettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OperatorSettings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
 
 	}
 

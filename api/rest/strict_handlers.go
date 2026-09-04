@@ -22,6 +22,7 @@ import (
 	"github.com/gabinante/flywheel/internal/report"
 	"github.com/gabinante/flywheel/internal/review"
 	"github.com/gabinante/flywheel/internal/sessions"
+	"github.com/gabinante/flywheel/internal/settings"
 	"github.com/gabinante/flywheel/internal/ticket"
 	"github.com/gabinante/flywheel/internal/workstream"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -40,6 +41,7 @@ type StrictServer struct {
 	LinearSvc     *linear.Syncer      // nil-safe: Linear endpoints report unlinked when nil
 	CodeReviewSvc *codereview.Service // nil-safe: code review endpoints error when nil
 	ReportSvc     *report.Service     // nil-safe: report endpoints error when nil
+	SettingsSvc   *settings.Service   // nil-safe: settings endpoints error when nil
 	AgentStore    agent.AgentStore
 }
 

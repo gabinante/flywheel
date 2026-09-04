@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gabinante/flywheel/internal/codereview"
@@ -41,19 +42,38 @@ type Config struct {
 
 // Service composes and posts reports.
 type Service struct {
-	d   Deps
-	cfg Config
+	d     Deps
+	cfgMu sync.RWMutex
+	cfg   Config
 }
 
-// New builds a Service.
-func New(d Deps, cfg Config) *Service {
+// Apply replaces the configuration at runtime; the scheduler reads it every tick.
+func (s *Service) Apply(cfg Config) {
+	cfg = normalize(cfg)
+	s.cfgMu.Lock()
+	s.cfg = cfg
+	s.cfgMu.Unlock()
+}
+
+func (s *Service) conf() Config {
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return s.cfg
+}
+
+func normalize(cfg Config) Config {
 	if cfg.ProjectUpdateInterval <= 0 {
 		cfg.ProjectUpdateInterval = 48 * time.Hour
 	}
 	if cfg.DefaultHealth == "" {
 		cfg.DefaultHealth = HealthOnTrack
 	}
-	return &Service{d: d, cfg: cfg}
+	return cfg
+}
+
+// New builds a Service.
+func New(d Deps, cfg Config) *Service {
+	return &Service{d: d, cfg: normalize(cfg)}
 }
 
 // ParseWeekday accepts names like "friday" or "Fri".
@@ -70,9 +90,9 @@ func ParseWeekday(s string) time.Weekday {
 
 // Start runs the scheduler when automatic posting is enabled.
 func (s *Service) Start(ctx context.Context) {
-	if !s.cfg.ProjectUpdatesEnabled && !s.cfg.WeeklyEnabled {
-		slog.Info("report: automatic posting disabled (previews available)")
-		return
+	cfg := s.conf()
+	if !cfg.ProjectUpdatesEnabled && !cfg.WeeklyEnabled {
+		slog.Info("report: automatic posting disabled (previews available; enable in settings)")
 	}
 	go func() {
 		t := time.NewTicker(15 * time.Minute)
@@ -86,11 +106,12 @@ func (s *Service) Start(ctx context.Context) {
 			}
 		}
 	}()
-	slog.Info("report: scheduler started", "project_updates", s.cfg.ProjectUpdatesEnabled, "weekly", s.cfg.WeeklyEnabled)
+	slog.Info("report: scheduler started", "project_updates", cfg.ProjectUpdatesEnabled, "weekly", cfg.WeeklyEnabled)
 }
 
 func (s *Service) tick(ctx context.Context, now time.Time) {
-	if s.cfg.ProjectUpdatesEnabled && s.d.Linear != nil && s.d.Linear.Enabled() && now.Weekday() != time.Saturday && now.Weekday() != time.Sunday {
+	cfg := s.conf()
+	if cfg.ProjectUpdatesEnabled && s.d.Linear != nil && s.d.Linear.Enabled() && now.Weekday() != time.Saturday && now.Weekday() != time.Sunday {
 		links, err := s.d.Linear.Links(ctx)
 		if err == nil {
 			for _, l := range links {
@@ -98,7 +119,7 @@ func (s *Service) tick(ctx context.Context, now time.Time) {
 				if err != nil {
 					continue
 				}
-				if last == nil || now.Sub(*last) >= s.cfg.ProjectUpdateInterval {
+				if last == nil || now.Sub(*last) >= cfg.ProjectUpdateInterval {
 					if _, err := s.PostProjectUpdate(ctx, l.ProjectID, "", ""); err != nil {
 						slog.Warn("report: automatic project update failed", "project", l.ProjectID, "error", err)
 					}
@@ -106,7 +127,7 @@ func (s *Service) tick(ctx context.Context, now time.Time) {
 			}
 		}
 	}
-	if s.cfg.WeeklyEnabled && now.Weekday() == s.cfg.WeeklyDay && now.Hour() >= s.cfg.WeeklyHour {
+	if cfg.WeeklyEnabled && now.Weekday() == cfg.WeeklyDay && now.Hour() >= cfg.WeeklyHour {
 		start, _ := WeekWindow(now)
 		if done, err := s.d.Store.WeeklyPosted(ctx, start); err == nil && !done {
 			if _, err := s.PostWeeklyRoundup(ctx, now, ""); err != nil {
@@ -241,7 +262,8 @@ func (s *Service) ComposeProjectUpdate(ctx context.Context, projectID string) (*
 	if err != nil {
 		return nil, err
 	}
-	since := until.Add(-s.cfg.ProjectUpdateInterval)
+	cfg := s.conf()
+	since := until.Add(-cfg.ProjectUpdateInterval)
 	if last != nil {
 		since = *last
 	}
@@ -250,7 +272,7 @@ func (s *Service) ComposeProjectUpdate(ctx context.Context, projectID string) (*
 		return nil, err
 	}
 	return &Report{Kind: KindProjectUpdate, ProjectID: projectID, WindowStart: since, WindowEnd: until,
-		Body: RenderProjectUpdate(data), Health: SuggestHealth(data, s.cfg.DefaultHealth)}, nil
+		Body: RenderProjectUpdate(data), Health: SuggestHealth(data, cfg.DefaultHealth)}, nil
 }
 
 // PostProjectUpdate composes (or takes an edited body) and posts to the linked Linear project.
@@ -335,7 +357,8 @@ func (s *Service) PostWeeklyRoundup(ctx context.Context, weekOf time.Time, bodyO
 	if s.d.Linear == nil || !s.d.Linear.Enabled() {
 		return nil, errors.New("Linear is not configured (set LINEAR_API_KEY)")
 	}
-	if s.cfg.RoundupDocumentID == "" && s.cfg.RoundupProjectID == "" {
+	cfg := s.conf()
+	if cfg.RoundupDocumentID == "" && cfg.RoundupProjectID == "" {
 		return nil, errors.New("set REPORT_ROUNDUP_DOCUMENT_ID and/or REPORT_ROUNDUP_PROJECT_ID to post the weekly roundup")
 	}
 	r, err := s.ComposeWeeklyRoundup(ctx, weekOf)
@@ -346,8 +369,8 @@ func (s *Service) PostWeeklyRoundup(ctx context.Context, weekOf time.Time, bodyO
 		r.Body = bodyOverride
 	}
 	client := s.d.Linear.Client()
-	if s.cfg.RoundupDocumentID != "" {
-		doc, err := client.GetDocument(ctx, s.cfg.RoundupDocumentID)
+	if cfg.RoundupDocumentID != "" {
+		doc, err := client.GetDocument(ctx, cfg.RoundupDocumentID)
 		if err != nil {
 			return nil, fmt.Errorf("roundup document: %w", err)
 		}
@@ -357,8 +380,8 @@ func (s *Service) PostWeeklyRoundup(ctx context.Context, weekOf time.Time, bodyO
 		}
 		r.URL = updated.URL
 	}
-	if s.cfg.RoundupProjectID != "" {
-		if url, err := s.d.Linear.PostProjectUpdate(ctx, s.cfg.RoundupProjectID, r.Body, HealthOnTrack); err != nil {
+	if cfg.RoundupProjectID != "" {
+		if url, err := s.d.Linear.PostProjectUpdate(ctx, cfg.RoundupProjectID, r.Body, HealthOnTrack); err != nil {
 			slog.Warn("report: weekly project update failed", "error", err)
 		} else if r.URL == "" {
 			r.URL = url

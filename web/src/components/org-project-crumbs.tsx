@@ -14,10 +14,6 @@ export function OrgProjectCrumbs({
 }: OrgProjectCrumbsProps) {
   return (
     <>
-      <Link to="/orgs" className="hover:underline">
-        Organizations
-      </Link>
-      <span className="px-1">/</span>
       <Link to={`/orgs/${orgId}/projects`} className="hover:underline">
         Projects
       </Link>

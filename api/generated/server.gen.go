@@ -944,6 +944,14 @@ type FeedbackRoundListResponse struct {
 	Rounds []FeedbackRound `json:"rounds"`
 }
 
+// FeedbackSettings defines model for FeedbackSettings.
+type FeedbackSettings struct {
+	AutoAddress     bool   `json:"auto_address"`
+	Harness         string `json:"harness"`
+	Model           string `json:"model"`
+	ReasoningEffort string `json:"reasoning_effort"`
+}
+
 // Lease defines model for Lease.
 type Lease struct {
 	AgentId   *string    `json:"agent_id,omitempty"`
@@ -951,6 +959,17 @@ type Lease struct {
 	Renewable *bool      `json:"renewable,omitempty"`
 	TicketId  *string    `json:"ticket_id,omitempty"`
 	Token     *string    `json:"token,omitempty"`
+}
+
+// LinearSettings defines model for LinearSettings.
+type LinearSettings struct {
+	// ApiKeyHint Last characters of the stored key, for display
+	ApiKeyHint          string   `json:"api_key_hint"`
+	ApiKeySet           bool     `json:"api_key_set"`
+	DefaultTeamKey      string   `json:"default_team_key"`
+	Enabled             bool     `json:"enabled"`
+	ProjectIds          []string `json:"project_ids"`
+	SyncIntervalSeconds int      `json:"sync_interval_seconds"`
 }
 
 // LinearStatus defines model for LinearStatus.
@@ -1000,6 +1019,17 @@ type Objective struct {
 	AcceptanceTest  *string   `json:"acceptance_test,omitempty"`
 	Description     *string   `json:"description,omitempty"`
 	SuccessCriteria *[]string `json:"success_criteria,omitempty"`
+}
+
+// OperatorSettings defines model for OperatorSettings.
+type OperatorSettings struct {
+	Feedback FeedbackSettings `json:"feedback"`
+	Linear   LinearSettings   `json:"linear"`
+	Report   ReportSettings   `json:"report"`
+	Review   ReviewSettings   `json:"review"`
+
+	// Saved False until settings were saved from the UI (values come from the environment)
+	Saved bool `json:"saved"`
 }
 
 // Org defines model for Org.
@@ -1101,10 +1131,37 @@ type ReportListResponse struct {
 	Reports []Report `json:"reports"`
 }
 
+// ReportSettings defines model for ReportSettings.
+type ReportSettings struct {
+	DefaultHealth              string `json:"default_health"`
+	ProjectUpdateIntervalHours int    `json:"project_update_interval_hours"`
+	ProjectUpdatesEnabled      bool   `json:"project_updates_enabled"`
+	RoundupDocumentId          string `json:"roundup_document_id"`
+	RoundupProjectId           string `json:"roundup_project_id"`
+	WeeklyDay                  string `json:"weekly_day"`
+	WeeklyEnabled              bool   `json:"weekly_enabled"`
+	WeeklyHour                 int    `json:"weekly_hour"`
+}
+
 // ResolveEscalationRequest defines model for ResolveEscalationRequest.
 type ResolveEscalationRequest struct {
 	Answer     string  `json:"answer"`
 	ReviewerId *string `json:"reviewer_id,omitempty"`
+}
+
+// ReviewSettings defines model for ReviewSettings.
+type ReviewSettings struct {
+	Enabled             bool   `json:"enabled"`
+	Harness             string `json:"harness"`
+	MaxConcurrent       int    `json:"max_concurrent"`
+	Model               string `json:"model"`
+	PollIntervalSeconds int    `json:"poll_interval_seconds"`
+	Publish             bool   `json:"publish"`
+	ReasoningEffort     string `json:"reasoning_effort"`
+	RepoRoot            string `json:"repo_root"`
+	SkipDrafts          bool   `json:"skip_drafts"`
+	WatchAuthored       bool   `json:"watch_authored"`
+	WatchRequested      bool   `json:"watch_requested"`
 }
 
 // SessionCollectorStatus defines model for SessionCollectorStatus.
@@ -1307,6 +1364,25 @@ type TransitionRequest struct {
 
 // TransitionRequestActor defines model for TransitionRequest.Actor.
 type TransitionRequestActor string
+
+// UpdateLinearSettings defines model for UpdateLinearSettings.
+type UpdateLinearSettings struct {
+	// ApiKey New personal API key; omit or send empty to keep the stored key
+	ApiKey              *string  `json:"api_key,omitempty"`
+	ClearApiKey         *bool    `json:"clear_api_key,omitempty"`
+	DefaultTeamKey      string   `json:"default_team_key"`
+	Enabled             bool     `json:"enabled"`
+	ProjectIds          []string `json:"project_ids"`
+	SyncIntervalSeconds int      `json:"sync_interval_seconds"`
+}
+
+// UpdateOperatorSettingsRequest defines model for UpdateOperatorSettingsRequest.
+type UpdateOperatorSettingsRequest struct {
+	Feedback FeedbackSettings     `json:"feedback"`
+	Linear   UpdateLinearSettings `json:"linear"`
+	Report   ReportSettings       `json:"report"`
+	Review   ReviewSettings       `json:"review"`
+}
 
 // UpdateProjectRequest defines model for UpdateProjectRequest.
 type UpdateProjectRequest struct {
@@ -1542,6 +1618,9 @@ type PostWeeklyRoundupJSONRequestBody = PostReportRequest
 // CreateSessionLinkJSONRequestBody defines body for CreateSessionLink for application/json ContentType.
 type CreateSessionLinkJSONRequestBody = CreateSessionLinkRequest
 
+// UpdateOperatorSettingsJSONRequestBody defines body for UpdateOperatorSettings for application/json ContentType.
+type UpdateOperatorSettingsJSONRequestBody = UpdateOperatorSettingsRequest
+
 // UpdateTicketJSONRequestBody defines body for UpdateTicket for application/json ContentType.
 type UpdateTicketJSONRequestBody = UpdateTicketRequest
 
@@ -1694,6 +1773,12 @@ type ServerInterface interface {
 	// CreateSessionLink Link a session to a PR, Linear issue, ticket, or review
 	// (POST /sessions/{sessionID}/links)
 	CreateSessionLink(w http.ResponseWriter, r *http.Request, sessionID string)
+	// GetOperatorSettings Operator settings (Linear, code review, feedback, reports); secrets are masked
+	// (GET /settings)
+	GetOperatorSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateOperatorSettings Replace operator settings and apply them to the running services
+	// (PUT /settings)
+	UpdateOperatorSettings(w http.ResponseWriter, r *http.Request)
 
 	// (GET /tickets/{ticketID})
 	GetTicket(w http.ResponseWriter, r *http.Request, ticketID string)
@@ -3074,6 +3159,34 @@ func (siw *ServerInterfaceWrapper) CreateSessionLink(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// GetOperatorSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetOperatorSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOperatorSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateOperatorSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateOperatorSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateOperatorSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetTicket operation middleware
 func (siw *ServerInterfaceWrapper) GetTicket(w http.ResponseWriter, r *http.Request) {
 
@@ -3561,6 +3674,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/reports/weekly", wrapper.PostWeeklyRoundup)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectID}/reports/status-update/preview", wrapper.PreviewProjectUpdate)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/projects/{projectID}/reports/status-update", wrapper.PostProjectUpdate)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/settings", wrapper.GetOperatorSettings)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/settings", wrapper.UpdateOperatorSettings)
 
 	return m
 }
@@ -5501,6 +5616,91 @@ func (response CreateSessionLink404JSONResponse) VisitCreateSessionLinkResponse(
 	return err
 }
 
+type GetOperatorSettingsRequestObject struct {
+}
+
+type GetOperatorSettingsResponseObject interface {
+	VisitGetOperatorSettingsResponse(w http.ResponseWriter) error
+}
+
+type GetOperatorSettings200JSONResponse OperatorSettings
+
+func (response GetOperatorSettings200JSONResponse) VisitGetOperatorSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOperatorSettings401JSONResponse StructuredError
+
+func (response GetOperatorSettings401JSONResponse) VisitGetOperatorSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateOperatorSettingsRequestObject struct {
+	Body *UpdateOperatorSettingsJSONRequestBody
+}
+
+type UpdateOperatorSettingsResponseObject interface {
+	VisitUpdateOperatorSettingsResponse(w http.ResponseWriter) error
+}
+
+type UpdateOperatorSettings200JSONResponse OperatorSettings
+
+func (response UpdateOperatorSettings200JSONResponse) VisitUpdateOperatorSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateOperatorSettings400JSONResponse StructuredError
+
+func (response UpdateOperatorSettings400JSONResponse) VisitUpdateOperatorSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateOperatorSettings401JSONResponse StructuredError
+
+func (response UpdateOperatorSettings401JSONResponse) VisitUpdateOperatorSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetTicketRequestObject struct {
 	TicketID string `json:"ticketID"`
 }
@@ -6064,6 +6264,12 @@ type StrictServerInterface interface {
 	// CreateSessionLink Link a session to a PR, Linear issue, ticket, or review
 	// (POST /sessions/{sessionID}/links)
 	CreateSessionLink(ctx context.Context, request CreateSessionLinkRequestObject) (CreateSessionLinkResponseObject, error)
+	// GetOperatorSettings Operator settings (Linear, code review, feedback, reports); secrets are masked
+	// (GET /settings)
+	GetOperatorSettings(ctx context.Context, request GetOperatorSettingsRequestObject) (GetOperatorSettingsResponseObject, error)
+	// UpdateOperatorSettings Replace operator settings and apply them to the running services
+	// (PUT /settings)
+	UpdateOperatorSettings(ctx context.Context, request UpdateOperatorSettingsRequestObject) (UpdateOperatorSettingsResponseObject, error)
 
 	// (GET /tickets/{ticketID})
 	GetTicket(ctx context.Context, request GetTicketRequestObject) (GetTicketResponseObject, error)
@@ -7340,6 +7546,61 @@ func (sh *strictHandler) CreateSessionLink(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateSessionLinkResponseObject); ok {
 		if err := validResponse.VisitCreateSessionLinkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOperatorSettings operation middleware
+func (sh *strictHandler) GetOperatorSettings(w http.ResponseWriter, r *http.Request) {
+	var request GetOperatorSettingsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOperatorSettings(ctx, request.(GetOperatorSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOperatorSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOperatorSettingsResponseObject); ok {
+		if err := validResponse.VisitGetOperatorSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateOperatorSettings operation middleware
+func (sh *strictHandler) UpdateOperatorSettings(w http.ResponseWriter, r *http.Request) {
+	var request UpdateOperatorSettingsRequestObject
+
+	var body UpdateOperatorSettingsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateOperatorSettings(ctx, request.(UpdateOperatorSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateOperatorSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateOperatorSettingsResponseObject); ok {
+		if err := validResponse.VisitUpdateOperatorSettingsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

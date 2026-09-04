@@ -1605,6 +1605,51 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StructuredError'
+  /settings:
+    get:
+      operationId: GetOperatorSettings
+      summary: Operator settings (Linear, code review, feedback, reports); secrets are masked
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorSettings'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+    put:
+      operationId: UpdateOperatorSettings
+      summary: Replace operator settings and apply them to the running services
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOperatorSettingsRequest'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorSettings'
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
 components:
   securitySchemes:
     BearerAuth:
@@ -2890,3 +2935,126 @@ components:
         linear_project:
           type: string
           description: Linear project URL (https://linear.app/<workspace>/project/<slug>-<id>) or project UUID
+    LinearSettings:
+      type: object
+      required: [enabled, project_ids, default_team_key, sync_interval_seconds, api_key_set, api_key_hint]
+      properties:
+        api_key_set:
+          type: boolean
+        api_key_hint:
+          type: string
+          description: Last characters of the stored key, for display
+        enabled:
+          type: boolean
+        project_ids:
+          type: array
+          items:
+            type: string
+        default_team_key:
+          type: string
+        sync_interval_seconds:
+          type: integer
+    ReviewSettings:
+      type: object
+      required: [enabled, harness, model, reasoning_effort, publish, watch_requested, watch_authored, skip_drafts, max_concurrent, poll_interval_seconds, repo_root]
+      properties:
+        enabled:
+          type: boolean
+        harness:
+          type: string
+        model:
+          type: string
+        reasoning_effort:
+          type: string
+        publish:
+          type: boolean
+        watch_requested:
+          type: boolean
+        watch_authored:
+          type: boolean
+        skip_drafts:
+          type: boolean
+        max_concurrent:
+          type: integer
+        poll_interval_seconds:
+          type: integer
+        repo_root:
+          type: string
+    FeedbackSettings:
+      type: object
+      required: [harness, model, reasoning_effort, auto_address]
+      properties:
+        harness:
+          type: string
+        model:
+          type: string
+        reasoning_effort:
+          type: string
+        auto_address:
+          type: boolean
+    ReportSettings:
+      type: object
+      required: [project_updates_enabled, project_update_interval_hours, weekly_enabled, weekly_day, weekly_hour, roundup_document_id, roundup_project_id, default_health]
+      properties:
+        project_updates_enabled:
+          type: boolean
+        project_update_interval_hours:
+          type: integer
+        weekly_enabled:
+          type: boolean
+        weekly_day:
+          type: string
+        weekly_hour:
+          type: integer
+        roundup_document_id:
+          type: string
+        roundup_project_id:
+          type: string
+        default_health:
+          type: string
+    OperatorSettings:
+      type: object
+      required: [linear, review, feedback, report, saved]
+      properties:
+        linear:
+          $ref: '#/components/schemas/LinearSettings'
+        review:
+          $ref: '#/components/schemas/ReviewSettings'
+        feedback:
+          $ref: '#/components/schemas/FeedbackSettings'
+        report:
+          $ref: '#/components/schemas/ReportSettings'
+        saved:
+          type: boolean
+          description: False until settings were saved from the UI (values come from the environment)
+    UpdateLinearSettings:
+      type: object
+      required: [enabled, project_ids, default_team_key, sync_interval_seconds]
+      properties:
+        api_key:
+          type: string
+          description: New personal API key; omit or send empty to keep the stored key
+        clear_api_key:
+          type: boolean
+        enabled:
+          type: boolean
+        project_ids:
+          type: array
+          items:
+            type: string
+        default_team_key:
+          type: string
+        sync_interval_seconds:
+          type: integer
+    UpdateOperatorSettingsRequest:
+      type: object
+      required: [linear, review, feedback, report]
+      properties:
+        linear:
+          $ref: '#/components/schemas/UpdateLinearSettings'
+        review:
+          $ref: '#/components/schemas/ReviewSettings'
+        feedback:
+          $ref: '#/components/schemas/FeedbackSettings'
+        report:
+          $ref: '#/components/schemas/ReportSettings'

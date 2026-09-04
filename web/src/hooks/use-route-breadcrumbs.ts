@@ -28,13 +28,15 @@ export function useRouteBreadcrumbs(): BreadcrumbItem[] {
 
     const crumbs: BreadcrumbItem[] = []
 
-    // Organizations
-    if (path.startsWith('/orgs')) {
-      if (path === '/orgs') {
-        crumbs.push({ label: 'Organizations' })
-        return crumbs
-      }
-      crumbs.push({ label: 'Organizations', href: '/orgs' })
+    // Settings (operator-level)
+    if (path.startsWith('/settings')) {
+      crumbs.push({ label: 'Settings' })
+      return crumbs
+    }
+    // The single organization is implicit; crumbs start at Projects.
+    if (path === '/orgs') {
+      crumbs.push({ label: 'Projects' })
+      return crumbs
     }
 
     // Use raw URL params for href construction (they already contain slugs)

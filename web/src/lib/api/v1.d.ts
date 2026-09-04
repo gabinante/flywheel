@@ -694,6 +694,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Operator settings (Linear, code review, feedback, reports); secrets are masked */
+        get: operations["GetOperatorSettings"];
+        /** Replace operator settings and apply them to the running services */
+        put: operations["UpdateOperatorSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1397,6 +1415,67 @@ export interface components {
         SetProjectLinearLinkRequest: {
             /** @description Linear project URL (https://linear.app/<workspace>/project/<slug>-<id>) or project UUID */
             linear_project: string;
+        };
+        LinearSettings: {
+            api_key_set: boolean;
+            /** @description Last characters of the stored key, for display */
+            api_key_hint: string;
+            enabled: boolean;
+            project_ids: string[];
+            default_team_key: string;
+            sync_interval_seconds: number;
+        };
+        ReviewSettings: {
+            enabled: boolean;
+            harness: string;
+            model: string;
+            reasoning_effort: string;
+            publish: boolean;
+            watch_requested: boolean;
+            watch_authored: boolean;
+            skip_drafts: boolean;
+            max_concurrent: number;
+            poll_interval_seconds: number;
+            repo_root: string;
+        };
+        FeedbackSettings: {
+            harness: string;
+            model: string;
+            reasoning_effort: string;
+            auto_address: boolean;
+        };
+        ReportSettings: {
+            project_updates_enabled: boolean;
+            project_update_interval_hours: number;
+            weekly_enabled: boolean;
+            weekly_day: string;
+            weekly_hour: number;
+            roundup_document_id: string;
+            roundup_project_id: string;
+            default_health: string;
+        };
+        OperatorSettings: {
+            linear: components["schemas"]["LinearSettings"];
+            review: components["schemas"]["ReviewSettings"];
+            feedback: components["schemas"]["FeedbackSettings"];
+            report: components["schemas"]["ReportSettings"];
+            /** @description False until settings were saved from the UI (values come from the environment) */
+            saved: boolean;
+        };
+        UpdateLinearSettings: {
+            /** @description New personal API key; omit or send empty to keep the stored key */
+            api_key?: string;
+            clear_api_key?: boolean;
+            enabled: boolean;
+            project_ids: string[];
+            default_team_key: string;
+            sync_interval_seconds: number;
+        };
+        UpdateOperatorSettingsRequest: {
+            linear: components["schemas"]["UpdateLinearSettings"];
+            review: components["schemas"]["ReviewSettings"];
+            feedback: components["schemas"]["FeedbackSettings"];
+            report: components["schemas"]["ReportSettings"];
         };
     };
     responses: never;
@@ -3456,6 +3535,77 @@ export interface operations {
             };
             /** @description Not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    GetOperatorSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorSettings"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    UpdateOperatorSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateOperatorSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorSettings"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

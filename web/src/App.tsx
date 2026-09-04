@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { HashRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 
@@ -8,9 +8,11 @@ import { AuthProvider } from '@/contexts/auth-provider'
 import { SlugResolverProvider, useSlugResolver } from '@/contexts/slug-resolver-provider'
 import { useAuth } from '@/contexts/use-auth'
 import { useResolvedRouteParams } from '@/hooks/use-resolved-route-params'
+import { resolvePreferredOrgId, resolvePreferredOrgSlug, setPreferredOrgId } from '@/lib/org-preferences'
 import { queryClient } from '@/lib/query-client'
 import { HomePage } from '@/pages/home-page'
 import { OrgsPage } from '@/pages/orgs-page'
+import { OperatorSettingsPage } from '@/pages/operator-settings-page'
 import { ProjectsPage } from '@/pages/projects-page'
 import { TicketsPage } from '@/pages/tickets-page'
 import { TicketDetailPage } from '@/pages/ticket-detail-page'
@@ -85,6 +87,32 @@ function SlugRedirect() {
   return <Outlet />
 }
 
+/** The single organization is implicit: forward /orgs to its projects; show the orgs page only when none exists. */
+function OrgsGate() {
+  const { client } = useAuth()
+  const [target, setTarget] = useState<string | null | undefined>(undefined)
+  useEffect(() => {
+    let cancelled = false
+    void client.GET('/orgs', {}).then(({ data, response }) => {
+      if (cancelled) return
+      if (!response.ok || !data || data.length === 0) {
+        setTarget(null)
+        return
+      }
+      const id = resolvePreferredOrgId(data) ?? data[0].id ?? ''
+      setPreferredOrgId(id)
+      const slug = resolvePreferredOrgSlug(data) ?? data[0].slug ?? id
+      setTarget(`/orgs/${slug}/projects`)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [client])
+  if (target === undefined) return null
+  if (target === null) return <OrgsPage />
+  return <Navigate to={target} replace />
+}
+
 /** Redirect project root to the command center */
 function ProjectRedirect() {
   const { orgParam, projectParam } = useResolvedRouteParams()
@@ -105,7 +133,8 @@ export default function App() {
                 <Route element={<RequireAuthLayout />}>
                   {/* Auto-redirect UUID URLs to slug URLs */}
                   <Route element={<SlugRedirect />}>
-                  <Route path="/orgs" element={<OrgsPage />} />
+                  <Route path="/orgs" element={<OrgsGate />} />
+                  <Route path="/settings" element={<OperatorSettingsPage />} />
                   <Route
                     path="/orgs/:orgId/projects"
                     element={<ProjectsPage />}

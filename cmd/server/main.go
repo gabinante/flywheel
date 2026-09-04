@@ -33,6 +33,7 @@ import (
 	"github.com/gabinante/flywheel/internal/report"
 	"github.com/gabinante/flywheel/internal/review"
 	"github.com/gabinante/flywheel/internal/sessions"
+	"github.com/gabinante/flywheel/internal/settings"
 	"github.com/gabinante/flywheel/internal/ticket"
 	"github.com/gabinante/flywheel/internal/user"
 	"github.com/gabinante/flywheel/internal/workflow"
@@ -203,17 +204,21 @@ func run(ctx context.Context, cfg *config.Config) {
 	reviewSvc := review.NewService(reviewStore, ticketSvc, bus)
 	userStore := user.NewStore(pool)
 
-	// Linear as the ticket store: discover led projects, mirror issues, push changes back.
-	var linearClient *linear.Client
-	if cfg.Linear.APIKey != "" && cfg.Linear.Enabled {
-		linearClient = linear.NewClient(cfg.Linear.APIKey, "")
+	// Operator settings: environment values seed the defaults; the saved row (edited in the UI) wins.
+	settingsSvc, err := settings.Load(ctx, settings.NewStore(pool), settings.FromConfig(cfg))
+	if err != nil {
+		slog.Error("failed to load operator settings", "error", err)
+		os.Exit(1)
 	}
-	linearSvc := linear.NewSyncer(linearClient, linearStore, ticketSvc, projectSvc, bus, linear.Config{
-		Enabled:        cfg.Linear.Enabled,
-		ProjectIDs:     cfg.Linear.ProjectIDs,
-		Interval:       cfg.Linear.Interval,
-		DefaultTeamKey: cfg.Linear.DefaultTeamKey,
-	})
+	eff := settingsSvc.Current()
+
+	// Linear as the ticket store: discover led projects, mirror issues, push changes back.
+	linearKey, linearCfg := eff.LinearConfig()
+	var linearClient *linear.Client
+	if linearKey != "" {
+		linearClient = linear.NewClient(linearKey, "")
+	}
+	linearSvc := linear.NewSyncer(linearClient, linearStore, ticketSvc, projectSvc, bus, linearCfg)
 	linearSvc.SetOutputPatcher(ticketStore)
 	linearSvc.Start(ctx)
 
@@ -232,44 +237,28 @@ func run(ctx context.Context, cfg *config.Config) {
 		harnessCfg.CodexBin = cfg.Dispatch.AgentCLIPath
 	}
 	harnessRunner := harness.New(harnessCfg)
-	codeReviewSvc := codereview.New(codereview.NewStore(pool), codereview.NewGitHub(""), harnessRunner, sessionsSvc, bus, codereview.Config{
-		Enabled:        cfg.Review.Enabled,
-		Harness:        cfg.Review.Harness,
-		Model:          cfg.Review.Model,
-		Effort:         cfg.Review.Effort,
-		Publish:        cfg.Review.Publish,
-		PollInterval:   cfg.Review.PollInterval,
-		MaxConcurrent:  cfg.Review.MaxConcurrent,
-		RepoRoot:       cfg.Review.RepoRoot,
-		WatchRequested: cfg.Review.WatchRequested,
-		WatchAuthored:  cfg.Review.WatchAuthored,
-		ReviewTimeout:  cfg.Review.Timeout,
-		SkipDrafts:     cfg.Review.SkipDrafts,
-	})
-	codeReviewSvc.SetFeedbackConfig(codereview.FeedbackConfig{
-		Harness:     cfg.Feedback.Harness,
-		Model:       cfg.Feedback.Model,
-		Effort:      cfg.Feedback.Effort,
-		AutoAddress: cfg.Feedback.AutoAddress,
-		Timeout:     cfg.Feedback.Timeout,
-	})
+	reviewCfg, feedbackCfg := eff.ReviewConfig()
+	reviewCfg.ReviewTimeout, feedbackCfg.Timeout = cfg.Review.Timeout, cfg.Feedback.Timeout
+	codeReviewSvc := codereview.New(codereview.NewStore(pool), codereview.NewGitHub(""), harnessRunner, sessionsSvc, bus, reviewCfg)
+	codeReviewSvc.SetFeedbackConfig(feedbackCfg)
 	codeReviewSvc.Start(ctx)
 
 	// Reports: Linear project status updates and the weekly roundup.
 	reportSvc := report.New(report.Deps{
 		Store: report.NewStore(pool), Tickets: ticketSvc, Projects: projectSvc, Repos: repoSvc, Linear: linearSvc,
 		GitHub: codereview.NewGitHub(""), Reviews: codeReviewSvc, Sessions: sessionsSvc,
-	}, report.Config{
-		ProjectUpdatesEnabled: cfg.Report.ProjectUpdatesEnabled,
-		ProjectUpdateInterval: cfg.Report.ProjectUpdateInterval,
-		WeeklyEnabled:         cfg.Report.WeeklyEnabled,
-		WeeklyDay:             report.ParseWeekday(cfg.Report.WeeklyDay),
-		WeeklyHour:            cfg.Report.WeeklyHour,
-		RoundupDocumentID:     cfg.Report.RoundupDocumentID,
-		RoundupProjectID:      cfg.Report.RoundupProjectID,
-		DefaultHealth:         cfg.Report.DefaultHealth,
-	})
+	}, eff.ReportConfig())
 	reportSvc.Start(ctx)
+
+	// Settings saved in the UI apply live, without a restart.
+	settingsSvc.OnChange(func(next settings.Settings) {
+		key, lc := next.LinearConfig()
+		linearSvc.Reconfigure(key, lc)
+		rc, fc := next.ReviewConfig()
+		rc.ReviewTimeout, fc.Timeout = cfg.Review.Timeout, cfg.Feedback.Timeout
+		codeReviewSvc.Apply(rc, fc)
+		reportSvc.Apply(next.ReportConfig())
+	})
 
 	strictServer := &rest.StrictServer{
 		OrgSvc:        orgSvc,
@@ -283,6 +272,7 @@ func run(ctx context.Context, cfg *config.Config) {
 		LinearSvc:     linearSvc,
 		CodeReviewSvc: codeReviewSvc,
 		ReportSvc:     reportSvc,
+		SettingsSvc:   settingsSvc,
 		AgentStore:    agentStore,
 	}
 

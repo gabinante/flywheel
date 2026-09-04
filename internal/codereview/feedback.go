@@ -96,7 +96,8 @@ func (s *Service) runAddressFeedback(ctx context.Context, round *FeedbackRound) 
 	}
 	defer s.ws.Remove(ctx, round.Repo, wt)
 
-	kind, err := harness.ParseKind(firstNonEmpty(s.fb.Harness, "claude"))
+	fb := s.feedback()
+	kind, err := harness.ParseKind(firstNonEmpty(fb.Harness, "claude"))
 	if err != nil {
 		fail(err)
 		return
@@ -104,8 +105,8 @@ func (s *Service) runAddressFeedback(ctx context.Context, round *FeedbackRound) 
 	prompt := BuildFeedbackPrompt(round, pr)
 	started := time.Now()
 	res, runErr := s.runner.Run(ctx, harness.Spec{
-		Harness: kind, Model: s.fb.Model, Effort: s.fb.Effort, WorkDir: wt,
-		SystemPrompt: FeedbackSystemPrompt, Prompt: prompt, Sandbox: harness.SandboxWorkspaceWrite, Timeout: s.fb.Timeout,
+		Harness: kind, Model: fb.Model, Effort: fb.Effort, WorkDir: wt,
+		SystemPrompt: FeedbackSystemPrompt, Prompt: prompt, Sandbox: harness.SandboxWorkspaceWrite, Timeout: fb.Timeout,
 	})
 	sessionID := ""
 	if s.sessions != nil && res != nil && res.ExternalSessionID != "" {
@@ -116,7 +117,7 @@ func (s *Service) runAddressFeedback(ctx context.Context, round *FeedbackRound) 
 		ended := time.Now()
 		sess := &sessions.Session{
 			Harness: h, ExternalID: res.ExternalSessionID, Origin: sessions.OriginDispatched, CWD: wt, Repo: round.Repo, Branch: pr.HeadRef,
-			Model: firstNonEmpty(res.Model, s.fb.Model), ReasoningEffort: s.fb.Effort,
+			Model: firstNonEmpty(res.Model, fb.Model), ReasoningEffort: fb.Effort,
 			Title: fmt.Sprintf("Address %s review on %s: %s", round.Reviewer, round.Ref(), pr.Title), FirstPrompt: truncateStr(prompt, 500),
 			TokensIn: res.TokensIn, TokensOut: res.TokensOut, PromptCount: 1, StartedAt: started, LastActivityAt: ended, EndedAt: &ended,
 			Metadata: map[string]any{"flywheel_role": "address_feedback", "feedback_round_id": round.ID, "cost_usd": res.CostUSD},

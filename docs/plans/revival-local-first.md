@@ -1,6 +1,6 @@
 # Flywheel revival — local-first control plane for a Linear + Codex + Claude Code workflow
 
-Status: phases 0–5 implemented 2026-09-04 (see git history); live Linear posting awaits `LINEAR_API_KEY`. Phase 6 items remain open.
+Status: phases 0–5 implemented 2026-09-04 (see git history). Runtime toggles moved from .env to the Settings page (`/settings`, `operator_settings` table); live Linear posting awaits a Linear API key entered there. Phase 6 items remain open.
 
 ## 1. Why
 

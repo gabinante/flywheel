@@ -298,17 +298,18 @@ export function LeftSidebar() {
 
       {/* Bottom pinned */}
       <div className="flex flex-col gap-1 border-t border-sidebar-border px-2 py-2">
-        {token && projectBase && (
+        {token && (
           <Link
-            to="/orgs"
+            to="/settings"
             className={cn(
               'group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
+              location.pathname.startsWith('/settings') && 'bg-sidebar-accent/60 text-sidebar-foreground',
               !isExpanded && 'justify-center px-0',
             )}
-            title={isExpanded ? undefined : 'Organizations'}
+            title={isExpanded ? undefined : 'Settings'}
           >
-            <Building2 className="size-4 shrink-0" />
-            {isExpanded && <span className="truncate">All organizations</span>}
+            <Settings className="size-4 shrink-0" />
+            {isExpanded && <span className="truncate">Settings</span>}
           </Link>
         )}
         {token ? (

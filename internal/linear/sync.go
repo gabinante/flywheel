@@ -61,6 +61,59 @@ type Syncer struct {
 	running  int32
 	states   map[string]teamStatesCache
 	statesMu sync.Mutex
+
+	cfgMu      sync.RWMutex // guards client, cfg
+	loopOnce   sync.Once
+	subscribed bool
+	loopCtx    context.Context
+}
+
+// cl returns the current API client (nil when Linear is not configured).
+func (s *Syncer) cl() *Client {
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return s.client
+}
+
+// conf returns a snapshot of the current config.
+func (s *Syncer) conf() Config {
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return s.cfg
+}
+
+// Reconfigure swaps the API key and config at runtime. Sync starts (or stops) on the
+// next tick; the loop is created on first enablement if Start ran while disabled.
+func (s *Syncer) Reconfigure(apiKey string, cfg Config) {
+	if cfg.Interval <= 0 {
+		cfg.Interval = 60 * time.Second
+	}
+	if cfg.Overlap <= 0 {
+		cfg.Overlap = 2 * time.Minute
+	}
+	cfg.Enabled = cfg.Enabled && apiKey != ""
+	s.cfgMu.Lock()
+	if apiKey == "" {
+		s.client = nil
+	} else if s.client == nil || s.client.apiKey != apiKey {
+		s.client = NewClient(apiKey, "")
+	}
+	s.cfg = cfg
+	s.viewer = nil
+	s.cfgMu.Unlock()
+	s.mu.Lock()
+	s.status.Enabled = cfg.Enabled
+	s.status.ViewerName, s.status.ViewerEmail, s.status.LastError = "", "", ""
+	s.mu.Unlock()
+	if cfg.Enabled && s.loopCtx != nil {
+		s.startLoop(s.loopCtx)
+		go func() {
+			if err := s.RunOnce(s.loopCtx); err != nil && !errors.Is(err, context.Canceled) {
+				slog.Warn("linear: sync after reconfigure failed", "error", err)
+			}
+		}()
+	}
+	slog.Info("linear: reconfigured", "enabled", cfg.Enabled, "interval", cfg.Interval)
 }
 
 type teamStatesCache struct {
@@ -88,38 +141,55 @@ func NewSyncer(client *Client, store *Store, tickets *ticket.Service, projects *
 func (s *Syncer) SetOutputPatcher(p OutputPatcher) { s.outputs = p }
 
 // Enabled reports whether Linear sync is active.
-func (s *Syncer) Enabled() bool { return s.cfg.Enabled }
+func (s *Syncer) Enabled() bool { return s.conf().Enabled && s.cl() != nil }
 
 // Start runs the inbound poll loop and subscribes to ticket events for outbound sync.
 func (s *Syncer) Start(ctx context.Context) {
-	if !s.cfg.Enabled {
-		slog.Info("linear: sync disabled (no LINEAR_API_KEY)")
+	s.loopCtx = ctx
+	if !s.subscribed {
+		s.subscribe(ctx)
+		s.subscribed = true
+	}
+	cfg := s.conf()
+	if !cfg.Enabled {
+		slog.Info("linear: sync disabled until an API key is set in settings")
 		return
 	}
-	s.subscribe(ctx)
-	go func() {
-		if err := s.RunOnce(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			slog.Warn("linear: initial sync failed", "error", err)
-		}
-		t := time.NewTicker(s.cfg.Interval)
-		defer t.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-t.C:
-				if err := s.RunOnce(ctx); err != nil && !errors.Is(err, context.Canceled) {
-					slog.Warn("linear: sync failed", "error", err)
+	s.startLoop(ctx)
+	slog.Info("linear: sync started", "interval", cfg.Interval, "explicit_projects", len(cfg.ProjectIDs))
+}
+
+// startLoop runs the poll loop once per process; each tick re-reads the config.
+func (s *Syncer) startLoop(ctx context.Context) {
+	s.loopOnce.Do(func() {
+		go func() {
+			if err := s.RunOnce(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				slog.Warn("linear: initial sync failed", "error", err)
+			}
+			interval := s.conf().Interval
+			t := time.NewTicker(interval)
+			defer t.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-t.C:
+					if next := s.conf().Interval; next != interval && next > 0 {
+						interval = next
+						t.Reset(interval)
+					}
+					if err := s.RunOnce(ctx); err != nil && !errors.Is(err, context.Canceled) {
+						slog.Warn("linear: sync failed", "error", err)
+					}
 				}
 			}
-		}
-	}()
-	slog.Info("linear: sync started", "interval", s.cfg.Interval, "explicit_projects", len(s.cfg.ProjectIDs))
+		}()
+	})
 }
 
 // RunOnce discovers projects and pulls updated issues. Concurrent calls are coalesced.
 func (s *Syncer) RunOnce(ctx context.Context) error {
-	if !s.cfg.Enabled {
+	if !s.conf().Enabled || s.cl() == nil {
 		return nil
 	}
 	if !atomic.CompareAndSwapInt32(&s.running, 0, 1) {
@@ -129,7 +199,7 @@ func (s *Syncer) RunOnce(ctx context.Context) error {
 	start := time.Now()
 	var errs []error
 	if s.viewer == nil {
-		v, err := s.client.Viewer(ctx)
+		v, err := s.cl().Viewer(ctx)
 		if err != nil {
 			s.finish(start, err)
 			return err
@@ -175,9 +245,9 @@ func (s *Syncer) finish(start time.Time, err error) {
 // discover ensures a Flywheel project exists for every in-scope Linear project.
 func (s *Syncer) discover(ctx context.Context) ([]*ProjectLink, error) {
 	var lps []Project
-	if len(s.cfg.ProjectIDs) > 0 {
-		for _, id := range s.cfg.ProjectIDs {
-			p, err := s.client.ProjectByID(ctx, id)
+	if len(s.conf().ProjectIDs) > 0 {
+		for _, id := range s.conf().ProjectIDs {
+			p, err := s.cl().ProjectByID(ctx, id)
 			if err != nil {
 				return nil, err
 			}
@@ -185,7 +255,7 @@ func (s *Syncer) discover(ctx context.Context) ([]*ProjectLink, error) {
 		}
 	} else {
 		var err error
-		lps, err = s.client.LedProjects(ctx)
+		lps, err = s.cl().LedProjects(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -258,13 +328,13 @@ func isHex(s string) bool {
 
 // resolveProjectRef fetches a project by UUID, falling back to slug-id lookup.
 func (s *Syncer) resolveProjectRef(ctx context.Context, id string) (*Project, error) {
-	if s.client == nil {
+	if s.cl() == nil {
 		return nil, errors.New("linear: not configured")
 	}
 	if uuidLike(id) {
-		return s.client.ProjectByID(ctx, id)
+		return s.cl().ProjectByID(ctx, id)
 	}
-	return s.client.ProjectBySlugID(ctx, id)
+	return s.cl().ProjectBySlugID(ctx, id)
 }
 
 // LinkProject links a Flywheel project to a Linear project given a URL or id. When
@@ -282,7 +352,7 @@ func (s *Syncer) LinkProject(ctx context.Context, projectID, ref string) (*Proje
 	if strings.Contains(ref, "linear.app") {
 		link.LinearProjectURL = strings.TrimSpace(ref)
 	}
-	if s.client != nil {
+	if s.cl() != nil {
 		lp, err := s.resolveProjectRef(ctx, id)
 		if err != nil {
 			return nil, err
@@ -296,7 +366,7 @@ func (s *Syncer) LinkProject(ctx context.Context, projectID, ref string) (*Proje
 	if err := s.store.UpsertLink(ctx, link); err != nil {
 		return nil, err
 	}
-	if s.cfg.Enabled {
+	if s.conf().Enabled {
 		go func() {
 			if err := s.syncProject(context.WithoutCancel(ctx), link); err != nil {
 				slog.Warn("linear: initial sync after manual link failed", "project", projectID, "error", err)
@@ -365,10 +435,10 @@ func (s *Syncer) syncProject(ctx context.Context, link *ProjectLink) error {
 	start := time.Now()
 	var since time.Time
 	if link.SyncedAt != nil {
-		since = link.SyncedAt.Add(-s.cfg.Overlap)
+		since = link.SyncedAt.Add(-s.conf().Overlap)
 	}
 	n := 0
-	err := s.client.IssuesUpdatedSince(ctx, link.LinearProjectID, since, func(is Issue) error {
+	err := s.cl().IssuesUpdatedSince(ctx, link.LinearProjectID, since, func(is Issue) error {
 		n++
 		return s.upsertIssue(ctx, link, is)
 	})
@@ -525,7 +595,7 @@ func (s *Syncer) fileIssue(ctx context.Context, ticketID string) {
 		slog.Warn("linear: cannot file issue, project has no team", "ticket", t.ID)
 		return
 	}
-	is, err := s.client.CreateIssue(ctx, CreateIssueInput{
+	is, err := s.cl().CreateIssue(ctx, CreateIssueInput{
 		TeamID:      teamID,
 		ProjectID:   link.LinearProjectID,
 		Title:       t.Title,
@@ -549,7 +619,7 @@ func (s *Syncer) fileIssue(ctx context.Context, ticketID string) {
 // teamForLink picks the team to file into: the configured default, the team
 // matching preferKey, or the project's first team.
 func (s *Syncer) teamForLink(link *ProjectLink, preferKey string) string {
-	for _, key := range []string{preferKey, s.cfg.DefaultTeamKey} {
+	for _, key := range []string{preferKey, s.conf().DefaultTeamKey} {
 		if key == "" {
 			continue
 		}
@@ -572,7 +642,7 @@ func (s *Syncer) teamStates(ctx context.Context, teamID string) ([]WorkflowState
 	if ok && time.Since(c.fetched) < 30*time.Minute {
 		return c.states, nil
 	}
-	states, err := s.client.TeamStates(ctx, teamID)
+	states, err := s.cl().TeamStates(ctx, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -585,7 +655,7 @@ func (s *Syncer) teamStates(ctx context.Context, teamID string) ([]WorkflowState
 // pushState moves the linked Linear issue to the column matching a Flywheel state.
 // overrideType forces a Linear state type (used for cancellation).
 func (s *Syncer) pushState(ctx context.Context, ticketID string, st ticket.State, overrideType string) {
-	if ticketID == "" || s.client == nil {
+	if ticketID == "" || s.cl() == nil {
 		return
 	}
 	ref, err := s.store.RefByTicketID(ctx, ticketID)
@@ -620,7 +690,7 @@ func (s *Syncer) pushState(ctx context.Context, ticketID string, st ticket.State
 	if target == nil || target.Name == ref.StateName {
 		return
 	}
-	is, err := s.client.UpdateIssueState(ctx, ref.ExternalID, target.ID)
+	is, err := s.cl().UpdateIssueState(ctx, ref.ExternalID, target.ID)
 	if err != nil {
 		slog.Warn("linear: push state failed", "ticket", ticketID, "state", target.Name, "error", err)
 		return
@@ -631,7 +701,7 @@ func (s *Syncer) pushState(ctx context.Context, ticketID string, st ticket.State
 
 // attachSubmittedPR links the ticket's PR to its Linear issue and comments once.
 func (s *Syncer) attachSubmittedPR(ctx context.Context, ticketID string) {
-	if ticketID == "" || s.client == nil {
+	if ticketID == "" || s.cl() == nil {
 		return
 	}
 	t, err := s.tickets.GetTicket(ctx, ticketID)
@@ -649,11 +719,11 @@ func (s *Syncer) attachSubmittedPR(ctx context.Context, ticketID string) {
 	if err != nil || ref == nil {
 		return
 	}
-	if err := s.client.AttachPullRequest(ctx, ref.ExternalID, prURL); err != nil {
+	if err := s.cl().AttachPullRequest(ctx, ref.ExternalID, prURL); err != nil {
 		slog.Warn("linear: attach PR failed", "ticket", ticketID, "pr", prURL, "error", err)
 	}
 	body := AbstractBody(t) + "\n\nPull request: " + prURL
-	if _, err := s.client.CreateComment(ctx, ref.ExternalID, body); err != nil {
+	if _, err := s.cl().CreateComment(ctx, ref.ExternalID, body); err != nil {
 		slog.Warn("linear: PR comment failed", "ticket", ticketID, "error", err)
 		return
 	}
@@ -665,7 +735,7 @@ func (s *Syncer) attachSubmittedPR(ctx context.Context, ticketID string) {
 
 // Comment posts a comment on the Linear issue linked to a ticket.
 func (s *Syncer) Comment(ctx context.Context, ticketID, body string) error {
-	if s.client == nil {
+	if s.cl() == nil {
 		return errors.New("linear: not configured")
 	}
 	ref, err := s.store.RefByTicketID(ctx, ticketID)
@@ -675,13 +745,13 @@ func (s *Syncer) Comment(ctx context.Context, ticketID, body string) error {
 	if ref == nil {
 		return fmt.Errorf("ticket %s has no Linear issue", ticketID)
 	}
-	_, err = s.client.CreateComment(ctx, ref.ExternalID, body)
+	_, err = s.cl().CreateComment(ctx, ref.ExternalID, body)
 	return err
 }
 
 // AttachPullRequest links a PR to the Linear issue behind a ticket.
 func (s *Syncer) AttachPullRequest(ctx context.Context, ticketID, prURL string) error {
-	if s.client == nil {
+	if s.cl() == nil {
 		return errors.New("linear: not configured")
 	}
 	ref, err := s.store.RefByTicketID(ctx, ticketID)
@@ -691,7 +761,7 @@ func (s *Syncer) AttachPullRequest(ctx context.Context, ticketID, prURL string) 
 	if ref == nil {
 		return fmt.Errorf("ticket %s has no Linear issue", ticketID)
 	}
-	return s.client.AttachPullRequest(ctx, ref.ExternalID, prURL)
+	return s.cl().AttachPullRequest(ctx, ref.ExternalID, prURL)
 }
 
 // SyncProject runs an inbound pass for one Flywheel project now.
@@ -703,7 +773,7 @@ func (s *Syncer) SyncProject(ctx context.Context, projectID string) (*ProjectLin
 	if link == nil {
 		return nil, nil
 	}
-	if !s.cfg.Enabled {
+	if !s.conf().Enabled {
 		return link, errors.New("linear: not configured")
 	}
 	err = s.syncProject(ctx, link)
@@ -776,7 +846,7 @@ func firstNonEmpty(vals ...string) string {
 
 // PostProjectUpdate posts a status update on the Linear project linked to a Flywheel project.
 func (s *Syncer) PostProjectUpdate(ctx context.Context, projectID, body, health string) (string, error) {
-	if s.client == nil {
+	if s.cl() == nil {
 		return "", errors.New("linear: not configured")
 	}
 	link, err := s.store.LinkByProject(ctx, projectID)
@@ -786,8 +856,8 @@ func (s *Syncer) PostProjectUpdate(ctx context.Context, projectID, body, health 
 	if link == nil {
 		return "", fmt.Errorf("project %s is not linked to Linear", projectID)
 	}
-	return s.client.CreateProjectUpdate(ctx, link.LinearProjectID, body, health)
+	return s.cl().CreateProjectUpdate(ctx, link.LinearProjectID, body, health)
 }
 
 // Client exposes the underlying API client (nil when Linear is not configured).
-func (s *Syncer) Client() *Client { return s.client }
+func (s *Syncer) Client() *Client { return s.cl() }

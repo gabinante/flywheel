@@ -53,25 +53,52 @@ type Service struct {
 
 	fb FeedbackConfig
 
+	cfgMu     sync.RWMutex // guards cfg, fb, ws.Root
 	mu        sync.Mutex
 	status    PollerStatus
 	active    int32
 	startedAt time.Time
+	started   bool
 }
 
-// SetFeedbackConfig configures the address-feedback workflow.
-func (s *Service) SetFeedbackConfig(cfg FeedbackConfig) {
-	if cfg.Timeout <= 0 {
-		cfg.Timeout = 45 * time.Minute
-	}
-	if cfg.Harness == "" {
-		cfg.Harness = "claude"
-	}
-	s.fb = cfg
+// conf returns a snapshot of the current review config.
+func (s *Service) conf() Config {
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return s.cfg
 }
 
-// New builds a Service. sessions and bus may be nil.
-func New(store *Store, gh *GitHub, runner harness.Runner, sess *sessions.Service, bus events.Bus, cfg Config) *Service {
+// feedback returns a snapshot of the current feedback config.
+func (s *Service) feedback() FeedbackConfig {
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return s.fb
+}
+
+// Apply replaces the review and feedback configuration at runtime. Loops pick up the
+// new values on their next iteration; intervals apply from the next scheduled tick.
+func (s *Service) Apply(cfg Config, fb FeedbackConfig) {
+	cfg = normalizeConfig(cfg)
+	if fb.Timeout <= 0 {
+		fb.Timeout = 45 * time.Minute
+	}
+	if fb.Harness == "" {
+		fb.Harness = "claude"
+	}
+	s.cfgMu.Lock()
+	s.cfg = cfg
+	s.fb = fb
+	s.ws.Root = cfg.RepoRoot
+	s.cfgMu.Unlock()
+	s.mu.Lock()
+	s.status.Enabled, s.status.Harness, s.status.Publish = cfg.Enabled, cfg.Harness, cfg.Publish
+	s.status.WatchRequested, s.status.WatchAuthored, s.status.MaxConcurrent = cfg.WatchRequested, cfg.WatchAuthored, cfg.MaxConcurrent
+	s.status.RepoRoot, s.status.WorktreeRootFmt = cfg.RepoRoot, filepath.Join(cfg.RepoRoot, "<repo>-worktrees", "review-<n>")
+	s.mu.Unlock()
+}
+
+// normalizeConfig fills defaults.
+func normalizeConfig(cfg Config) Config {
 	if cfg.PollInterval <= 0 {
 		cfg.PollInterval = 2 * time.Minute
 	}
@@ -95,6 +122,23 @@ func New(store *Store, gh *GitHub, runner harness.Runner, sess *sessions.Service
 			cfg.RepoRoot = filepath.Join(h, "git")
 		}
 	}
+	return cfg
+}
+
+// SetFeedbackConfig configures the address-feedback workflow.
+func (s *Service) SetFeedbackConfig(cfg FeedbackConfig) {
+	if cfg.Timeout <= 0 {
+		cfg.Timeout = 45 * time.Minute
+	}
+	if cfg.Harness == "" {
+		cfg.Harness = "claude"
+	}
+	s.fb = cfg
+}
+
+// New builds a Service. sessions and bus may be nil.
+func New(store *Store, gh *GitHub, runner harness.Runner, sess *sessions.Service, bus events.Bus, cfg Config) *Service {
+	cfg = normalizeConfig(cfg)
 	return &Service{store: store, gh: gh, ws: &Workspaces{Root: cfg.RepoRoot}, runner: runner, sessions: sess, bus: bus, cfg: cfg,
 		status: PollerStatus{Enabled: cfg.Enabled, Harness: cfg.Harness, Publish: cfg.Publish, WatchRequested: cfg.WatchRequested,
 			WatchAuthored: cfg.WatchAuthored, MaxConcurrent: cfg.MaxConcurrent, RepoRoot: cfg.RepoRoot, WorktreeRootFmt: filepath.Join(cfg.RepoRoot, "<repo>-worktrees", "review-<n>")}}
@@ -102,11 +146,18 @@ func New(store *Store, gh *GitHub, runner harness.Runner, sess *sessions.Service
 
 // Start launches the queue and poller loops.
 func (s *Service) Start(ctx context.Context) {
-	if !s.cfg.Enabled {
-		slog.Info("codereview: disabled")
+	s.mu.Lock()
+	if s.started {
+		s.mu.Unlock()
 		return
 	}
+	s.started = true
+	s.mu.Unlock()
 	s.startedAt = time.Now()
+	cfg := s.conf()
+	if !cfg.Enabled {
+		slog.Info("codereview: disabled until enabled in settings")
+	}
 	go func() {
 		if login, err := s.gh.Login(ctx); err == nil {
 			s.mu.Lock()
@@ -118,11 +169,11 @@ func (s *Service) Start(ctx context.Context) {
 	}()
 	go s.queueLoop(ctx)
 	go s.pollLoop(ctx)
-	slog.Info("codereview: started", "harness", s.cfg.Harness, "publish", s.cfg.Publish, "watch_requested", s.cfg.WatchRequested, "watch_authored", s.cfg.WatchAuthored)
+	slog.Info("codereview: started", "enabled", cfg.Enabled, "harness", cfg.Harness, "publish", cfg.Publish, "watch_requested", cfg.WatchRequested, "watch_authored", cfg.WatchAuthored)
 }
 
 func (s *Service) queueLoop(ctx context.Context) {
-	t := time.NewTicker(s.cfg.QueueInterval)
+	t := time.NewTicker(s.conf().QueueInterval)
 	defer t.Stop()
 	for {
 		select {
@@ -135,7 +186,11 @@ func (s *Service) queueLoop(ctx context.Context) {
 }
 
 func (s *Service) drainQueue(ctx context.Context) {
-	free := s.cfg.MaxConcurrent - int(atomic.LoadInt32(&s.active))
+	cfg := s.conf()
+	if !cfg.Enabled {
+		return
+	}
+	free := cfg.MaxConcurrent - int(atomic.LoadInt32(&s.active))
 	if free <= 0 {
 		return
 	}
@@ -159,7 +214,11 @@ func (s *Service) drainQueue(ctx context.Context) {
 
 func (s *Service) pollLoop(ctx context.Context) {
 	run := func() {
-		if s.cfg.WatchRequested {
+		cfg := s.conf()
+		if !cfg.Enabled {
+			return
+		}
+		if cfg.WatchRequested {
 			if err := s.pollRequested(ctx); err != nil {
 				s.setError(fmt.Errorf("review-requested: %w", err))
 			}
@@ -167,7 +226,7 @@ func (s *Service) pollLoop(ctx context.Context) {
 		if err := s.pollWatching(ctx); err != nil {
 			s.setError(fmt.Errorf("watching: %w", err))
 		}
-		if s.cfg.WatchAuthored {
+		if cfg.WatchAuthored {
 			if err := s.pollFeedback(ctx); err != nil {
 				s.setError(fmt.Errorf("feedback: %w", err))
 			}
@@ -178,7 +237,7 @@ func (s *Service) pollLoop(ctx context.Context) {
 		s.mu.Unlock()
 	}
 	run()
-	t := time.NewTicker(s.cfg.PollInterval)
+	t := time.NewTicker(s.conf().PollInterval)
 	defer t.Stop()
 	for {
 		select {
@@ -210,6 +269,7 @@ type EnqueueOptions struct {
 // Enqueue parses PR references from text and queues a review for each.
 // Already-reviewed PRs are re-queued; PRs currently in flight are left alone.
 func (s *Service) Enqueue(ctx context.Context, text string, origin Origin, opts EnqueueOptions) ([]*Request, error) {
+	cfg := s.conf()
 	refs := ParsePRRefs(text)
 	if len(refs) == 0 {
 		return nil, errors.New("no pull request references found (expected GitHub PR URLs or owner/repo#N)")
@@ -246,10 +306,10 @@ func (s *Service) Enqueue(ctx context.Context, text string, origin Origin, opts 
 			out = append(out, existing)
 			continue
 		}
-		req := &Request{Repo: ref.Repo, Number: ref.Number, URL: PRURL(ref.Repo, ref.Number), Origin: origin, Harness: s.cfg.Harness,
-			Model: s.cfg.Model, ReasoningEffort: s.cfg.Effort, Watch: true, DryRun: !s.cfg.Publish}
+		req := &Request{Repo: ref.Repo, Number: ref.Number, URL: PRURL(ref.Repo, ref.Number), Origin: origin, Harness: cfg.Harness,
+			Model: cfg.Model, ReasoningEffort: cfg.Effort, Watch: true, DryRun: !cfg.Publish}
 		if opts.DryRun != nil {
-			req.DryRun = *opts.DryRun || !s.cfg.Publish
+			req.DryRun = *opts.DryRun || !cfg.Publish
 		}
 		if opts.Watch != nil {
 			req.Watch = *opts.Watch
@@ -267,6 +327,7 @@ func (s *Service) Enqueue(ctx context.Context, text string, origin Origin, opts 
 
 // process runs one review attempt end to end.
 func (s *Service) process(ctx context.Context, req *Request) {
+	cfg := s.conf()
 	fail := func(err error) {
 		req.State = StateFailed
 		req.Error = err.Error()
@@ -288,7 +349,7 @@ func (s *Service) process(ctx context.Context, req *Request) {
 		_ = s.store.Update(ctx, req)
 		return
 	}
-	if pr.IsDraft && s.cfg.SkipDrafts {
+	if pr.IsDraft && cfg.SkipDrafts {
 		req.State = StateWatching
 		req.Error = "draft PR; will review when it is marked ready"
 		_ = s.store.Update(ctx, req)
@@ -342,7 +403,7 @@ func (s *Service) process(ctx context.Context, req *Request) {
 	res, runErr := s.runner.Run(ctx, harness.Spec{
 		Harness: kind, Model: req.Model, Effort: req.ReasoningEffort, WorkDir: wt,
 		SystemPrompt: ReviewSystemPrompt, Prompt: prompt, OutputSchema: FindingsSchema,
-		Sandbox: harness.SandboxReadOnly, Timeout: s.cfg.ReviewTimeout,
+		Sandbox: harness.SandboxReadOnly, Timeout: cfg.ReviewTimeout,
 	})
 	s.recordSession(ctx, req, pr, kind, res, prompt, started)
 	if runErr != nil {
@@ -378,7 +439,7 @@ func (s *Service) process(ctx context.Context, req *Request) {
 	reviewedAt := time.Now()
 	req.ReviewedAt = &reviewedAt
 	req.LastReviewedHeadSHA = req.HeadSHA
-	if req.DryRun || !s.cfg.Publish {
+	if req.DryRun || !cfg.Publish {
 		for _, f := range findings {
 			_ = s.store.UpdateFindingStatus(ctx, f.ID, "withheld", 0)
 		}
@@ -497,12 +558,13 @@ func (s *Service) recordSession(ctx context.Context, req *Request, pr *PR, kind 
 
 // pollRequested queues PRs where the operator's review is requested.
 func (s *Service) pollRequested(ctx context.Context) error {
+	cfg := s.conf()
 	prs, err := s.gh.SearchReviewRequested(ctx)
 	if err != nil {
 		return err
 	}
 	for _, p := range prs {
-		if p.IsDraft && s.cfg.SkipDrafts {
+		if p.IsDraft && cfg.SkipDrafts {
 			continue
 		}
 		existing, err := s.store.GetByRepoNumber(ctx, p.Repo, p.Number)
@@ -513,7 +575,7 @@ func (s *Service) pollRequested(ctx context.Context) error {
 			continue
 		}
 		req := &Request{Repo: p.Repo, Number: p.Number, URL: p.URL, Title: p.Title, Author: p.Author, Origin: OriginReviewRequested,
-			Harness: s.cfg.Harness, Model: s.cfg.Model, ReasoningEffort: s.cfg.Effort, Watch: true, DryRun: !s.cfg.Publish}
+			Harness: cfg.Harness, Model: cfg.Model, ReasoningEffort: cfg.Effort, Watch: true, DryRun: !cfg.Publish}
 		if err := s.store.Create(ctx, req); err != nil {
 			return err
 		}
@@ -524,6 +586,7 @@ func (s *Service) pollRequested(ctx context.Context) error {
 
 // pollWatching re-queues reviewed PRs whose head moved or whose review was dismissed, and closes merged/closed ones.
 func (s *Service) pollWatching(ctx context.Context) error {
+	cfg := s.conf()
 	reqs, err := s.store.ListByState(ctx, StateWatching)
 	if err != nil {
 		return err
@@ -554,7 +617,7 @@ func (s *Service) pollWatching(ctx context.Context) error {
 		r.MyReviewState = pr.MyReviewState
 		r.HeadSHA = pr.HeadSHA
 		_ = s.store.Update(ctx, r)
-		if requeue != "" && !(pr.IsDraft && s.cfg.SkipDrafts) {
+		if requeue != "" && !(pr.IsDraft && cfg.SkipDrafts) {
 			slog.Info("codereview: re-queuing", "pr", r.Ref(), "reason", requeue)
 			_ = s.store.Requeue(ctx, r.ID, OriginReReview)
 		}
@@ -564,6 +627,7 @@ func (s *Service) pollWatching(ctx context.Context) error {
 
 // pollFeedback records reviews that landed on the operator's own open PRs.
 func (s *Service) pollFeedback(ctx context.Context) error {
+	cfg := s.conf()
 	login, err := s.gh.Login(ctx)
 	if err != nil {
 		return err
@@ -572,7 +636,7 @@ func (s *Service) pollFeedback(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	cutoff := s.startedAt.Add(-s.cfg.FeedbackLookback)
+	cutoff := s.startedAt.Add(-cfg.FeedbackLookback)
 	for _, p := range prs {
 		maxSeen, err := s.store.MaxFeedbackReviewID(ctx, p.Repo, p.Number)
 		if err != nil {
@@ -608,7 +672,7 @@ func (s *Service) pollFeedback(ctx context.Context) error {
 			}
 			if created && round.State == "new" {
 				slog.Info("codereview: review landed on your PR", "pr", round.Ref(), "reviewer", rv.User, "state", rv.State, "comments", round.CommentCount)
-				if s.fb.AutoAddress && (rv.State == "CHANGES_REQUESTED" || round.CommentCount > 0) {
+				if s.feedback().AutoAddress && (rv.State == "CHANGES_REQUESTED" || round.CommentCount > 0) {
 					if _, err := s.AddressFeedback(ctx, round.ID); err != nil {
 						slog.Warn("codereview: auto-address failed", "pr", round.Ref(), "error", err)
 					}
@@ -690,6 +754,8 @@ func (s *Service) Status(ctx context.Context) PollerStatus {
 	s.mu.Lock()
 	st := s.status
 	s.mu.Unlock()
+	cfg := s.conf()
+	st.Enabled, st.Harness, st.Publish, st.WatchRequested, st.WatchAuthored, st.MaxConcurrent = cfg.Enabled, cfg.Harness, cfg.Publish, cfg.WatchRequested, cfg.WatchAuthored, cfg.MaxConcurrent
 	st.Active = int(atomic.LoadInt32(&s.active))
 	if counts, err := s.store.CountsByState(ctx); err == nil {
 		st.Queued = counts[StateQueued]

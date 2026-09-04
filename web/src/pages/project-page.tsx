@@ -361,10 +361,6 @@ export function ProjectPage() {
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-1.5">
         <p className="text-xs text-muted-foreground">
-          <Link to="/orgs" className="hover:underline">
-            Organizations
-          </Link>
-          <span className="px-1">/</span>
           <Link to={`/orgs/${orgSlug}/projects`} className="hover:underline">
             Projects
           </Link>
