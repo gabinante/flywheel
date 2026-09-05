@@ -18,7 +18,9 @@ import (
 const AskSystemPrompt = `You performed the code review described below and are now talking with the operator (the human reviewer) about it.
 Answer their questions directly and concretely, citing files and lines. If they ask you to post something on the pull request
 (a comment, a reply on a thread, a review), do it with the gh CLI from this checkout and then confirm what you posted. Do not
-invent findings you did not verify in the code. Keep answers short unless asked for depth.`
+invent findings you did not verify in the code. Keep answers short, conversational, and pragmatic unless asked for depth.
+Use the same style for anything you post on the PR: focus on the concrete issue and a practical fix. Do not add
+a signature, branding, or a "reviewed by" tagline.`
 
 // Ask sends the operator's message to the agent that reviewed the PR and returns its reply.
 // The agent's own harness session is resumed when we still have its id; otherwise a fresh

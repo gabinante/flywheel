@@ -12,7 +12,7 @@ import (
 var FindingsSchema = json.RawMessage(`{
   "type": "object",
   "properties": {
-    "summary": {"type": "string", "description": "Two to five sentences: what the change does, overall assessment, residual risk. Conversational."},
+    "summary": {"type": "string", "description": "One or two short, conversational sentences: the verdict and any concrete blocker. A clean review can simply say: Looks good to me."},
     "findings": {
       "type": "array",
       "items": {
@@ -22,7 +22,7 @@ var FindingsSchema = json.RawMessage(`{
           "title": {"type": "string", "description": "Imperative, one line"},
           "path": {"type": "string", "description": "Repo-relative file path from the diff"},
           "line": {"type": "integer", "description": "Line number on the new side of the diff"},
-          "body": {"type": "string", "description": "The inline comment as you would write it to a colleague: what breaks, why, and a concrete fix"}
+          "body": {"type": "string", "description": "One short paragraph to a colleague: the affected scenario, what breaks, and a practical fix"}
         },
         "required": ["severity", "title", "path", "line", "body"],
         "additionalProperties": false
@@ -50,6 +50,11 @@ Severity: P0 = release blocker or critical failure; P1 = urgent defect to fix be
 worth fixing; P3 = low impact but still worth a comment. Cite the file path and a line number that is part of the
 diff on the new side. Write each body as the inline comment itself — friendly, direct, specific, with a concrete
 fix — not as a report about a comment.
+
+Keep the posted review short, conversational, and pragmatic. Use one or two sentences for the summary;
+"Looks good to me." is enough when there are no findings. Give each inline comment one short paragraph
+that explains the affected scenario, impact, and a practical fix. Skip change recaps, generic praise, review
+process narration, and repeated finding lists. Do not add a signature, branding, or a "reviewed by" tagline.
 
 Approval policy: recommend approval in the summary when there are no P0 or P1 findings, including when the
 review contains only P2 or P3 findings. P2 and P3 findings are nonblocking comments. Recommend changes only
@@ -160,7 +165,7 @@ func ComposeReview(summary string, findings []Finding, diff *DiffIndex) (body st
 		}
 	}
 	if len(inBody) > 0 {
-		b.WriteString("\n\n**Findings outside the diff hunks**\n")
+		b.WriteString("\n")
 		for _, i := range inBody {
 			f := findings[i]
 			loc := f.Path
@@ -170,22 +175,7 @@ func ComposeReview(summary string, findings []Finding, diff *DiffIndex) (body st
 			fmt.Fprintf(&b, "\n- **[%s] %s** — `%s`\n  %s\n", f.Severity, f.Title, loc, strings.ReplaceAll(f.Body, "\n", "\n  "))
 		}
 	}
-	counts := map[string]int{}
-	for _, f := range findings {
-		counts[f.Severity]++
-	}
-	if len(findings) > 0 {
-		var parts []string
-		for _, sev := range []string{"P0", "P1", "P2", "P3"} {
-			if counts[sev] > 0 {
-				parts = append(parts, fmt.Sprintf("%d %s", counts[sev], sev))
-			}
-		}
-		fmt.Fprintf(&b, "\n\n_%s · reviewed by Flywheel_", strings.Join(parts, ", "))
-	} else {
-		b.WriteString("\n\n_No findings · reviewed by Flywheel_")
-	}
-	return b.String(), inline, inBody
+	return strings.TrimSpace(b.String()), inline, inBody
 }
 
 // InlineCommentBody renders one finding as its inline comment.

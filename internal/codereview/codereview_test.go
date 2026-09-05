@@ -70,10 +70,21 @@ func TestParseReviewOutputAndVerdict(t *testing.T) {
 	if len(inline) != 1 || inline[0] != 0 || len(inBody) != 1 || inBody[0] != 1 {
 		t.Fatalf("split wrong: inline=%v inBody=%v", inline, inBody)
 	}
-	for _, want := range []string{"Looks solid.", "Findings outside the diff hunks", "[P3] Name", "src/a.go:99", "1 P1, 1 P3"} {
+	for _, want := range []string{"Looks solid.", "[P3] Name", "src/a.go:99"} {
 		if !containsStr(body, want) {
 			t.Errorf("body missing %q:\n%s", want, body)
 		}
+	}
+	if containsStr(body, "Flywheel") || containsStr(body, "1 P1, 1 P3") {
+		t.Errorf("review body contains a generated footer: %s", body)
+	}
+	clean, _, _ := ComposeReview("Looks good to me.", nil, ParseUnifiedDiff(sampleDiff))
+	if clean != "Looks good to me." {
+		t.Errorf("clean review: %q", clean)
+	}
+	followup := reReviewBody(nil, 1, clean)
+	if followup != "Rechecked the latest changes. No new issues. 1 earlier finding still open." {
+		t.Errorf("follow-up review: %q", followup)
 	}
 }
 

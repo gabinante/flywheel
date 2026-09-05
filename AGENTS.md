@@ -12,7 +12,7 @@ This file is the shared operating guide for coding agents working in this repo.
   N git repos. Flywheel keeps a projection of each issue plus what Linear cannot hold: sessions, workflow
   position, review findings, agent runs. See `docs/plans/revival-local-first.md`.
 - **Code review is a separate, PR-keyed workflow with no Linear tickets.** One recipe: in-depth review,
-  inline conversational comments, P0/P1 → request changes, otherwise approve. Intake: pasted PR URLs, a
+  short, conversational, pragmatic comments with no branding/signature footer; P0/P1 → request changes, otherwise approve. Intake: pasted PR URLs, a
   `review-requested:@me` poller, a watcher that re-queues reviewed PRs on new commits or dismissed reviews,
   and a feedback watcher on the operator's own PRs that triggers an address-review-comments workflow.
 - **Codex reviews, Claude Code implements** by default; the harness is selectable per project and per

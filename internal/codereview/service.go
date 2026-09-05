@@ -514,7 +514,7 @@ func (s *Service) process(ctx context.Context, req *Request) {
 
 	body, inline, inBody := ComposeReview(summary, findings, diffIdx)
 	if isReReview {
-		body = reReviewBody(req.LastReviewedHeadSHA, req.HeadSHA, summary, findings, repeats, body)
+		body = reReviewBody(findings, repeats, body)
 	}
 	reviewedAt := time.Now()
 	req.ReviewedAt = &reviewedAt
@@ -955,14 +955,14 @@ func firstNonEmpty(vals ...string) string {
 // reReviewBody makes a follow-up review read like one: it says what changed since the
 // last look and, when nothing new was found, keeps the body short instead of restating
 // the original summary.
-func reReviewBody(prevSHA, newSHA, summary string, fresh []Finding, repeats int, full string) string {
-	head := fmt.Sprintf("**Re-review** — new commits since my last look (`%s` → `%s`).", short(prevSHA), short(newSHA))
+func reReviewBody(fresh []Finding, repeats int, full string) string {
+	head := "Rechecked the latest changes."
 	still := ""
 	if repeats > 0 {
-		still = fmt.Sprintf(" %d earlier finding%s still open (not reposted).", repeats, plural(repeats))
+		still = fmt.Sprintf(" %d earlier finding%s still open.", repeats, plural(repeats))
 	}
 	if len(fresh) == 0 {
-		return head + " No new findings." + still + "\n\n_reviewed by Flywheel_"
+		return head + " No new issues." + still
 	}
 	return head + still + "\n\n" + full
 }
