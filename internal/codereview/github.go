@@ -117,6 +117,44 @@ func (g *GitHub) SearchReviewRequestedDirect(ctx context.Context) ([]PRSummary, 
 	return g.search(ctx, "user-review-requested:@me")
 }
 
+// ReviewRequestEvent identifies an explicit request, including re-requests on the
+// same commit. Search membership alone cannot distinguish these from old requests.
+type ReviewRequestEvent struct {
+	ID                int64     `json:"id"`
+	CreatedAt         time.Time `json:"created_at"`
+	Event             string    `json:"event"`
+	RequestedReviewer struct {
+		Login string `json:"login"`
+	} `json:"requested_reviewer"`
+}
+
+func (g *GitHub) LatestReviewRequest(ctx context.Context, repo string, number int, login string) (*ReviewRequestEvent, error) {
+	out, err := g.run(ctx, nil, "api", fmt.Sprintf("repos/%s/issues/%d/timeline?per_page=100", repo, number), "--paginate", "--slurp")
+	if err != nil {
+		return nil, err
+	}
+	var pages [][]ReviewRequestEvent
+	if err := json.Unmarshal(out, &pages); err != nil {
+		return nil, fmt.Errorf("review request timeline: %w", err)
+	}
+	var latest *ReviewRequestEvent
+	for _, page := range pages {
+		for _, event := range page {
+			if login == "" || !strings.EqualFold(event.RequestedReviewer.Login, login) || (event.Event != "review_requested" && event.Event != "review_request_removed") {
+				continue
+			}
+			if latest == nil || event.ID > latest.ID {
+				e := event
+				latest = &e
+			}
+		}
+	}
+	if latest != nil && latest.Event == "review_requested" && !latest.CreatedAt.IsZero() {
+		return latest, nil
+	}
+	return nil, nil
+}
+
 // SearchAuthoredOpen lists the operator's open PRs.
 func (g *GitHub) SearchAuthoredOpen(ctx context.Context) ([]PRSummary, error) {
 	return g.search(ctx, "--author=@me")

@@ -63,6 +63,10 @@ This file is the shared operating guide for coding agents working in this repo.
 - The right tray is global and consistent on every page: in-flight work with ticket/session links, and items
   needing operator action. Project-specific context stays in the page. Active work comes from managed runs,
   dispatcher reservations, and external/review workflow state, not recently modified session files.
+- Explicit GitHub review re-requests are deduplicated by timeline event, independently of commit changes.
+  Pending requests survive active attempts and restart; manual stops consume outstanding demand.
+  My Reviews caches GitHub facts but overlays current queue state on every read. Show recommendations
+  separately from confirmed GitHub publication, and clear old session links when starting a new attempt.
 
 ## Local dev
 

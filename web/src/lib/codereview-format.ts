@@ -33,6 +33,29 @@ export const VERDICT_LABEL: Record<string, string> = {
 
 export const ACTIVE_STATES = new Set(['queued', 'fetching', 'reviewing', 'publishing'])
 
+/** An agent's recommendation is separate from a review actually posted to GitHub. */
+export function reviewStatus(r: CodeReviewRequest, prState?: string) {
+  const recommendation = r.verdict ? `Agent recommendation: ${r.verdict === 'approve' ? 'approve' : r.verdict === 'request_changes' ? 'request changes' : 'comment'}.` : ''
+  switch (r.state) {
+    case 'queued': return { label: 'Queued', detail: 'Waiting for an available review worker.' }
+    case 'fetching': return { label: 'Preparing review', detail: 'Fetching the PR and preparing its checkout. The agent has not started yet.' }
+    case 'reviewing': return { label: 'Agent reviewing', detail: 'Review in progress. Open the session to follow the agent.' }
+    case 'publishing': return { label: 'Posting review', detail: `${recommendation} Submitting the review to GitHub.` }
+    case 'failed': return {
+      label: r.error?.startsWith('post review:') ? 'Posting failed' : 'Review failed',
+      detail: `${recommendation}${recommendation ? ' ' : ''}No successful GitHub submission was recorded for this attempt. Open the review for the error and retry.`,
+    }
+    case 'closed': return {
+      label: r.watch ? (prState === 'OPEN' ? 'Review inactive' : 'PR closed or merged') : 'Review stopped',
+      detail: r.watch ? 'The PR was closed when Flywheel last checked. A new explicit request or manual review can restart it.' : 'This review was stopped in Flywheel. A new explicit request or manual review can restart it.',
+    }
+    default:
+      if (r.dry_run) return { label: 'Dry run complete', detail: `${recommendation} Nothing was posted to GitHub.` }
+      if (r.review_url) return { label: `${VERDICT_LABEL[r.verdict] ?? 'Review posted'} on GitHub`, detail: r.watch ? 'Watching for new commits and explicit review requests.' : 'Review submitted successfully.' }
+      return { label: r.state === 'watching' ? 'Watching PR' : r.state.replaceAll('_', ' '), detail: r.error || 'No active review worker. Open the review for details.' }
+  }
+}
+
 export function findingCounts(findings: CodeReviewFinding[]): Record<string, number> {
   const out: Record<string, number> = {}
   for (const f of findings) out[f.severity] = (out[f.severity] ?? 0) + 1

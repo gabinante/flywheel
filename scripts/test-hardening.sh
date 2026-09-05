@@ -38,18 +38,16 @@ export FLYWHEEL_TEST_DATABASE_URL="$DATABASE_URL"
 export FLYWHEEL_E2E_PG_CONTAINER="$pg_container"
 export FLYWHEEL_E2E_BASE_URL=http://127.0.0.1:8091
 cd "$repo"
+go test -race -count=1 -timeout 120s ./internal/codereview | tee "$run_dir/review-queue-tests.log"
 go test -count=1 -timeout 120s ./internal/hardening | tee "$run_dir/database-tests.log"
 go build -o "$run_dir/server" ./cmd/server
 cd "$repo/web"
 npm run build > "$run_dir/web-build.log" 2>&1
 mkdir -p "$run_dir/holds" "$run_dir/bin" "$run_dir/work" "$run_dir/claude" "$run_dir/codex"
-cat > "$run_dir/bin/gh" <<'GH'
-#!/bin/sh
-if [ "$1 $2" = 'api user' ]; then echo '{"login":"flywheel-test","id":1}'; exit 0; fi
-if [ "$1 $2" = 'search prs' ]; then echo '[]'; exit 0; fi
-echo 'GitHub is disabled in the isolated browser test server' >&2
-exit 1
-GH
+cp "$repo/web/e2e/fake-gh.py" "$run_dir/bin/gh"
+export FLYWHEEL_E2E_REAL_GIT=$(command -v git)
+cp "$repo/web/e2e/fake-review-git.py" "$run_dir/bin/git"
+chmod 700 "$run_dir/bin/git"
 chmod 700 "$run_dir/bin/gh"
 export PATH="$run_dir/bin:$PATH"
 export FLYWHEEL_E2E_HARNESS_HOLD_DIR="$run_dir/holds"

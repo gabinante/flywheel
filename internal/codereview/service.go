@@ -50,6 +50,7 @@ type Config struct {
 // Service runs the review queue and the GitHub watchers.
 type Service struct {
 	activeReviews sync.Map
+	queueWake     chan struct{}
 	store         *Store
 	gh            *GitHub
 	ws            *Workspaces
@@ -104,6 +105,7 @@ func (s *Service) Apply(cfg Config, fb FeedbackConfig) {
 	s.status.WatchRequested, s.status.WatchAuthored, s.status.MaxConcurrent = cfg.WatchRequested, cfg.WatchAuthored, cfg.MaxConcurrent
 	s.status.RepoRoot, s.status.WorktreeRootFmt = cfg.RepoRoot, filepath.Join(cfg.RepoRoot, "<repo>-worktrees", "review-<n>")
 	s.mu.Unlock()
+	s.wakeQueue()
 }
 
 // normalizeConfig fills defaults.
@@ -157,7 +159,7 @@ func (s *Service) SetFeedbackConfig(cfg FeedbackConfig) {
 // New builds a Service. sessions and bus may be nil.
 func New(store *Store, gh *GitHub, runner harness.Runner, sess *sessions.Service, bus events.Bus, cfg Config) *Service {
 	cfg = normalizeConfig(cfg)
-	return &Service{store: store, gh: gh, ws: &Workspaces{Root: cfg.RepoRoot}, runner: runner, sessions: sess, bus: bus, cfg: cfg,
+	return &Service{store: store, gh: gh, ws: &Workspaces{Root: cfg.RepoRoot}, runner: runner, sessions: sess, bus: bus, cfg: cfg, queueWake: make(chan struct{}, 1),
 		status: PollerStatus{Enabled: cfg.Enabled, Harness: cfg.Harness, Publish: cfg.Publish, WatchRequested: cfg.WatchRequested,
 			WatchAuthored: cfg.WatchAuthored, MaxConcurrent: cfg.MaxConcurrent, RepoRoot: cfg.RepoRoot, WorktreeRootFmt: filepath.Join(cfg.RepoRoot, "<repo>-worktrees", "review-<n>")}}
 }
@@ -204,7 +206,16 @@ func (s *Service) queueLoop(ctx context.Context) {
 			return
 		case <-t.C:
 			s.drainQueue(ctx)
+		case <-s.queueWake:
+			s.drainQueue(ctx)
 		}
+	}
+}
+
+func (s *Service) wakeQueue() {
+	select {
+	case s.queueWake <- struct{}{}:
+	default:
 	}
 }
 
@@ -229,7 +240,7 @@ func (s *Service) drainQueue(ctx context.Context) {
 	for _, r := range reqs {
 		atomic.AddInt32(&s.active, 1)
 		go func(r *Request) {
-			defer atomic.AddInt32(&s.active, -1)
+			defer func() { atomic.AddInt32(&s.active, -1); s.wakeQueue() }()
 			s.process(ctx, r)
 		}(r)
 	}
@@ -241,23 +252,26 @@ func (s *Service) pollLoop(ctx context.Context) {
 		if !cfg.Enabled {
 			return
 		}
+		var pollErr error
 		if cfg.WatchRequested {
 			if err := s.pollRequested(ctx); err != nil {
-				s.setError(fmt.Errorf("review-requested: %w", err))
+				pollErr = errors.Join(pollErr, fmt.Errorf("review-requested: %w", err))
 			}
 		}
 		if err := s.pollWatching(ctx); err != nil {
-			s.setError(fmt.Errorf("watching: %w", err))
+			pollErr = errors.Join(pollErr, fmt.Errorf("watching: %w", err))
 		}
 		if cfg.WatchAuthored {
 			if err := s.pollFeedback(ctx); err != nil {
-				s.setError(fmt.Errorf("feedback: %w", err))
+				pollErr = errors.Join(pollErr, fmt.Errorf("feedback: %w", err))
 			}
 		}
 		now := time.Now()
 		s.mu.Lock()
 		s.status.LastPollAt = &now
+		s.status.LastError = ""
 		s.mu.Unlock()
+		s.setError(pollErr)
 	}
 	run()
 	t := time.NewTicker(s.conf().PollInterval)
@@ -292,6 +306,7 @@ type EnqueueOptions struct {
 // Enqueue parses PR references from text and queues a review for each.
 // Already-reviewed PRs are re-queued; PRs currently in flight are left alone.
 func (s *Service) Enqueue(ctx context.Context, text string, origin Origin, opts EnqueueOptions) ([]*Request, error) {
+	defer s.wakeQueue()
 	cfg := s.conf()
 	refs := ParsePRRefs(text)
 	if len(refs) == 0 {
@@ -309,20 +324,13 @@ func (s *Service) Enqueue(ctx context.Context, text string, origin Origin, opts 
 				out = append(out, existing)
 				continue
 			}
-			if opts.DryRun != nil {
-				existing.DryRun = *opts.DryRun
-			}
-			if opts.Watch != nil {
-				existing.Watch = *opts.Watch
-			}
-			if opts.Harness != "" {
-				existing.Harness = opts.Harness
-			}
-			_ = s.store.Update(ctx, existing)
-			if err := s.store.Requeue(ctx, existing.ID, origin); err != nil {
+			if err := s.store.RequeueWithOptions(ctx, existing.ID, origin, opts); err != nil {
 				return out, err
 			}
-			fresh, _ := s.store.Get(ctx, existing.ID)
+			fresh, err := s.store.Get(ctx, existing.ID)
+			if err != nil {
+				return out, err
+			}
 			if fresh != nil {
 				existing = fresh
 			}
@@ -360,6 +368,10 @@ func (s *Service) process(ctx context.Context, req *Request) {
 	ctx, cancel := context.WithCancel(ctx)
 	s.activeReviews.Store(req.ID, cancel)
 	defer func() { cancel(); s.activeReviews.Delete(req.ID) }()
+	freshAttempt, err := s.store.Get(ctx, req.ID)
+	if err != nil || freshAttempt == nil || freshAttempt.State == StateClosed || freshAttempt.Attempt != req.Attempt {
+		return
+	}
 	cfg := s.conf()
 	fail := func(err error) {
 		req.State = StateFailed
@@ -627,6 +639,7 @@ func (s *Service) recordSession(ctx context.Context, req *Request, pr *PR, kind 
 
 // pollRequested queues PRs where the operator's review is requested.
 func (s *Service) pollRequested(ctx context.Context) error {
+	defer s.wakeQueue()
 	cfg := s.conf()
 	var prs []PRSummary
 	var err error
@@ -638,6 +651,11 @@ func (s *Service) pollRequested(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	login, err := s.gh.Login(ctx)
+	if err != nil {
+		return err
+	}
+	var pollErrors []error
 	for _, p := range prs {
 		if p.IsDraft && cfg.SkipDrafts {
 			continue
@@ -646,17 +664,35 @@ func (s *Service) pollRequested(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if existing != nil {
+		event, err := s.gh.LatestReviewRequest(ctx, p.Repo, p.Number, login)
+		if err != nil {
+			pollErrors = append(pollErrors, fmt.Errorf("%s#%d: %w", p.Repo, p.Number, err))
 			continue
 		}
-		req := &Request{Repo: p.Repo, Number: p.Number, URL: p.URL, Title: p.Title, Author: p.Author, Origin: OriginReviewRequested,
-			Harness: cfg.Harness, Model: cfg.Model, ReasoningEffort: cfg.Effort, Watch: true, DryRun: !cfg.Publish}
-		if err := s.store.Create(ctx, req); err != nil {
-			return err
+		if existing == nil {
+			// For direct requests require the timeline to confirm search membership;
+			// GitHub search can briefly retain removed review requests.
+			if cfg.WatchScope == "direct" && event == nil {
+				continue
+			}
+			req := &Request{Repo: p.Repo, Number: p.Number, URL: p.URL, Title: p.Title, Author: p.Author, Origin: OriginReviewRequested,
+				Harness: cfg.Harness, Model: cfg.Model, ReasoningEffort: cfg.Effort, Watch: true, DryRun: !cfg.Publish}
+			if err := s.store.Create(ctx, req); err != nil {
+				return err
+			}
+			existing = req
+			slog.Info("codereview: queued review-requested PR", "pr", req.Ref(), "title", p.Title)
 		}
-		slog.Info("codereview: queued review-requested PR", "pr", req.Ref(), "title", p.Title)
+		if event != nil {
+			if err := s.store.ObserveReviewRequest(ctx, existing.ID, *event); err != nil {
+				return err
+			}
+		}
 	}
-	return nil
+	if err := s.store.PromoteRequested(ctx); err != nil {
+		return err
+	}
+	return errors.Join(pollErrors...)
 }
 
 // pollWatching re-queues reviewed PRs whose head moved or whose review was dismissed, and closes merged/closed ones.
@@ -799,6 +835,7 @@ func (s *Service) Get(ctx context.Context, id string) (*Request, error) { return
 
 // Rerun queues another attempt.
 func (s *Service) Rerun(ctx context.Context, id string) (*Request, error) {
+	defer s.wakeQueue()
 	r, err := s.store.Get(ctx, id)
 	if err != nil || r == nil {
 		return r, err
@@ -815,21 +852,13 @@ func (s *Service) Rerun(ctx context.Context, id string) (*Request, error) {
 
 // Close stops watching a PR.
 func (s *Service) Close(ctx context.Context, id string) (*Request, error) {
+	if err := s.store.Stop(ctx, id); err != nil {
+		return nil, err
+	}
 	if cancel, ok := s.activeReviews.Load(id); ok {
 		cancel.(context.CancelFunc)()
 	}
-	r, err := s.store.Get(ctx, id)
-	if err != nil || r == nil {
-		return r, err
-	}
-	r.Watch = false
-	if r.State == StateWatching || r.State == StateQueued {
-		r.State = StateClosed
-	}
-	if err := s.store.Update(ctx, r); err != nil {
-		return nil, err
-	}
-	return r, nil
+	return s.store.Get(ctx, id)
 }
 
 // FeedbackRounds lists landed reviews on the operator's PRs.

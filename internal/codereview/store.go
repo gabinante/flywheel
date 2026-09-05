@@ -54,11 +54,24 @@ func (s *Store) Create(ctx context.Context, q *Request) error {
 	if q.Recipe == "" {
 		q.Recipe = RecipeInlineP1Gate
 	}
-	return s.pool.QueryRow(ctx, `INSERT INTO code_review_requests
+	err := s.pool.QueryRow(ctx, `INSERT INTO code_review_requests
 		(id, repo, number, url, title, author, base_ref, head_ref, head_sha, origin, recipe, harness, model, reasoning_effort, state, attempt, watch, dry_run, ticket_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING created_at, updated_at`,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+		ON CONFLICT (repo,number) DO NOTHING RETURNING created_at, updated_at`,
 		q.ID, q.Repo, q.Number, q.URL, q.Title, q.Author, q.BaseRef, q.HeadRef, q.HeadSHA, string(q.Origin), q.Recipe, q.Harness, q.Model,
 		q.ReasoningEffort, string(q.State), q.Attempt, q.Watch, q.DryRun, q.TicketID).Scan(&q.CreatedAt, &q.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		current, getErr := s.GetByRepoNumber(ctx, q.Repo, q.Number)
+		if getErr != nil {
+			return getErr
+		}
+		if current == nil {
+			return err
+		}
+		*q = *current
+		return nil
+	}
+	return err
 }
 
 // Update writes every mutable column.
@@ -201,9 +214,12 @@ func (s *Store) ListByState(ctx context.Context, st State) ([]*Request, error) {
 
 // ClaimQueued atomically moves up to n queued requests to fetching and returns them.
 func (s *Store) ClaimQueued(ctx context.Context, n int) ([]*Request, error) {
+	if err := s.PromoteRequested(ctx); err != nil {
+		return nil, err
+	}
 	rows, err := s.pool.Query(ctx, `WITH picked AS (
 			SELECT id FROM code_review_requests WHERE state = 'queued' ORDER BY created_at LIMIT $1 FOR UPDATE SKIP LOCKED)
-		UPDATE code_review_requests r SET state = 'fetching', updated_at = now() FROM picked WHERE r.id = picked.id
+		UPDATE code_review_requests r SET state = 'fetching', updated_at = now(), request_handled_at = now(), pending_requested_at = NULL FROM picked WHERE r.id = picked.id
 		RETURNING `+prefixCols("r.", reqCols), n)
 	if err != nil {
 		return nil, err
@@ -222,9 +238,77 @@ func (s *Store) ClaimQueued(ctx context.Context, n int) ([]*Request, error) {
 
 // Requeue schedules another review attempt.
 func (s *Store) Requeue(ctx context.Context, id string, origin Origin) error {
-	_, err := s.pool.Exec(ctx, `UPDATE code_review_requests SET state = 'queued', origin = $2, attempt = attempt + 1, error = '', verdict = '',
-		summary = '', review_url = '', updated_at = now() WHERE id = $1`, id, string(origin))
+	return s.RequeueWithOptions(ctx, id, origin, EnqueueOptions{})
+}
+
+func (s *Store) RequeueWithOptions(ctx context.Context, id string, origin Origin, opts EnqueueOptions) error {
+	_, err := s.pool.Exec(ctx, `UPDATE code_review_requests SET `+resetAttempt+`, origin=$2,
+		watch=COALESCE($3,watch), dry_run=COALESCE($4,dry_run), harness=COALESCE(NULLIF($5,''),harness)
+		WHERE id=$1 AND state NOT IN ('queued','fetching','reviewing','publishing')`, id, string(origin), opts.Watch, opts.DryRun, opts.Harness)
 	return err
+}
+
+const resetAttempt = `state='queued', attempt=attempt+1, error='', verdict='', summary='', review_url='',
+	session_id='', session_external_id='', worktree_path='', updated_at=now(), request_handled_at=now(), pending_requested_at=NULL`
+
+// ObserveReviewRequest records each GitHub event once. Requests made during a run
+// remain pending until it finishes; they cannot create a concurrent second worker.
+// A queued/just-started attempt already covers requests made before it started.
+// GitHub timestamps have second precision: treat a new event in the same second
+// conservatively as pending rather than silently losing an explicit re-request.
+func (s *Store) ObserveReviewRequest(ctx context.Context, id string, event ReviewRequestEvent) error {
+	_, err := s.pool.Exec(ctx, `UPDATE code_review_requests SET last_requested_event_id=$2,
+		pending_requested_at=CASE WHEN state <> 'queued' AND $3 >= date_trunc('second',request_handled_at)
+			THEN GREATEST(pending_requested_at,$3) ELSE pending_requested_at END
+		WHERE id=$1 AND last_requested_event_id < $2`, id, event.ID, event.CreatedAt)
+	return err
+}
+
+func (s *Store) PromoteRequested(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, `UPDATE code_review_requests SET `+resetAttempt+`, origin='review_requested', watch=true
+		WHERE pending_requested_at IS NOT NULL AND state NOT IN ('queued','fetching','reviewing','publishing')`)
+	return err
+}
+
+func (s *Store) Stop(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE code_review_requests SET state='closed', watch=false,
+		pending_requested_at=NULL, request_handled_at=now(), updated_at=now() WHERE id=$1`, id)
+	return err
+}
+
+// CurrentReviews overlays cheap local state on cached GitHub cards without a new
+// network fetch. Copy the slice so concurrent readers never mutate the snapshot.
+func (s *Store) CurrentReviews(ctx context.Context, cards []PRCard) ([]PRCard, error) {
+	out := append([]PRCard{}, cards...)
+	if len(out) == 0 {
+		return out, nil
+	}
+	repos := make([]string, len(out))
+	numbers := make([]int, len(out))
+	for i, c := range out {
+		repos[i], numbers[i] = c.Repo, c.Number
+	}
+	rows, err := s.pool.Query(ctx, `SELECT `+reqCols+` FROM code_review_requests WHERE (repo,number) IN
+		(SELECT unnest($1::text[]), unnest($2::int[]))`, repos, numbers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	current := map[string]*Request{}
+	for rows.Next() {
+		r, err := scanRequest(rows)
+		if err != nil {
+			return nil, err
+		}
+		current[r.Ref()] = r
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].Review = current[prKey(out[i].Repo, out[i].Number)]
+	}
+	return out, nil
 }
 
 // CountsByState returns request counts per state.

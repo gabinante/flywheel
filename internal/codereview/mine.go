@@ -284,6 +284,15 @@ func (s *Service) MyPRs(ctx context.Context, force bool) (*MyPullRequests, error
 				}()
 			}
 			out := *cached
+			var err error
+			out.Open, err = s.store.CurrentReviews(ctx, cached.Open)
+			if err != nil {
+				return nil, err
+			}
+			out.Merged, err = s.store.CurrentReviews(ctx, cached.Merged)
+			if err != nil {
+				return nil, err
+			}
 			return &out, nil
 		}
 	}
@@ -338,6 +347,15 @@ func (s *Service) MyReviewsOverview(ctx context.Context, force bool) (*MyReviews
 				}()
 			}
 			out := *cached
+			var err error
+			out.Requested, err = s.store.CurrentReviews(ctx, cached.Requested)
+			if err != nil {
+				return nil, err
+			}
+			out.Reviewed, err = s.store.CurrentReviews(ctx, cached.Reviewed)
+			if err != nil {
+				return nil, err
+			}
 			return &out, nil
 		}
 	}

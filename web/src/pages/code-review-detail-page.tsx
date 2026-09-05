@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ExternalLink, RefreshCw, XCircle } from 'lucide-react'
 
 import { AgentConversation, type ConversationMessage } from '@/components/agent-conversation'
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { RunProgress } from '@/components/run-progress'
+import { CodeReviewStatus } from '@/components/code-review-status'
+import { useReviewServiceStatus } from '@/hooks/use-review-service-status'
 import { useOperatorOverview } from '@/hooks/use-operator-overview'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -13,7 +16,7 @@ import { useAPI } from '@/contexts/use-api'
 import { useProjectPaths } from '@/hooks/use-project-paths'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
 import { formatApiError } from '@/lib/api/client'
-import { ACTIVE_STATES, SEVERITY_CLASS, STATE_CLASS, VERDICT_LABEL, shortSha, type CodeReviewRequest } from '@/lib/codereview-format'
+import { ACTIVE_STATES, SEVERITY_CLASS, shortSha, type CodeReviewRequest } from '@/lib/codereview-format'
 import { relativeTime } from '@/lib/sessions-format'
 import { cn } from '@/lib/utils'
 
@@ -65,6 +68,9 @@ function ReviewConversation({ reviewId, harness }: { reviewId: string; harness: 
 
 export function CodeReviewDetailPage() {
   const { client } = useAPI()
+  const queryClient = useQueryClient()
+  const { data: service } = useReviewServiceStatus()
+  const [actionPending, setActionPending] = useState<'rerun' | 'close' | null>(null)
   const { reviewId } = useParams<{ reviewId: string }>()
   const { base, projectId, orgSlug, projectSlug } = useProjectPaths()
   const projectLabel = useProjectBreadcrumbLabel(projectId)
@@ -88,7 +94,7 @@ export function CodeReviewDetailPage() {
       setErr(null)
       setR(data)
     })
-    const t = setInterval(refresh, 8_000)
+    const t = setInterval(refresh, 3_000)
     return () => {
       cancelled = true
       clearInterval(t)
@@ -96,14 +102,23 @@ export function CodeReviewDetailPage() {
   }, [client, reviewId, tick, refresh])
 
   const act = async (action: 'rerun' | 'close') => {
-    if (!reviewId) return
+    if (!reviewId || actionPending) return
+    setActionPending(action)
+    setErr(null)
     const path = action === 'rerun' ? '/code-reviews/{reviewID}/rerun' : '/code-reviews/{reviewID}/close'
+    try {
     const { data, error, response } = await client.POST(path, { params: { path: { reviewID: reviewId } } })
     if (!response.ok || !data) {
       setErr(formatApiError(error))
       return
     }
     setR(data)
+    refresh()
+    void queryClient.invalidateQueries({ queryKey: ['my-reviews'] })
+    void queryClient.invalidateQueries({ queryKey: ['operator-overview'] })
+    void queryClient.invalidateQueries({ queryKey: ['code-review-status'] })
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Could not update review.') }
+    finally { setActionPending(null) }
   }
 
   return (
@@ -127,12 +142,12 @@ export function CodeReviewDetailPage() {
         </Button>
         {r && (
           <>
-            <Button variant="ghost" size="sm" onClick={() => act('rerun')} disabled={ACTIVE_STATES.has(r.state)}>
-              <RefreshCw className="size-4" /> Re-review
+            <Button variant="ghost" size="sm" onClick={() => act('rerun')} disabled={!!actionPending || ACTIVE_STATES.has(r.state)}>
+              <RefreshCw className={`size-4 ${actionPending === 'rerun' ? 'animate-spin' : ''}`} /> {actionPending === 'rerun' ? 'Queueing…' : 'Re-review'}
             </Button>
             {r.watch && r.state !== 'closed' && (
-              <Button variant="ghost" size="sm" onClick={() => act('close')}>
-                <XCircle className="size-4" /> Stop watching
+              <Button variant="ghost" size="sm" onClick={() => act('close')} disabled={!!actionPending}>
+                <XCircle className="size-4" /> {actionPending === 'close' ? 'Stopping…' : ACTIVE_STATES.has(r.state) ? 'Stop review' : 'Stop watching'}
               </Button>
             )}
           </>
@@ -143,10 +158,7 @@ export function CodeReviewDetailPage() {
         <>
           <header className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className={cn('h-5 px-1.5 text-[10px]', STATE_CLASS[r.state])}>
-                {r.state.replace('_', ' ')}
-              </Badge>
-              {r.verdict && <Badge variant="muted" className="h-5 px-1.5 text-[10px]">{VERDICT_LABEL[r.verdict] ?? r.verdict}</Badge>}
+              <CodeReviewStatus review={r} />
               {r.dry_run && <Badge variant="muted" className="h-5 px-1.5 text-[10px]">dry run</Badge>}
               <Badge variant="muted" className="h-5 px-1.5 text-[10px]">{r.harness}</Badge>
               <a href={r.url} target="_blank" rel="noreferrer" className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:underline">
@@ -162,6 +174,7 @@ export function CodeReviewDetailPage() {
               <span className="font-mono text-muted-foreground">{r.repo}#{r.number}</span> {r.title}
             </h1>
           </header>
+          {r.state === 'queued' && <p role="status" className="text-sm text-sky-300">{service?.enabled === false ? 'Queued — review service is paused. Enable it in review settings to start.' : `Attempt ${r.attempt} queued. Waiting for a review worker.`}</p>}
 
           <Card className="border-white/10 bg-white/5 backdrop-blur-md">
             <CardContent className="grid grid-cols-2 gap-4 p-4 md:grid-cols-4">

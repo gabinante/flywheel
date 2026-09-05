@@ -11,7 +11,11 @@ What it does:
   findings, agent runs.
 - **Code review is its own, PR-keyed workflow.** Paste PR URLs, or let Flywheel pick up `review-requested`
   PRs, run an in-depth review (Codex by default), post inline conversational comments, and approve unless a
-  P0/P1 finding blocks. Reviewed PRs are watched for new commits or dismissed reviews; your own PRs are
+  P0/P1 finding blocks. Explicit re-requests launch another review even on the same commit, including
+  after a failed or stopped attempt. Request events are deduplicated; a request received during an
+  active attempt waits for it to finish. My Reviews shows queue state, live worker activity, and session
+  links, and separates an agent's recommendation from successful publication to GitHub.
+  Reviewed PRs are watched for new commits or dismissed reviews; your own PRs are
   watched for landed reviews so an agent can address the comments.
 - **Every Claude Code and Codex session is tracked** and linked to the PRs and issues it touched.
 - **Workflows dispatch local harnesses.** Codex reviews, Claude Code implements — selectable per phase.

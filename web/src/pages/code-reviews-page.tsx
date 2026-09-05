@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { ClipboardCheck, ExternalLink, GitPullRequest, MessageSquareWarning, RefreshCw } from 'lucide-react'
 
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
+import { CodeReviewStatus as ReviewStatus } from '@/components/code-review-status'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { StyledSelect } from '@/components/ui/styled-select'
@@ -17,7 +18,6 @@ import {
   ACTIVE_STATES,
   SEVERITY_CLASS,
   STATE_CLASS,
-  VERDICT_LABEL,
   findingCounts,
   type CodeReviewRequest,
   type FeedbackRound,
@@ -36,7 +36,7 @@ const STATE_OPTIONS = [
   { value: 'changes_requested', label: 'Changes requested' },
   { value: 'commented', label: 'Commented / dry run' },
   { value: 'failed', label: 'Failed' },
-  { value: 'closed', label: 'Closed' },
+  { value: 'closed', label: 'Stopped / PR closed' },
 ]
 
 function ReviewRow({ r, base }: { r: CodeReviewRequest; base: string }) {
@@ -56,14 +56,7 @@ function ReviewRow({ r, base }: { r: CodeReviewRequest; base: string }) {
           <span className="truncate text-sm font-medium">{r.title || '(fetching title…)'}</span>
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
-          <Badge variant="outline" className={cn('h-5 px-1.5 text-[10px]', STATE_CLASS[r.state])}>
-            {r.state.replace('_', ' ')}
-          </Badge>
-          {r.verdict && (
-            <Badge variant="outline" className={cn('h-5 px-1.5 text-[10px]', STATE_CLASS[r.verdict === 'approve' ? 'approved' : r.verdict === 'request_changes' ? 'changes_requested' : 'commented'])}>
-              {VERDICT_LABEL[r.verdict] ?? r.verdict}
-            </Badge>
-          )}
+          <ReviewStatus review={r} />
           {r.dry_run && <Badge variant="muted" className="h-5 px-1.5 text-[10px]">dry run</Badge>}
           <Badge variant="muted" className="h-5 px-1.5 text-[10px]">{r.harness}</Badge>
           <span className="text-muted-foreground">{r.origin.replace('_', ' ')}</span>

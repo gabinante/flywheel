@@ -1,6 +1,7 @@
 import { ExternalLink, GitPullRequest, GitPullRequestDraft, MessageSquareReply, TerminalSquare } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
+import { CodeReviewStatus } from '@/components/code-review-status'
 import { checksBadge, decisionBadge, reviewStateLabel } from '@/lib/pr-format'
 import { relativeTime } from '@/lib/sessions-format'
 import type { components } from '@/lib/api/v1'
@@ -14,7 +15,7 @@ export function PRCardRow({ pr, extra, showAuthor }: { pr: PullRequestCard; extr
   const Icon = pr.is_draft ? GitPullRequestDraft : GitPullRequest
   const merged = pr.state === 'MERGED'
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3 hover:bg-white/[0.04] sm:flex-row sm:items-start sm:justify-between">
+    <div data-pr-ref={`${pr.repo}#${pr.number}`} className="flex flex-col gap-2 rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3 hover:bg-white/[0.04] sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <Icon className={`size-4 shrink-0 ${merged ? 'text-violet-300' : pr.is_draft ? 'text-muted-foreground' : 'text-emerald-300'}`} />
@@ -65,13 +66,6 @@ export function PRCardRow({ pr, extra, showAuthor }: { pr: PullRequestCard; extr
               {pr.feedback.new} new feedback
             </Badge>
           )}
-          {pr.review && (
-            <Badge variant="outline" className="text-[11px] font-normal text-muted-foreground" title={pr.review.summary ?? ''}>
-              flywheel: {pr.review.state.replace('_', ' ')}
-              {pr.review.verdict ? ` · ${pr.review.verdict}` : ''}
-              {pr.review.dry_run ? ' (dry run)' : ''}
-            </Badge>
-          )}
           {pr.reviews
             .filter((r) => r.state !== 'PENDING')
             .slice(0, 4)
@@ -88,8 +82,9 @@ export function PRCardRow({ pr, extra, showAuthor }: { pr: PullRequestCard; extr
             <span className="text-[11px] text-muted-foreground">awaiting {pr.requested_reviewers.join(', ')}</span>
           )}
         </div>
+        {pr.review && <div className="mt-3"><CodeReviewStatus review={pr.review} prState={pr.state} linked /></div>}
       </div>
-      {extra && <div className="flex shrink-0 items-center gap-2 sm:pl-3">{extra}</div>}
+      {extra && <div className="flex shrink-0 flex-col items-start gap-2 sm:max-w-64 sm:pl-3">{extra}</div>}
     </div>
   )
 }

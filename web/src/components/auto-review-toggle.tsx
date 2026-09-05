@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { Bot, Settings as SettingsIcon } from 'lucide-react'
 
@@ -6,9 +7,8 @@ import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { useAPI } from '@/contexts/use-api'
 import { patchSettings, type OperatorSettings } from '@/lib/settings-api'
-import type { components } from '@/lib/api/v1'
-
-type CodeReviewStatus = components['schemas']['CodeReviewStatus']
+import { useReviewServiceStatus } from '@/hooks/use-review-service-status'
+import { relativeTime } from '@/lib/sessions-format'
 
 /**
  * The auto-review controls that matter on My Reviews: whether the review service is
@@ -18,7 +18,8 @@ type CodeReviewStatus = components['schemas']['CodeReviewStatus']
 export function AutoReviewToggle() {
   const { client } = useAPI()
   const [settings, setSettings] = useState<OperatorSettings | null>(null)
-  const [status, setStatus] = useState<CodeReviewStatus | null>(null)
+  const { data: status, error: statusError } = useReviewServiceStatus()
+  const queryClient = useQueryClient()
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
@@ -26,9 +27,6 @@ export function AutoReviewToggle() {
     let cancelled = false
     void client.GET('/settings').then(({ data }) => {
       if (!cancelled && data) setSettings(data)
-    })
-    void client.GET('/code-reviews/status').then(({ data }) => {
-      if (!cancelled && data) setStatus(data)
     })
     return () => {
       cancelled = true
@@ -45,11 +43,11 @@ export function AutoReviewToggle() {
       return
     }
     if (res.data) setSettings(res.data)
-    void client.GET('/code-reviews/status').then(({ data }) => data && setStatus(data))
+    void queryClient.invalidateQueries({ queryKey: ['code-review-status'] })
   }
 
   if (!settings) return null
-  const r = settings.review
+  const r = { ...settings.review, enabled: status?.enabled ?? settings.review.enabled, watch_requested: status?.watch_requested ?? settings.review.watch_requested, publish: status?.publish ?? settings.review.publish }
   const autoOn = r.enabled && r.watch_requested
 
   return (
@@ -76,13 +74,15 @@ export function AutoReviewToggle() {
               <span>records a dry run in Flywheel only</span>
             )}
             . Picks up {r.watch_scope === 'direct' ? 'only PRs that request you directly' : 'PRs that request you or a team you belong to'}; watched PRs are
-            re-reviewed on new commits without reposting earlier findings.{' '}
+            re-reviewed on new commits. Each automatic request check also picks up explicit re-requests, even on the same commit.{' '}
             <Link to="/settings?section=review" className="inline-flex items-center gap-1 underline">
               <SettingsIcon className="size-3" />
               all review settings
             </Link>
           </p>
           {err && <p className="mt-1 text-xs text-destructive">{err}</p>}
+          {status?.last_poll_at && <p className="mt-1 text-xs text-muted-foreground">Last request check {relativeTime(status.last_poll_at)}</p>}
+          {(statusError || status?.last_error) && <p role="alert" className="mt-1 text-xs text-destructive">Review service: {statusError?.message || status?.last_error}</p>}
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-5">
