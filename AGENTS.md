@@ -64,6 +64,8 @@ This file is the shared operating guide for coding agents working in this repo.
 - The right tray is global and consistent on every page: in-flight work with ticket/session links, and items
   needing operator action. Project-specific context stays in the page. Active work comes from managed runs,
   dispatcher reservations, and external/review workflow state, not recently modified session files.
+  Dispatch and reviewer capacity are independent. Show each active worker's session, link review PR titles/references
+  directly to GitHub, and keep review details accessible separately. Queued reviews are waiting, not active workers.
 - UI activity uses one shared `ActivityProvider`: scoped query invalidation or `useActivityVersion` for existing read effects. Preserve local drafts; do not add per-page SSE connections or polling loops. New writers must emit a committed topic or runtime notification.
 - Explicit GitHub review re-requests are deduplicated by timeline event, independently of commit changes.
   Pending requests survive active attempts and restart; manual stops consume outstanding demand.

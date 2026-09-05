@@ -6,14 +6,17 @@ args = sys.argv[1:]
 root = Path(os.environ['FLYWHEEL_E2E_HARNESS_HOLD_DIR']).parent
 assert root.name.startswith('flywheel-hardening.')
 fixture = root / 'review-fixture.json'
-pr = json.loads(fixture.read_text()) if fixture.exists() else None
+prs = json.loads(fixture.read_text()) if fixture.exists() else []
+if isinstance(prs, dict):
+    prs = [prs]
+pr = next((pr for pr in prs if len(args) > 2 and args[2] == str(pr['number'])), None)
 if args[:2] == ['api', 'user']:
     print('flywheel-test' if '--jq' in args else '{"login":"flywheel-test","id":1}')
 elif args[:2] == ['search', 'prs']:
     print('[]')  # Automatic external intake stays disabled.
 elif args[:2] == ['api', 'graphql']:
     query = next((x for x in args if x.startswith('q=')), '')
-    print(json.dumps({'data': {'search': {'nodes': [pr] if pr and 'review-requested:' in query else []}}}))
+    print(json.dumps({'data': {'search': {'nodes': prs if 'review-requested:' in query else []}}}))
 elif pr and args[:3] == ['pr', 'view', str(pr['number'])]:
     print(json.dumps({**pr, 'latestReviews': [], 'commits': []}))
 elif pr and args[:3] == ['pr', 'diff', str(pr['number'])]:

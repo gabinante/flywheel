@@ -27,6 +27,7 @@ type Item struct {
 	ReviewID    string              `json:"review_id,omitempty"`
 	Progress    *runstatus.Progress `json:"progress,omitempty"`
 	Harness     string              `json:"harness,omitempty"`
+	Model       string              `json:"model,omitempty"`
 	Worker      string              `json:"worker,omitempty"`
 	Status      string              `json:"status"`
 	Reason      string              `json:"reason,omitempty"`
@@ -224,7 +225,7 @@ func (s *Store) Get(ctx context.Context, runs []runstatus.Run, activeTicketIDs, 
 		if p.id == "" && r.Ref != "" {
 			p = repos[repoKey(strings.Split(r.Ref, "#")[0])]
 		}
-		item := Item{ID: r.ID, Kind: r.Kind, Title: r.Title, Ref: r.Ref, ProjectID: p.id, ProjectName: p.name, Harness: r.Harness, Worker: r.Worker, Status: r.State, StartedAt: r.StartedAt, Href: p.path + "/command"}
+		item := Item{ID: r.ID, Kind: r.Kind, Title: r.Title, Ref: r.Ref, ProjectID: p.id, ProjectName: p.name, Harness: r.Harness, Model: r.Model, Worker: r.Worker, Status: r.State, StartedAt: r.StartedAt, Href: p.path + "/command"}
 		progress := r.Progress.At(out.UpdatedAt)
 		item.Progress, item.ReviewID = &progress, r.ReviewID
 		if r.TicketID != "" {
@@ -257,28 +258,28 @@ func (s *Store) Get(ctx context.Context, runs []runstatus.Run, activeTicketIDs, 
 		out.InFlight = append(out.InFlight, item)
 	}
 	// Review preparation/publication also counts as work even between harness turns.
-	rows, err = s.pool.Query(ctx, `SELECT id,title,repo,number,state,error,session_id,updated_at FROM code_review_requests WHERE state IN ('failed','fetching','reviewing','publishing') ORDER BY updated_at,id`)
+	rows, err = s.pool.Query(ctx, `SELECT id,title,repo,number,state,error,session_id,harness,model,updated_at FROM code_review_requests WHERE state IN ('failed','fetching','reviewing','publishing') ORDER BY updated_at,id`)
 	if err != nil {
 		return out, err
 	}
 	for rows.Next() {
-		var id, title, repo, state, reason, sess string
+		var id, title, repo, state, reason, sess, harness, model string
 		var number int
 		var at time.Time
-		if err = rows.Scan(&id, &title, &repo, &number, &state, &reason, &sess, &at); err != nil {
+		if err = rows.Scan(&id, &title, &repo, &number, &state, &reason, &sess, &harness, &model, &at); err != nil {
 			rows.Close()
 			return out, err
 		}
 		p := repos[repoKey(repo)]
-		item := Item{ID: "review:" + id, ReviewID: id, Kind: "code_review", Title: title, Ref: fmt.Sprintf("%s#%d", repo, number), Href: "/code-reviews/" + url.PathEscape(id), ProjectID: p.id, ProjectName: p.name, Status: state, StartedAt: at}
+		item := Item{ID: "review:" + id, ReviewID: id, Kind: "code_review", Title: title, Ref: fmt.Sprintf("%s#%d", repo, number), Href: "/code-reviews/" + url.PathEscape(id), ProjectID: p.id, ProjectName: p.name, Harness: harness, Model: model, Status: state, StartedAt: at}
+		if sess != "" {
+			item.SessionHref = "/sessions/" + url.PathEscape(sess)
+		}
 		if state == "failed" {
 			item.Action = "Retry review"
 			item.Reason = reason
 			if reason == "" {
 				item.Reason = "The code review failed."
-			}
-			if sess != "" {
-				item.SessionHref = "/sessions/" + url.PathEscape(sess)
 			}
 			out.Attention = append(out.Attention, item)
 		} else if !runReviews[id] {

@@ -3,6 +3,7 @@ package hardening
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/gabinante/flywheel/internal/overview"
 	"github.com/gabinante/flywheel/internal/runstatus"
 	"github.com/gabinante/flywheel/internal/sessions"
@@ -169,5 +170,64 @@ func TestReviewOwnershipDistinguishesStaleStateFromServiceWork(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("review service working between harness turns was marked orphaned")
+	}
+}
+
+func TestOverviewKeepsEachReviewerThreadAndItsPublicationSession(t *testing.T) {
+	p := pool(t)
+	ctx := context.Background()
+	repo := "test/" + uuid.NewString()
+	store := overview.NewStore(p)
+	var runs []runstatus.Run
+	var reviewIDs []string
+	for number := 1; number <= 2; number++ {
+		id, sessionID := uuid.NewString(), uuid.NewString()
+		reviewIDs = append(reviewIDs, id)
+		if _, err := p.Exec(ctx, `INSERT INTO code_review_requests(id,repo,number,title,state,harness,model,session_id) VALUES($1,$2,$3,'Concurrent review','reviewing','codex','review-model',$4)`, id, repo, number, sessionID); err != nil {
+			t.Fatal(err)
+		}
+		runs = append(runs, runstatus.Run{ID: uuid.NewString(), Kind: "code_review", ReviewID: id, Ref: fmt.Sprintf("%s#%d", repo, number), Title: "Concurrent review", Harness: "codex", Model: "review-model", SessionID: sessionID, State: "running", StartedAt: time.Now()})
+	}
+	assertThreads := func(live []runstatus.Run) {
+		t.Helper()
+		snapshot, err := store.Get(ctx, live, nil, reviewIDs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, run := range runs {
+			found := 0
+			for _, item := range snapshot.InFlight {
+				if item.ReviewID != run.ReviewID {
+					continue
+				}
+				found++
+				if item.Ref != run.Ref || item.SessionHref != "/sessions/"+run.SessionID || item.Href != "/code-reviews/"+run.ReviewID || item.Model != run.Model || item.Harness != run.Harness {
+					t.Fatalf("reviewer lost its PR, session, or harness identity: %+v", item)
+				}
+			}
+			if found != 1 {
+				t.Fatalf("review %s has %d entries; want one per live reviewer", run.ReviewID, found)
+			}
+		}
+	}
+	assertThreads(runs)
+	// The harness has finished, but the review service is still publishing its result.
+	if _, err := p.Exec(ctx, `UPDATE code_review_requests SET state='publishing' WHERE id=ANY($1)`, reviewIDs); err != nil {
+		t.Fatal(err)
+	}
+	assertThreads(nil)
+	if _, err := p.Exec(ctx, `UPDATE code_review_requests SET state='watching' WHERE id=ANY($1)`, reviewIDs); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := store.Get(ctx, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range snapshot.InFlight {
+		for _, id := range reviewIDs {
+			if item.ReviewID == id {
+				t.Fatal("completed review still appeared in flight")
+			}
+		}
 	}
 }

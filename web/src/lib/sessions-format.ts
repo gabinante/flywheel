@@ -54,7 +54,7 @@ export function compact(n: number | undefined): string {
 }
 
 /** owner/repo#123 → GitHub PR URL; other refs have no canonical URL yet. */
-export function linkHref(link: SessionLink): string | null {
+export function linkHref(link: Pick<SessionLink, 'kind' | 'ref'>): string | null {
   if (link.kind === 'pr') {
     const m = /^([^/#]+)\/([^/#]+)#(\d+)$/.exec(link.ref)
     if (m) return `https://github.com/${m[1]}/${m[2]}/pull/${m[3]}`

@@ -5,7 +5,8 @@ import { AlertCircle, ArrowUpRight, CircleCheck, LoaderCircle, RefreshCw, Termin
 import { Button } from '@/components/ui/button'
 import { RunProgress } from '@/components/run-progress'
 import { useOperatorOverview, type WorkItem } from '@/hooks/use-operator-overview'
-import { relativeTime } from '@/lib/sessions-format'
+import { useReviewServiceStatus } from '@/hooks/use-review-service-status'
+import { linkHref, relativeTime } from '@/lib/sessions-format'
 
 const labels: Record<string, string> = {
   dispatch: 'Dispatch', executor: 'Implementation', planner: 'Planning', operator: 'Operator',
@@ -16,16 +17,25 @@ const statusLabels: Record<string, string> = {
   starting: 'Starting', running: 'Running', fetching: 'Preparing review', reviewing: 'Reviewing', publishing: 'Publishing review',
 }
 function WorkCard({ item, attention = false }: { item: WorkItem; attention?: boolean }) {
+  const isReview = !!item.review_id
+  const prHref = (isReview || item.kind === 'feedback') && item.ref ? linkHref({ kind: 'pr', ref: item.ref }) : null
+  const harness = item.harness === 'codex' ? 'Codex' : item.harness?.startsWith('claude') ? 'Claude Code' : item.harness
+  const worker = [harness, item.model, item.worker].filter(Boolean).join(' · ')
+  const title = <>
+    {item.ref && <span className="mb-1 flex items-center gap-1 font-mono text-[10px] text-primary/80">
+      <span className="truncate" title={item.ref}>{item.ref}</span>{prHref && <ArrowUpRight className="size-3 shrink-0" />}
+    </span>}
+    <span className="line-clamp-2 font-medium">{item.title}</span>
+  </>
+  const titleClass = 'group block rounded-sm text-sm leading-snug hover:text-primary focus-visible:outline-2 focus-visible:outline-primary'
   return (
     <li className="min-w-0 rounded-xl border border-white/10 bg-white/[0.025] p-3" data-work-id={item.id}>
       <div className="mb-1.5 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
         <span className="truncate">{item.project_name || 'Across projects'}</span>
         {!attention && <span className="shrink-0">{relativeTime(item.started_at)}</span>}
       </div>
-      <Link to={item.href} className="group block rounded-sm text-sm leading-snug hover:text-primary focus-visible:outline-2 focus-visible:outline-primary">
-        {item.ref && <span className="mb-1 block truncate font-mono text-[10px] text-primary/80" title={item.ref}>{item.ref}</span>}
-        <span className="line-clamp-2 font-medium">{item.title}</span>
-      </Link>
+      {prHref ? <a href={prHref} target="_blank" rel="noreferrer" aria-label={`Open PR ${item.ref} on GitHub`} className={titleClass}>{title}</a> :
+        <Link to={item.href} className={titleClass}>{title}</Link>}
       {attention ? (
         <>
           <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-muted-foreground" title={item.reason}>{item.reason}</p>
@@ -36,19 +46,18 @@ function WorkCard({ item, attention = false }: { item: WorkItem; attention?: boo
       ) : (
         <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
           <p>{labels[item.kind] || item.kind} · {statusLabels[item.status] || item.status}</p>
-          {(item.harness || item.worker) && <p className="truncate" title={item.worker}>
-            {item.harness === 'codex' ? 'Codex' : item.harness?.startsWith('claude') ? 'Claude Code' : item.harness}
-            {item.worker && ` · ${item.worker}`}
-          </p>}
+          {worker && <p className="truncate" title={worker}>{worker}</p>}
         </div>
       )}
-      {item.session_href ? (
-        <Link to={item.session_href} className="mt-2 inline-flex items-center gap-1.5 rounded text-xs text-primary hover:underline">
-          <TerminalSquare className="size-3.5" /> Open session
-        </Link>
-      ) : !attention && item.harness ? (
-        <p className="mt-2 text-[10px] text-muted-foreground/70">Session not available yet.</p>
-      ) : null}
+      <div className="flex flex-wrap items-center gap-x-3">
+        {item.session_href && <Link to={item.session_href} className="mt-2 inline-flex items-center gap-1.5 rounded text-xs text-primary hover:underline">
+          <TerminalSquare className="size-3.5" /> {isReview ? 'Open reviewer thread' : 'Open session'}
+        </Link>}
+        {isReview && !attention && <Link to={item.href} className="mt-2 rounded text-xs text-muted-foreground hover:text-primary hover:underline">View review</Link>}
+      </div>
+      {!item.session_href && !attention && (isReview || item.harness) && <p className="mt-2 text-[10px] text-muted-foreground/70">
+        {isReview ? 'Reviewer thread appears when the harness starts.' : 'Session not available yet.'}
+      </p>}
       {item.progress && <div className="mt-2 border-t border-white/10 pt-2"><RunProgress progress={item.progress} compact /></div>}
     </li>
   )
@@ -57,6 +66,7 @@ function WorkCard({ item, attention = false }: { item: WorkItem; attention?: boo
 export function RightRailWidgets() {
   const activityStatus = useActivityStatus()
   const { data, isPending, isError, refetch, isFetching } = useOperatorOverview()
+  const reviews = useReviewServiceStatus()
   return (
     <div className="flex min-w-0 flex-col gap-5">
       <div className="flex items-start justify-between gap-2">
@@ -67,8 +77,8 @@ export function RightRailWidgets() {
             {activityStatus === 'live' ? 'Live updates connected' : activityStatus === 'connecting' ? 'Connecting live updates…' : 'Reconnecting · checking for updates every 15s'}
           </p>
         </div>
-        <Button variant="ghost" size="icon-sm" aria-label="Refresh current work" disabled={isFetching} onClick={() => void refetch()}>
-          <RefreshCw className={`size-3.5 ${isFetching ? 'animate-spin' : ''}`} />
+        <Button variant="ghost" size="icon-sm" aria-label="Refresh current work" disabled={isFetching || reviews.isFetching} onClick={() => { void refetch(); void reviews.refetch() }}>
+          <RefreshCw className={`size-3.5 ${isFetching || reviews.isFetching ? 'animate-spin' : ''}`} />
         </Button>
       </div>
       {isError && <p role="alert" className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-2 text-xs text-amber-200">
@@ -84,6 +94,16 @@ export function RightRailWidgets() {
             <span className={data.dispatch.enabled ? 'text-primary' : 'text-amber-300'}>Dispatch {data.dispatch.enabled ? 'on' : 'off'}</span>
             <span className="float-right tabular-nums">{data.dispatch.active_workers}/{data.dispatch.max_workers} workers</span>
           </Link>
+          <div role="group" aria-label="Reviewer status">
+            {reviews.data ? <Link to="/code-reviews" className="block space-y-1 rounded-lg bg-white/[0.035] px-2.5 py-2 text-[11px] text-muted-foreground hover:bg-white/[0.06]">
+              <span className="flex items-center justify-between gap-2">
+                <span className={reviews.data.enabled ? 'text-primary' : 'text-amber-300'}>Reviewers {reviews.data.enabled ? 'on' : 'paused'}</span>
+                <span className="tabular-nums">{reviews.data.active}/{reviews.data.max_concurrent} workers</span>
+              </span>
+              <span className="block">{reviews.data.queued} queued{!reviews.data.enabled && (reviews.data.active > 0 ? ' · active reviews will finish' : reviews.data.queued > 0 ? ' · waiting for service' : '')}</span>
+            </Link> : reviews.isPending && <p className="text-xs text-muted-foreground">Loading reviewer status…</p>}
+            {reviews.isError && <p role="alert" className="mt-1 text-xs text-amber-200">Could not refresh reviewer status.{reviews.data ? ' Showing the last successful update.' : ' Try refreshing.'}</p>}
+          </div>
           {data.in_flight.length ? <ul className="space-y-2">{data.in_flight.map(item => <WorkCard key={item.id} item={item} />)}</ul> :
             <p className="py-1 text-xs text-muted-foreground">No work is running.</p>}
         </section>

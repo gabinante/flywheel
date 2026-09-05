@@ -22,8 +22,11 @@ test('review buttons acknowledge the queue immediately and lead to a live sessio
   writeFileSync(join(fixture, 'example.txt'), 'example\n')
   git('add', 'example.txt'); git('commit', '-m', 'Local review fixture')
   git('update-ref', 'refs/pull/7/head', 'HEAD')
+  git('update-ref', 'refs/pull/8/head', 'HEAD')
   const url = 'https://github.com/flywheel-tests/review-fixture/pull/7'
-  writeFileSync(join(root, 'review-fixture.json'), JSON.stringify({ number: 7, title: 'Explicit review request fixture', repository: { nameWithOwner: 'flywheel-tests/review-fixture' }, author: { login: 'author' }, state: 'OPEN', url, headRefName: 'review-fixture', headRefOid: git('rev-parse', 'HEAD'), baseRefName: 'main', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), reviewRequests: { nodes: [{ requestedReviewer: { login: 'flywheel-test' } }] } }))
+  const secondURL = 'https://github.com/flywheel-tests/review-fixture/pull/8'
+  const pr = { number: 7, title: 'Explicit review request fixture', repository: { nameWithOwner: 'flywheel-tests/review-fixture' }, author: { login: 'author' }, state: 'OPEN', url, headRefName: 'review-fixture', headRefOid: git('rev-parse', 'HEAD'), baseRefName: 'main', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), reviewRequests: { nodes: [{ requestedReviewer: { login: 'flywheel-test' } }] } }
+  writeFileSync(join(root, 'review-fixture.json'), JSON.stringify([pr, { ...pr, number: 8, url: secondURL, title: 'Second concurrent review fixture' }]))
   const settings = await (await request.get('/settings')).json()
   const saved = structuredClone(settings)
   settings.review.enabled = false
@@ -31,13 +34,19 @@ test('review buttons acknowledge the queue immediately and lead to a live sessio
   settings.review.watch_authored = false
   settings.review.publish = false
   settings.review.harness = 'codex'
+  settings.review.max_concurrent = 2
+  settings.dispatch.enabled = false
+  settings.dispatch.max_workers = 3
   settings.harnesses.codex.bin = fileURLToPath(new URL('./fake-reviewer.py', import.meta.url))
   settings.harnesses.codex.model = 'browser-selected-model'
   expect((await request.put('/settings', { data: settings })).ok()).toBeTruthy()
+  const alreadyQueued = (await (await request.get('/code-reviews/status')).json()).queued
   try {
     expect((await request.get('/me/reviews?refresh=true')).ok()).toBeTruthy()
     await page.goto('/#/my/reviews')
     const row = page.locator('[data-pr-ref="flywheel-tests/review-fixture#7"]')
+    const tray = page.getByRole('complementary', { name: 'Global work' })
+    const reviewers = tray.getByRole('group', { name: 'Reviewer status' })
     await expect(row).toBeVisible()
     // Keep the mutation pending long enough to check the immediate acknowledgement.
     let releaseRequest!: () => void
@@ -60,17 +69,56 @@ test('review buttons acknowledge the queue immediately and lead to a live sessio
     expect(id).toMatch(/^[a-f0-9-]+$/)
     execFileSync('docker', ['exec', container, 'psql', '-U', 'flywheel_test', '-d', 'flywheel_test', '-v', 'ON_ERROR_STOP=1', '-c', `UPDATE code_review_requests SET model='' WHERE id='${id}'`])
     await page.unroute('**/code-reviews')
+    const second = await request.post('/code-reviews', { data: { text: secondURL, watch: true } })
+    expect(second.ok()).toBeTruthy()
+    const secondID = (await second.json()).requests[0].id
+    await expect(reviewers).toContainText('Reviewers paused')
+    await expect(reviewers).toContainText('0/2 workers')
+    await expect(reviewers).toContainText(`${alreadyQueued + 2} queued · waiting for service`)
     settings.review.enabled = true
     expect((await request.put('/settings', { data: settings })).ok()).toBeTruthy()
     await expect(row.getByRole('button', { name: 'Agent reviewing', exact: true })).toBeDisabled({ timeout: 20_000 })
     await expect(row).toContainText('Worker connected')
     await expect(row).toContainText('1 reasoning update')
     await expect(row.getByRole('link', { name: 'Open session', exact: true })).toBeVisible()
+    await expect(reviewers).toContainText('Reviewers on')
+    await expect(reviewers).toContainText('2/2 workers')
+    await expect(reviewers).toContainText('0 queued')
+    await expect(tray.getByRole('link', { name: /Dispatch off/ })).toContainText('0/3 workers')
+    const firstCard = tray.locator('[data-work-id]').filter({ has: page.getByRole('link', { name: 'Open PR flywheel-tests/review-fixture#7 on GitHub' }) })
+    const secondCard = tray.locator('[data-work-id]').filter({ has: page.getByRole('link', { name: 'Open PR flywheel-tests/review-fixture#8 on GitHub' }) })
+    for (const [card, prURL] of [[firstCard, url], [secondCard, secondURL]] as const) {
+      await expect(card).toHaveCount(1)
+      await expect(card).toContainText('Codex · browser-selected-model')
+      await expect(card).toContainText('Worker connected')
+      await expect(card.getByRole('link', { name: 'Open reviewer thread' })).toBeVisible()
+      await expect(card.getByRole('link', { name: /^Open PR / })).toHaveAttribute('href', prURL)
+    }
+    const firstThread = await firstCard.getByRole('link', { name: 'Open reviewer thread' }).getAttribute('href')
+    const secondThread = await secondCard.getByRole('link', { name: 'Open reviewer thread' }).getAttribute('href')
+    expect(firstThread).not.toBe(secondThread)
+    expect(firstThread).toBe(await row.getByRole('link', { name: 'Open session', exact: true }).getAttribute('href'))
     await page.screenshot({ path: 'test-results/my-reviews-live.png', fullPage: true })
-    await row.getByRole('link', { name: 'Open session', exact: true }).click()
+    await firstCard.getByRole('link', { name: 'Open reviewer thread' }).click()
     await expect(page.locator('main')).toContainText('This session is running.')
+    await expect(reviewers).toContainText('2/2 workers')
+    await secondCard.getByRole('link', { name: 'Open reviewer thread' }).click()
+    await expect(page).toHaveURL(new RegExp(secondThread!.replace(/^#/, '') + '$'))
+    await expect(page.locator('main')).toContainText('This session is running.')
+    // Pausing intake keeps the two already-running reviewers visible.
+    settings.review.enabled = false
+    expect((await request.put('/settings', { data: settings })).ok()).toBeTruthy()
+    await expect(reviewers).toContainText('Reviewers paused')
+    await expect(reviewers).toContainText('2/2 workers')
+    await expect(reviewers).toContainText('active reviews will finish')
+    settings.review.enabled = true
+    expect((await request.put('/settings', { data: settings })).ok()).toBeTruthy()
     writeFileSync(join(hold, 'review.release'), '')
     await expect.poll(async () => (await (await request.get(`/code-reviews/${id}`)).json()).state).toBe('watching')
+    await expect.poll(async () => (await (await request.get(`/code-reviews/${secondID}`)).json()).state).toBe('watching')
+    await expect(reviewers).toContainText('0/2 workers')
+    await expect(firstCard).toHaveCount(0)
+    await expect(secondCard).toHaveCount(0)
     await page.goto('/#/my/reviews')
     await expect(row).toContainText('Dry run complete')
     await expect(row).toContainText('Nothing was posted to GitHub.')

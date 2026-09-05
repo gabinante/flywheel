@@ -31,6 +31,7 @@ export type WorkItem = {
   review_id?: string
   progress?: RunProgressData
   harness?: string
+  model?: string
   worker?: string
   status: string
   reason?: string
