@@ -30,9 +30,9 @@ func (h *WorkerConfigHandler) getConfig(w http.ResponseWriter, r *http.Request) 
 				"type": "streamable-http",
 				"url":  baseURL + "/mcp",
 				"headers": map[string]string{
-					"Authorization": "Bearer <your-jwt-or-api-key>",
+					"X-API-Key": "<your-agent-api-key>",
 				},
-				"note": "Replace the Authorization header value with your JWT token or use X-API-Key header with your API key.",
+				"note": "Register an agent with POST /agents and replace <your-agent-api-key> with the returned api_key. Dispatched workers receive credentials automatically.",
 			},
 		},
 	}

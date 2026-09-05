@@ -17,7 +17,7 @@ const defaultBranchGCInterval = 6 * time.Hour
 // stale ticket branches. It is conservative: only deletes branches for confirmed-
 // merged or truly orphaned tickets. Everything else gets logged for human visibility.
 func (d *Dispatcher) startBranchGC(ctx context.Context) {
-	interval := d.cfg.BranchGCInterval
+	interval := d.config().BranchGCInterval
 	if interval <= 0 {
 		interval = defaultBranchGCInterval
 	}
@@ -47,7 +47,7 @@ func (d *Dispatcher) runBranchGC(ctx context.Context) {
 	var deleted, warnings int
 
 	for _, state := range states {
-		tickets, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, state)
+		tickets, err := d.tickets.ListByState(ctx, d.config().ProjectID, state)
 		if err != nil {
 			slog.Error("dispatch: branch GC list failed", "state", state, "error", err)
 			continue
@@ -108,7 +108,7 @@ func (d *Dispatcher) runBranchGC(ctx context.Context) {
 	// Scan draft tickets with failed attempts for dangling branches.
 	// Only clean up branches where the ticket has been stale for >24 hours,
 	// has a system-identified failure in PriorAttempts, and no PR exists.
-	draftTickets, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, ticket.StateDraft)
+	draftTickets, err := d.tickets.ListByState(ctx, d.config().ProjectID, ticket.StateDraft)
 	if err == nil {
 		for _, t := range draftTickets {
 			if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {

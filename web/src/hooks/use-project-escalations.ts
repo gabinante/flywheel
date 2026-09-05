@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import type { components } from '@/lib/api/v1'
 
 type Escalation = components['schemas']['Escalation']
 
 export function useProjectEscalations(projectId: string | undefined) {
-  const { client, token } = useAuth()
+  const { client } = useAPI()
 
   const {
     data: escalations = [],
@@ -21,7 +21,7 @@ export function useProjectEscalations(projectId: string | undefined) {
       if (!response.ok) return []
       return (data ?? []) as Escalation[]
     },
-    enabled: Boolean(projectId && token),
+    enabled: Boolean(projectId),
     refetchInterval: 10_000,
   })
 

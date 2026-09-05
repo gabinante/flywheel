@@ -20,7 +20,6 @@ import {
   CardDescription,
   CardHeader,
 } from '@/components/ui/card'
-import { useAuth } from '@/contexts/use-auth'
 import {
   cancelOrchestratorRun,
   getOrchestratorThread,
@@ -396,7 +395,6 @@ export function OrchestratorConsole({
   projectId: string
   onMessageComplete?: () => void
 }) {
-  const { token } = useAuth()
   const [thread, setThread] = useState<OrchestratorThread | null>(null)
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(true)
@@ -406,8 +404,8 @@ export function OrchestratorConsole({
   const [sseConnected, setSseConnected] = useState(false)
   const [sseRetryKey, setSseRetryKey] = useState(0)
   const transcriptRef = useRef<HTMLDivElement | null>(null)
-  const messages = thread?.messages ?? []
-  const runs = thread?.runs ?? []
+  const messages = useMemo(() => thread?.messages ?? [], [thread?.messages])
+  const runs = useMemo(() => thread?.runs ?? [], [thread?.runs])
   const playbook = thread?.playbook
   const starterPrompts = playbook?.starter_prompts ?? []
   const activeRun = useMemo(
@@ -429,8 +427,7 @@ export function OrchestratorConsole({
   }, [])
 
   const fetchThread = useCallback(async () => {
-    if (!token) return
-    const { data, error: requestError } = await getOrchestratorThread(token, projectId)
+    const { data, error: requestError } = await getOrchestratorThread(projectId)
     if (requestError) {
       setError(requestError)
     } else {
@@ -438,28 +435,27 @@ export function OrchestratorConsole({
       setError(null)
     }
     setLoading(false)
-  }, [applyThread, projectId, token])
+  }, [applyThread, projectId])
 
   useEffect(() => {
-    if (!token) return
     const immediate = window.setTimeout(() => void fetchThread(), 0)
     const interval = window.setInterval(() => void fetchThread(), pollInterval)
     return () => {
       window.clearTimeout(immediate)
       window.clearInterval(interval)
     }
-  }, [fetchThread, pollInterval, token])
+  }, [fetchThread, pollInterval])
 
   // SSE connection: open when live planner is active, close when inactive.
   useEffect(() => {
-    if (!showLivePlanner || !token) {
-      setSseConnected(false)
+    if (!showLivePlanner) {
       return
     }
     const sub = subscribeOrchestratorEvents(
-      token,
+
       projectId,
       () => {
+        setSseConnected(true)
         // On each event, re-fetch the full thread to stay consistent.
         void fetchThread()
       },
@@ -472,12 +468,11 @@ export function OrchestratorConsole({
         return () => window.clearTimeout(retryTimer)
       },
     )
-    setSseConnected(true)
     return () => {
       sub.close()
       setSseConnected(false)
     }
-  }, [showLivePlanner, token, projectId, fetchThread, sseRetryKey])
+  }, [showLivePlanner, projectId, fetchThread, sseRetryKey])
 
   // When run completes while we were sending, clear sending state.
   useEffect(() => {
@@ -517,7 +512,7 @@ export function OrchestratorConsole({
 
   const submit = useCallback(async () => {
     const content = draft.trim()
-    if (!content || !token || sending) return
+    if (!content || sending) return
 
     const optimisticMessage: PendingUserMessage = {
       id: `pending-${Date.now()}`,
@@ -530,7 +525,7 @@ export function OrchestratorConsole({
     setSending(true)
     setError(null)
 
-    const { error: requestError } = await sendOrchestratorMessage(token, projectId, content)
+    const { error: requestError } = await sendOrchestratorMessage(projectId, content)
 
     if (requestError) {
       setError(requestError)
@@ -544,18 +539,17 @@ export function OrchestratorConsole({
     // POST returned quickly (202). Fetch the thread to see the running state.
     // Sending stays true until the run completes (detected by useEffect above).
     await fetchThread()
-  }, [draft, fetchThread, projectId, sending, token])
+  }, [draft, fetchThread, projectId, sending])
 
   const handleCancel = useCallback(async (runId: string) => {
-    if (!token) return
-    const { error: cancelError } = await cancelOrchestratorRun(token, projectId, runId)
+    const { error: cancelError } = await cancelOrchestratorRun(projectId, runId)
     if (cancelError) {
       setError(cancelError)
     }
     await fetchThread()
     setSending(false)
     setPendingMessage(null)
-  }, [fetchThread, projectId, token])
+  }, [fetchThread, projectId])
 
   return (
     <Card className="flex h-[calc(100vh-12rem)] min-h-[480px] max-h-[900px] flex-col overflow-hidden border-white/12 bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.12),transparent_32%),radial-gradient(circle_at_top_right,rgba(251,146,60,0.08),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))]">

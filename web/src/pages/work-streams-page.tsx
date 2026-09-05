@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Switch } from '@/components/ui/switch'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { useProjectPaths } from '@/hooks/use-project-paths'
 import { Skeleton, WorkStreamsPageSkeleton } from '@/components/ui/skeleton'
 import { formatApiError } from '@/lib/api/client'
@@ -169,7 +169,7 @@ function StreamCard({ ws, basePath, tickets, onToggleStatus, toggling }: StreamC
 
 export function WorkStreamsPage() {
   const { orgId, projectId, orgSlug, projectSlug, base } = useProjectPaths()
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [searchParams, setSearchParams] = useSearchParams()
   const statusFilter = useMemo(
     () => parseStatusFilter(searchParams.get('status')),

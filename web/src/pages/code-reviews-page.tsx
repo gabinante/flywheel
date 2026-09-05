@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { StyledSelect } from '@/components/ui/styled-select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { useProjectPaths } from '@/hooks/use-project-paths'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
 import { formatApiError } from '@/lib/api/client'
@@ -187,11 +187,13 @@ function FeedbackGroupRow({
 }
 
 export function CodeReviewsPage() {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const { base, projectId, orgSlug, projectSlug } = useProjectPaths()
   const projectLabel = useProjectBreadcrumbLabel(projectId)
   const [params, setParams] = useSearchParams()
   const state = params.get('state') ?? 'all'
+  const offset = Math.max(0, Number(params.get('offset')) || 0)
+  const [total, setTotal] = useState(0)
 
   const [requests, setRequests] = useState<CodeReviewRequest[] | null>(null)
   const [feedback, setFeedback] = useState<FeedbackRound[]>([])
@@ -201,47 +203,16 @@ export function CodeReviewsPage() {
   const [dryRun, setDryRun] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [tick, setTick] = useState(0)
-  const [projectRepos, setProjectRepos] = useState<Set<string> | null>(null)
 
   const refresh = useCallback(() => setTick((t) => t + 1), [])
 
-  // Inside a project, scope the queue and feedback to that project's repositories.
-  useEffect(() => {
-    if (!projectId) return
-    let cancelled = false
-    void Promise.all([
-      client.GET('/projects/{projectID}', { params: { path: { projectID: projectId } } }),
-      client.GET('/projects/{projectID}/repositories' as never, { params: { path: { projectID: projectId } } } as never),
-    ]).then(([p, r]) => {
-      if (cancelled) return
-      const repos = new Set<string>()
-      const add = (u?: string) => {
-        const m = (u ?? '').match(/github\.com[:/]([^/]+\/[^/.]+)/i)
-        if (m) repos.add(m[1].toLowerCase())
-      }
-      add((p.data as { repo_url?: string } | undefined)?.repo_url)
-      const list = (r.data as unknown as Array<{ repo_url?: string }> | { repositories?: Array<{ repo_url?: string }> } | undefined)
-      const arr = Array.isArray(list) ? list : list?.repositories ?? []
-      for (const repo of arr) add(repo.repo_url)
-      setProjectRepos(repos)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [client, projectId])
-
-  const inProject = useCallback(
-    (repo: string) => !projectId || !projectRepos || projectRepos.size === 0 || projectRepos.has(repo.toLowerCase()),
-    [projectId, projectRepos],
-  )
-
   useEffect(() => {
     let cancelled = false
-    const query = { state: state === 'all' ? undefined : state, limit: 100 }
+    const query = { project_id: projectId || undefined, state: state === 'all' ? undefined : state, limit: 100, offset }
     void Promise.all([
       client.GET('/code-reviews', { params: { query } }),
       client.GET('/code-reviews/status'),
-      client.GET('/code-reviews/feedback', { params: { query: { limit: 50 } } }),
+      client.GET('/code-reviews/feedback', { params: { query: { limit: 50, project_id: projectId || undefined } } }),
     ]).then(([list, st, fb]) => {
       if (cancelled) return
       if (!list.response.ok || !list.data) {
@@ -249,17 +220,18 @@ export function CodeReviewsPage() {
         setRequests((prev) => prev ?? [])
       } else {
         setErr(null)
-        setRequests(list.data.requests.filter((r) => inProject(r.repo)))
+        setRequests(list.data.requests)
+        setTotal(list.data.total ?? 0)
       }
       if (st.response.ok && st.data) setStatus(st.data)
-      if (fb.response.ok && fb.data) setFeedback(fb.data.rounds.filter((r) => (r.state === 'new' || r.state === 'dispatched') && inProject(r.repo)))
+      if (fb.response.ok && fb.data) setFeedback(fb.data.rounds.filter((r) => (r.state === 'new' || r.state === 'dispatched')))
     })
     const t = setInterval(refresh, 10_000)
     return () => {
       cancelled = true
       clearInterval(t)
     }
-  }, [client, state, tick, refresh, inProject])
+  }, [client, state, tick, refresh, projectId, offset])
 
   const submit = async () => {
     if (!text.trim()) return
@@ -374,9 +346,14 @@ export function CodeReviewsPage() {
           requests.map((r) => <ReviewRow key={r.id} r={r} base={base} />)
         )}
       </section>
+      {total > 100 && <nav aria-label="Review pagination" className="flex items-center justify-between">
+        <Button variant="outline" disabled={offset === 0} onClick={() => setParams((p) => { p.set('offset', String(Math.max(0, offset - 100))); return p })}>Previous reviews</Button>
+        <span className="text-xs text-muted-foreground">{offset + 1}–{Math.min(offset + 100, total)} of {total}</span>
+        <Button variant="outline" disabled={offset + 100 >= total} onClick={() => setParams((p) => { p.set('offset', String(offset + 100)); return p })}>Next reviews</Button>
+      </nav>}
       <p className="text-[11px] text-muted-foreground">
         <ExternalLink className="mr-1 inline size-3" />
-        Reviews run in detached worktrees under <code>{status?.repo_root ?? '~/git'}/&lt;repo&gt;-worktrees/review-&lt;n&gt;</code> and are removed afterwards.
+        Reviews run in detached worktrees under <code>{status?.repo_root ?? '~/git'}/&lt;repo&gt;-worktrees/review-&lt;n&gt;-&lt;run&gt;</code>. Clean checkouts are removed afterwards; unfinished work is preserved.
       </p>
     </div>
   )

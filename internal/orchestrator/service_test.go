@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,17 +13,22 @@ import (
 )
 
 type mockStore struct {
+	mu       sync.Mutex
 	messages []Message
 	runs     []Run
 	events   []RunEvent
 }
 
 func (m *mockStore) CreateMessage(_ context.Context, msg *Message) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.messages = append(m.messages, *msg)
 	return nil
 }
 
 func (m *mockStore) ListMessagesByProjectID(_ context.Context, projectID string, limit int) ([]Message, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	var out []Message
 	for _, msg := range m.messages {
 		if msg.ProjectID == projectID {
@@ -36,11 +42,15 @@ func (m *mockStore) ListMessagesByProjectID(_ context.Context, projectID string,
 }
 
 func (m *mockStore) CreateRun(_ context.Context, run *Run) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.runs = append(m.runs, *run)
 	return nil
 }
 
 func (m *mockStore) UpdateRun(_ context.Context, run *Run) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for index := range m.runs {
 		if m.runs[index].ID == run.ID {
 			m.runs[index] = *run
@@ -52,11 +62,15 @@ func (m *mockStore) UpdateRun(_ context.Context, run *Run) error {
 }
 
 func (m *mockStore) AppendRunEvent(_ context.Context, event *RunEvent) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.events = append(m.events, *event)
 	return nil
 }
 
 func (m *mockStore) ListRunsByProjectID(_ context.Context, projectID string, limit int) ([]Run, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	var out []Run
 	for _, run := range m.runs {
 		if run.ProjectID == projectID {
@@ -70,6 +84,8 @@ func (m *mockStore) ListRunsByProjectID(_ context.Context, projectID string, lim
 }
 
 func (m *mockStore) ListRunEventsByRunIDs(_ context.Context, runIDs []string, limitPerRun int) (map[string][]RunEvent, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	allowed := make(map[string]struct{}, len(runIDs))
 	for _, id := range runIDs {
 		allowed[id] = struct{}{}
@@ -190,7 +206,7 @@ func TestSendUserMessageUsesProjectRepoWhenServiceRepoUnset(t *testing.T) {
 	}
 	svc := NewService(context.Background(), store, &mockProjectGetter{
 		project: &project.Project{ID: "proj-1", Name: "Test", RepoURL: "/tmp/project-repo"},
-	}, worker, Config{ServerURL: "http://localhost:8080", AgentID: "orch"})
+	}, worker, Config{ServerURL: "http://localhost:8080", AgentID: "orch", WorkspaceResolver: func(context.Context, string) (string, error) { return "/tmp/project-repo", nil }})
 
 	_, err := svc.SendUserMessage(context.Background(), "proj-1", "Add chat orchestration")
 	if err != nil {
@@ -233,7 +249,7 @@ func TestSendUserMessageStoresRunEventsFromStreamableWorker(t *testing.T) {
 	}
 	svc := NewService(context.Background(), store, &mockProjectGetter{
 		project: &project.Project{ID: "proj-1", Name: "Test", RepoURL: "/tmp/project-repo"},
-	}, worker, Config{ServerURL: "http://localhost:8080", AgentID: "orch"})
+	}, worker, Config{ServerURL: "http://localhost:8080", AgentID: "orch", WorkspaceResolver: func(context.Context, string) (string, error) { return "/tmp/project-repo", nil }})
 
 	_, err := svc.SendUserMessage(context.Background(), "proj-1", "Plan the auth feature")
 	if err != nil {
@@ -533,7 +549,7 @@ func TestStreamedRunPhasesFollowToolActivity(t *testing.T) {
 	}
 	svc := NewService(context.Background(), store, &mockProjectGetter{
 		project: &project.Project{ID: "proj-1", Name: "Test", RepoURL: "/tmp/project-repo"},
-	}, worker, Config{ServerURL: "http://localhost:8080", AgentID: "orch"})
+	}, worker, Config{ServerURL: "http://localhost:8080", AgentID: "orch", WorkspaceResolver: func(context.Context, string) (string, error) { return "/tmp/project-repo", nil }})
 
 	if _, err := svc.SendUserMessage(context.Background(), "proj-1", "Plan the auth feature"); err != nil {
 		t.Fatalf("SendUserMessage() error = %v", err)

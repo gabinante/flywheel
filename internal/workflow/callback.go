@@ -19,9 +19,10 @@ type CallbackStore interface {
 
 // CallbackHandler manages async callback tokens for external phases.
 type CallbackHandler struct {
-	secret []byte
-	store  CallbackStore
-	engine *Engine
+	secret     []byte
+	store      CallbackStore
+	engine     *Engine
+	onComplete func(context.Context, string) error
 }
 
 // NewCallbackHandler creates a new callback handler.
@@ -50,6 +51,29 @@ func (h *CallbackHandler) GenerateToken(ctx context.Context, ticketID, workflowI
 
 // HandleCallback processes an incoming callback, advancing the workflow phase.
 func (h *CallbackHandler) HandleCallback(ctx context.Context, token string, outcome string, metadata map[string]any) error {
+	if tx, ok := h.store.(interface {
+		Transaction(context.Context, func(context.Context) error) error
+	}); ok {
+		return tx.Transaction(ctx, func(ctx context.Context) error { return h.handleCallback(ctx, token, outcome, metadata) })
+	}
+	return h.handleCallback(ctx, token, outcome, metadata)
+}
+func (h *CallbackHandler) handleCallback(ctx context.Context, token, outcome string, metadata map[string]any) error {
+	version := 0
+	if st, ok := h.store.(interface {
+		Attempt(context.Context, string) (int, string, error)
+	}); ok {
+		v, entered, err := st.Attempt(ctx, token)
+		if err != nil {
+			return err
+		}
+		version = v
+		if metadata == nil {
+			metadata = map[string]any{}
+		}
+		metadata["phase_entered_at"] = entered
+	}
+
 	if outcome == "" {
 		outcome = "success"
 	}
@@ -62,14 +86,16 @@ func (h *CallbackHandler) HandleCallback(ctx context.Context, token string, outc
 		return fmt.Errorf("lookup callback token: %w", err)
 	}
 
-	// Delete the token so it can't be replayed
-	if err := h.store.DeleteCallbackToken(ctx, token); err != nil {
-		return fmt.Errorf("delete callback token: %w", err)
-	}
-
-	_, err = h.engine.AdvancePhase(ctx, ticketID, workflowID, phaseID, outcome, metadata, 0)
+	next, err := h.engine.AdvancePhase(ctx, ticketID, workflowID, phaseID, outcome, metadata, version)
 	if err != nil {
 		return fmt.Errorf("advance phase: %w", err)
 	}
-	return nil
+	if next == nil && h.onComplete != nil {
+		if err := h.onComplete(ctx, ticketID); err != nil {
+			return err
+		}
+	}
+	return h.store.DeleteCallbackToken(ctx, token)
 }
+
+func (h *CallbackHandler) SetCompletion(fn func(context.Context, string) error) { h.onComplete = fn }

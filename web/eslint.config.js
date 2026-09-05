@@ -21,6 +21,10 @@ export default defineConfig([
     },
   },
   {
+    files: ['src/components/workflow-phase-config.tsx', 'src/contexts/slug-resolver-provider.tsx'],
+    rules: { 'react-refresh/only-export-components': ['error', { allowExportNames: ['PHASE_TYPE_META', 'getPhaseTypeMeta', 'useSlugResolver'] }] },
+  },
+  {
     files: ['src/components/ui/**/*.tsx'],
     rules: {
       'react-refresh/only-export-components': 'off',

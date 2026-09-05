@@ -1,22 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import type { DispatchStatus } from '@/hooks/use-dispatch-status'
-import {
-  buildActivityItems,
-  ticketIdFromChangeEvent,
-  type ActivityItem,
-  type ChangeStreamEvent,
-  type TraceActivityStep,
-} from '@/lib/command-center-activity'
 import type { components } from '@/lib/api/v1'
 
 type Ticket = components['schemas']['Ticket']
 type Escalation = components['schemas']['Escalation']
-type ChangeStreamResponse = {
-  events?: ChangeStreamEvent[]
-}
 export type RailEscalation = {
   escalation: Escalation
   ticket: Ticket
@@ -26,11 +16,10 @@ interface RailData {
   activeTickets: Ticket[]
   pendingReviews: Ticket[]
   escalations: RailEscalation[]
-  activityItems: ActivityItem[]
 }
 
 export function useProjectRailData(projectId: string | undefined) {
-  const { client, token } = useAuth()
+  const { client } = useAPI()
 
   const {
     data,
@@ -39,14 +28,12 @@ export function useProjectRailData(projectId: string | undefined) {
   } = useQuery<RailData>({
     queryKey: ['project-rail-data', projectId],
     queryFn: async (): Promise<RailData> => {
-      if (!projectId || !token) {
-        return { activeTickets: [], pendingReviews: [], escalations: [], activityItems: [] }
+      if (!projectId) {
+        return { activeTickets: [], pendingReviews: [], escalations: [] }
       }
 
-      const [statusRes, reviewsRes, escalationsRes, awaitingInputRes, changeStreamRes] = await Promise.all([
-        fetch('/api/dispatch/status', {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
+      const [statusRes, reviewsRes, escalationsRes, awaitingInputRes] = await Promise.all([
+        fetch('/api/dispatch/status'),
         client.GET('/projects/{projectID}/reviews', {
           params: { path: { projectID: projectId } },
         }),
@@ -56,12 +43,6 @@ export function useProjectRailData(projectId: string | undefined) {
         client.GET('/projects/{projectID}/tickets', {
           params: { path: { projectID: projectId }, query: { state: 'awaiting_input' } },
         }),
-        fetch(
-          `/api/v1/streams/change?project_id=${encodeURIComponent(projectId)}&limit=40`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          },
-        ),
       ])
 
       let status: DispatchStatus | null = null
@@ -96,13 +77,6 @@ export function useProjectRailData(projectId: string | undefined) {
         ? ((awaitingInputRes.data ?? []) as Ticket[])
         : []
 
-      let changeEvents: ChangeStreamEvent[] = []
-      try {
-        changeEvents = changeStreamRes.ok
-          ? (((await changeStreamRes.json()) as ChangeStreamResponse).events ?? [])
-          : []
-      } catch { /* non-JSON response, skip activity feed */ }
-
       const ticketsById = new Map<string, Ticket>()
       for (const ticket of [...active, ...reviews]) {
         if (ticket.id) ticketsById.set(ticket.id, ticket)
@@ -130,50 +104,6 @@ export function useProjectRailData(projectId: string | undefined) {
         }
       }
 
-      const candidateTicketIds = [
-        ...changeEvents
-          .map((event) => ticketIdFromChangeEvent(event))
-          .filter((ticketId): ticketId is string => Boolean(ticketId)),
-        ...active.map((ticket) => ticket.id).filter((ticketId): ticketId is string => Boolean(ticketId)),
-        ...reviews.map((ticket) => ticket.id).filter((ticketId): ticketId is string => Boolean(ticketId)),
-        ...rawEscalations
-          .map((escalation) => escalation.ticket_id)
-          .filter((ticketId): ticketId is string => Boolean(ticketId)),
-      ].filter((ticketId, index, list) => list.indexOf(ticketId) === index)
-
-      const traceTicketIds = candidateTicketIds.slice(0, 10)
-      const missingTicketIds = traceTicketIds.filter((ticketId) => !ticketsById.has(ticketId))
-      if (missingTicketIds.length > 0) {
-        const ticketResults = await Promise.all(
-          missingTicketIds.map(async (ticketId) => {
-            const { data, response } = await client.GET('/tickets/{ticketID}', {
-              params: { path: { ticketID: ticketId } },
-            })
-            if (!response.ok) return null
-            const ticket = data as Ticket
-            if (ticket.project_id && ticket.project_id !== projectId) return null
-            return ticket
-          }),
-        )
-        for (const ticket of ticketResults) {
-          if (ticket?.id) ticketsById.set(ticket.id, ticket)
-        }
-      }
-
-      const traceResults = await Promise.all(
-        traceTicketIds.map(async (ticketId) => {
-          const { data, response } = await client.GET('/tickets/{ticketID}/trace', {
-            params: { path: { ticketID: ticketId } },
-          })
-          if (!response.ok) return []
-          return (data?.steps ?? []).map((step) => ({
-            ...step,
-            ticketId,
-          }))
-        }),
-      )
-
-      const traceSteps: TraceActivityStep[] = traceResults.flat()
       const escalationTicketItems = rawEscalations
         .map((escalation) => {
           const ticketId = escalation.ticket_id
@@ -223,14 +153,9 @@ export function useProjectRailData(projectId: string | undefined) {
               !escalationTicketIdSet.has(ticket.id)),
         ),
         escalations: escalationTicketItems,
-        activityItems: buildActivityItems({
-          changeEvents,
-          traceSteps,
-          ticketsById,
-        }),
       }
     },
-    enabled: Boolean(projectId && token),
+    enabled: Boolean(projectId),
     refetchInterval: 10_000,
     staleTime: 5_000,
   })
@@ -238,7 +163,6 @@ export function useProjectRailData(projectId: string | undefined) {
   const activeTickets = useMemo(() => data?.activeTickets ?? [], [data?.activeTickets])
   const pendingReviews = useMemo(() => data?.pendingReviews ?? [], [data?.pendingReviews])
   const escalations = useMemo(() => data?.escalations ?? [], [data?.escalations])
-  const activityItems = useMemo(() => data?.activityItems ?? [], [data?.activityItems])
 
-  return { activeTickets, pendingReviews, escalations, activityItems, loading, refresh }
+  return { activeTickets, pendingReviews, escalations, loading, refresh }
 }

@@ -83,6 +83,12 @@ func (s *StrictServer) ListCodeReviews(ctx context.Context, req generated.ListCo
 		return nil, err
 	}
 	f := codereview.Filter{}
+	if req.Params.ProjectId != nil {
+		f.ProjectID = *req.Params.ProjectId
+		if err := CheckProjectAccess(ctx, f.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
+			return nil, err
+		}
+	}
 	if req.Params.State != nil {
 		f.State = codereview.State(*req.Params.State)
 	}
@@ -167,6 +173,13 @@ func (s *StrictServer) ListFeedbackRounds(ctx context.Context, req generated.Lis
 	if err := s.requireCodeReview(); err != nil {
 		return nil, err
 	}
+	projectID := ""
+	if req.Params.ProjectId != nil {
+		projectID = *req.Params.ProjectId
+		if err := CheckProjectAccess(ctx, projectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
+			return nil, err
+		}
+	}
 	state := ""
 	if req.Params.State != nil {
 		state = *req.Params.State
@@ -175,7 +188,7 @@ func (s *StrictServer) ListFeedbackRounds(ctx context.Context, req generated.Lis
 	if req.Params.Limit != nil {
 		limit = *req.Params.Limit
 	}
-	rounds, err := s.CodeReviewSvc.FeedbackRounds(ctx, state, limit)
+	rounds, err := s.CodeReviewSvc.FeedbackRounds(ctx, state, limit, projectID)
 	if err != nil {
 		return nil, apierrors.MapError(err)
 	}

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 
 /** Loads project name/slug for breadcrumb labels (shared across project-scoped pages). */
 export function useProjectBreadcrumbLabel(projectId: string | undefined): string {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [entry, setEntry] = useState<{ id: string; label: string } | null>(null)
 
   useEffect(() => {

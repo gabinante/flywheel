@@ -20,6 +20,9 @@ type HumanApprovalChecker struct {
 func (c *HumanApprovalChecker) Check(ctx context.Context, req GateRequirement, rctx CheckContext) GateRequirementStatus {
 	now := time.Now().UTC()
 
+	if approved, ok := rctx.Outputs["_human_approval_"+rctx.PhaseID].(string); ok && approved != "" && approved == rctx.PhaseEnteredAt {
+		return GateRequirementStatus{Requirement: req, Satisfied: true, Reason: "operator approved this phase attempt", CheckedAt: now}
+	}
 	if c.Reviews == nil {
 		return GateRequirementStatus{
 			Requirement: req,

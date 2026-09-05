@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { StyledSelect } from '@/components/ui/styled-select'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 
@@ -18,7 +18,7 @@ type Project = components['schemas']['Project']
  * the target has none) moves to the target; this project is then deleted.
  */
 export function ProjectMergeCard({ project, orgId, orgSlug }: { project: Project; orgId: string; orgSlug: string }) {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const navigate = useNavigate()
   const [candidates, setCandidates] = useState<Project[]>([])
   const [target, setTarget] = useState('')

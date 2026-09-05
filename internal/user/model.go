@@ -2,7 +2,7 @@ package user
 
 import "time"
 
-// User is a GitHub identity, provisioned on first OAuth login.
+// User is a local operator identity, provisioned at server startup.
 type User struct {
 	ID        string    `json:"id"`
 	GitHubID  int64     `json:"github_id"`

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/gabinante/flywheel/db"
 	"strings"
 	"time"
 
@@ -65,7 +66,7 @@ func (s *Store) Update(ctx context.Context, q *Request) error {
 	_, err := s.pool.Exec(ctx, `UPDATE code_review_requests SET url=$2, title=$3, author=$4, base_ref=$5, head_ref=$6, head_sha=$7, origin=$8,
 		harness=$9, model=$10, reasoning_effort=$11, state=$12, attempt=$13, watch=$14, dry_run=$15, verdict=$16, summary=$17, review_url=$18,
 		my_review_state=$19, my_review_id=$20, last_reviewed_head_sha=$21, session_id=$22, session_external_id=$23, worktree_path=$24,
-		ticket_id=$25, error=$26, last_checked_at=$27, reviewed_at=$28, updated_at=now() WHERE id=$1`,
+		ticket_id=$25, error=$26, last_checked_at=$27, reviewed_at=$28, updated_at=now() WHERE id=$1 AND attempt=$13 AND (state <> 'closed' OR $12='closed')`,
 		q.ID, q.URL, q.Title, q.Author, q.BaseRef, q.HeadRef, q.HeadSHA, string(q.Origin), q.Harness, q.Model, q.ReasoningEffort, string(q.State),
 		q.Attempt, q.Watch, q.DryRun, q.Verdict, q.Summary, q.ReviewURL, q.MyReviewState, q.MyReviewID, q.LastReviewedHeadSHA, q.SessionID,
 		q.SessionExternalID, q.WorktreePath, q.TicketID, q.Error, q.LastCheckedAt, q.ReviewedAt)
@@ -81,7 +82,7 @@ func (s *Store) Get(ctx context.Context, id string) (*Request, error) {
 	if err != nil {
 		return nil, err
 	}
-	q.Findings, err = s.ListFindings(ctx, q.ID, 0)
+	q.Findings, err = s.ListFindings(ctx, q.ID, q.Attempt)
 	return q, err
 }
 
@@ -105,6 +106,10 @@ func (s *Store) List(ctx context.Context, f Filter) ([]*Request, int, error) {
 	if f.Repo != "" {
 		args = append(args, f.Repo)
 		where = append(where, fmt.Sprintf("repo = $%d", len(args)))
+	}
+	if f.ProjectID != "" {
+		args = append(args, f.ProjectID)
+		where = append(where, db.ProjectRepoPredicate("repo", fmt.Sprintf("$%d", len(args))))
 	}
 	clause := ""
 	if len(where) > 0 {
@@ -159,8 +164,8 @@ func (s *Store) FindingsForRequests(ctx context.Context, ids []string) (map[stri
 	}
 	rows, err := s.pool.Query(ctx, `SELECT f.id, f.request_id, f.attempt, f.severity, f.path, f.line, f.side, f.title, f.body, f.github_comment_id, f.status, f.created_at
 		FROM code_review_findings f
-		JOIN (SELECT request_id, max(attempt) AS attempt FROM code_review_findings WHERE request_id = ANY($1) GROUP BY request_id) latest
-		  ON latest.request_id = f.request_id AND latest.attempt = f.attempt
+		JOIN code_review_requests latest ON latest.id = f.request_id AND latest.attempt = f.attempt
+ WHERE f.request_id = ANY($1)
 		ORDER BY CASE f.severity WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END, f.path, f.line`, ids)
 	if err != nil {
 		return nil, err
@@ -279,7 +284,7 @@ func (s *Store) UpdateFindingStatus(ctx context.Context, id, status string, comm
 // ListFindings returns findings for a request; attempt 0 = latest attempt.
 func (s *Store) ListFindings(ctx context.Context, requestID string, attempt int) ([]Finding, error) {
 	q := `SELECT id, request_id, attempt, severity, path, line, side, title, body, github_comment_id, status, created_at FROM code_review_findings
-		WHERE request_id = $1 AND attempt = COALESCE(NULLIF($2, 0), (SELECT max(attempt) FROM code_review_findings WHERE request_id = $1))
+		WHERE request_id = $1 AND attempt = COALESCE(NULLIF($2, 0), (SELECT attempt FROM code_review_requests WHERE id = $1))
 		ORDER BY CASE severity WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END, path, line`
 	rows, err := s.pool.Query(ctx, q, requestID, attempt)
 	if err != nil {
@@ -331,12 +336,16 @@ func (s *Store) MaxFeedbackReviewID(ctx context.Context, repo string, number int
 }
 
 // ListFeedbackRounds returns rounds, newest first; state "" = all.
-func (s *Store) ListFeedbackRounds(ctx context.Context, state string, limit int) ([]*FeedbackRound, error) {
+func (s *Store) ListFeedbackRounds(ctx context.Context, state string, limit int, projectIDs ...string) ([]*FeedbackRound, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
+	projectID := ""
+	if len(projectIDs) > 0 {
+		projectID = projectIDs[0]
+	}
 	rows, err := s.pool.Query(ctx, `SELECT id, repo, number, url, title, head_sha, reviewer, review_state, review_id, comment_count, body, state, ticket_id, session_id, observed_at, submitted_at
-		FROM pr_feedback_rounds WHERE ($1 = '' OR state = $1) ORDER BY observed_at DESC LIMIT $2`, state, limit)
+		FROM pr_feedback_rounds WHERE ($1 = '' OR state = $1) AND ($3='' OR `+db.ProjectRepoPredicate("repo", "$3")+`) ORDER BY observed_at DESC LIMIT $2`, state, limit, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -500,5 +509,44 @@ func newID() string { return uuid.Must(uuid.NewV7()).String() }
 // ClearSession forgets the harness session attached to a review (it can no longer be resumed).
 func (s *Store) ClearSession(ctx context.Context, reviewID string) error {
 	_, err := s.pool.Exec(ctx, `UPDATE code_review_requests SET session_external_id = '', updated_at = now() WHERE id = $1`, reviewID)
+	return err
+}
+
+// RecoverInterrupted makes interrupted work visible without replaying a possibly
+// published GitHub review. The operator may rerun after inspecting the PR.
+func (s *Store) RecoverInterrupted(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, `UPDATE code_review_requests SET state='failed', error='Server stopped during this attempt; inspect GitHub before rerunning', updated_at=now() WHERE state IN ('fetching','reviewing','publishing')`)
+	if err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(ctx, `UPDATE pr_feedback_rounds SET state='new',run_id=NULL WHERE state='dispatched'`)
+	return err
+}
+
+// ClaimFeedback serializes all feedback work for a PR and records the exact batch.
+func (s *Store) ClaimFeedback(ctx context.Context, repo string, number int, roundID, runID string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(context.WithoutCancel(ctx))
+	if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", fmt.Sprintf("feedback:%s#%d", repo, number)); err != nil {
+		return err
+	}
+	var active bool
+	if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM pr_feedback_rounds WHERE repo=$1 AND number=$2 AND state='dispatched')", repo, number).Scan(&active); err != nil {
+		return err
+	}
+	if active {
+		return fmt.Errorf("feedback is already being addressed for this PR")
+	}
+	_, err = tx.Exec(ctx, `UPDATE pr_feedback_rounds SET state='dispatched',run_id=$4 WHERE repo=$1 AND number=$2 AND (state='new' OR id=$3)`, repo, number, roundID, runID)
+	if err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+func (s *Store) FinishFeedback(ctx context.Context, runID, state, sessionID string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE pr_feedback_rounds SET state=$2,session_id=COALESCE(NULLIF($3,''),session_id),run_id=NULL WHERE run_id=$1`, runID, state, sessionID)
 	return err
 }

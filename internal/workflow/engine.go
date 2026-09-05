@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -26,14 +27,20 @@ type DefinitionStore interface {
 // It sits above the state machine and calls TransitionTicket — never modifies
 // the state machine directly.
 type Engine struct {
+	mu            sync.Mutex
 	store         DefinitionStore
 	ticketUpdater TicketUpdater
+	complete      func(context.Context, string) error
 }
 
 // NewEngine returns a new workflow engine.
 func NewEngine(store DefinitionStore, ticketUpdater TicketUpdater) *Engine {
 	return &Engine{store: store, ticketUpdater: ticketUpdater}
 }
+
+// SetCompletion connects the terminal ticket transition to the phase transaction.
+// Configure this once before processing workflows.
+func (e *Engine) SetCompletion(fn func(context.Context, string) error) { e.complete = fn }
 
 // Resolve returns the effective workflow for a project by checking
 // project → org → system scope (most specific wins).
@@ -95,6 +102,7 @@ func (e *Engine) GetPosition(ctx context.Context, ticketID, workflowID, workflow
 		History:      completions,
 	}
 
+	normalizeLegacyMerge(def)
 	for i, p := range def.Phases {
 		if p.ID == workflowPhase {
 			phase := p
@@ -126,11 +134,49 @@ func (e *Engine) StartPhase(ctx context.Context, ticketID, workflowID string, ve
 // current phase as a no-op (no duplicate completion recorded).
 // If version > 0, uses the pinned version's phases.
 func (e *Engine) AdvancePhase(ctx context.Context, ticketID, workflowID, currentPhaseID string, outcome string, metadata map[string]any, version int) (*Phase, error) {
+	var next *Phase
+	advance := func(ctx context.Context) error {
+		var err error
+		next, err = e.advancePhase(ctx, ticketID, workflowID, currentPhaseID, outcome, metadata, version)
+		return err
+	}
+	var err error
+	if tx, ok := e.store.(interface {
+		WithAdvanceTransaction(context.Context, string, func(context.Context) error) error
+	}); ok {
+		err = tx.WithAdvanceTransaction(ctx, ticketID, advance)
+	} else {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		err = advance(ctx)
+	}
+	return next, err
+}
+
+func (e *Engine) advancePhase(ctx context.Context, ticketID, workflowID, currentPhaseID string, outcome string, metadata map[string]any, version int) (*Phase, error) {
+	if outcome != "success" && outcome != "failed" && outcome != "skipped" {
+		return nil, fmt.Errorf("invalid phase outcome %q", outcome)
+	}
+
 	def, err := e.getDefinition(ctx, workflowID, version)
 	if err != nil {
 		return nil, fmt.Errorf("get workflow: %w", err)
 	}
 
+	if expected, ok := metadata["phase_entered_at"].(string); ok && expected != "" {
+		if updater, ok := e.ticketUpdater.(interface {
+			WorkflowAttempt(context.Context, string) (*time.Time, error)
+		}); ok {
+			entered, err := updater.WorkflowAttempt(ctx, ticketID)
+			if err != nil {
+				return nil, err
+			}
+			parsed, parseErr := time.Parse(time.RFC3339Nano, expected)
+			if entered == nil || parseErr != nil || !entered.Equal(parsed) {
+				return nil, fmt.Errorf("stale phase attempt")
+			}
+		}
+	}
 	// Idempotency guard: check if the ticket has already advanced past this phase.
 	actualPhase, err := e.ticketUpdater.GetWorkflowPhase(ctx, ticketID)
 	if err != nil {
@@ -146,8 +192,20 @@ func (e *Engine) AdvancePhase(ctx context.Context, ticketID, workflowID, current
 		return nil, nil // workflow complete
 	}
 
+	if getter, ok := e.ticketUpdater.(interface {
+		WorkflowAttemptStatus(context.Context, string) (string, error)
+	}); ok {
+		status, err := getter.WorkflowAttemptStatus(ctx, ticketID)
+		if err != nil {
+			return nil, err
+		}
+		if status == "failed" {
+			return nil, fmt.Errorf("failed phase requires explicit retry")
+		}
+	}
 	// Find current phase index
 	currentIdx := -1
+	normalizeLegacyMerge(def)
 	for i, p := range def.Phases {
 		if p.ID == currentPhaseID {
 			currentIdx = i
@@ -176,48 +234,48 @@ func (e *Engine) AdvancePhase(ctx context.Context, ticketID, workflowID, current
 		return nil, fmt.Errorf("record completion: %w", err)
 	}
 
-	// Handle failure with on_failure jump
-	if outcome == "failed" && def.Phases[currentIdx].OnFailure != "" {
-		// Check max_iterations for agent phases before applying on_failure
-		agentCfg, _ := ParseAgentConfig(def.Phases[currentIdx].Config)
-		if agentCfg != nil && agentCfg.MaxIterations > 0 {
-			completions, _ := e.store.ListCompletions(ctx, ticketID)
-			count := 0
-			for _, c := range completions {
-				if c.PhaseID == currentPhaseID {
-					count++
-				}
-			}
-			if count >= agentCfg.MaxIterations {
-				// Max iterations exhausted — treat as success, advance normally
-				outcome = "success"
-				if metadata == nil {
-					metadata = map[string]any{}
-				}
-				metadata["max_iterations_reached"] = true
-				goto advance
+	current := def.Phases[currentIdx]
+	if outcome == "failed" {
+		cfg, _ := ParseAgentConfig(current.Config)
+		completions, err := e.store.ListCompletions(ctx, ticketID)
+		if err != nil {
+			return &current, err
+		}
+		count := 0
+		for _, c := range completions {
+			if c.PhaseID == currentPhaseID {
+				count++
 			}
 		}
-
-		targetID := def.Phases[currentIdx].OnFailure
+		if current.OnFailure == "" || (cfg.MaxIterations > 0 && count >= cfg.MaxIterations) {
+			// Failed work remains visible and requires an explicit operator retry.
+			if err := e.ticketUpdater.UpdateWorkflowPhaseStatus(ctx, ticketID, "failed"); err != nil {
+				return &current, err
+			}
+			return &current, nil
+		}
 		for _, p := range def.Phases {
-			if p.ID == targetID {
+			if p.ID == current.OnFailure {
 				if err := e.ticketUpdater.UpdateWorkflowPhase(ctx, ticketID, p.ID); err != nil {
-					return nil, err
+					return &current, err
 				}
 				return &p, nil
 			}
 		}
-		return nil, fmt.Errorf("on_failure target phase %s not found", targetID)
+		return &current, fmt.Errorf("on_failure target phase %s not found", current.OnFailure)
 	}
 
-advance:
 	// Advance to next phase
 	nextIdx := currentIdx + 1
 	if nextIdx >= len(def.Phases) {
 		// Workflow complete — clear phase
 		if err := e.ticketUpdater.UpdateWorkflowPhase(ctx, ticketID, ""); err != nil {
 			return nil, err
+		}
+		if e.complete != nil {
+			if err := e.complete(ctx, ticketID); err != nil {
+				return nil, err
+			}
 		}
 		return nil, nil
 	}
@@ -252,5 +310,21 @@ func PhaseTypeForTrigger(trigger string) PhaseType {
 		return PhaseExternal
 	default:
 		return ""
+	}
+}
+
+func normalizeLegacyMerge(def *Definition) {
+	if def == nil {
+		return
+	}
+	for i := range def.Phases {
+		p := &def.Phases[i]
+		if p.ID == "merge" && p.Type == PhaseExternal {
+			cfg, _ := ParseExternalConfig(p.Config)
+			if cfg != nil && cfg.URL == "" && cfg.PollURL == "" {
+				p.Type = PhaseAction
+				p.Config = map[string]any{"action": "merge_pr"}
+			}
+		}
 	}
 }

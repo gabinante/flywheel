@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Flywheel API
-  description: REST API for Flywheel ticketing (orgs, projects, tickets, reviews, queue).
+  description: Local operator REST API for Flywheel projects, tickets, reviews, and workflows. No login or bearer token is required; the server binds to loopback and enforces local Host and same-origin browser requests. MCP authenticates separately with agent credentials.
   version: 0.1.0
 servers:
   - url: http://localhost:8090
@@ -17,9 +17,7 @@ paths:
   /me/stats:
     get:
       operationId: GetMeStats
-      summary: Lifetime stats for the authenticated agent (tickets created, reviews approved/rejected). For gamification.
-      security:
-        - BearerAuth: []
+      summary: Lifetime stats for the local operator (tickets created, reviews approved/rejected). For gamification.
       responses:
         "200":
           description: OK
@@ -37,8 +35,6 @@ paths:
     get:
       operationId: GetMeStatsHistory
       summary: Daily activity counts for the last N days (for activity graph). Oldest day first.
-      security:
-        - BearerAuth: []
       parameters:
         - name: days
           in: query
@@ -64,9 +60,7 @@ paths:
   /orgs:
     get:
       operationId: ListOrgs
-      summary: List organizations for the authenticated user (OAuth required)
-      security:
-        - BearerAuth: []
+      summary: List organizations for the local operator
       responses:
         "200":
           description: OK
@@ -84,9 +78,7 @@ paths:
                 $ref: '#/components/schemas/StructuredError'
     post:
       operationId: CreateOrg
-      summary: Create organization (auth required)
-      security:
-        - BearerAuth: []
+      summary: Create organization
       requestBody:
         required: true
         content:
@@ -686,8 +678,6 @@ paths:
     post:
       operationId: LogStep
       summary: Append a step to the execution trace (requires valid lease)
-      security:
-        - BearerAuth: []
       parameters:
         - name: ticketID
           in: path
@@ -741,8 +731,6 @@ paths:
     post:
       operationId: TransitionTicket
       summary: Transition ticket state (e.g. start, submit, approve, reject)
-      security:
-        - BearerAuth: []
       parameters:
         - name: ticketID
           in: path
@@ -974,6 +962,11 @@ paths:
       operationId: ListSessions
       summary: List tracked Claude Code and Codex sessions
       parameters:
+        - name: project_id
+          in: query
+          description: Restrict results to this project's repositories before pagination
+          schema:
+            type: string
         - name: harness
           in: query
           schema:
@@ -1269,6 +1262,11 @@ paths:
       operationId: ListCodeReviews
       summary: List PR review requests
       parameters:
+        - name: project_id
+          in: query
+          description: Restrict results to this project's repositories before pagination
+          schema:
+            type: string
         - name: state
           in: query
           schema:
@@ -1348,6 +1346,11 @@ paths:
       operationId: ListFeedbackRounds
       summary: Reviews that landed on your own PRs
       parameters:
+        - name: project_id
+          in: query
+          description: Restrict results to this project's repositories before pagination
+          schema:
+            type: string
         - name: state
           in: query
           schema:
@@ -2048,11 +2051,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/StructuredError'
 components:
-  securitySchemes:
-    BearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
   schemas:
     MeStats:
       type: object

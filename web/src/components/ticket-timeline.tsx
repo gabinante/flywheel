@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 
@@ -96,7 +96,7 @@ function ActorBadge({
 }
 
 export function TicketTimeline({ ticketId, currentState, createdAt }: TicketTimelineProps) {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [history, setHistory] = useState<TransitionHistory | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -104,6 +104,7 @@ export function TicketTimeline({ ticketId, currentState, createdAt }: TicketTime
   useEffect(() => {
     if (!ticketId) return
     let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Begin an external request and reset its loading state.
     setLoading(true)
     void (async () => {
       const { data, error: apiErr, response } = await client.GET(

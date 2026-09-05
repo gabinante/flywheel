@@ -1,3 +1,4 @@
+import { useDraft } from '@/hooks/use-draft'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
@@ -25,7 +26,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { ListPageSkeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { useResolvedRouteParams } from '@/hooks/use-resolved-route-params'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
@@ -118,14 +119,13 @@ function InlineRename({
   currentName: string
   onSaved: (newName: string) => void
 }) {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState(currentName)
+  const [draft, setDraft] = useDraft(currentName)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (editing) {
-      setDraft(currentName)
       // Focus on next tick after render
       requestAnimationFrame(() => inputRef.current?.select())
     }
@@ -222,7 +222,7 @@ function EmptyProjectsState({ orgId }: { orgId: string }) {
 
 export function ProjectsPage() {
   const { orgId, orgParam } = useResolvedRouteParams()
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [projects, setProjects] = useState<Project[] | null>(null)
   const [togglingById, setTogglingById] = useState<Record<string, boolean>>({})
   const [orgName, setOrgName] = useState<string | null>(null)

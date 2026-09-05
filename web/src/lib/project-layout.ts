@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import type { components } from '@/lib/api/v1'
 
 export type Layout = components['schemas']['Layout']
@@ -35,7 +35,7 @@ export function arrange<T extends Item>(items: T[], sections: ProjectSection[]):
 
 /** Loads and persists the operator's project-page layout. */
 export function useProjectLayout() {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [layout, setLayout] = useState<Layout | null>(null)
   const timer = useRef<number | null>(null)
 

@@ -1,3 +1,4 @@
+import { useDraft } from '@/hooks/use-draft'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
@@ -25,7 +26,7 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { ProjectPageSkeleton, Skeleton } from '@/components/ui/skeleton'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { useProjectPaths } from '@/hooks/use-project-paths'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
@@ -163,17 +164,14 @@ function RepositoryCard({
   project: Project
   onProjectChange: (project: Project) => void
 }) {
-  const { client } = useAuth()
-  const [repoUrl, setRepoUrl] = useState(project.repo_url ?? '')
-  const [defaultBranch, setDefaultBranch] = useState(project.default_branch ?? '')
+  const { client } = useAPI()
+  const [repoUrl, setRepoUrl] = useDraft(project.repo_url ?? '')
+  const [defaultBranch, setDefaultBranch] = useDraft(project.default_branch ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
 
-  useEffect(() => {
-    setRepoUrl(project.repo_url ?? '')
-    setDefaultBranch(project.default_branch ?? '')
-  }, [project.repo_url, project.default_branch])
+
 
   async function saveRepo() {
     setSaving(true)
@@ -247,7 +245,7 @@ function RepositoryCard({
 
 export function ProjectPage() {
   const { orgId, projectId, orgSlug, base } = useProjectPaths()
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [project, setProject] = useState<Project | null | undefined>(undefined)
   const [workStreams, setWorkStreams] = useState<WorkStream[] | null>(null)
   const [tickets, setTickets] = useState<TicketT[] | null>(null)

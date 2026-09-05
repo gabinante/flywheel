@@ -5,14 +5,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/gabinante/flywheel/internal/auth"
+	"github.com/gabinante/flywheel/internal/process"
+	"github.com/gabinante/flywheel/internal/runlimit"
+	"github.com/gabinante/flywheel/internal/runstatus"
 	"io"
 	"log/slog"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 )
 
 // readClaudeOAuthToken reads the Claude Code OAuth access token from the macOS
@@ -41,9 +45,12 @@ func readClaudeOAuthToken() string {
 
 // WorkerResult is the outcome of a worker execution.
 type WorkerResult struct {
-	Success bool
-	Output  string
-	Error   string
+	SessionID          string
+	StartedAt, EndedAt time.Time
+	CostUSD            float64
+	Success            bool
+	Output             string
+	Error              string
 }
 
 // Worker spawns an agent session for a ticket.
@@ -66,6 +73,9 @@ func buildTaskPrompt(ticketID, projectID string) string {
 
 // buildTypedTaskPrompt returns the user-turn prompt tailored to the worker type.
 func buildTypedTaskPrompt(wt WorkerType, ticketID, projectID string) string {
+	return strings.ReplaceAll(buildTypedTaskPromptBase(wt, ticketID, projectID), "call the claim_ticket MCP tool", fmt.Sprintf("call the claim_ticket MCP tool with ticket_id %q (claim only this exact ticket),", ticketID))
+}
+func buildTypedTaskPromptBase(wt WorkerType, ticketID, projectID string) string {
 	switch wt {
 	case WorkerTypePlanner:
 		return fmt.Sprintf(
@@ -108,6 +118,7 @@ func buildTypedTaskPrompt(wt WorkerType, ticketID, projectID string) string {
 	case WorkerTypeInvestigator:
 		return fmt.Sprintf(
 			"Investigate for Flywheel ticket %s. "+
+				"FIRST claim_ticket for this exact ticket, then start_ticket. Submit your findings with submit_ticket when finished. "+
 				"Read code, search for patterns, and report findings via log_step. "+
 				"You are read-only — do not modify any files or state.",
 			ticketID,
@@ -161,31 +172,90 @@ func (w *CLIWorker) Spawn(ctx context.Context, ticketID, projectID, systemPrompt
 
 // SpawnStream starts an agent process and emits incremental stdout/stderr lines.
 func (w *CLIWorker) SpawnStream(ctx context.Context, ticketID, projectID, systemPrompt, taskMessage, workDir, serverURL string, onOutput WorkerOutputHandler) (*WorkerResult, error) {
+	info := runstatus.Info(ctx)
+	info.ProjectID = projectID
+	info.TicketID = ticketID
+	info.Harness = w.Driver.Name()
+	info.WorkDir = workDir
+	info.Prompt = taskMessage
+	if grant, ok := auth.RunFromContext(ctx); ok {
+		info.Kind = grant.Role
+	}
+	if info.Kind == "orchestrator" {
+		info.TicketID = ""
+		info.Title = "Project planning"
+	}
+	if info.Kind == "" {
+		info.Kind = "dispatch"
+	}
+	ctx, finish := runstatus.Default.Begin(ctx, info)
+	defer finish()
+	release, err := runlimit.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	driver := w.Driver
+	if grant, ok := auth.RunFromContext(ctx); ok && (grant.Role == "orchestrator" || grant.Role == "planner" || grant.Role == "investigator" || grant.Role == "operator") {
+		switch d := driver.(type) {
+		case *ClaudeDriver:
+			copy := *d
+			copy.readOnly = true
+			driver = &copy
+		case *CodexDriver:
+			copy := *d
+			copy.readOnly = true
+			driver = &copy
+		}
+	}
 	// Apply driver's prompt formatting.
-	systemPrompt = w.Driver.FormatPrompt(systemPrompt)
+	systemPrompt = driver.FormatPrompt(systemPrompt)
 
-	mcpConn := buildMCPConnection(serverURL, w.APIKey)
+	ctx, cancel := context.WithTimeout(ctx, time.Hour)
+	defer cancel()
+	grant, ok := auth.RunFromContext(ctx)
+	if !ok {
+		grant = auth.RunGrant{Role: "executor"}
+	}
+	grant.ParentKey = w.APIKey
+	grant.TicketID = ticketID
+	grant.ProjectID = projectID
+	runKey, revoke, err := auth.IssueRun(grant)
+	if err != nil {
+		return nil, err
+	}
+	defer revoke()
+	mcpConn := buildMCPConnection(serverURL, runKey)
 
 	// Write temporary MCP config file for this worker.
-	mcpCfgPath := filepath.Join(workDir, ".flywheel-mcp-config.json")
+	configFile, err := os.CreateTemp("", "flywheel-mcp-*.json")
+	if err != nil {
+		return nil, err
+	}
+	mcpCfgPath := configFile.Name()
+	defer os.Remove(mcpCfgPath)
+	if err := configFile.Close(); err != nil {
+		return nil, err
+	}
 	cfgBytes, err := json.Marshal(mcpConn.SSEConfig())
 	if err != nil {
 		return nil, fmt.Errorf("marshal mcp config: %w", err)
 	}
-	if err := os.WriteFile(mcpCfgPath, cfgBytes, 0o644); err != nil {
+	if err := os.WriteFile(mcpCfgPath, cfgBytes, 0o600); err != nil {
 		return nil, fmt.Errorf("write mcp config: %w", err)
 	}
 	defer os.Remove(mcpCfgPath)
 
 	// Get executable and arguments from the driver.
-	exe := w.Driver.Executable()
-	args := w.Driver.BuildCLIArgs(systemPrompt, taskMessage, mcpConn, mcpCfgPath)
+	exe := driver.Executable()
+	args := driver.BuildCLIArgs(systemPrompt, taskMessage, mcpConn, mcpCfgPath)
 
 	cmd := exec.CommandContext(ctx, exe, args...)
+	process.Configure(cmd)
 	cmd.Dir = workDir
 
 	// Build environment: start with parent env, apply driver's filters and additions.
-	driverEnv := w.Driver.Env(systemPrompt, taskMessage, mcpConn, mcpCfgPath)
+	driverEnv := driver.Env(systemPrompt, taskMessage, mcpConn, mcpCfgPath)
 	var env []string
 	for _, e := range os.Environ() {
 		filtered := false
@@ -202,8 +272,8 @@ func (w *CLIWorker) SpawnStream(ctx context.Context, ticketID, projectID, system
 	for k, v := range driverEnv.Set {
 		env = append(env, k+"="+v)
 	}
-	if envName := w.Driver.CredentialEnvName(); envName != "" {
-		if credential := w.Driver.ResolveCredential(w.AgentAPIKey); credential != "" {
+	if envName := driver.CredentialEnvName(); envName != "" {
+		if credential := driver.ResolveCredential(w.AgentAPIKey); credential != "" {
 			env = append(env, envName+"="+credential)
 		}
 	}
@@ -213,33 +283,35 @@ func (w *CLIWorker) SpawnStream(ctx context.Context, ticketID, projectID, system
 	// Drivers with structured output get a parser so the trace sees semantic
 	// events and the result is the agent's answer rather than a JSON transcript.
 	var parser OutputParser
-	if parsing, ok := w.Driver.(OutputParsingDriver); ok {
+	if parsing, ok := driver.(OutputParsingDriver); ok {
 		parser = parsing.NewOutputParser()
 	}
 
-	output, parsed, err := runCommandStreaming(cmd, onOutput, parser)
+	started := time.Now()
+	if parser != nil {
+		parser = &liveSessionParser{OutputParser: parser, ctx: ctx}
+	}
+	output, parsed, err := runCommandStreamingContext(ctx, cmd, onOutput, parser)
+	result := &WorkerResult{Output: output, Success: err == nil, StartedAt: started, EndedAt: time.Now()}
 	if parsed != nil {
-		slog.Info("dispatch: worker run reported result", "driver", w.Driver.Name(), "session", parsed.SessionID, "turns", parsed.NumTurns, "cost_usd", parsed.CostUSD, "is_error", parsed.IsError)
+		result.SessionID = parsed.SessionID
+		runstatus.Session(ctx, parsed.SessionID)
+		result.CostUSD = parsed.CostUSD
+	}
+	if parsed != nil {
+		slog.Info("dispatch: worker run reported result", "driver", driver.Name(), "session", parsed.SessionID, "turns", parsed.NumTurns, "cost_usd", parsed.CostUSD, "is_error", parsed.IsError)
 	}
 	if err != nil {
-		return &WorkerResult{
-			Success: false,
-			Output:  output,
-			Error:   err.Error(),
-		}, nil
+		result.Error = err.Error()
+		return result, nil
 	}
 	if parsed != nil && parsed.IsError {
-		return &WorkerResult{
-			Success: false,
-			Output:  output,
-			Error:   parsed.Error,
-		}, nil
+		result.Success = false
+		result.Error = parsed.Error
+		return result, nil
 	}
 
-	return &WorkerResult{
-		Success: true,
-		Output:  output,
-	}, nil
+	return result, nil
 }
 
 type workerOutputEvent struct {
@@ -252,6 +324,10 @@ type workerOutputEvent struct {
 // parser's final result becomes the returned output; unstructured lines and
 // stderr pass through unchanged. Without one, the output is the raw transcript.
 func runCommandStreaming(cmd *exec.Cmd, onOutput WorkerOutputHandler, parser OutputParser) (string, *ParsedResult, error) {
+	return runCommandStreamingContext(context.Background(), cmd, onOutput, parser)
+}
+
+func runCommandStreamingContext(ctx context.Context, cmd *exec.Cmd, onOutput WorkerOutputHandler, parser OutputParser) (string, *ParsedResult, error) {
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return "", nil, err
@@ -263,6 +339,7 @@ func runCommandStreaming(cmd *exec.Cmd, onOutput WorkerOutputHandler, parser Out
 	if err := cmd.Start(); err != nil {
 		return "", nil, err
 	}
+	runstatus.Started(ctx, cmd.Process.Pid)
 
 	events := make(chan workerOutputEvent, 128)
 	errCh := make(chan error, 2)
@@ -284,6 +361,9 @@ func runCommandStreaming(cmd *exec.Cmd, onOutput WorkerOutputHandler, parser Out
 	}
 	var raw strings.Builder
 	for event := range events {
+		if event.stream == "stderr" || parser == nil {
+			runstatus.Output(ctx)
+		}
 		if parser != nil && event.stream == "stdout" {
 			if parsed, ok := parser.ParseLine(event.text); ok {
 				for _, pe := range parsed {
@@ -300,6 +380,7 @@ func runCommandStreaming(cmd *exec.Cmd, onOutput WorkerOutputHandler, parser Out
 	}
 
 	waitErr := cmd.Wait()
+	runstatus.Exited(ctx)
 	for streamErr := range errCh {
 		if streamErr != nil && waitErr == nil {
 			waitErr = streamErr

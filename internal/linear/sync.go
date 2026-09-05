@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/gabinante/flywheel/db"
+	"github.com/google/uuid"
 	"log/slog"
 	"regexp"
 	"strings"
@@ -47,6 +49,7 @@ type OutputPatcher interface {
 
 // Syncer keeps Flywheel projects/tickets in step with Linear in both directions.
 type Syncer struct {
+	opsMu    sync.Mutex
 	client   *Client
 	store    *Store
 	tickets  *ticket.Service
@@ -85,6 +88,8 @@ func (s *Syncer) conf() Config {
 // Reconfigure swaps the API key and config at runtime. Sync starts (or stops) on the
 // next tick; the loop is created on first enablement if Start ran while disabled.
 func (s *Syncer) Reconfigure(apiKey string, cfg Config) {
+	s.opsMu.Lock()
+	defer s.opsMu.Unlock()
 	if cfg.Interval <= 0 {
 		cfg.Interval = 60 * time.Second
 	}
@@ -99,8 +104,10 @@ func (s *Syncer) Reconfigure(apiKey string, cfg Config) {
 		s.client = NewClient(apiKey, "")
 	}
 	s.cfg = cfg
-	s.viewer = nil
 	s.cfgMu.Unlock()
+	s.mu.Lock()
+	s.viewer = nil
+	s.mu.Unlock()
 	s.mu.Lock()
 	s.status.Enabled = cfg.Enabled
 	s.status.ViewerName, s.status.ViewerEmail, s.status.LastError = "", "", ""
@@ -189,6 +196,8 @@ func (s *Syncer) startLoop(ctx context.Context) {
 
 // RunOnce discovers projects and pulls updated issues. Concurrent calls are coalesced.
 func (s *Syncer) RunOnce(ctx context.Context) error {
+	s.opsMu.Lock()
+	defer s.opsMu.Unlock()
 	if !s.conf().Enabled || s.cl() == nil {
 		return nil
 	}
@@ -198,7 +207,10 @@ func (s *Syncer) RunOnce(ctx context.Context) error {
 	defer atomic.StoreInt32(&s.running, 0)
 	start := time.Now()
 	var errs []error
-	if s.viewer == nil {
+	s.mu.Lock()
+	needsViewer := s.viewer == nil
+	s.mu.Unlock()
+	if needsViewer {
 		v, err := s.cl().Viewer(ctx)
 		if err != nil {
 			s.finish(start, err)
@@ -399,7 +411,7 @@ func (s *Syncer) ensureLink(ctx context.Context, lp Project) (*ProjectLink, erro
 			return nil, err
 		}
 		if orgID == "" {
-			return nil, errors.New("no organization exists yet; sign in once so the operator org is created")
+			return nil, errors.New("no local workspace exists; restart Flywheel to provision the operator workspace")
 		}
 		slug := Slugify(lp.Name)
 		for i := 2; ; i++ {
@@ -477,6 +489,14 @@ func refFromIssue(is Issue) ticket.ExternalRef {
 
 // upsertIssue projects one Linear issue onto a ticket.
 func (s *Syncer) upsertIssue(ctx context.Context, link *ProjectLink, is Issue) error {
+	if !db.InTransaction(ctx) {
+		return db.Transaction(ctx, s.store.pool, func(ctx context.Context) error {
+			if _, err := db.Executor(ctx, s.store.pool).Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", "linear:"+is.ID); err != nil {
+				return err
+			}
+			return s.upsertIssue(ctx, link, is)
+		})
+	}
 	ticketID, prev, err := s.store.RefByExternalID(ctx, Provider, is.ID)
 	if err != nil {
 		return err
@@ -523,48 +543,36 @@ func (s *Syncer) upsertIssue(ctx context.Context, link *ProjectLink, is Issue) e
 
 // ---- outbound -------------------------------------------------------------
 
-func (s *Syncer) subscribe(ctx context.Context) {
+func (s *Syncer) subscribe(_ context.Context) {
 	if s.bus == nil {
 		return
 	}
-	s.bus.Subscribe(events.EventTicketCreated, func(_ context.Context, e events.Event) {
+	handler := func(ctx context.Context, e events.Event) {
 		if payloadString(e, "external_provider") != "" {
 			return
 		}
-		go s.fileIssue(ctx, payloadString(e, "ticket_id"))
-	})
-	stateEvents := map[string]ticket.State{
-		events.EventTicketPlanning:  ticket.StatePlanning,
-		events.EventTicketStarted:   ticket.StateExecuting,
-		events.EventTicketSubmitted: ticket.StateAwaitingValidation,
-		events.EventTicketApproved:  ticket.StateValidated,
-		events.EventTicketValidated: ticket.StateValidated,
-		events.EventTicketClosed:    ticket.StateClosed,
-		events.EventTicketReopened:  ticket.StateDraft,
-	}
-	for evt, st := range stateEvents {
-		st := st
-		s.bus.Subscribe(evt, func(_ context.Context, e events.Event) {
-			if payloadString(e, "external_provider") != "" {
-				return
+		id := payloadString(e, "ticket_id")
+		s.outbound(ctx, func() {
+			switch e.Type {
+			case events.EventTicketCreated:
+				s.fileIssue(ctx, id)
+			case events.EventTicketPlanning, events.EventTicketStarted, events.EventTicketSubmitted, events.EventTicketApproved, events.EventTicketValidated, events.EventTicketClosed, events.EventTicketReopened:
+				s.pushState(ctx, id, ticket.StateDraft, "")
+				if e.Type == events.EventTicketSubmitted {
+					s.attachSubmittedPR(ctx, id)
+				}
+			case events.EventTicketCancelled:
+				s.pushState(ctx, id, ticket.StateClosed, "canceled")
 			}
-			go s.pushState(ctx, payloadString(e, "ticket_id"), st, "")
 		})
 	}
-	// A submitted ticket carries its PR: attach it to the Linear issue and leave the Abstract comment
-	// the operator's hook used to post by hand.
-	s.bus.Subscribe(events.EventTicketSubmitted, func(_ context.Context, e events.Event) {
-		if payloadString(e, "external_provider") != "" {
-			return
-		}
-		go s.attachSubmittedPR(ctx, payloadString(e, "ticket_id"))
-	})
-	s.bus.Subscribe(events.EventTicketCancelled, func(_ context.Context, e events.Event) {
-		if payloadString(e, "external_provider") != "" {
-			return
-		}
-		go s.pushState(ctx, payloadString(e, "ticket_id"), ticket.StateClosed, "canceled")
-	})
+	if durable, ok := s.bus.(events.DurableEventBus); ok {
+		_ = durable.SubscribePattern("ticket.*", "linear:projection", handler)
+		return
+	}
+	for _, typ := range []string{events.EventTicketCreated, events.EventTicketPlanning, events.EventTicketStarted, events.EventTicketSubmitted, events.EventTicketApproved, events.EventTicketValidated, events.EventTicketClosed, events.EventTicketReopened, events.EventTicketCancelled} {
+		s.bus.Subscribe(typ, handler)
+	}
 }
 
 func payloadString(e events.Event, key string) string {
@@ -579,14 +587,24 @@ func payloadString(e events.Event, key string) string {
 
 // fileIssue creates the Linear issue for a Flywheel-originated ticket in a linked project.
 func (s *Syncer) fileIssue(ctx context.Context, ticketID string) {
+	if !s.Enabled() {
+		events.Retry(ctx, errors.New("Linear sync is disabled"))
+		return
+	}
 	if ticketID == "" {
 		return
 	}
 	t, err := s.tickets.GetTicket(ctx, ticketID)
+	if err != nil {
+		events.Retry(ctx, err)
+	}
 	if err != nil || t == nil || t.External != nil {
 		return
 	}
 	link, err := s.store.LinkByProject(ctx, t.ProjectID)
+	if err != nil {
+		events.Retry(ctx, err)
+	}
 	if err != nil || link == nil {
 		return
 	}
@@ -596,6 +614,7 @@ func (s *Syncer) fileIssue(ctx context.Context, ticketID string) {
 		return
 	}
 	is, err := s.cl().CreateIssue(ctx, CreateIssueInput{
+		ID:          uuid.NewSHA1(uuid.NameSpaceURL, []byte("flywheel:issue:"+t.ProjectID+":"+t.ID)).String(),
 		TeamID:      teamID,
 		ProjectID:   link.LinearProjectID,
 		Title:       t.Title,
@@ -604,10 +623,12 @@ func (s *Syncer) fileIssue(ctx context.Context, ticketID string) {
 	})
 	if err != nil {
 		slog.Warn("linear: file issue failed", "ticket", t.ID, "error", err)
+		events.Retry(ctx, err)
 		return
 	}
 	if err := s.store.UpsertRef(ctx, t.ID, refFromIssue(*is)); err != nil {
 		slog.Warn("linear: store ref failed", "ticket", t.ID, "error", err)
+		events.Retry(ctx, err)
 		return
 	}
 	slog.Info("linear: filed issue", "ticket", t.ID, "issue", is.Identifier)
@@ -655,24 +676,41 @@ func (s *Syncer) teamStates(ctx context.Context, teamID string) ([]WorkflowState
 // pushState moves the linked Linear issue to the column matching a Flywheel state.
 // overrideType forces a Linear state type (used for cancellation).
 func (s *Syncer) pushState(ctx context.Context, ticketID string, st ticket.State, overrideType string) {
+	if !s.Enabled() {
+		events.Retry(ctx, errors.New("Linear sync is disabled"))
+		return
+	}
 	if ticketID == "" || s.cl() == nil {
 		return
 	}
 	ref, err := s.store.RefByTicketID(ctx, ticketID)
+	if err != nil {
+		events.Retry(ctx, err)
+	}
 	if err != nil || ref == nil {
 		return
 	}
 	t, err := s.tickets.GetTicket(ctx, ticketID)
+	if err != nil {
+		events.Retry(ctx, err)
+	}
 	if err != nil || t == nil {
 		return
 	}
 	link, err := s.store.LinkByProject(ctx, t.ProjectID)
+	if err != nil {
+		events.Retry(ctx, err)
+	}
 	if err != nil || link == nil {
 		return
 	}
 	teamID := s.teamForLink(link, ref.TeamKey)
 	if teamID == "" {
 		return
+	}
+	st = t.State
+	if st != ticket.StateClosed {
+		overrideType = ""
 	}
 	stateType, names := DesiredStateType(st)
 	if overrideType != "" {
@@ -684,6 +722,7 @@ func (s *Syncer) pushState(ctx context.Context, ticketID string, st ticket.State
 	states, err := s.teamStates(ctx, teamID)
 	if err != nil {
 		slog.Warn("linear: team states failed", "team", teamID, "error", err)
+		events.Retry(ctx, err)
 		return
 	}
 	target := PickState(states, stateType, names)
@@ -693,18 +732,26 @@ func (s *Syncer) pushState(ctx context.Context, ticketID string, st ticket.State
 	is, err := s.cl().UpdateIssueState(ctx, ref.ExternalID, target.ID)
 	if err != nil {
 		slog.Warn("linear: push state failed", "ticket", ticketID, "state", target.Name, "error", err)
+		events.Retry(ctx, err)
 		return
 	}
-	_ = s.store.UpsertRef(ctx, ticketID, refFromIssue(*is))
+	events.Retry(ctx, s.store.UpsertRef(ctx, ticketID, refFromIssue(*is)))
 	slog.Info("linear: moved issue", "issue", ref.Identifier, "state", target.Name)
 }
 
 // attachSubmittedPR links the ticket's PR to its Linear issue and comments once.
 func (s *Syncer) attachSubmittedPR(ctx context.Context, ticketID string) {
+	if !s.Enabled() {
+		events.Retry(ctx, errors.New("Linear sync is disabled"))
+		return
+	}
 	if ticketID == "" || s.cl() == nil {
 		return
 	}
 	t, err := s.tickets.GetTicket(ctx, ticketID)
+	if err != nil {
+		events.Retry(ctx, err)
+	}
 	if err != nil || t == nil || t.External == nil {
 		return
 	}
@@ -716,25 +763,36 @@ func (s *Syncer) attachSubmittedPR(ctx context.Context, ticketID string) {
 		return
 	}
 	ref, err := s.store.RefByTicketID(ctx, ticketID)
+	if err != nil {
+		events.Retry(ctx, err)
+	}
 	if err != nil || ref == nil {
 		return
 	}
 	if err := s.cl().AttachPullRequest(ctx, ref.ExternalID, prURL); err != nil {
 		slog.Warn("linear: attach PR failed", "ticket", ticketID, "pr", prURL, "error", err)
+		events.Retry(ctx, err)
+		return
 	}
 	body := AbstractBody(t) + "\n\nPull request: " + prURL
-	if _, err := s.cl().CreateComment(ctx, ref.ExternalID, body); err != nil {
+	if _, err := s.cl().CreateCommentOnce(ctx, ref.ExternalID, body, uuid.NewSHA1(uuid.NameSpaceURL, []byte("flywheel:pr-comment:"+ref.ExternalID+":"+prURL)).String()); err != nil {
 		slog.Warn("linear: PR comment failed", "ticket", ticketID, "error", err)
+		events.Retry(ctx, err)
 		return
 	}
 	if s.outputs != nil {
-		_ = s.outputs.PatchOutputs(ctx, ticketID, map[string]any{"_linear_pr_attached": prURL})
+		events.Retry(ctx, s.outputs.PatchOutputs(ctx, ticketID, map[string]any{"_linear_pr_attached": prURL}))
 	}
 	slog.Info("linear: attached PR to issue", "issue", ref.Identifier, "pr", prURL)
 }
 
 // Comment posts a comment on the Linear issue linked to a ticket.
 func (s *Syncer) Comment(ctx context.Context, ticketID, body string) error {
+	s.opsMu.Lock()
+	defer s.opsMu.Unlock()
+	if !s.Enabled() {
+		return errors.New("Linear sync is disabled")
+	}
 	if s.cl() == nil {
 		return errors.New("linear: not configured")
 	}
@@ -751,6 +809,11 @@ func (s *Syncer) Comment(ctx context.Context, ticketID, body string) error {
 
 // AttachPullRequest links a PR to the Linear issue behind a ticket.
 func (s *Syncer) AttachPullRequest(ctx context.Context, ticketID, prURL string) error {
+	s.opsMu.Lock()
+	defer s.opsMu.Unlock()
+	if !s.Enabled() {
+		return errors.New("Linear sync is disabled")
+	}
 	if s.cl() == nil {
 		return errors.New("linear: not configured")
 	}
@@ -864,3 +927,13 @@ func (s *Syncer) Client() *Client { return s.cl() }
 
 // Interval reports the inbound poll interval.
 func (s *Syncer) Interval() time.Duration { return s.conf().Interval }
+
+func (s *Syncer) outbound(ctx context.Context, fn func()) {
+	s.opsMu.Lock()
+	defer s.opsMu.Unlock()
+	if !s.Enabled() {
+		events.Retry(ctx, errors.New("Linear sync is disabled"))
+		return
+	}
+	fn()
+}

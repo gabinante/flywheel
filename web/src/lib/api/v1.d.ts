@@ -28,7 +28,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Lifetime stats for the authenticated agent (tickets created, reviews approved/rejected). For gamification. */
+        /** Lifetime stats for the local operator (tickets created, reviews approved/rejected). For gamification. */
         get: operations["GetMeStats"];
         put?: never;
         post?: never;
@@ -62,10 +62,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List organizations for the authenticated user (OAuth required) */
+        /** List organizations for the local operator */
         get: operations["ListOrgs"];
         put?: never;
-        /** Create organization (auth required) */
+        /** Create organization */
         post: operations["CreateOrg"];
         delete?: never;
         options?: never;
@@ -3128,6 +3128,8 @@ export interface operations {
     ListSessions: {
         parameters: {
             query?: {
+                /** @description Restrict results to this project's repositories before pagination */
+                project_id?: string;
                 harness?: "claude_code" | "codex";
                 origin?: "interactive" | "dispatched" | "automation" | "subagent";
                 /** @description Repository as owner/name or bare name. */
@@ -3494,6 +3496,8 @@ export interface operations {
     ListCodeReviews: {
         parameters: {
             query?: {
+                /** @description Restrict results to this project's repositories before pagination */
+                project_id?: string;
                 state?: string;
                 repo?: string;
                 limit?: number;
@@ -3599,6 +3603,8 @@ export interface operations {
     ListFeedbackRounds: {
         parameters: {
             query?: {
+                /** @description Restrict results to this project's repositories before pagination */
+                project_id?: string;
                 state?: string;
                 limit?: number;
             };

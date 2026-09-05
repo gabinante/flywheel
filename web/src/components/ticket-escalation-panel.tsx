@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { sendOrchestratorMessage } from '@/lib/api/orchestrator-client'
 import type { components } from '@/lib/api/v1'
 import { summarizePayload, getWorkerOutput, STEP_TYPE_META } from '@/lib/trace-utils'
@@ -50,7 +50,7 @@ export function TicketEscalationPanel({
   projectId,
   onResolved,
 }: TicketEscalationPanelProps) {
-  const { client, token } = useAuth()
+  const { client } = useAPI()
   const [escalation, setEscalation] = useState<Escalation | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [answer, setAnswer] = useState('')
@@ -122,14 +122,14 @@ export function TicketEscalationPanel({
     }
     setAnswer('')
     onResolved?.()
-  }, [client, ticketId, escalation?.id, answer, onResolved])
+  }, [client, ticketId, escalation, answer, onResolved])
 
   const sendToOrchestrator = useCallback(async () => {
-    if (!orchestratorInput.trim() || !token) return
+    if (!orchestratorInput.trim()) return
     setOrchestratorBusy(true)
     setOrchestratorError(null)
     const { error } = await sendOrchestratorMessage(
-      token,
+
       projectId,
       `[Ticket ${ticketId} is blocked — awaiting_input] ${orchestratorInput.trim()}`,
     )
@@ -140,7 +140,7 @@ export function TicketEscalationPanel({
     }
     setOrchestratorInput('')
     onResolved?.()
-  }, [token, projectId, ticketId, orchestratorInput, onResolved])
+  }, [projectId, ticketId, orchestratorInput, onResolved])
 
   if (!loaded) return null
 

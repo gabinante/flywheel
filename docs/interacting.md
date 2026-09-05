@@ -14,6 +14,33 @@ The web **Command Center** is the primary place for a human operator to interact
 
 Use the `ORCHESTRATOR_AGENT_*` environment variables when you want the command-center planner to run on a stronger model than the background `DISPATCH_*` workers.
 
+The right-hand **Your work** tray stays the same across all pages and projects. **In flight** shows global
+dispatch capacity and current work, with project names, ticket or PR references, harnesses, and session links.
+Session links become available when the harness reports its native session ID; the session page refreshes
+while that run is active. **Needs attention** collects unanswered questions, human approvals, failed phases
+or reviews, manual workflow continuations, and new PR feedback. Each item links to the relevant action page.
+Automated gates waiting on checks do not count as requests for human input. The tray refreshes every five
+seconds; on small screens, open it with the work-tray toggle. The old ticket-change and trace feed is no longer
+part of the tray; project work and ticket inspection remain in the Command Center.
+
+`GET /api/overview` returns `in_flight`, `attention`, `dispatch`, and `updated_at` for the local operator.
+Managed harness runs are tracked directly, including while they wait for capacity; recently modified imported
+sessions alone do not imply that work is still running. Native session records are saved during the run and
+marked finished when it exits. Startup clears stale managed-run flags left behind by a previous server process.
+
+Each managed run also reports process attachment, runtime, last output, last work event, tool/assistant/reasoning
+update counts, and reported token usage. Review and session pages show the latest 20 progress events. Two minutes
+without output is labeled **Quiet**, not a confirmed hang; a saved active review with no owning service or harness
+is shown as **No live worker** under Needs attention. Reading this overview does not restart or requeue reviews.
+Progress comes from the harness stream, not synthetic heartbeats. Raw reasoning, tool inputs/results, and stderr
+contents are not copied into this summary. A session retains its final progress summary after the run exits.
+
+[Codex JSONL events](https://developers.openai.com/codex/noninteractive/) report tool and reasoning activity during
+execution, with token usage at turn completion. [Claude's streaming output](https://code.claude.com/docs/en/headless#stream-responses)
+supplies incremental output and message usage; repeated usage on message blocks is counted once, and final totals
+replace the interim count. **Tokens not reported yet** means unknown, not zero consumption. Progress capture applies
+to processes started by the updated server; it cannot recover a missing live stream from an older server build.
+
 ---
 
 ## 1. REST API (humans + scripts)
@@ -37,10 +64,9 @@ For a full **operations runbook** (run locally, migrations, DB/Redis inspection,
 
 **Typical REST flow**
 
-1. **Create org and project** (POST /orgs requires auth; the authenticated user is added as org owner)
+1. **Create org and project** (the local operator is added as org owner)
    ```bash
    curl -s -X POST http://localhost:8090/orgs -H "Content-Type: application/json" \
-     -H "Authorization: Bearer YOUR_JWT" \
      -d '{"name":"Acme","slug":"acme"}'  # → org id
    curl -s -X POST http://localhost:8090/orgs/{org_id}/projects \
      -H "Content-Type: application/json" \
@@ -90,8 +116,7 @@ Agents talk to Flywheel via **MCP** so they can list projects, get a full ticket
 
 **MCP over HTTP**
 MCP is exposed at **`/mcp`** (Streamable HTTP; `/sse` remains for older clients). Authenticate with an API key
-in the `X-API-Key` header — either `DISPATCH_API_KEY` or an agent key from `POST /agents` — or with the
-operator JWT as `Authorization: Bearer <token>`. `agent_id` is inferred from the credential for tools like
+in the `X-API-Key` header — either `DISPATCH_API_KEY` or an agent key from `POST /agents` — with legacy programmatic Bearer credentials also accepted. `agent_id` is inferred from the credential for tools like
 `claim_ticket` and `start_ticket`.
 
 **Typical agent flow (via MCP tools)**
@@ -134,12 +159,14 @@ operator JWT as `Authorization: Bearer <token>`. `agent_id` is inferred from the
 
 Flywheel is single-operator and local-first; there is no external identity provider.
 
-- **Operator sign-in:** `GET /auth/login` provisions (once) the local operator user and agent, creates a
-  default org, and redirects to `BASE_URL/#token=<jwt>` for the web UI (or `AUTH_SUCCESS_REDIRECT_URL` with
-  the same fragment; a localhost `?redirect_uri=` gets `?token=` for CLI callbacks). Set `JWT_SECRET` so
-  sessions survive server restarts. The JWT works for REST (`Authorization: Bearer <token>`) and MCP.
-- **API keys** for agents: `POST /agents` returns an `api_key`; send it as `X-API-Key`. Dispatched workers
-  receive a key automatically.
+- **Local workspace:** open `/` to enter Projects immediately. Startup creates or reuses the local operator
+  and its default organization; no sign-in, browser token, or session storage is needed. REST requests use
+  this local identity. The server binds to loopback and rejects untrusted Host and cross-origin requests.
+- **API keys** for harnesses: `POST /agents` returns an `api_key` linked to the local operator's workspace;
+  send it as `X-API-Key` to MCP. Dispatched workers receive short-lived ticket/phase/role-scoped keys automatically.
+  MCP authenticates independently and never inherits the local browser's operator permissions.
+- `JWT_SECRET` remains the signing secret for workflow callbacks and legacy programmatic MCP tokens;
+  there is no browser login endpoint that issues tokens.
 
 ---
 
@@ -174,7 +201,7 @@ Errors are returned in a **structured shape** so clients and agents can branch o
 | Code | Meaning | Retry? |
 |------|--------|--------|
 | `lease_expired` | Lease token invalid or expired (e.g. submit/renew after TTL). | **Yes** – re-claim or get a new lease. |
-| `unauthorized` | Not authenticated (missing/invalid token or API key). | No – sign in or use a valid key. |
+| `unauthorized` | Not authenticated (missing/invalid token or API key). | No – use a valid MCP key. |
 | `forbidden` | Authenticated but not allowed (e.g. not a member of the org, no access to project). | No. |
 | `not_found` | Resource missing (ticket, project, or “no ticket available to claim”). | For “no ticket available”, retrying later is OK; for missing ID, fix the ID. |
 | `conflict` | State conflict (e.g. ticket already claimed, not the leaseholder, dependency not done). | No – refresh state and act accordingly. |

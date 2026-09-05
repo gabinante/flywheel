@@ -6,7 +6,6 @@ import {
   ClipboardCheck,
   GitPullRequest,
   LayoutDashboard,
-  LogOut,
   FolderKanban,
   ServerCog,
   Settings,
@@ -19,7 +18,6 @@ import { Link, useLocation } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ProjectSwitcher } from '@/components/project-switcher'
-import { useAuth } from '@/contexts/use-auth'
 import { useProjectEscalations } from '@/hooks/use-project-escalations'
 import { useProjectPaths } from '@/hooks/use-project-paths'
 import { useSidebar } from '@/contexts/use-sidebar'
@@ -128,7 +126,6 @@ function NavSection({
 
 export function LeftSidebar() {
   const { isExpanded, toggle } = useSidebar()
-  const { token, signOut } = useAuth()
   const location = useLocation()
   const { projectId, base: projectBase } = useProjectPaths()
   const { escalations } = useProjectEscalations(projectId)
@@ -169,7 +166,6 @@ export function LeftSidebar() {
         },
       ]
     : []
-
 
   const configureItems: NavItem[] = projectBase
     ? [
@@ -238,11 +234,9 @@ export function LeftSidebar() {
         </Button>
       </div>
 
-      {token && (
-        <div className="border-b border-sidebar-border px-2 py-3">
-          <ProjectSwitcher expanded={isExpanded} />
-        </div>
-      )}
+      <div className="border-b border-sidebar-border px-2 py-3">
+        <ProjectSwitcher expanded={isExpanded} />
+      </div>
 
       {/* Project context indicator */}
       {projectBase && isExpanded && (
@@ -258,7 +252,7 @@ export function LeftSidebar() {
 
       {/* Navigation */}
       <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-2 py-3">
-        {token && navigateItems.length > 0 && (
+        {navigateItems.length > 0 && (
           <NavSection
             title="Navigate"
             items={navigateItems}
@@ -266,7 +260,7 @@ export function LeftSidebar() {
             currentPath={currentPath}
           />
         )}
-        {token && configureItems.length > 0 && (
+        {configureItems.length > 0 && (
           <NavSection
             title="Configure"
             items={configureItems}
@@ -274,7 +268,7 @@ export function LeftSidebar() {
             currentPath={currentPath}
           />
         )}
-        {token && !projectBase && (
+        {!projectBase && (
           <NavSection
             title="Navigate"
             items={[
@@ -289,58 +283,35 @@ export function LeftSidebar() {
             currentPath={currentPath}
           />
         )}
-        {token && (
-          <NavSection
-            title="Across projects"
-            items={[
-              { label: 'My PRs', icon: GitPullRequest, href: '/my/prs', match: '/my/prs' },
-              { label: 'My Reviews', icon: ClipboardCheck, href: '/my/reviews', match: '/my/reviews' },
-              { label: 'Scheduled actions', icon: CalendarClock, href: '/schedule', match: '/schedule' },
-              { label: 'Workflows', icon: Workflow, href: '/workflows', match: '/workflows' },
-              { label: 'Workers & roles', icon: ServerCog, href: '/settings?section=workers', match: '/settings?section=workers' },
-            ]}
-            expanded={isExpanded}
-            currentPath={currentPath}
-          />
-        )}
+        <NavSection
+          title="Across projects"
+          items={[
+            { label: 'My PRs', icon: GitPullRequest, href: '/my/prs', match: '/my/prs' },
+            { label: 'My Reviews', icon: ClipboardCheck, href: '/my/reviews', match: '/my/reviews' },
+            { label: 'Scheduled actions', icon: CalendarClock, href: '/schedule', match: '/schedule' },
+            { label: 'Workflows', icon: Workflow, href: '/workflows', match: '/workflows' },
+            { label: 'Workers & roles', icon: ServerCog, href: '/settings?section=workers', match: '/settings?section=workers' },
+          ]}
+          expanded={isExpanded}
+          currentPath={currentPath}
+        />
       </nav>
 
       {/* Bottom pinned */}
       <div className="flex flex-col gap-1 border-t border-sidebar-border px-2 py-2">
-        {token && (
-          <Link
-            to="/settings"
-            className={cn(
-              'group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
-              location.pathname.startsWith('/settings') && !location.search.includes('section=workers') && 'bg-sidebar-accent/60 text-sidebar-foreground',
-              !isExpanded && 'justify-center px-0',
-            )}
-            title={isExpanded ? undefined : 'Settings'}
-          >
-            <Settings className="size-4 shrink-0" />
-            {isExpanded && <span className="truncate">Settings</span>}
-          </Link>
-        )}
-        {token ? (
-          <button
-            type="button"
-            onClick={signOut}
-            className={cn(
-              'group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
-              !isExpanded && 'justify-center px-0',
-            )}
-            title={isExpanded ? undefined : 'Sign out'}
-          >
-            <LogOut className="size-4 shrink-0" />
-            {isExpanded && <span className="truncate">Sign out</span>}
-          </button>
-        ) : (
-          <Button asChild size="sm" className={cn(!isExpanded && 'px-2')}>
-            <a href="/auth/login">
-              {isExpanded ? 'Sign in' : 'In'}
-            </a>
-          </Button>
-        )}
+        <Link
+          to="/settings"
+          className={cn(
+            'group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
+            location.pathname.startsWith('/settings') && !location.search.includes('section=workers') && 'bg-sidebar-accent/60 text-sidebar-foreground',
+            !isExpanded && 'justify-center px-0',
+          )}
+          title={isExpanded ? undefined : 'Settings'}
+        >
+          <Settings className="size-4 shrink-0" />
+          {isExpanded && <span className="truncate">Settings</span>}
+        </Link>
+
       </div>
     </aside>
   )

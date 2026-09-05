@@ -51,6 +51,11 @@ worth fixing; P3 = low impact but still worth a comment. Cite the file path and 
 diff on the new side. Write each body as the inline comment itself — friendly, direct, specific, with a concrete
 fix — not as a report about a comment.
 
+Approval policy: recommend approval in the summary when there are no P0 or P1 findings, including when the
+review contains only P2 or P3 findings. P2 and P3 findings are nonblocking comments. Recommend changes only
+when a P0 or P1 finding remains. Flywheel derives the approval verdict from the finding severities and handles
+posting the review; do not post a review yourself.
+
 Return the structured output only: a summary and the findings array. If nothing qualifies, return an empty
 findings array and say so in the summary; never invent a finding.`
 

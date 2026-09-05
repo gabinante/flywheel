@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 import { ExternalLink } from 'lucide-react'
 
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import type { components } from '@/lib/api/v1'
 
 type ProjectLinearLink = components['schemas']['ProjectLinearLink']
 
 /** Small "Linear ↗" chip for project headers; renders nothing when the project is not linked. */
 export function ProjectLinearLinkChip({ projectId }: { projectId: string }) {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [link, setLink] = useState<ProjectLinearLink | null>(null)
 
   useEffect(() => {

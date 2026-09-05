@@ -413,6 +413,7 @@ func (st *Store) Save(ctx context.Context, s Settings) error {
 
 // Service owns the current settings and notifies listeners on change.
 type Service struct {
+	updateMu  sync.Mutex
 	store     *Store
 	mu        sync.RWMutex
 	current   Settings
@@ -455,7 +456,7 @@ func Load(ctx context.Context, store *Store, defaults Settings) (*Service, error
 func (s *Service) Current() Settings {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.current
+	return cloneSettings(s.current)
 }
 
 // Saved reports whether settings have ever been saved from the UI.
@@ -475,6 +476,21 @@ func (s *Service) OnChange(fn func(Settings)) {
 // Update replaces the settings (the caller sends the complete struct; the API layer
 // handles secret masking), persists them, and notifies listeners.
 func (s *Service) Update(ctx context.Context, next Settings) (Settings, error) {
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
+	return s.update(ctx, next)
+}
+
+// UpdateOperational preserves separately edited prompt overrides and UI layout.
+func (s *Service) UpdateOperational(ctx context.Context, next Settings) (Settings, error) {
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
+	current := s.Current()
+	next.Prompts = current.Prompts
+	next.Layout = current.Layout
+	return s.update(ctx, next)
+}
+func (s *Service) update(ctx context.Context, next Settings) (Settings, error) {
 	next.Normalize()
 	if err := validate(next); err != nil {
 		return Settings{}, err
@@ -485,7 +501,7 @@ func (s *Service) Update(ctx context.Context, next Settings) (Settings, error) {
 		}
 	}
 	s.mu.Lock()
-	s.current = next
+	s.current = cloneSettings(next)
 	s.saved = true
 	listeners := append([]func(Settings){}, s.listeners...)
 	s.mu.Unlock()
@@ -496,7 +512,7 @@ func (s *Service) Update(ctx context.Context, next Settings) (Settings, error) {
 					slog.Error("settings: listener panicked", "panic", r)
 				}
 			}()
-			fn(next)
+			fn(cloneSettings(next))
 		}()
 	}
 	slog.Info("settings: updated", "linear_enabled", next.Linear.Enabled && next.Linear.APIKey != "", "review_publish", next.Review.Publish,
@@ -506,6 +522,8 @@ func (s *Service) Update(ctx context.Context, next Settings) (Settings, error) {
 
 // UpdatePrompt sets (or clears, when text is empty) the override for one built-in prompt.
 func (s *Service) UpdatePrompt(ctx context.Context, id, text string) (Settings, error) {
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
 	next := s.Current()
 	m := map[string]string{}
 	for k, v := range next.Prompts {
@@ -517,14 +535,16 @@ func (s *Service) UpdatePrompt(ctx context.Context, id, text string) (Settings, 
 		m[id] = text
 	}
 	next.Prompts = m
-	return s.Update(ctx, next)
+	return s.update(ctx, next)
 }
 
 // UpdateLayout replaces only the UI layout, leaving the operational settings untouched.
 func (s *Service) UpdateLayout(ctx context.Context, layout LayoutSettings) (LayoutSettings, error) {
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
 	next := s.Current()
 	next.Layout = layout
-	saved, err := s.Update(ctx, next)
+	saved, err := s.update(ctx, next)
 	if err != nil {
 		return LayoutSettings{}, err
 	}
@@ -564,4 +584,11 @@ func KeyHint(key string) string {
 		return ""
 	}
 	return "…" + key[len(key)-4:]
+}
+
+func cloneSettings(in Settings) Settings {
+	raw, _ := json.Marshal(in)
+	var out Settings
+	_ = json.Unmarshal(raw, &out)
+	return out
 }

@@ -1,4 +1,4 @@
-import type { FlywheelClient } from '@/contexts/auth-context'
+import type { FlywheelClient } from '@/contexts/api-context'
 import type { components } from '@/lib/api/v1'
 
 export type OperatorSettings = components['schemas']['OperatorSettings']

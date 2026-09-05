@@ -1,13 +1,16 @@
 package dispatch
 
 import (
+	"context"
+	"crypto/sha256"
 	"fmt"
-	"log/slog"
+	"github.com/gabinante/flywheel/internal/gitworkspace"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 // WorktreeManager handles git worktree lifecycle for concurrent ticket execution.
@@ -38,47 +41,29 @@ func (m *WorktreeManager) CreateFromRepo(ticketID, branch, repoDir, defaultBranc
 		defaultBranch = "main"
 	}
 
-	dir := m.worktreePathFor(ticketID, branch, repoDir)
-	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
-		return "", fmt.Errorf("worktree mkdir: %w", err)
+	if dir := m.lookup(ticketID); dir != "" {
+		return dir, nil
 	}
-	m.remember(ticketID, dir)
-
-	// Prune stale worktree entries first.
-	prune := exec.Command("git", "worktree", "prune")
-	prune.Dir = repoDir
-	_ = prune.Run()
-
-	// Fetch latest refs before creating worktree to avoid stale/orphaned branches.
-	fetch := exec.Command("git", "fetch", "origin")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	fetch := exec.CommandContext(ctx, "git", "fetch", "origin", defaultBranch)
 	fetch.Dir = repoDir
-	_ = fetch.Run()
-
-	// Remove existing directory if present (leftover from crash).
-	_ = os.RemoveAll(dir)
-
-	// Try creating a new branch; if it already exists, just check it out.
-	cmd := exec.Command("git", "worktree", "add", "-b", branch, dir)
-	cmd.Dir = repoDir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		// Branch may already exist — try without -b, with -f to force.
-		cmd2 := exec.Command("git", "worktree", "add", "-f", dir, branch)
-		cmd2.Dir = repoDir
-		if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
-			return "", fmt.Errorf("worktree add: %s / %s: %w", strings.TrimSpace(string(out)), strings.TrimSpace(string(out2)), err2)
-		}
+	if out, err := fetch.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("fetch base: %s: %w", out, err)
 	}
-
-	// Validate the new worktree shares history with the target branch.
-	if err := ValidateAncestry(dir, "origin/"+defaultBranch); err != nil {
-		// Cleanup the invalid worktree.
-		_ = os.RemoveAll(dir)
-		pruneCleanup := exec.Command("git", "worktree", "prune")
-		pruneCleanup.Dir = repoDir
-		_ = pruneCleanup.Run()
+	base := "origin/" + defaultBranch
+	ref := exec.CommandContext(ctx, "git", "rev-parse", "--verify", base+"^{commit}")
+	ref.Dir = repoDir
+	sha, err := ref.Output()
+	if err != nil {
+		return "", fmt.Errorf("resolve base: %w", err)
+	}
+	desired := m.worktreePathFor(ticketID, branch, repoDir)
+	dir, err := gitworkspace.CreateAt(ctx, repoDir, filepath.Dir(desired), filepath.Base(desired), ticketID, strings.TrimSpace(string(sha)), branch)
+	if err != nil {
 		return "", err
 	}
-
+	m.remember(ticketID, dir)
 	return dir, nil
 }
 
@@ -107,10 +92,8 @@ func (m *WorktreeManager) RemoveFromRepo(ticketID, repoDir string) error {
 	if dir == "" {
 		dir = m.worktreePath(ticketID)
 	}
-	cmd := exec.Command("git", "worktree", "remove", "--force", dir)
-	cmd.Dir = repoDir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("worktree remove: %s: %w", strings.TrimSpace(string(out)), err)
+	if err := gitworkspace.Remove(context.Background(), dir); err != nil {
+		return err
 	}
 	m.forget(ticketID)
 	return nil
@@ -168,10 +151,15 @@ func (m *WorktreeManager) lookup(ticketID string) string {
 	if dir, ok := m.paths[ticketID]; ok {
 		return dir
 	}
-	// Fall back to scanning the convention layout for a directory named after the ticket.
-	matches, _ := filepath.Glob(filepath.Join(m.BaseDir, "*-worktrees", sanitizeDirName(ticketID)))
-	if len(matches) == 1 {
-		return matches[0]
+	matches, _ := filepath.Glob(filepath.Join(m.BaseDir, "*-worktrees", "*.flywheel-owner.json"))
+	for _, path := range matches {
+		dir := strings.TrimSuffix(path, ".flywheel-owner.json")
+		r, err := gitworkspace.Read(dir)
+		if err == nil && r.Key == ticketID {
+			if _, err := os.Stat(dir); err == nil {
+				return dir
+			}
+		}
 	}
 	return ""
 }
@@ -245,19 +233,6 @@ func NewMultiRepoCloneManager(baseDir string) *MultiRepoCloneManager {
 	return &MultiRepoCloneManager{BaseDir: baseDir}
 }
 
-// ResetClone removes an existing clone directory so the next EnsureClone call
-// will perform a fresh clone. Used to recover from corrupted or mismatched clones.
-func (m *MultiRepoCloneManager) ResetClone(alias string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	safe := strings.ReplaceAll(alias, "/", "-")
-	dir := filepath.Join(m.BaseDir, safe)
-
-	slog.Warn("multi-repo: resetting clone", "alias", alias, "dir", dir)
-	return os.RemoveAll(dir)
-}
-
 // currentRemoteURL returns the current origin remote URL for a git repo directory.
 // Returns empty string on any error.
 func currentRemoteURL(dir string) string {
@@ -271,8 +246,8 @@ func currentRemoteURL(dir string) string {
 }
 
 // EnsureClone ensures a local clone exists for the given repo URL and returns its path.
-// If the clone already exists, it fetches latest changes. If the remote URL has changed
-// (e.g. project repo_url was updated), the stale clone is removed and re-cloned.
+// Existing matching clones are fetched. A changed repository uses a separate path;
+// the previous checkout and any worktrees or uncommitted work are preserved.
 func (m *MultiRepoCloneManager) EnsureClone(repoURL, alias string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -281,24 +256,22 @@ func (m *MultiRepoCloneManager) EnsureClone(repoURL, alias string) (string, erro
 	safe := strings.ReplaceAll(alias, "/", "-")
 	dir := filepath.Join(m.BaseDir, safe)
 
-	if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
-		// Clone exists — check if the remote URL still matches.
-		if existing := currentRemoteURL(dir); existing != "" && existing != repoURL {
-			slog.Warn("multi-repo: repo URL changed, removing stale clone",
-				"alias", alias, "old_url", existing, "new_url", repoURL)
-			if err := os.RemoveAll(dir); err != nil {
-				return "", fmt.Errorf("remove stale clone: %w", err)
-			}
-			// Fall through to fresh clone below.
-		} else {
-			// URL matches (or couldn't be determined) — fetch latest.
-			fetch := exec.Command("git", "fetch", "--all")
-			fetch.Dir = dir
-			if out, err := fetch.CombinedOutput(); err != nil {
-				slog.Warn("multi-repo fetch failed", "alias", alias, "output", strings.TrimSpace(string(out)), "error", err)
-			}
-			return dir, nil
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	if _, err := os.Lstat(dir); err == nil && !gitworkspace.Matches(ctx, dir, repoURL) {
+		hash := sha256.Sum256([]byte(repoURL))
+		dir = filepath.Join(m.BaseDir, fmt.Sprintf("%s-%x", safe, hash[:6]))
+	}
+	if _, err := os.Lstat(dir); err == nil {
+		if !gitworkspace.Matches(ctx, dir, repoURL) {
+			return "", fmt.Errorf("existing clone path has unknown repository identity; preserved: %s", dir)
 		}
+		fetch := exec.CommandContext(ctx, "git", "fetch", "--all")
+		fetch.Dir = dir
+		if out, err := fetch.CombinedOutput(); err != nil {
+			return "", fmt.Errorf("fetch clone: %s: %w", out, err)
+		}
+		return dir, nil
 	}
 
 	// Clone the repo.
@@ -306,7 +279,7 @@ func (m *MultiRepoCloneManager) EnsureClone(repoURL, alias string) (string, erro
 		return "", fmt.Errorf("clone mkdir: %w", err)
 	}
 
-	cmd := exec.Command("git", "clone", repoURL, dir)
+	cmd := exec.CommandContext(ctx, "git", "clone", repoURL, dir)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("clone %s: %s: %w", repoURL, strings.TrimSpace(string(out)), err)
 	}

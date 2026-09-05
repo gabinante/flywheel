@@ -2,6 +2,7 @@ package review
 
 import (
 	"context"
+	"github.com/gabinante/flywheel/internal/auth"
 	"time"
 
 	"github.com/gabinante/flywheel/events"
@@ -49,6 +50,10 @@ func NewService(store ReviewStore, ticketSvc TicketService, bus events.Bus) *Ser
 // ApproveTicket transitions the ticket to validated and records the review.
 func (s *Service) ApproveTicket(ctx context.Context, ticketID, reviewerID, notes string) error {
 	actor := ticket.Actor{ID: reviewerID, Type: ticket.ActorHuman}
+	if grant, ok := auth.RunFromContext(ctx); ok {
+		actor.Type = ticket.ActorAgent
+		actor.Role = grant.Role
+	}
 	if err := s.ticketSvc.TransitionTicket(ctx, ticketID, ticket.TriggerApprove, actor, nil); err != nil {
 		return err
 	}
@@ -65,6 +70,10 @@ func (s *Service) ApproveTicket(ctx context.Context, ticketID, reviewerID, notes
 // Use when a ticket was approved by mistake or needs another pass; outputs are preserved.
 func (s *Service) ReopenTicketForReview(ctx context.Context, ticketID, reviewerID, notes string) error {
 	actor := ticket.Actor{ID: reviewerID, Type: ticket.ActorHuman}
+	if grant, ok := auth.RunFromContext(ctx); ok {
+		actor.Type = ticket.ActorAgent
+		actor.Role = grant.Role
+	}
 	if err := s.ticketSvc.TransitionTicket(ctx, ticketID, ticket.TriggerReopenReview, actor, nil); err != nil {
 		return err
 	}
@@ -80,6 +89,10 @@ func (s *Service) ReopenTicketForReview(ctx context.Context, ticketID, reviewerI
 // RejectTicket transitions back to executing, appends notes to context, and records the review.
 func (s *Service) RejectTicket(ctx context.Context, ticketID, reviewerID, notes string) error {
 	actor := ticket.Actor{ID: reviewerID, Type: ticket.ActorHuman}
+	if grant, ok := auth.RunFromContext(ctx); ok {
+		actor.Type = ticket.ActorAgent
+		actor.Role = grant.Role
+	}
 	if err := s.ticketSvc.TransitionTicket(ctx, ticketID, ticket.TriggerReject, actor, nil); err != nil {
 		return err
 	}
@@ -98,6 +111,10 @@ func (s *Service) RejectTicket(ctx context.Context, ticketID, reviewerID, notes 
 // ResolveEscalation transitions awaiting_input -> executing, injects answer, and marks escalation resolved.
 func (s *Service) ResolveEscalation(ctx context.Context, ticketID, escalationID, reviewerID, answer string) error {
 	actor := ticket.Actor{ID: reviewerID, Type: ticket.ActorHuman}
+	if grant, ok := auth.RunFromContext(ctx); ok {
+		actor.Type = ticket.ActorAgent
+		actor.Role = grant.Role
+	}
 	if err := s.ticketSvc.TransitionTicket(ctx, ticketID, ticket.TriggerApprove, actor, nil); err != nil {
 		return err
 	}
@@ -110,6 +127,10 @@ func (s *Service) ResolveEscalation(ctx context.Context, ticketID, escalationID,
 // ResolveTicketInput transitions awaiting_input back to planning or executing, injects answer, and auto-resolves the latest escalation.
 func (s *Service) ResolveTicketInput(ctx context.Context, ticketID, reviewerID, answer, resumeTo string) error {
 	actor := ticket.Actor{ID: reviewerID, Type: ticket.ActorHuman}
+	if grant, ok := auth.RunFromContext(ctx); ok {
+		actor.Type = ticket.ActorAgent
+		actor.Role = grant.Role
+	}
 	payload := map[string]any{}
 	if resumeTo == "executing" {
 		payload["resume_state"] = "executing"

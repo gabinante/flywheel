@@ -1726,16 +1726,20 @@ type PostGateCallbackJSONBody struct {
 
 // ListCodeReviewsParams defines parameters for ListCodeReviews.
 type ListCodeReviewsParams struct {
-	State  *string `form:"state,omitempty" json:"state,omitempty"`
-	Repo   *string `form:"repo,omitempty" json:"repo,omitempty"`
-	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset *int    `form:"offset,omitempty" json:"offset,omitempty"`
+	// ProjectId Restrict results to this project's repositories before pagination
+	ProjectId *string `form:"project_id,omitempty" json:"project_id,omitempty"`
+	State     *string `form:"state,omitempty" json:"state,omitempty"`
+	Repo      *string `form:"repo,omitempty" json:"repo,omitempty"`
+	Limit     *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset    *int    `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // ListFeedbackRoundsParams defines parameters for ListFeedbackRounds.
 type ListFeedbackRoundsParams struct {
-	State *string `form:"state,omitempty" json:"state,omitempty"`
-	Limit *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	// ProjectId Restrict results to this project's repositories before pagination
+	ProjectId *string `form:"project_id,omitempty" json:"project_id,omitempty"`
+	State     *string `form:"state,omitempty" json:"state,omitempty"`
+	Limit     *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // AskCodeReviewJSONBody defines parameters for AskCodeReview.
@@ -1814,8 +1818,10 @@ type PreviewWeeklyRoundupParams struct {
 
 // ListSessionsParams defines parameters for ListSessions.
 type ListSessionsParams struct {
-	Harness *ListSessionsParamsHarness `form:"harness,omitempty" json:"harness,omitempty"`
-	Origin  *ListSessionsParamsOrigin  `form:"origin,omitempty" json:"origin,omitempty"`
+	// ProjectId Restrict results to this project's repositories before pagination
+	ProjectId *string                    `form:"project_id,omitempty" json:"project_id,omitempty"`
+	Harness   *ListSessionsParamsHarness `form:"harness,omitempty" json:"harness,omitempty"`
+	Origin    *ListSessionsParamsOrigin  `form:"origin,omitempty" json:"origin,omitempty"`
 
 	// Repo Repository as owner/name or bare name.
 	Repo   *string                   `form:"repo,omitempty" json:"repo,omitempty"`
@@ -2006,16 +2012,16 @@ type ServerInterface interface {
 	// GetMyReviews Open PRs requesting the operator's review, and open PRs the operator has reviewed
 	// (GET /me/reviews)
 	GetMyReviews(w http.ResponseWriter, r *http.Request, params GetMyReviewsParams)
-	// GetMeStats Lifetime stats for the authenticated agent (tickets created, reviews approved/rejected). For gamification.
+	// GetMeStats Lifetime stats for the local operator (tickets created, reviews approved/rejected). For gamification.
 	// (GET /me/stats)
 	GetMeStats(w http.ResponseWriter, r *http.Request)
 	// GetMeStatsHistory Daily activity counts for the last N days (for activity graph). Oldest day first.
 	// (GET /me/stats/history)
 	GetMeStatsHistory(w http.ResponseWriter, r *http.Request, params GetMeStatsHistoryParams)
-	// ListOrgs List organizations for the authenticated user (OAuth required)
+	// ListOrgs List organizations for the local operator
 	// (GET /orgs)
 	ListOrgs(w http.ResponseWriter, r *http.Request)
-	// CreateOrg Create organization (auth required)
+	// CreateOrg Create organization
 	// (POST /orgs)
 	CreateOrg(w http.ResponseWriter, r *http.Request)
 
@@ -2202,6 +2208,19 @@ func (siw *ServerInterfaceWrapper) ListCodeReviews(w http.ResponseWriter, r *htt
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListCodeReviewsParams
 
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project_id", r.URL.Query(), &params.ProjectId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "state" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -2287,6 +2306,19 @@ func (siw *ServerInterfaceWrapper) ListFeedbackRounds(w http.ResponseWriter, r *
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListFeedbackRoundsParams
+
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project_id", r.URL.Query(), &params.ProjectId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		}
+		return
+	}
 
 	// ------------- Optional query parameter "state" -------------
 
@@ -3593,6 +3625,19 @@ func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.R
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListSessionsParams
+
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project_id", r.URL.Query(), &params.ProjectId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		}
+		return
+	}
 
 	// ------------- Optional query parameter "harness" -------------
 
@@ -7472,16 +7517,16 @@ type StrictServerInterface interface {
 	// GetMyReviews Open PRs requesting the operator's review, and open PRs the operator has reviewed
 	// (GET /me/reviews)
 	GetMyReviews(ctx context.Context, request GetMyReviewsRequestObject) (GetMyReviewsResponseObject, error)
-	// GetMeStats Lifetime stats for the authenticated agent (tickets created, reviews approved/rejected). For gamification.
+	// GetMeStats Lifetime stats for the local operator (tickets created, reviews approved/rejected). For gamification.
 	// (GET /me/stats)
 	GetMeStats(ctx context.Context, request GetMeStatsRequestObject) (GetMeStatsResponseObject, error)
 	// GetMeStatsHistory Daily activity counts for the last N days (for activity graph). Oldest day first.
 	// (GET /me/stats/history)
 	GetMeStatsHistory(ctx context.Context, request GetMeStatsHistoryRequestObject) (GetMeStatsHistoryResponseObject, error)
-	// ListOrgs List organizations for the authenticated user (OAuth required)
+	// ListOrgs List organizations for the local operator
 	// (GET /orgs)
 	ListOrgs(ctx context.Context, request ListOrgsRequestObject) (ListOrgsResponseObject, error)
-	// CreateOrg Create organization (auth required)
+	// CreateOrg Create organization
 	// (POST /orgs)
 	CreateOrg(ctx context.Context, request CreateOrgRequestObject) (CreateOrgResponseObject, error)
 

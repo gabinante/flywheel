@@ -131,14 +131,22 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			if req != nil && req.Session != nil {
 				ctx = context.WithValue(ctx, sessionContextKey{}, req.Session)
 			}
+			if req != nil && req.Params != nil {
+				if err := authorizeRun(ctx, req.Params.Name, args); err != nil {
+					return toolErrTriple(apierrors.New(apierrors.CodeForbidden, err.Error(), false))
+				}
+				if err := authorizeRunSubject(ctx, b, args); err != nil {
+					return toolErrTriple(apierrors.New(apierrors.CodeForbidden, err.Error(), false))
+				}
+			}
 			return f(b, ctx, args)
 		}
 	}
 
-	mcp.AddTool(s, &mcp.Tool{Name: "list_orgs", Description: "List organizations you belong to. Returns id, name, slug for each. Requires OAuth. Use this to see your workspaces (e.g. personal org, or teams you were added to).", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "list_orgs", Description: "List organizations you belong to. Returns id, name, slug for each. Requires a registered local MCP key. Use this to see your workspaces (e.g. personal org, or teams you were added to).", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"agent_id": map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+			"agent_id": map[string]any{"type": "string", "description": "Agent ID (optional, inferred from MCP credentials over HTTP)"},
 		},
 		"additionalProperties": false,
 	}}, wrap(listOrgsHandler))
@@ -148,7 +156,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"properties": map[string]any{
 			"name":                     map[string]any{"type": "string", "description": "Project name"},
 			"slug":                     map[string]any{"type": "string", "description": "URL-friendly slug (optional, auto-generated if omitted)"},
-			"agent_id":                 map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+			"agent_id":                 map[string]any{"type": "string", "description": "Agent ID (optional, inferred from MCP credentials over HTTP)"},
 			"template_id":              map[string]any{"type": "string", "description": "Project template ID to seed workstreams and tickets from (optional). Use list_project_templates to see available templates."},
 			"work_stream_template_ids": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Specific workstream template IDs to include (optional). If omitted with template_id, all template workstreams are included."},
 		},
@@ -162,7 +170,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"name":       map[string]any{"type": "string", "description": "Work stream name"},
 			"slug":       map[string]any{"type": "string", "description": "URL-friendly slug (optional, auto-generated if omitted)"},
 			"plan":       map[string]any{"type": "string", "description": "Markdown plan for the work stream (optional)"},
-			"agent_id":   map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+			"agent_id":   map[string]any{"type": "string", "description": "Agent ID (optional, inferred from MCP credentials over HTTP)"},
 		},
 		"required":             []string{"project_id", "name"},
 		"additionalProperties": false,
@@ -172,7 +180,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"properties": map[string]any{
 			"project_id": map[string]any{"type": "string", "description": "Project ID"},
 			"status":     map[string]any{"type": "string", "description": "Filter by status: active, closed, or all (default: active)", "enum": []string{"active", "closed", "all"}},
-			"agent_id":   map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+			"agent_id":   map[string]any{"type": "string", "description": "Agent ID (optional, inferred from MCP credentials over HTTP)"},
 		},
 		"required":             []string{"project_id"},
 		"additionalProperties": false,
@@ -182,7 +190,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"properties": map[string]any{
 			"project_id":     map[string]any{"type": "string", "description": "Project ID"},
 			"work_stream_id": map[string]any{"type": "string", "description": "Work stream ID"},
-			"agent_id":       map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+			"agent_id":       map[string]any{"type": "string", "description": "Agent ID (optional, inferred from MCP credentials over HTTP)"},
 		},
 		"required":             []string{"project_id", "work_stream_id"},
 		"additionalProperties": false,
@@ -196,7 +204,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"plan":           map[string]any{"type": "string", "description": "Markdown plan (optional, keeps current if omitted)"},
 			"branch":         map[string]any{"type": "string", "description": "Git branch name (optional, keeps current if omitted)"},
 			"status":         map[string]any{"type": "string", "description": "Status: active or closed (optional, keeps current if omitted)", "enum": []string{"active", "closed"}},
-			"agent_id":       map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+			"agent_id":       map[string]any{"type": "string", "description": "Agent ID (optional, inferred from MCP credentials over HTTP)"},
 		},
 		"required":             []string{"project_id", "work_stream_id"},
 		"additionalProperties": false,
@@ -207,7 +215,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"project_id":     map[string]any{"type": "string", "description": "Project ID"},
 			"work_stream_id": map[string]any{"type": "string", "description": "Work stream ID"},
 			"plan":           map[string]any{"type": "string", "description": "New Markdown plan content"},
-			"agent_id":       map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+			"agent_id":       map[string]any{"type": "string", "description": "Agent ID (optional, inferred from MCP credentials over HTTP)"},
 		},
 		"required":             []string{"project_id", "work_stream_id", "plan"},
 		"additionalProperties": false,
@@ -233,17 +241,17 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"target_repo":      map[string]any{"type": "string", "description": "Target repository alias for multi-repo projects (optional, from list_project_repositories; omit for primary repo)"},
 			"workflow_id":      map[string]any{"type": "string", "description": "Workflow template to assign (optional). Subtickets should use a simpler workflow like 'Subticket SDLC' or 'Fast Track'. If omitted, uses project default."},
 			"inputs":           map[string]any{"type": "object", "description": "Key-value pairs for ticket inputs (optional). Use for metadata like decomposed_from.", "additionalProperties": true},
-			"agent_id":         map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+			"agent_id":         map[string]any{"type": "string", "description": "Agent ID (optional, inferred from MCP credentials over HTTP)"},
 		},
 		"required":             []string{"project_id", "title"},
 		"additionalProperties": false,
 	}}, wrap(createTicketHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "list_projects", Description: "List projects for the authenticated user's organization(s). Requires OAuth (agent linked to a user). Returns only active projects by default. Pass include_closed: true to include closed projects. Optionally pass org_id to limit to one org (must be an org you belong to).", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "list_projects", Description: "List projects for the authenticated user's organization(s). Requires a registered local MCP key (agent linked to a user). Returns only active projects by default. Pass include_closed: true to include closed projects. Optionally pass org_id to limit to one org (must be an org you belong to).", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"org_id":         map[string]any{"type": "string", "description": "Organization ID to filter by (optional, must be an org you belong to)"},
 			"include_closed": map[string]any{"type": "boolean", "description": "Include closed projects (default: false)"},
-			"agent_id":       map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+			"agent_id":       map[string]any{"type": "string", "description": "Agent ID (optional, inferred from MCP credentials over HTTP)"},
 		},
 		"additionalProperties": false,
 	}}, wrap(listProjectsHandler))
@@ -263,17 +271,17 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"system_prompt": map[string]any{"type": "string", "description": "System prompt (optional, replaces existing)"},
 			"key_files":     map[string]any{"type": "array", "description": "JSON array of {path, snippet} objects (optional, replaces existing)", "items": map[string]any{"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string"}, "snippet": map[string]any{"type": "string"}}, "required": []string{"path", "snippet"}}},
 			"extra":         map[string]any{"type": "object", "description": "JSON object of string key-value pairs (optional, replaces existing)", "additionalProperties": map[string]any{"type": "string"}},
-			"agent_id":      map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+			"agent_id":      map[string]any{"type": "string", "description": "Agent ID (optional, inferred from MCP credentials over HTTP)"},
 		},
 		"required":             []string{"project_id"},
 		"additionalProperties": false,
 	}}, wrap(updateProjectContextHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "update_project_status", Description: "Set a project's status to active or closed. Use to close a project when work is done, or reopen it (set to active) for follow-up. Requires OAuth and org access. Pass project_id and status (\"active\" or \"closed\"). Returns the updated project.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "update_project_status", Description: "Set a project's status to active or closed. Use to close a project when work is done, or reopen it (set to active) for follow-up. Requires a registered local MCP key and org access. Pass project_id and status (\"active\" or \"closed\"). Returns the updated project.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"project_id": map[string]any{"type": "string", "description": "Project ID"},
 			"status":     map[string]any{"type": "string", "description": "New status: active or closed", "enum": []string{"active", "closed"}},
-			"agent_id":   map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+			"agent_id":   map[string]any{"type": "string", "description": "Agent ID (optional, inferred from MCP credentials over HTTP)"},
 		},
 		"required":             []string{"project_id", "status"},
 		"additionalProperties": false,
@@ -304,28 +312,29 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"ticket_id":      map[string]any{"type": "string", "description": "Ticket ID"},
 			"depends_on":     map[string]any{"type": "array", "description": "Array of ticket ID strings this ticket depends on (optional)", "items": map[string]any{"type": "string"}},
 			"work_stream_id": map[string]any{"type": "string", "description": "Work stream ID to attach this ticket to (optional)"},
-			"agent_id":       map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+			"agent_id":       map[string]any{"type": "string", "description": "Agent ID (optional, inferred from MCP credentials over HTTP)"},
 		},
 		"required":             []string{"project_id", "ticket_id"},
 		"additionalProperties": false,
 	}}, wrap(updateTicketHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "claim_ticket", Description: "Claim the next available ticket in the queue for a project. Returns the ticket, lease (lease_token, expires_at), and **workflow** (next_steps + note). If the ticket has a work_stream and the project has repo_url, the response may include git_instruction (checkout branch, or create branch + update_work_stream if branch is not set yet). Optional idempotency_key: retries with the same key return the same ticket/lease (renewed if still valid) so the same agent does not claim a different ticket. You must start_ticket and then either submit_ticket or escalate_ticket before the lease expires, or renew_lease to extend. agent_id is inferred from OAuth when using URL auth.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "claim_ticket", Description: "Claim the next available ticket in the queue for a project. Returns the ticket, lease (lease_token, expires_at), and **workflow** (next_steps + note). If the ticket has a work_stream and the project has repo_url, the response may include git_instruction (checkout branch, or create branch + update_work_stream if branch is not set yet). Optional idempotency_key: retries with the same key return the same ticket/lease (renewed if still valid) so the same agent does not claim a different ticket. You must start_ticket and then either submit_ticket or escalate_ticket before the lease expires, or renew_lease to extend. agent_id is inferred from MCP credentials over HTTP.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
+			"ticket_id":       map[string]any{"type": "string", "description": "Exact ticket to claim; never selects a different ticket"},
 			"project_id":      map[string]any{"type": "string", "description": "Project ID"},
 			"priority":        map[string]any{"type": "integer", "description": "Claim only tickets at this priority level 0-3 (optional, claims next available if omitted)", "minimum": 0, "maximum": 3},
 			"idempotency_key": map[string]any{"type": "string", "description": "Idempotency key to prevent claiming multiple tickets (optional)"},
-			"agent_id":        map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+			"agent_id":        map[string]any{"type": "string", "description": "Agent ID (optional, inferred from MCP credentials over HTTP)"},
 		},
 		"required":             []string{"project_id"},
 		"additionalProperties": false,
 	}}, wrap(claimTicketHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "start_ticket", Description: "Move the ticket from claimed to executing. Response includes **workflow** (next_steps + note). Call after claim_ticket and get_ticket when you are ready to do the work. Requires the lease_token from claim_ticket. agent_id is inferred from OAuth when using URL auth.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "start_ticket", Description: "Move the ticket from claimed to executing. Response includes **workflow** (next_steps + note). Call after claim_ticket and get_ticket when you are ready to do the work. Requires the lease_token from claim_ticket. agent_id is inferred from MCP credentials over HTTP.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"ticket_id":   map[string]any{"type": "string", "description": "Ticket ID"},
 			"lease_token": map[string]any{"type": "string", "description": "Lease token from claim_ticket"},
-			"agent_id":    map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+			"agent_id":    map[string]any{"type": "string", "description": "Agent ID (optional, inferred from MCP credentials over HTTP)"},
 		},
 		"required":             []string{"ticket_id", "lease_token"},
 		"additionalProperties": false,
@@ -376,7 +385,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"type": "object",
 		"properties": map[string]any{
 			"ticket_id": map[string]any{"type": "string", "description": "Ticket ID to force-release"},
-			"agent_id":  map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+			"agent_id":  map[string]any{"type": "string", "description": "Agent ID (optional, inferred from MCP credentials over HTTP)"},
 		},
 		"required":             []string{"ticket_id"},
 		"additionalProperties": false,
@@ -385,7 +394,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"type": "object",
 		"properties": map[string]any{
 			"project_id": map[string]any{"type": "string", "description": "Project ID"},
-			"agent_id":   map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+			"agent_id":   map[string]any{"type": "string", "description": "Agent ID (optional, inferred from MCP credentials over HTTP)"},
 		},
 		"required":             []string{"project_id"},
 		"additionalProperties": false,
@@ -398,32 +407,32 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"required":             []string{"ticket_id"},
 		"additionalProperties": false,
 	}}, wrap(getTraceHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "approve_ticket", Description: "Approve a ticket in awaiting_validation. Moves it to validated. Call when the user says to approve, ship it, looks good, etc. reviewer_id is inferred from OAuth.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "approve_ticket", Description: "Approve a ticket in awaiting_validation. Moves it to validated. Call when the user says to approve, ship it, looks good, etc. reviewer_id is inferred from MCP credentials.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"ticket_id": map[string]any{"type": "string", "description": "Ticket ID"},
 			"notes":     map[string]any{"type": "string", "description": "Reviewer notes (optional)"},
-			"agent_id":  map[string]any{"type": "string", "description": "Reviewer ID (optional, inferred from OAuth when using URL auth)"},
+			"agent_id":  map[string]any{"type": "string", "description": "Reviewer ID (optional, inferred from MCP credentials over HTTP)"},
 		},
 		"required":             []string{"ticket_id"},
 		"additionalProperties": false,
 	}}, wrap(approveTicketHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "reject_ticket", Description: "Reject a ticket in awaiting_validation. Returns it to executing with your notes appended so the agent can fix and resubmit. Call when the user says reject, needs changes, etc. reviewer_id is inferred from OAuth.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "reject_ticket", Description: "Reject a ticket in awaiting_validation. Returns it to executing with your notes appended so the agent can fix and resubmit. Call when the user says reject, needs changes, etc. reviewer_id is inferred from MCP credentials.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"ticket_id": map[string]any{"type": "string", "description": "Ticket ID"},
 			"notes":     map[string]any{"type": "string", "description": "Rejection notes explaining what to fix"},
-			"agent_id":  map[string]any{"type": "string", "description": "Reviewer ID (optional, inferred from OAuth when using URL auth)"},
+			"agent_id":  map[string]any{"type": "string", "description": "Reviewer ID (optional, inferred from MCP credentials over HTTP)"},
 		},
 		"required":             []string{"ticket_id", "notes"},
 		"additionalProperties": false,
 	}}, wrap(rejectTicketHandler))
-	mcp.AddTool(s, &mcp.Tool{Name: "reopen_ticket", Description: "Move a ticket from closed back to draft (e.g. mistaken closure). Preserves outputs. Only call when the user explicitly asks to reopen a completed ticket. reviewer_id is inferred from OAuth.", InputSchema: map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "reopen_ticket", Description: "Move a ticket from closed back to draft (e.g. mistaken closure). Preserves outputs. Only call when the user explicitly asks to reopen a completed ticket. reviewer_id is inferred from MCP credentials.", InputSchema: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"ticket_id": map[string]any{"type": "string", "description": "Ticket ID"},
 			"notes":     map[string]any{"type": "string", "description": "Notes explaining why the ticket is being reopened (optional)"},
-			"agent_id":  map[string]any{"type": "string", "description": "Reviewer ID (optional, inferred from OAuth when using URL auth)"},
+			"agent_id":  map[string]any{"type": "string", "description": "Reviewer ID (optional, inferred from MCP credentials over HTTP)"},
 		},
 		"required":             []string{"ticket_id"},
 		"additionalProperties": false,
@@ -433,7 +442,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 		"properties": map[string]any{
 			"ticket_id": map[string]any{"type": "string", "description": "Ticket ID"},
 			"reason":    map[string]any{"type": "string", "description": "Reason for cancellation"},
-			"agent_id":  map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+			"agent_id":  map[string]any{"type": "string", "description": "Agent ID (optional, inferred from MCP credentials over HTTP)"},
 		},
 		"required":             []string{"ticket_id", "reason"},
 		"additionalProperties": false,
@@ -444,7 +453,7 @@ func RegisterTools(s *mcp.Server, b *Backend) {
 			"ticket_id": map[string]any{"type": "string", "description": "Ticket ID"},
 			"answer":    map[string]any{"type": "string", "description": "Answer to the agent's question"},
 			"resume_to": map[string]any{"type": "string", "description": "State to resume to: planning (default) or executing", "enum": []string{"planning", "executing"}},
-			"agent_id":  map[string]any{"type": "string", "description": "Reviewer ID (optional, inferred from OAuth when using URL auth)"},
+			"agent_id":  map[string]any{"type": "string", "description": "Reviewer ID (optional, inferred from MCP credentials over HTTP)"},
 		},
 		"required":             []string{"ticket_id", "answer"},
 		"additionalProperties": false,
@@ -603,7 +612,7 @@ func getAgentIDFromArgs(ctx context.Context, args map[string]any) (string, error
 			}
 		}
 	}
-	return "", fmt.Errorf("agent_id required (inferred from OAuth when using URL auth, or pass in request)")
+	return "", fmt.Errorf("agent_id required (inferred from MCP credentials over HTTP, or pass in request)")
 }
 
 // stuckTicketIDs returns ticket IDs in state claimed or executing for the project (so the user can direct force-release).
@@ -659,7 +668,7 @@ func listOrgsHandler(b *Backend, ctx context.Context, args map[string]any) (*mcp
 		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "agent not found", false))
 	}
 	if agent.UserID == "" {
-		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "list_orgs requires OAuth login (agent must be linked to a user). Use GitHub sign-in via MCP URL auth.", false))
+		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "list_orgs requires an agent linked to the local operator (agent must be linked to a user). Register a local agent with POST /agents.", false))
 	}
 	orgs, err := b.Org.ListOrgsForUser(ctx, agent.UserID)
 	if err != nil {
@@ -681,14 +690,14 @@ func createProjectHandler(b *Backend, ctx context.Context, args map[string]any) 
 		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "agent not found", false))
 	}
 	if agent.UserID == "" {
-		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "create_project requires OAuth login.", false))
+		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "create_project requires an agent linked to the local operator.", false))
 	}
 	orgs, err := b.Org.ListOrgsForUser(ctx, agent.UserID)
 	if err != nil {
 		return toolErrTriple(apierrors.MapError(err))
 	}
 	if len(orgs) == 0 {
-		return toolErrTriple(apierrors.New(apierrors.CodeForbidden, "you have no organization; sign in again to ensure your default org exists", false))
+		return toolErrTriple(apierrors.New(apierrors.CodeForbidden, "you have no organization; restart Flywheel to provision the local workspace", false))
 	}
 	name, err := requireString(args, "name")
 	if err != nil {
@@ -968,7 +977,7 @@ func checkProjectAccess(ctx context.Context, b *Backend, agentID, projectID stri
 		return apierrors.New(apierrors.CodeUnauthorized, "agent not found", false)
 	}
 	if agent.UserID == "" {
-		return apierrors.New(apierrors.CodeUnauthorized, "OAuth login required", false)
+		return apierrors.New(apierrors.CodeUnauthorized, "agent must be linked to the local operator; register with POST /agents", false)
 	}
 	proj, err := b.Project.GetProject(ctx, projectID)
 	if err != nil {
@@ -1021,7 +1030,7 @@ func createTicketHandler(b *Backend, ctx context.Context, args map[string]any) (
 		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "agent not found", false))
 	}
 	if agent.UserID == "" {
-		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "create_ticket requires OAuth login.", false))
+		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "create_ticket requires an agent linked to the local operator.", false))
 	}
 	orgIDs, err := b.Org.ListOrgIDsForUser(ctx, agent.UserID)
 	if err != nil {
@@ -1141,7 +1150,7 @@ func listProjectsHandler(b *Backend, ctx context.Context, args map[string]any) (
 		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "agent not found", false))
 	}
 	if agent.UserID == "" {
-		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "list_projects requires OAuth login (agent must be linked to a user). Use GitHub sign-in via MCP URL auth.", false))
+		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "list_projects requires an agent linked to the local operator (agent must be linked to a user). Register a local agent with POST /agents.", false))
 	}
 	orgIDs, err := b.Org.ListOrgIDsForUser(ctx, agent.UserID)
 	if err != nil {
@@ -1210,7 +1219,7 @@ func updateProjectContextHandler(b *Backend, ctx context.Context, args map[strin
 		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "agent not found", false))
 	}
 	if agent.UserID == "" {
-		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "update_project_context requires OAuth login", false))
+		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "update_project_context requires an agent linked to the local operator", false))
 	}
 	orgIDs, err := b.Org.ListOrgIDsForUser(ctx, agent.UserID)
 	if err != nil {
@@ -1286,7 +1295,7 @@ func updateProjectStatusHandler(b *Backend, ctx context.Context, args map[string
 		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "agent not found", false))
 	}
 	if agent.UserID == "" {
-		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "update_project_status requires OAuth login", false))
+		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "update_project_status requires an agent linked to the local operator", false))
 	}
 	orgIDs, err := b.Org.ListOrgIDsForUser(ctx, agent.UserID)
 	if err != nil {
@@ -1426,7 +1435,7 @@ func updateTicketHandler(b *Backend, ctx context.Context, args map[string]any) (
 		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "agent not found", false))
 	}
 	if agent.UserID == "" {
-		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "update_ticket requires OAuth login.", false))
+		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "update_ticket requires an agent linked to the local operator.", false))
 	}
 	proj, err := b.Project.GetProject(ctx, projectID)
 	if err != nil {
@@ -1496,7 +1505,17 @@ func claimTicketHandler(b *Backend, ctx context.Context, args map[string]any) (*
 		priority = &p
 	}
 	idempotencyKey := getString(args, "idempotency_key", "")
-	t, lease, err := b.Queue.ClaimTicket(ctx, agentID, projectID, priority, idempotencyKey)
+	var t *ticket.Ticket
+	var lease *queue.Lease
+	if exact := getString(args, "ticket_id", ""); exact != "" {
+		t, lease, err = b.Queue.ClaimTicketByID(ctx, agentID, projectID, exact)
+		if err != nil {
+			return toolErrTriple(apierrors.MapError(err))
+		}
+	} else {
+		t, lease, err = b.Queue.ClaimTicket(ctx, agentID, projectID, priority, idempotencyKey)
+	}
+
 	if err != nil {
 		if errors.Is(err, queue.ErrNoTicketAvailable) {
 			if ss := sessionFromContext(ctx); ss != nil {
@@ -1701,7 +1720,7 @@ func forceReleaseLeaseHandler(b *Backend, ctx context.Context, args map[string]a
 	}
 	agent, err := b.AgentStore.GetByID(ctx, agentID)
 	if err != nil || agent == nil || agent.UserID == "" {
-		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "force_release_lease requires OAuth login", false))
+		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "force_release_lease requires an agent linked to the local operator", false))
 	}
 	orgIDs, err := b.Org.ListOrgIDsForUser(ctx, agent.UserID)
 	if err != nil {
@@ -1740,7 +1759,7 @@ func listPendingReviewsHandler(b *Backend, ctx context.Context, args map[string]
 		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "agent not found", false))
 	}
 	if agent.UserID == "" {
-		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "list_pending_reviews requires OAuth login.", false))
+		return toolErrTriple(apierrors.New(apierrors.CodeUnauthorized, "list_pending_reviews requires an agent linked to the local operator.", false))
 	}
 	proj, err := b.Project.GetProject(ctx, projectID)
 	if err != nil {

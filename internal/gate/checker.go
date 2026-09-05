@@ -12,11 +12,12 @@ type RequirementChecker interface {
 
 // CheckContext provides the data needed by requirement checkers.
 type CheckContext struct {
-	TicketID  string
-	ProjectID string
-	PRURL     string         // from ticket outputs["pr_url"]
-	PhaseID   string         // current workflow phase ID
-	Outputs   map[string]any // ticket outputs map
+	PhaseEnteredAt string
+	TicketID       string
+	ProjectID      string
+	PRURL          string         // from ticket outputs["pr_url"]
+	PhaseID        string         // current workflow phase ID
+	Outputs        map[string]any // ticket outputs map
 }
 
 // CheckerRegistry routes requirement checks to the appropriate checker.
@@ -68,4 +69,13 @@ func Unsatisfied(statuses []GateRequirementStatus) []GateRequirementStatus {
 		}
 	}
 	return result
+}
+
+func AnyFailed(statuses []GateRequirementStatus) bool {
+	for _, status := range statuses {
+		if status.Failed {
+			return true
+		}
+	}
+	return false
 }

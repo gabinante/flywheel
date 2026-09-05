@@ -7,7 +7,7 @@ import { PRCardRow } from '@/components/pr-card-row'
 import { reviewStateLabel } from '@/lib/pr-format'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { formatApiError } from '@/lib/api/client'
 import { relativeTime } from '@/lib/sessions-format'
 import type { components } from '@/lib/api/v1'
@@ -18,7 +18,7 @@ type PullRequestCard = components['schemas']['PullRequestCard']
 const ACTIVE_REVIEW_STATES = new Set(['queued', 'fetching', 'reviewing', 'publishing'])
 
 export function MyReviewsPage() {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [data, setData] = useState<MyReviews | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)

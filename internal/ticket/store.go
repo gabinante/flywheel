@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/gabinante/flywheel/db"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -26,7 +27,7 @@ func NewStore(pool *pgxpool.Pool) *Store {
 // NextSequence atomically increments and returns the next ticket number (1-based) for the project.
 func (s *Store) NextSequence(ctx context.Context, projectID string) (int64, error) {
 	var next int64
-	err := s.pool.QueryRow(ctx,
+	err := db.Executor(ctx, s.pool).QueryRow(ctx,
 		`UPDATE ticket_sequences SET next_val = next_val + 1 WHERE project_id = $1 RETURNING next_val`,
 		projectID).Scan(&next)
 	return next, err
@@ -38,7 +39,7 @@ func (s *Store) Create(ctx context.Context, t *Ticket) error {
 	ctxJSON, _ := json.Marshal(t.Context)
 	inJSON, _ := json.Marshal(t.Inputs)
 	outJSON, _ := json.Marshal(t.Outputs)
-	_, err := s.pool.Exec(ctx,
+	_, err := db.Executor(ctx, s.pool).Exec(ctx,
 		`INSERT INTO tickets (id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, workflow_id, workflow_version, workflow_phase, workflow_phase_status, workflow_phase_entered_at, created_by, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
 		t.ID, t.ProjectID, t.Title, string(t.Type), int(t.Priority), string(t.State), t.Version,
@@ -53,7 +54,7 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Ticket, error) {
 	var dependsOn []string
 	var assignedTo, workStreamID, environmentID, targetRepo, workflowID, workflowPhase, workflowPhaseStatus *string
 	var workflowVersion *int
-	err := s.pool.QueryRow(ctx,
+	err := db.Executor(ctx, s.pool).QueryRow(ctx,
 		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_version, workflow_phase, workflow_phase_status, workflow_phase_entered_at, created_by, created_at, updated_at
 		 FROM tickets WHERE id = $1`, id).
 		Scan(&t.ID, &t.ProjectID, &t.Title, &t.Type, &t.Priority, &t.State, &t.Version,
@@ -103,7 +104,7 @@ func (s *Store) GetByIDs(ctx context.Context, ids []string) ([]*Ticket, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	rows, err := s.pool.Query(ctx,
+	rows, err := db.Executor(ctx, s.pool).Query(ctx,
 		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_version, workflow_phase, workflow_phase_status, workflow_phase_entered_at, created_by, created_at, updated_at
 		 FROM tickets WHERE id = ANY($1)`, ids)
 	if err != nil {
@@ -129,7 +130,7 @@ func (s *Store) GetByProject(ctx context.Context, projectID string, workStreamID
 		args = append(args, string(state))
 	}
 	q += ` ORDER BY priority, created_at`
-	rows, err := s.pool.Query(ctx, q, args...)
+	rows, err := db.Executor(ctx, s.pool).Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +152,7 @@ func (s *Store) ListByState(ctx context.Context, projectID string, state State) 
 		     FROM tickets WHERE state = $1 ORDER BY priority, created_at`
 		args = []any{string(state)}
 	}
-	rows, err := s.pool.Query(ctx, q, args...)
+	rows, err := db.Executor(ctx, s.pool).Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +162,7 @@ func (s *Store) ListByState(ctx context.Context, projectID string, state State) 
 
 // UpdateState updates state and version (optimistic lock). Returns error if version mismatch.
 func (s *Store) UpdateState(ctx context.Context, id string, version int, newState State, assignedTo string) error {
-	cmd, err := s.pool.Exec(ctx,
+	cmd, err := db.Executor(ctx, s.pool).Exec(ctx,
 		`UPDATE tickets SET state = $1, version = version + 1, updated_at = now(), assigned_to = $2 WHERE id = $3 AND version = $4`,
 		string(newState), nullIfEmpty(assignedTo), id, version)
 	if err != nil {
@@ -176,7 +177,7 @@ func (s *Store) UpdateState(ctx context.Context, id string, version int, newStat
 // UpdateOutputs sets outputs and updates state/version.
 func (s *Store) UpdateOutputs(ctx context.Context, id string, version int, outputs map[string]any) error {
 	outJSON, _ := json.Marshal(outputs)
-	cmd, err := s.pool.Exec(ctx,
+	cmd, err := db.Executor(ctx, s.pool).Exec(ctx,
 		`UPDATE tickets SET outputs = $1, version = version + 1, updated_at = now() WHERE id = $2 AND version = $3`,
 		outJSON, id, version)
 	if err != nil {
@@ -191,25 +192,25 @@ func (s *Store) UpdateOutputs(ctx context.Context, id string, version int, outpu
 // UpdateContext replaces the ticket_context JSONB (for appending prior attempts / human answer).
 func (s *Store) UpdateContext(ctx context.Context, id string, ctxVal TicketContext) error {
 	ctxJSON, _ := json.Marshal(ctxVal)
-	_, err := s.pool.Exec(ctx, `UPDATE tickets SET ticket_context = $1, updated_at = now() WHERE id = $2`, ctxJSON, id)
+	_, err := db.Executor(ctx, s.pool).Exec(ctx, `UPDATE tickets SET ticket_context = $1, updated_at = now() WHERE id = $2`, ctxJSON, id)
 	return err
 }
 
 // UpdateDependsOn sets the depends_on list for a ticket.
 func (s *Store) UpdateDependsOn(ctx context.Context, id string, dependsOn []string) error {
-	_, err := s.pool.Exec(ctx, `UPDATE tickets SET depends_on = $1, updated_at = now() WHERE id = $2`, dependsOn, id)
+	_, err := db.Executor(ctx, s.pool).Exec(ctx, `UPDATE tickets SET depends_on = $1, updated_at = now() WHERE id = $2`, dependsOn, id)
 	return err
 }
 
 // UpdateWorkStreamID sets the work_stream_id for a ticket.
 func (s *Store) UpdateWorkStreamID(ctx context.Context, id string, workStreamID string) error {
-	_, err := s.pool.Exec(ctx, `UPDATE tickets SET work_stream_id = $1, updated_at = now() WHERE id = $2`, nullIfEmpty(workStreamID), id)
+	_, err := db.Executor(ctx, s.pool).Exec(ctx, `UPDATE tickets SET work_stream_id = $1, updated_at = now() WHERE id = $2`, nullIfEmpty(workStreamID), id)
 	return err
 }
 
 // UpdateEnvironmentID sets the environment_id for a ticket.
 func (s *Store) UpdateEnvironmentID(ctx context.Context, id string, environmentID string) error {
-	_, err := s.pool.Exec(ctx, `UPDATE tickets SET environment_id = $1, updated_at = now() WHERE id = $2`, nullIfEmpty(environmentID), id)
+	_, err := db.Executor(ctx, s.pool).Exec(ctx, `UPDATE tickets SET environment_id = $1, updated_at = now() WHERE id = $2`, nullIfEmpty(environmentID), id)
 	return err
 }
 
@@ -218,23 +219,23 @@ func (s *Store) UpdateEnvironmentID(ctx context.Context, id string, environmentI
 func (s *Store) UpdateWorkflowPhase(ctx context.Context, id string, workflowPhase string) error {
 	if workflowPhase == "" {
 		// Workflow complete — clear status and entered_at.
-		_, err := s.pool.Exec(ctx, `UPDATE tickets SET workflow_phase = NULL, workflow_phase_status = '', workflow_phase_entered_at = NULL, updated_at = now() WHERE id = $1`, id)
+		_, err := db.Executor(ctx, s.pool).Exec(ctx, `UPDATE tickets SET workflow_phase = NULL, workflow_phase_status = '', workflow_phase_entered_at = NULL, updated_at = now() WHERE id = $1`, id)
 		return err
 	}
-	_, err := s.pool.Exec(ctx, `UPDATE tickets SET workflow_phase = $1, workflow_phase_status = 'ready', workflow_phase_entered_at = now(), updated_at = now() WHERE id = $2`, workflowPhase, id)
+	_, err := db.Executor(ctx, s.pool).Exec(ctx, `UPDATE tickets SET workflow_phase = $1, workflow_phase_status = 'ready', workflow_phase_entered_at = now(), updated_at = now() WHERE id = $2`, workflowPhase, id)
 	return err
 }
 
 // UpdateWorkflowPhaseStatus sets only the workflow_phase_status for a ticket.
 func (s *Store) UpdateWorkflowPhaseStatus(ctx context.Context, id string, status string) error {
-	_, err := s.pool.Exec(ctx, `UPDATE tickets SET workflow_phase_status = $1, updated_at = now() WHERE id = $2`, status, id)
+	_, err := db.Executor(ctx, s.pool).Exec(ctx, `UPDATE tickets SET workflow_phase_status = $1, updated_at = now() WHERE id = $2`, status, id)
 	return err
 }
 
 // GetWorkflowPhase returns the current workflow_phase for a ticket.
 func (s *Store) GetWorkflowPhase(ctx context.Context, id string) (string, error) {
 	var phase *string
-	err := s.pool.QueryRow(ctx, `SELECT workflow_phase FROM tickets WHERE id = $1`, id).Scan(&phase)
+	err := db.Executor(ctx, s.pool).QueryRow(ctx, `SELECT workflow_phase FROM tickets WHERE id = $1`, id).Scan(&phase)
 	if err != nil {
 		return "", err
 	}
@@ -258,7 +259,7 @@ func (s *Store) ListByWorkflowPhaseStatus(ctx context.Context, projectID, status
 		     FROM tickets WHERE workflow_phase_status = $1 ORDER BY priority, created_at`
 		args = []any{status}
 	}
-	rows, err := s.pool.Query(ctx, q, args...)
+	rows, err := db.Executor(ctx, s.pool).Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -269,7 +270,7 @@ func (s *Store) ListByWorkflowPhaseStatus(ctx context.Context, projectID, status
 // CASWorkflowPhaseStatus atomically updates workflow_phase_status from expected to desired.
 // Returns true if the update happened (CAS succeeded).
 func (s *Store) CASWorkflowPhaseStatus(ctx context.Context, id, expected, desired string) (bool, error) {
-	cmd, err := s.pool.Exec(ctx,
+	cmd, err := db.Executor(ctx, s.pool).Exec(ctx,
 		`UPDATE tickets SET workflow_phase_status = $1, updated_at = now() WHERE id = $2 AND workflow_phase_status = $3`,
 		desired, id, expected)
 	if err != nil {
@@ -280,7 +281,14 @@ func (s *Store) CASWorkflowPhaseStatus(ctx context.Context, id, expected, desire
 
 // UpdateWorkflow sets workflow_id, workflow_version, and workflow_phase for a ticket.
 func (s *Store) UpdateWorkflow(ctx context.Context, id string, workflowID string, workflowVersion int, workflowPhase string) error {
-	_, err := s.pool.Exec(ctx, `UPDATE tickets SET workflow_id = $1, workflow_version = $2, workflow_phase = $3, updated_at = now() WHERE id = $4`, nullIfEmpty(workflowID), nullIntIfZero(workflowVersion), nullIfEmpty(workflowPhase), id)
+	_, err := db.Executor(ctx, s.pool).Exec(ctx, `UPDATE tickets SET workflow_id = $1, workflow_version = $2, workflow_phase = $3::text, workflow_phase_status=CASE WHEN $3::text IS NULL THEN '' ELSE 'ready' END, workflow_phase_entered_at=CASE WHEN $3::text IS NULL THEN NULL ELSE clock_timestamp() END, updated_at = now() WHERE id = $4`, nullIfEmpty(workflowID), nullIntIfZero(workflowVersion), nullIfEmpty(workflowPhase), id)
+	return err
+}
+
+// RecoverInterruptedWorkflows exposes interrupted execution for an explicit retry.
+// Only call at startup while holding the database-wide server ownership lock.
+func (s *Store) RecoverInterruptedWorkflows(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, `UPDATE tickets SET workflow_phase_status='failed', outputs=COALESCE(outputs,'{}'::jsonb)||'{"_phase_error":"Server stopped during this phase; inspect external effects before retrying"}'::jsonb, updated_at=now() WHERE workflow_id IS NOT NULL AND workflow_phase IS NOT NULL AND workflow_phase_status='running'`)
 	return err
 }
 
@@ -297,13 +305,13 @@ func (s *Store) PatchInputs(ctx context.Context, id string, patch map[string]any
 		t.Inputs[k] = v
 	}
 	inJSON, _ := json.Marshal(t.Inputs)
-	_, err = s.pool.Exec(ctx, `UPDATE tickets SET inputs = $1, updated_at = now() WHERE id = $2`, inJSON, id)
+	_, err = db.Executor(ctx, s.pool).Exec(ctx, `UPDATE tickets SET inputs = $1, updated_at = now() WHERE id = $2`, inJSON, id)
 	return err
 }
 
 // UpdateTargetRepo sets the target_repo alias for a ticket.
 func (s *Store) UpdateTargetRepo(ctx context.Context, id string, targetRepo string) error {
-	_, err := s.pool.Exec(ctx, `UPDATE tickets SET target_repo = $1, updated_at = now() WHERE id = $2`, nullIfEmpty(targetRepo), id)
+	_, err := db.Executor(ctx, s.pool).Exec(ctx, `UPDATE tickets SET target_repo = $1, updated_at = now() WHERE id = $2`, nullIfEmpty(targetRepo), id)
 	return err
 }
 
@@ -313,14 +321,14 @@ func (s *Store) UpdateTitleAndObjective(ctx context.Context, id string, title st
 	if err != nil {
 		return err
 	}
-	_, err = s.pool.Exec(ctx, `UPDATE tickets SET title = $1, objective = $2, updated_at = now() WHERE id = $3`, title, objJSON, id)
+	_, err = db.Executor(ctx, s.pool).Exec(ctx, `UPDATE tickets SET title = $1, objective = $2, updated_at = now() WHERE id = $3`, title, objJSON, id)
 	return err
 }
 
 // CountByCreatedBy returns the number of tickets created by the given agent/user.
 func (s *Store) CountByCreatedBy(ctx context.Context, createdBy string) (int, error) {
 	var n int
-	err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM tickets WHERE created_by = $1`, createdBy).Scan(&n)
+	err := db.Executor(ctx, s.pool).QueryRow(ctx, `SELECT COUNT(*) FROM tickets WHERE created_by = $1`, createdBy).Scan(&n)
 	return n, err
 }
 
@@ -330,7 +338,7 @@ func (s *Store) CountByCreatedByPerDay(ctx context.Context, createdBy string, da
 	if days <= 0 {
 		return nil, nil
 	}
-	rows, err := s.pool.Query(ctx,
+	rows, err := db.Executor(ctx, s.pool).Query(ctx,
 		`SELECT (date_trunc('day', created_at AT TIME ZONE 'UTC')::date)::text AS d, COUNT(*)::int
 		 FROM tickets WHERE created_by = $1 AND created_at >= ((now() AT TIME ZONE 'UTC')::date - $2)
 		 GROUP BY 1 ORDER BY 1`, createdBy, days)
@@ -363,7 +371,7 @@ func (s *Store) CountByCreatedByPerDay(ctx context.Context, createdBy string, da
 // GetTicketIDByCreateIdempotency returns the ticket_id for (project_id, idempotency_key) if one was recorded.
 func (s *Store) GetTicketIDByCreateIdempotency(ctx context.Context, projectID, idempotencyKey string) (string, error) {
 	var ticketID string
-	err := s.pool.QueryRow(ctx,
+	err := db.Executor(ctx, s.pool).QueryRow(ctx,
 		`SELECT ticket_id FROM idempotency_creates WHERE project_id = $1 AND idempotency_key = $2`,
 		projectID, idempotencyKey).Scan(&ticketID)
 	if err != nil {
@@ -377,7 +385,7 @@ func (s *Store) GetTicketIDByCreateIdempotency(ctx context.Context, projectID, i
 
 // SetCreateIdempotency records (project_id, idempotency_key) -> ticket_id for create_ticket idempotency.
 func (s *Store) SetCreateIdempotency(ctx context.Context, projectID, idempotencyKey, ticketID string) error {
-	_, err := s.pool.Exec(ctx,
+	_, err := db.Executor(ctx, s.pool).Exec(ctx,
 		`INSERT INTO idempotency_creates (project_id, idempotency_key, ticket_id) VALUES ($1, $2, $3)
 		 ON CONFLICT (project_id, idempotency_key) DO NOTHING`,
 		projectID, idempotencyKey, ticketID)
@@ -388,7 +396,7 @@ func (s *Store) SetCreateIdempotency(ctx context.Context, projectID, idempotency
 // unrelated keys. Uses Postgres jsonb || operator for atomic merge.
 func (s *Store) PatchOutputs(ctx context.Context, id string, patch map[string]any) error {
 	patchJSON, _ := json.Marshal(patch)
-	_, err := s.pool.Exec(ctx,
+	_, err := db.Executor(ctx, s.pool).Exec(ctx,
 		`UPDATE tickets SET outputs = COALESCE(outputs, '{}'::jsonb) || $1::jsonb,
 		 updated_at = now() WHERE id = $2`,
 		patchJSON, id)
@@ -406,7 +414,7 @@ func (s *Store) ListStaleTickets(ctx context.Context, states []State, threshold 
 		stateStrings[i] = string(st)
 	}
 	cutoff := time.Now().UTC().Add(-threshold)
-	rows, err := s.pool.Query(ctx,
+	rows, err := db.Executor(ctx, s.pool).Query(ctx,
 		`SELECT id, project_id, title, type, priority, state, version, objective, ticket_context, inputs, outputs, depends_on, work_stream_id, environment_id, target_repo, assigned_to, workflow_id, workflow_version, workflow_phase, workflow_phase_status, workflow_phase_entered_at, created_by, created_at, updated_at
 		 FROM tickets WHERE state = ANY($1) AND updated_at < $2 ORDER BY updated_at`, stateStrings, cutoff)
 	if err != nil {
@@ -479,4 +487,25 @@ func nullIntIfZero(n int) *int {
 		return nil
 	}
 	return &n
+}
+
+func (s *Store) WorkflowAttempt(ctx context.Context, id string) (*time.Time, error) {
+	var entered *time.Time
+	err := db.Executor(ctx, s.pool).QueryRow(ctx, "SELECT workflow_phase_entered_at FROM tickets WHERE id=$1", id).Scan(&entered)
+	return entered, err
+}
+func (s *Store) Transaction(ctx context.Context, fn func(context.Context) error) error {
+	return db.Transaction(ctx, s.pool, fn)
+}
+
+// CASWorkflowAttempt cannot claim a replacement phase based on a stale scan.
+func (s *Store) CASWorkflowAttempt(ctx context.Context, t *Ticket, expected, desired string) (bool, error) {
+	tag, err := db.Executor(ctx, s.pool).Exec(ctx, `UPDATE tickets SET workflow_phase_status=$1,updated_at=now() WHERE id=$2 AND workflow_id=$3 AND workflow_version=$4 AND workflow_phase=$5 AND workflow_phase_entered_at=$6 AND workflow_phase_status=$7`, desired, t.ID, t.WorkflowID, t.WorkflowVersion, t.WorkflowPhase, t.WorkflowPhaseEnteredAt, expected)
+	return tag.RowsAffected() == 1, err
+}
+
+func (s *Store) WorkflowAttemptStatus(ctx context.Context, id string) (string, error) {
+	var status string
+	err := db.Executor(ctx, s.pool).QueryRow(ctx, "SELECT COALESCE(workflow_phase_status,'') FROM tickets WHERE id=$1", id).Scan(&status)
+	return status, err
 }

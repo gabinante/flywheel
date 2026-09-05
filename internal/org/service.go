@@ -40,7 +40,7 @@ func (s *Service) CreateOrg(ctx context.Context, name, slug string) (*Org, error
 	return o, nil
 }
 
-// CreateOrgWithOwner creates an org and adds the given user as owner. Use after OAuth or authenticated API.
+// CreateOrgWithOwner creates an org and adds the given user as owner. Used by local workspace provisioning.
 func (s *Service) CreateOrgWithOwner(ctx context.Context, name, slug, ownerUserID string) (*Org, error) {
 	o, err := s.CreateOrg(ctx, name, slug)
 	if err != nil {
@@ -62,7 +62,7 @@ func (s *Service) ListOrgsForUser(ctx context.Context, userID string) ([]*Org, e
 	return s.store.ListOrgsByUserID(ctx, userID)
 }
 
-// EnsureDefaultOrgForUser creates a personal org for the user (named after email or login) and adds them as owner, only if they have no orgs yet. Call after OAuth sign-up or on first MCP use (e.g. list_orgs) so existing users get a default org without re-signing in. Collaboration orgs are created separately when the user wants to work with others.
+// EnsureDefaultOrgForUser creates a personal org for the user (named after email or login) and adds them as owner, only if they have no orgs yet. Called at server startup and on first MCP use so existing operators get a default workspace. Collaboration orgs are created separately when the user wants to work with others.
 func (s *Service) EnsureDefaultOrgForUser(ctx context.Context, userID, displayName string) error {
 	orgIDs, err := s.store.ListOrgIDsByUserID(ctx, userID)
 	if err != nil {

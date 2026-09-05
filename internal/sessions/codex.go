@@ -165,6 +165,7 @@ func (c *codexCollector) run(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	touched := 0
+	var ingestErrors []error
 	for _, t := range threads {
 		if ctx.Err() != nil {
 			return touched, ctx.Err()
@@ -175,13 +176,14 @@ func (c *codexCollector) run(ctx context.Context) (int, error) {
 		ok, err := c.ingestThread(ctx, t, offsets[t.RolloutPath])
 		if err != nil {
 			slog.Warn("sessions: codex ingest failed", "thread", t.ID, "error", err)
+			ingestErrors = append(ingestErrors, err)
 			continue
 		}
 		if ok {
 			touched++
 		}
 	}
-	return touched, nil
+	return touched, errors.Join(ingestErrors...)
 }
 
 // codexOrigin classifies a thread from its source JSON/string and thread_source.
@@ -286,13 +288,7 @@ func (c *codexCollector) ingestThread(ctx context.Context, t codexThread, offset
 	links = append(links, ExtractRefs(t.FirstUserMessage)...)
 	links = append(links, RefsFromBranch(t.GitBranch)...)
 
-	if err := c.store.Upsert(ctx, sess); err != nil {
-		return false, err
-	}
-	if err := c.store.AppendPrompts(ctx, sess.ID, prompts); err != nil {
-		return false, err
-	}
-	if err := c.store.AddLinks(ctx, sess.ID, links); err != nil {
+	if err := c.store.Ingest(ctx, sess, prompts, links); err != nil {
 		return false, err
 	}
 	return true, nil

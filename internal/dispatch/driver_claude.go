@@ -10,9 +10,11 @@ import (
 // (init, every assistant message, every tool result, the final result) reaches
 // the dispatcher as it happens; claudeStreamParser turns those records into the
 // semantic worker output stream. It keeps --system-prompt,
-// --dangerously-skip-permissions, --mcp-config and OAuth login reuse.
+// --mcp-config and OAuth login reuse, with permissions selected by run role.
 type ClaudeDriver struct {
-	model string
+	readOnly bool
+	model    string
+	effort   string
 	// CLIPath is the path to the claude binary. Default: "claude".
 	CLIPath string
 }
@@ -23,7 +25,7 @@ func NewClaudeDriver(cfg DriverConfig) *ClaudeDriver {
 	if cliPath == "" {
 		cliPath = "claude"
 	}
-	return &ClaudeDriver{CLIPath: cliPath, model: cfg.Model}
+	return &ClaudeDriver{CLIPath: cliPath, model: cfg.Model, effort: cfg.ReasoningEffort}
 }
 
 func (d *ClaudeDriver) Name() string { return "claude" }
@@ -37,17 +39,24 @@ func (d *ClaudeDriver) Executable() string {
 
 // BuildCLIArgs returns the claude CLI invocation for host-mode execution.
 func (d *ClaudeDriver) BuildCLIArgs(systemPrompt, taskMessage string, _ mcpConnection, mcpConfigPath string) []string {
+	mode := "acceptEdits"
+	if d.readOnly {
+		mode = "plan"
+	}
 	args := []string{
 		"--print",
 		// Plain --print buffers everything until the run ends. stream-json emits
 		// one JSON record per event as it happens, which is what lets the UI show
 		// live activity; Claude Code requires --verbose alongside it.
-		"--output-format", "stream-json", "--verbose",
-		"--dangerously-skip-permissions",
+		"--output-format", "stream-json", "--verbose", "--include-partial-messages",
+		"--permission-mode", mode, "--strict-mcp-config",
 		"--system-prompt", systemPrompt,
 	}
 	if d.model != "" {
 		args = append(args, "--model", d.model)
+	}
+	if d.effort != "" {
+		args = append(args, "--effort", d.effort)
 	}
 	// The task must precede --mcp-config: that flag takes a list of files and
 	// would swallow a trailing positional prompt.

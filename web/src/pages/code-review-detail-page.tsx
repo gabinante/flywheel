@@ -4,10 +4,12 @@ import { ArrowLeft, ExternalLink, RefreshCw, XCircle } from 'lucide-react'
 
 import { AgentConversation, type ConversationMessage } from '@/components/agent-conversation'
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
+import { RunProgress } from '@/components/run-progress'
+import { useOperatorOverview } from '@/hooks/use-operator-overview'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { useProjectPaths } from '@/hooks/use-project-paths'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
 import { formatApiError } from '@/lib/api/client'
@@ -25,7 +27,7 @@ function Meta({ label, value }: { label: string; value?: string | number | null 
 }
 
 function ReviewConversation({ reviewId, harness }: { reviewId: string; harness: string }) {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [messages, setMessages] = useState<ConversationMessage[]>([])
 
   useEffect(() => {
@@ -62,11 +64,14 @@ function ReviewConversation({ reviewId, harness }: { reviewId: string; harness: 
 }
 
 export function CodeReviewDetailPage() {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const { reviewId } = useParams<{ reviewId: string }>()
   const { base, projectId, orgSlug, projectSlug } = useProjectPaths()
   const projectLabel = useProjectBreadcrumbLabel(projectId)
   const [r, setR] = useState<CodeReviewRequest | null>(null)
+  const { data: overview } = useOperatorOverview()
+  const live = overview?.in_flight.find(item => item.review_id === reviewId)
+    ?? overview?.attention.find(item => item.review_id === reviewId)
   const [err, setErr] = useState<string | null>(null)
   const [tick, setTick] = useState(0)
   const refresh = useCallback(() => setTick((t) => t + 1), [])
@@ -169,15 +174,17 @@ export function CodeReviewDetailPage() {
               <Meta label="Reviewed" value={r.reviewed_at ? relativeTime(r.reviewed_at) : undefined} />
               <Meta label="Last checked" value={r.last_checked_at ? relativeTime(r.last_checked_at) : undefined} />
             </CardContent>
-            {r.session_id && (
+            {(live?.session_href || r.session_id) && (
               <div className="border-t border-white/10 px-4 py-2 text-xs">
-                <Link to={`${base}/sessions/${r.session_id}`} className="text-muted-foreground hover:underline">
+                <Link to={live?.session_href || `${base}/sessions/${r.session_id}`} className="text-muted-foreground hover:underline">
                   Open the reviewing session →
                 </Link>
               </div>
             )}
             {r.error && <div className="border-t border-white/10 px-4 py-2 text-xs text-red-200">{r.error}</div>}
           </Card>
+
+          {live?.progress && <RunProgress progress={live.progress} />}
 
           {r.summary && (
             <Card className="border-white/10 bg-white/5 backdrop-blur-md">

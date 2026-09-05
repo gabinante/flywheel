@@ -22,6 +22,12 @@ func NewService(store AgentStore) *Service {
 
 // RegisterAgent creates an agent and returns it with a new API key. The key is only returned once.
 func (s *Service) RegisterAgent(ctx context.Context, name string, typ Type) (*Agent, string, error) {
+	return s.RegisterAgentForUser(ctx, name, typ, "")
+}
+
+// RegisterAgentForUser creates a key linked to the local operator's workspace.
+// Background dispatch can still register an unlinked agent with RegisterAgent.
+func (s *Service) RegisterAgentForUser(ctx context.Context, name string, typ Type, userID string) (*Agent, string, error) {
 	id := uuid.Must(uuid.NewV7()).String()
 	apiKey, err := generateAPIKey()
 	if err != nil {
@@ -29,6 +35,7 @@ func (s *Service) RegisterAgent(ctx context.Context, name string, typ Type) (*Ag
 	}
 	a := &Agent{
 		ID:        id,
+		UserID:    userID,
 		Name:      name,
 		Type:      typ,
 		APIKey:    apiKey,

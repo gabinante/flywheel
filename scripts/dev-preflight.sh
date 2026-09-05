@@ -126,16 +126,10 @@ PORT=8090
 DATABASE_URL=postgres://flywheel:flywheel@localhost:5439/flywheel?sslmode=disable
 REDIS_URL=redis://localhost:6389/0
 
-# Sign in as a fixed local dev user (no GitHub OAuth). Local dev only.
-AUTH_DEV_BYPASS=true
-
-# GitHub OAuth2 — fill in to enable login
-GITHUB_CLIENT_ID=
-GITHUB_CLIENT_SECRET=
-JWT_SECRET=change-me-to-something-random
+# The local UI opens directly; a callback signing key is generated when empty.
+JWT_SECRET=
 ENVEOF
   ok ".env created with local dev defaults (localhost ports)."
-  echo "     Edit .env to add GitHub OAuth credentials if you need login."
 else
   ok ".env exists"
 fi

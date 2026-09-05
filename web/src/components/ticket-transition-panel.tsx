@@ -3,7 +3,7 @@ import { ArrowRight, ChevronDown } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { formatApiError } from '@/lib/api/client'
 
 type TicketTransitionPanelProps = {
@@ -84,7 +84,7 @@ export function TicketTransitionPanel({
   currentState,
   onTransitioned,
 }: TicketTransitionPanelProps) {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(false)

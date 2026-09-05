@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 
@@ -13,7 +13,7 @@ type PromptDefinition = components['schemas']['PromptDefinition']
 
 /** One editable built-in prompt. */
 function PromptEditor({ p, onSaved }: { p: PromptDefinition; onSaved: (next: PromptDefinition) => void }) {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [text, setText] = useState(p.text)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -79,7 +79,7 @@ function PromptEditor({ p, onSaved }: { p: PromptDefinition; onSaved: (next: Pro
 
 /** Settings → Prompts: the base prompt of every default worker, editable live. */
 export function PromptLibrary() {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [items, setItems] = useState<PromptDefinition[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
 

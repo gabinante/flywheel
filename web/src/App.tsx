@@ -4,13 +4,12 @@ import { QueryClientProvider } from '@tanstack/react-query'
 
 import { AppShell } from '@/components/app-shell'
 import { ErrorBoundary } from '@/components/error-boundary'
-import { AuthProvider } from '@/contexts/auth-provider'
+import { APIProvider } from '@/contexts/api-provider'
 import { SlugResolverProvider, useSlugResolver } from '@/contexts/slug-resolver-provider'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { useResolvedRouteParams } from '@/hooks/use-resolved-route-params'
 import { resolvePreferredOrgId, resolvePreferredOrgSlug, setPreferredOrgId } from '@/lib/org-preferences'
 import { queryClient } from '@/lib/query-client'
-import { HomePage } from '@/pages/home-page'
 import { OrgsPage } from '@/pages/orgs-page'
 import { OperatorSettingsPage } from '@/pages/operator-settings-page'
 import { MyPRsPage } from '@/pages/my-prs-page'
@@ -50,17 +49,6 @@ function PageSuspense({ children }: { children: React.ReactNode }) {
   )
 }
 
-function RequireAuthLayout() {
-  const { token } = useAuth()
-  if (!token) return <Navigate to="/" replace />
-  return <Outlet />
-}
-
-function HomeRoute() {
-  const { token } = useAuth()
-  return <HomePage key={token ?? 'anon'} />
-}
-
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** Redirect UUID-based URLs to slug-based URLs when slugs are known. */
@@ -93,7 +81,7 @@ function SlugRedirect() {
 
 /** The single organization is implicit: forward /orgs to its projects; show the orgs page only when none exists. */
 function OrgsGate() {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [target, setTarget] = useState<string | null | undefined>(undefined)
   useEffect(() => {
     let cancelled = false
@@ -107,12 +95,14 @@ function OrgsGate() {
       setPreferredOrgId(id)
       const slug = resolvePreferredOrgSlug(data) ?? data[0].slug ?? id
       setTarget(`/orgs/${slug}/projects`)
+    }).catch(() => {
+      if (!cancelled) setTarget(null)
     })
     return () => {
       cancelled = true
     }
   }, [client])
-  if (target === undefined) return null
+  if (target === undefined) return <p className="p-4 text-sm text-muted-foreground" role="status">Opening workspace…</p>
   if (target === null) return <OrgsPage />
   return <Navigate to={target} replace />
 }
@@ -126,102 +116,103 @@ function ProjectRedirect() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
+      <APIProvider>
         <ErrorBoundary>
           <HashRouter>
             <SlugResolverProvider>
-            <Routes>
-              {/* Home/landing page renders full-width, outside AppShell constraints */}
-              <Route path="/" element={<HomeRoute />} />
-              <Route element={<AppShell />}>
-                <Route element={<RequireAuthLayout />}>
+              <Routes>
+                <Route path="/" element={<Navigate to="/orgs" replace />} />
+                <Route element={<AppShell />}>
                   {/* Auto-redirect UUID URLs to slug URLs */}
                   <Route element={<SlugRedirect />}>
-                  <Route path="/orgs" element={<OrgsGate />} />
-                  <Route path="/settings" element={<OperatorSettingsPage />} />
-                  <Route path="/my/prs" element={<MyPRsPage />} />
-                  <Route path="/my/reviews" element={<MyReviewsPage />} />
-                  <Route path="/schedule" element={<SchedulePage />} />
-                  <Route path="/workflows" element={<WorkflowsPage />} />
-                  <Route path="/workflows/:id" element={<WorkflowEditorPage />} />
-                  <Route
-                    path="/orgs/:orgId/projects"
-                    element={<ProjectsPage />}
-                  />
-                  <Route
-                    path="/orgs/:orgId/projects/new"
-                    element={<ProjectCreatePage />}
-                  />
-                  <Route
-                    path="/orgs/:orgId/projects/:projectId"
-                    element={<ProjectRedirect />}
-                  />
-                  <Route
-                    path="/orgs/:orgId/projects/:projectId/command"
-                    element={
-                      <ErrorBoundary>
-                        <PageSuspense>
-                          <CommandCenterPage />
-                        </PageSuspense>
-                      </ErrorBoundary>
-                    }
-                  />
-                  <Route
-                    path="/orgs/:orgId/projects/:projectId/settings"
-                    element={<ProjectSettingsPage />}
-                  />
-                  <Route
-                    path="/orgs/:orgId/projects/:projectId/settings/:section"
-                    element={<ProjectSettingsPage />}
-                  />
-                  <Route
-                    path="/orgs/:orgId/projects/:projectId/tickets"
-                    element={<TicketsPage />}
-                  />
-                  <Route
-                    path="/orgs/:orgId/projects/:projectId/tickets/:ticketId"
-                    element={<TicketDetailPage />}
-                  />
-                  <Route
-                    path="/orgs/:orgId/projects/:projectId/reviews"
-                    element={<ReviewsPage />}
-                  />
-                  <Route
-                    path="/orgs/:orgId/projects/:projectId/code-reviews"
-                    element={<CodeReviewsPage />}
-                  />
-                  <Route
-                    path="/orgs/:orgId/projects/:projectId/code-reviews/:reviewId"
-                    element={<CodeReviewDetailPage />}
-                  />
-                  <Route
-                    path="/orgs/:orgId/projects/:projectId/sessions"
-                    element={<SessionsPage />}
-                  />
-                  <Route
-                    path="/orgs/:orgId/projects/:projectId/sessions/:sessionId"
-                    element={<SessionDetailPage />}
-                  />
-                  <Route
-                    path="/orgs/:orgId/projects/:projectId/work-streams/new"
-                    element={<WorkStreamCreatePage />}
-                  />
-                  <Route
-                    path="/orgs/:orgId/projects/:projectId/work-streams/:workStreamId"
-                    element={<WorkStreamEditPage />}
-                  />
-                  <Route
-                    path="/orgs/:orgId/projects/:projectId/work-streams"
-                    element={<WorkStreamsPage />}
-                  />
+                    <Route path="/orgs" element={<OrgsGate />} />
+                    <Route path="/sessions" element={<SessionsPage />} />
+                    <Route path="/sessions/:sessionId" element={<SessionDetailPage />} />
+                    <Route path="/code-reviews" element={<CodeReviewsPage />} />
+                    <Route path="/code-reviews/:reviewId" element={<CodeReviewDetailPage />} />
+                    <Route path="/settings" element={<OperatorSettingsPage />} />
+                    <Route path="/my/prs" element={<MyPRsPage />} />
+                    <Route path="/my/reviews" element={<MyReviewsPage />} />
+                    <Route path="/schedule" element={<SchedulePage />} />
+                    <Route path="/workflows" element={<WorkflowsPage />} />
+                    <Route path="/workflows/:id" element={<WorkflowEditorPage />} />
+                    <Route
+                      path="/orgs/:orgId/projects"
+                      element={<ProjectsPage />}
+                    />
+                    <Route
+                      path="/orgs/:orgId/projects/new"
+                      element={<ProjectCreatePage />}
+                    />
+                    <Route
+                      path="/orgs/:orgId/projects/:projectId"
+                      element={<ProjectRedirect />}
+                    />
+                    <Route
+                      path="/orgs/:orgId/projects/:projectId/command"
+                      element={
+                        <ErrorBoundary>
+                          <PageSuspense>
+                            <CommandCenterPage />
+                          </PageSuspense>
+                        </ErrorBoundary>
+                      }
+                    />
+                    <Route
+                      path="/orgs/:orgId/projects/:projectId/settings"
+                      element={<ProjectSettingsPage />}
+                    />
+                    <Route
+                      path="/orgs/:orgId/projects/:projectId/settings/:section"
+                      element={<ProjectSettingsPage />}
+                    />
+                    <Route
+                      path="/orgs/:orgId/projects/:projectId/tickets"
+                      element={<TicketsPage />}
+                    />
+                    <Route
+                      path="/orgs/:orgId/projects/:projectId/tickets/:ticketId"
+                      element={<TicketDetailPage />}
+                    />
+                    <Route
+                      path="/orgs/:orgId/projects/:projectId/reviews"
+                      element={<ReviewsPage />}
+                    />
+                    <Route
+                      path="/orgs/:orgId/projects/:projectId/code-reviews"
+                      element={<CodeReviewsPage />}
+                    />
+                    <Route
+                      path="/orgs/:orgId/projects/:projectId/code-reviews/:reviewId"
+                      element={<CodeReviewDetailPage />}
+                    />
+                    <Route
+                      path="/orgs/:orgId/projects/:projectId/sessions"
+                      element={<SessionsPage />}
+                    />
+                    <Route
+                      path="/orgs/:orgId/projects/:projectId/sessions/:sessionId"
+                      element={<SessionDetailPage />}
+                    />
+                    <Route
+                      path="/orgs/:orgId/projects/:projectId/work-streams/new"
+                      element={<WorkStreamCreatePage />}
+                    />
+                    <Route
+                      path="/orgs/:orgId/projects/:projectId/work-streams/:workStreamId"
+                      element={<WorkStreamEditPage />}
+                    />
+                    <Route
+                      path="/orgs/:orgId/projects/:projectId/work-streams"
+                      element={<WorkStreamsPage />}
+                    />
+                  </Route>
                 </Route>
-              </Route>
-              </Route>
-            </Routes>
+              </Routes>
             </SlugResolverProvider>
           </HashRouter>
         </ErrorBoundary>
-      </AuthProvider>
+      </APIProvider>
     </QueryClientProvider>
   )
 }

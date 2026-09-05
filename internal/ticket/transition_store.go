@@ -2,6 +2,7 @@ package ticket
 
 import (
 	"context"
+	"github.com/gabinante/flywheel/db"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -31,7 +32,7 @@ func NewTransitionStore(pool *pgxpool.Pool) *TransitionStore {
 
 // Record inserts a state transition record.
 func (s *TransitionStore) Record(ctx context.Context, ticketID string, fromState, toState State, trigger string, actor Actor) error {
-	_, err := s.pool.Exec(ctx,
+	_, err := db.Executor(ctx, s.pool).Exec(ctx,
 		`INSERT INTO state_transitions (ticket_id, from_state, to_state, trigger, actor_id, actor_type)
 		 VALUES ($1, $2, $3, $4, $5, $6)`,
 		ticketID, string(fromState), string(toState), trigger, actor.ID, string(actor.Type))

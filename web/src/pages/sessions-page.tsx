@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { StyledSelect } from '@/components/ui/styled-select'
 import { Switch } from '@/components/ui/switch'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { useProjectPaths } from '@/hooks/use-project-paths'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
 import { formatApiError } from '@/lib/api/client'
@@ -134,7 +134,7 @@ function SessionRow({ session, base }: { session: AgentSession; base: string }) 
 }
 
 export function SessionsPage() {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const { base, projectId, orgSlug, projectSlug } = useProjectPaths()
   const projectLabel = useProjectBreadcrumbLabel(projectId)
   const [params, setParams] = useSearchParams()
@@ -174,6 +174,7 @@ export function SessionsPage() {
 
   const query = useMemo(
     () => ({
+      project_id: projectId || undefined,
       harness: harness === 'all' ? undefined : (harness as 'claude_code' | 'codex'),
       origin: origin === 'all' ? undefined : (origin as 'interactive' | 'dispatched' | 'automation' | 'subagent'),
       status: status === 'all' ? undefined : (status as 'active' | 'idle' | 'ended'),
@@ -183,12 +184,12 @@ export function SessionsPage() {
       limit: PAGE_SIZE,
       offset: offset || undefined,
     }),
-    [harness, origin, status, repo, q, includeSubagents, offset],
+    [projectId, harness, origin, status, repo, q, includeSubagents, offset],
   )
 
   useEffect(() => {
     let cancelled = false
-    void client.GET('/sessions', { params: { query } }).then(({ data, error, response }) => {
+    const load = () => client.GET('/sessions', { params: { query } }).then(({ data, error, response }) => {
       if (cancelled) return
       if (!response.ok || !data) {
         setErr(formatApiError(error))
@@ -199,7 +200,10 @@ export function SessionsPage() {
       setSessions(data.sessions)
       setTotal(data.total)
     })
+    void load()
+    const timer = setInterval(load, 10_000)
     return () => {
+      clearInterval(timer)
       cancelled = true
     }
   }, [client, query])

@@ -176,6 +176,7 @@ func (c *Client) TeamStates(ctx context.Context, teamID string) ([]WorkflowState
 
 // CreateIssueInput is the subset of IssueCreateInput Flywheel uses.
 type CreateIssueInput struct {
+	ID          string
 	TeamID      string
 	ProjectID   string
 	Title       string
@@ -188,6 +189,9 @@ type CreateIssueInput struct {
 // CreateIssue creates an issue and returns it.
 func (c *Client) CreateIssue(ctx context.Context, in CreateIssueInput) (*Issue, error) {
 	input := map[string]any{"teamId": in.TeamID, "title": in.Title}
+	if in.ID != "" {
+		input["id"] = in.ID
+	}
 	if in.ProjectID != "" {
 		input["projectId"] = in.ProjectID
 	}
@@ -211,6 +215,11 @@ func (c *Client) CreateIssue(ctx context.Context, in CreateIssueInput) (*Issue, 
 	}
 	q := `mutation($input: IssueCreateInput!) { issueCreate(input: $input) { success issue {` + issueFields + `} } }`
 	if err := c.Query(ctx, q, map[string]any{"input": input}, &out); err != nil {
+		if in.ID != "" {
+			if existing, lookupErr := c.IssueByID(ctx, in.ID); lookupErr == nil && existing != nil {
+				return existing, nil
+			}
+		}
 		return nil, err
 	}
 	is := out.IssueCreate.Issue.toIssue()
@@ -235,6 +244,9 @@ func (c *Client) UpdateIssueState(ctx context.Context, issueID, stateID string) 
 
 // CreateComment posts a comment on an issue.
 func (c *Client) CreateComment(ctx context.Context, issueID, body string) (*Comment, error) {
+	return c.CreateCommentOnce(ctx, issueID, body, "")
+}
+func (c *Client) CreateCommentOnce(ctx context.Context, issueID, body, id string) (*Comment, error) {
 	var out struct {
 		CommentCreate struct {
 			Success bool    `json:"success"`
@@ -242,8 +254,23 @@ func (c *Client) CreateComment(ctx context.Context, issueID, body string) (*Comm
 		} `json:"commentCreate"`
 	}
 	q := `mutation($input: CommentCreateInput!) { commentCreate(input: $input) { success comment { id url } } }`
-	if err := c.Query(ctx, q, map[string]any{"input": map[string]any{"issueId": issueID, "body": body}}, &out); err != nil {
+	input := map[string]any{"issueId": issueID, "body": body}
+	if id != "" {
+		input["id"] = id
+	}
+	if err := c.Query(ctx, q, map[string]any{"input": input}, &out); err != nil {
+		if id != "" {
+			var existing struct {
+				Comment *Comment `json:"comment"`
+			}
+			if lookupErr := c.Query(ctx, `query($id: String!){comment(id:$id){id url}}`, map[string]any{"id": id}, &existing); lookupErr == nil && existing.Comment != nil && existing.Comment.ID == id {
+				return existing.Comment, nil
+			}
+		}
 		return nil, err
+	}
+	if !out.CommentCreate.Success {
+		return nil, fmt.Errorf("Linear did not create the comment")
 	}
 	return &out.CommentCreate.Comment, nil
 }
@@ -348,4 +375,18 @@ func (c *Client) ProjectBySlugID(ctx context.Context, slugID string) (*Project, 
 	}
 	p := out.Projects.Nodes[0].toProject()
 	return &p, nil
+}
+
+func (c *Client) IssueByID(ctx context.Context, id string) (*Issue, error) {
+	var out struct {
+		Issue *rawIssue `json:"issue"`
+	}
+	if err := c.Query(ctx, `query($id:String!){issue(id:$id){`+issueFields+`}}`, map[string]any{"id": id}, &out); err != nil {
+		return nil, err
+	}
+	if out.Issue == nil {
+		return nil, fmt.Errorf("issue not found")
+	}
+	is := out.Issue.toIssue()
+	return &is, nil
 }

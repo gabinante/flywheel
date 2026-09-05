@@ -17,6 +17,11 @@ func RegisterRepoTools(s *mcp.Server, b *Backend) {
 			if req != nil && req.Session != nil {
 				ctx = context.WithValue(ctx, sessionContextKey{}, req.Session)
 			}
+			if req != nil && req.Params != nil {
+				if err := authorizeRun(ctx, req.Params.Name, args); err != nil {
+					return toolErrTriple(apierrors.New(apierrors.CodeForbidden, err.Error(), false))
+				}
+			}
 			return f(b, ctx, args)
 		}
 	}
@@ -34,7 +39,7 @@ func RegisterRepoTools(s *mcp.Server, b *Backend) {
 				"repo_url":       map[string]any{"type": "string", "description": "Git clone URL for the repository"},
 				"default_branch": map[string]any{"type": "string", "description": "Default branch name (optional, default 'main')"},
 				"is_primary":     map[string]any{"type": "boolean", "description": "Whether this is the primary repo (optional, default false)"},
-				"agent_id":       map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+				"agent_id":       map[string]any{"type": "string", "description": "Agent ID (optional, inferred from MCP credentials over HTTP)"},
 			},
 			"required":             []string{"project_id", "alias", "repo_url"},
 			"additionalProperties": false,
@@ -49,7 +54,7 @@ func RegisterRepoTools(s *mcp.Server, b *Backend) {
 			"type": "object",
 			"properties": map[string]any{
 				"project_id": map[string]any{"type": "string", "description": "Project ID"},
-				"agent_id":   map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+				"agent_id":   map[string]any{"type": "string", "description": "Agent ID (optional, inferred from MCP credentials over HTTP)"},
 			},
 			"required":             []string{"project_id"},
 			"additionalProperties": false,
@@ -64,7 +69,7 @@ func RegisterRepoTools(s *mcp.Server, b *Backend) {
 			"properties": map[string]any{
 				"project_id": map[string]any{"type": "string", "description": "Project ID"},
 				"alias":      map[string]any{"type": "string", "description": "Repository alias to remove"},
-				"agent_id":   map[string]any{"type": "string", "description": "Agent ID (optional, inferred from OAuth when using URL auth)"},
+				"agent_id":   map[string]any{"type": "string", "description": "Agent ID (optional, inferred from MCP credentials over HTTP)"},
 			},
 			"required":             []string{"project_id", "alias"},
 			"additionalProperties": false,

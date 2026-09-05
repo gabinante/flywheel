@@ -5,7 +5,7 @@ import { ExecutionTraceCard } from '@/components/execution-trace-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 import { cn } from '@/lib/utils'
@@ -30,7 +30,7 @@ export function TicketInspector({
   projectId: string
   onReviewComplete?: () => void
 }) {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [ticket, setTicket] = useState<Ticket | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -57,6 +57,7 @@ export function TicketInspector({
   }, [client, ticketId])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Begin an external request and reset its loading state.
     void fetchTicket()
   }, [fetchTicket])
 

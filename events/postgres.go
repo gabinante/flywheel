@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/gabinante/flywheel/db"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -36,8 +37,9 @@ type PostgresBusConfig struct {
 // PostgresBus is a durable event bus backed by a Postgres outbox table.
 // It uses LISTEN/NOTIFY for real-time delivery with polling fallback.
 type PostgresBus struct {
-	pool   *pgxpool.Pool
-	config PostgresBusConfig
+	deliveryMu sync.Mutex
+	pool       *pgxpool.Pool
+	config     PostgresBusConfig
 
 	mu          sync.RWMutex
 	exact       map[string][]subscriberEntry
@@ -101,18 +103,28 @@ func (b *PostgresBus) Publish(ctx context.Context, event Event) error {
 }
 
 // PublishDurable persists the event to the outbox and triggers delivery.
-func (b *PostgresBus) PublishDurable(ctx context.Context, event Event) (string, error) {
+func (b *PostgresBus) PublishDurable(ctx context.Context, event Event) (id string, resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			db.FailTransaction(ctx, resultErr)
+		}
+	}()
 	if event.Timestamp.IsZero() {
 		event.Timestamp = time.Now()
 	}
 
+	if event.EntityKey == "" {
+		if id, ok := event.Payload["ticket_id"].(string); ok && id != "" {
+			event.EntityKey = "ticket:" + id
+		}
+	}
 	payload, err := json.Marshal(event.Payload)
 	if err != nil {
 		return "", fmt.Errorf("marshal event payload: %w", err)
 	}
 
 	var eventID string
-	err = b.pool.QueryRow(ctx, `
+	err = db.Executor(ctx, b.pool).QueryRow(ctx, `
 		INSERT INTO event_outbox (event_type, entity_key, payload)
 		VALUES ($1, $2, $3)
 		RETURNING id
@@ -122,15 +134,11 @@ func (b *PostgresBus) PublishDurable(ctx context.Context, event Event) (string, 
 	}
 
 	// Notify listeners for real-time delivery.
-	_, err = b.pool.Exec(ctx, "SELECT pg_notify($1, $2)", notifyChannel, eventID)
+	_, err = db.Executor(ctx, b.pool).Exec(ctx, "SELECT pg_notify($1, $2)", notifyChannel, eventID)
 	if err != nil {
 		// Non-fatal: polling fallback will pick it up.
 		slog.Warn("pg_notify failed, polling will retry", "error", err)
 	}
-
-	// Deliver to in-process subscribers immediately (best-effort for latency).
-	event.ID = eventID
-	b.deliverToSubscribers(ctx, event)
 
 	return eventID, nil
 }
@@ -163,7 +171,7 @@ func (b *PostgresBus) SubscribePattern(pattern string, subscriberID string, hand
 
 // Ack marks an event as successfully processed by a subscriber.
 func (b *PostgresBus) Ack(ctx context.Context, eventID string, subscriberID string) error {
-	_, err := b.pool.Exec(ctx, `
+	_, err := db.Executor(ctx, b.pool).Exec(ctx, `
 		INSERT INTO event_deliveries (event_id, subscriber_id, acked_at)
 		VALUES ($1, $2, now())
 		ON CONFLICT (event_id, subscriber_id)
@@ -175,16 +183,6 @@ func (b *PostgresBus) Ack(ctx context.Context, eventID string, subscriberID stri
 // Start begins the LISTEN/NOTIFY listener and polling fallback.
 func (b *PostgresBus) Start(ctx context.Context) error {
 	b.ctx, b.cancel = context.WithCancel(ctx)
-
-	// Initialize lastSeq from the database.
-	var maxSeq *int64
-	err := b.pool.QueryRow(ctx, "SELECT MAX(sequence) FROM event_outbox").Scan(&maxSeq)
-	if err != nil {
-		return fmt.Errorf("get max sequence: %w", err)
-	}
-	if maxSeq != nil {
-		b.lastSeq.Store(*maxSeq)
-	}
 
 	// Start LISTEN/NOTIFY listener.
 	b.wg.Add(1)
@@ -254,8 +252,8 @@ func (b *PostgresBus) listenLoop() {
 			}
 
 			// Notification payload is the event ID.
-			eventID := notification.Payload
-			b.deliverByID(b.ctx, eventID)
+			_ = notification
+			b.pollUndelivered()
 		}
 	}
 }
@@ -279,52 +277,58 @@ func (b *PostgresBus) pollLoop() {
 
 // pollUndelivered fetches events newer than lastSeq and delivers them.
 func (b *PostgresBus) pollUndelivered() {
-	rows, err := b.pool.Query(b.ctx, `
-		SELECT id, event_type, entity_key, payload, created_at, sequence
-		FROM event_outbox
-		WHERE sequence > $1
-		ORDER BY entity_key, sequence
-		LIMIT 100
-	`, b.lastSeq.Load())
-	if err != nil {
-		if b.ctx.Err() == nil {
-			slog.Error("poll failed", "error", err)
+	b.deliveryMu.Lock()
+	defer b.deliveryMu.Unlock()
+	b.mu.RLock()
+	handlers := map[string]map[string]HandlerFn{}
+	for typ, entries := range b.exact {
+		for _, entry := range entries {
+			if handlers[entry.subscriberID] == nil {
+				handlers[entry.subscriberID] = map[string]HandlerFn{}
+			}
+			handlers[entry.subscriberID][typ] = entry.handler
 		}
-		return
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var (
-			id        string
-			eventType string
-			entityKey string
-			payload   []byte
-			createdAt time.Time
-			seq       int64
-		)
-		if err := rows.Scan(&id, &eventType, &entityKey, &payload, &createdAt, &seq); err != nil {
-			slog.Error("poll scan failed", "error", err)
-			continue
+	patterns := append([]patternEntry(nil), b.patterns...)
+	for _, entry := range patterns {
+		if handlers[entry.subscriberID] == nil {
+			handlers[entry.subscriberID] = map[string]HandlerFn{}
 		}
-
-		var payloadMap map[string]any
-		if err := json.Unmarshal(payload, &payloadMap); err != nil {
-			slog.Error("poll unmarshal failed", "error", err)
-			continue
+	}
+	b.mu.RUnlock()
+	for id, exact := range handlers {
+		rows, err := b.pool.Query(b.ctx, `SELECT e.id,e.event_type,e.entity_key,e.payload,e.created_at FROM event_outbox e
+   LEFT JOIN event_deliveries d ON d.event_id=e.id AND d.subscriber_id=$1
+   WHERE d.acked_at IS NULL AND (d.processing_until IS NULL OR d.processing_until<now())
+   ORDER BY COALESCE(d.last_attempt_at,'epoch'::timestamptz),e.sequence LIMIT 100`, id)
+		if err != nil {
+			return
 		}
-
-		event := Event{
-			ID:        id,
-			Type:      eventType,
-			EntityKey: entityKey,
-			Payload:   payloadMap,
-			Timestamp: createdAt,
+		var pending []Event
+		for rows.Next() {
+			var e Event
+			var payload []byte
+			if err := rows.Scan(&e.ID, &e.Type, &e.EntityKey, &payload, &e.Timestamp); err != nil {
+				continue
+			}
+			if json.Unmarshal(payload, &e.Payload) == nil {
+				pending = append(pending, e)
+			}
 		}
-
-		b.deliverToSubscribers(b.ctx, event)
-
-		b.storeMaxSeq(seq)
+		rows.Close()
+		for _, e := range pending {
+			handler := exact[e.Type]
+			for _, p := range patterns {
+				if p.subscriberID == id && MatchPattern(p.pattern, e.Type) {
+					handler = p.handler
+				}
+			}
+			if handler == nil {
+				_ = b.Ack(b.ctx, e.ID, id)
+				continue
+			}
+			b.deliverOne(b.ctx, e, id, handler)
+		}
 	}
 }
 
@@ -337,7 +341,7 @@ func (b *PostgresBus) deliverByID(ctx context.Context, eventID string) {
 		createdAt time.Time
 		seq       int64
 	)
-	err := b.pool.QueryRow(ctx, `
+	err := db.Executor(ctx, b.pool).QueryRow(ctx, `
 		SELECT event_type, entity_key, payload, created_at, sequence
 		FROM event_outbox WHERE id = $1
 	`, eventID).Scan(&eventType, &entityKey, &payload, &createdAt, &seq)
@@ -370,42 +374,56 @@ func (b *PostgresBus) deliverByID(ctx context.Context, eventID string) {
 
 // deliverToSubscribers fans out an event to all matching handlers.
 func (b *PostgresBus) deliverToSubscribers(ctx context.Context, event Event) {
+
 	b.mu.RLock()
-	exactHandlers := b.exact[event.Type]
-	patterns := b.patterns
-	b.mu.RUnlock()
-
-	for _, entry := range exactHandlers {
-		b.deliverOne(ctx, event, entry.subscriberID, entry.handler)
+	all := map[string]HandlerFn{}
+	for typ, entries := range b.exact {
+		for _, entry := range entries {
+			if typ == event.Type {
+				all[entry.subscriberID] = entry.handler
+			} else if _, ok := all[entry.subscriberID]; !ok {
+				all[entry.subscriberID] = nil
+			}
+		}
 	}
-
-	for _, pe := range patterns {
-		if MatchPattern(pe.pattern, event.Type) {
-			b.deliverOne(ctx, event, pe.subscriberID, pe.handler)
+	for _, entry := range b.patterns {
+		if MatchPattern(entry.pattern, event.Type) {
+			all[entry.subscriberID] = entry.handler
+		} else if _, ok := all[entry.subscriberID]; !ok {
+			all[entry.subscriberID] = nil
+		}
+	}
+	b.mu.RUnlock()
+	for id, handler := range all {
+		if handler == nil {
+			_ = b.Ack(ctx, event.ID, id)
+		} else {
+			b.deliverOne(ctx, event, id, handler)
 		}
 	}
 }
 
 // deliverOne delivers to a single subscriber with idempotency check.
 func (b *PostgresBus) deliverOne(ctx context.Context, event Event, subscriberID string, handler HandlerFn) {
-	// Skip if already acked (idempotency for at-least-once).
-	if event.ID != "" {
-		var acked bool
-		err := b.pool.QueryRow(ctx, `
-			SELECT acked_at IS NOT NULL FROM event_deliveries
-			WHERE event_id = $1 AND subscriber_id = $2
-		`, event.ID, subscriberID).Scan(&acked)
-		if err == nil && acked {
-			return // Already processed.
-		}
 
-		// Record delivery attempt.
-		_, _ = b.pool.Exec(ctx, `
-			INSERT INTO event_deliveries (event_id, subscriber_id)
-			VALUES ($1, $2)
-			ON CONFLICT (event_id, subscriber_id) DO NOTHING
-		`, event.ID, subscriberID)
+	if event.ID != "" {
+		// An earlier failed delivery for this entity must finish first.
+		var claimed string
+		err := b.pool.QueryRow(ctx, `
+   INSERT INTO event_deliveries(event_id,subscriber_id,processing_until,last_attempt_at)
+   SELECT $1,$2,now()+interval '5 minutes',now() WHERE NOT EXISTS (
+    SELECT 1 FROM event_outbox earlier JOIN event_outbox current ON current.id=$1
+    WHERE earlier.sequence<current.sequence AND earlier.entity_key=current.entity_key
+    AND NOT EXISTS (SELECT 1 FROM event_deliveries d WHERE d.event_id=earlier.id AND d.subscriber_id=$2 AND d.acked_at IS NOT NULL))
+   ON CONFLICT(event_id,subscriber_id) DO UPDATE SET processing_until=now()+interval '5 minutes',last_attempt_at=now()
+   WHERE event_deliveries.acked_at IS NULL AND (event_deliveries.processing_until IS NULL OR event_deliveries.processing_until<now()) RETURNING event_id`, event.ID, subscriberID).Scan(&claimed)
+		if err != nil {
+			return
+		}
+		defer b.pool.Exec(context.WithoutCancel(ctx), "UPDATE event_deliveries SET processing_until=NULL WHERE event_id=$1 AND subscriber_id=$2", event.ID, subscriberID)
 	}
+	result := &deliveryResult{}
+	ctx = context.WithValue(ctx, deliveryKey{}, result)
 
 	// Call the handler, recovering from panics so one bad handler cannot kill
 	// the delivery goroutine (listenLoop/pollLoop). On panic we skip the ack so
@@ -415,7 +433,7 @@ func (b *PostgresBus) deliverOne(ctx context.Context, event Event, subscriberID 
 	}
 
 	// Auto-ack after successful delivery (handler didn't panic).
-	if event.ID != "" {
+	if event.ID != "" && result.err == nil && ctx.Err() == nil {
 		_ = b.Ack(ctx, event.ID, subscriberID)
 	}
 }

@@ -51,7 +51,7 @@ printf '{"summary":"fine","findings":[]}' > "$out"
 	if res.ExternalSessionID != "thr_123" {
 		t.Errorf("session id = %q", res.ExternalSessionID)
 	}
-	if res.TokensIn != 150 || res.TokensOut != 7 {
+	if res.TokensIn != 100 || res.TokensOut != 7 {
 		t.Errorf("tokens = %d/%d", res.TokensIn, res.TokensOut)
 	}
 	var s struct {

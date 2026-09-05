@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { useResolvedRouteParams } from '@/hooks/use-resolved-route-params'
 import { formatApiError } from '@/lib/api/client'
 
@@ -37,7 +37,7 @@ interface ProjectTemplate {
 export function ProjectCreatePage() {
   const { orgId, orgParam } = useResolvedRouteParams()
   const navigate = useNavigate()
-  const { client } = useAuth()
+  const { client } = useAPI()
 
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')

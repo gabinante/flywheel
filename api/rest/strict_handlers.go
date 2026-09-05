@@ -142,7 +142,7 @@ func (s *StrictServer) GetMeStatsHistory(ctx context.Context, req generated.GetM
 }
 
 func (s *StrictServer) ListOrgs(ctx context.Context, req generated.ListOrgsRequestObject) (generated.ListOrgsResponseObject, error) {
-	if err := requireOAuthAgent(ctx, s.AgentStore); err != nil {
+	if err := requireOperatorAgent(ctx, s.AgentStore); err != nil {
 		return generated.ListOrgs401JSONResponse(seToGen(err)), nil
 	}
 	agentID := GetAgentID(ctx)
@@ -857,14 +857,14 @@ func requireAgent(ctx context.Context, store agent.AgentStore) *apierrors.Struct
 	return nil
 }
 
-func requireOAuthAgent(ctx context.Context, store agent.AgentStore) *apierrors.StructuredError {
+func requireOperatorAgent(ctx context.Context, store agent.AgentStore) *apierrors.StructuredError {
 	if err := requireAgent(ctx, store); err != nil {
 		return err
 	}
 	agentID := GetAgentID(ctx)
 	a, _ := store.GetByID(ctx, agentID)
 	if a.UserID == "" {
-		return apierrors.New(apierrors.CodeUnauthorized, "OAuth required (agent must be linked to a user)", false)
+		return apierrors.New(apierrors.CodeUnauthorized, "operator identity required (agent must be linked to a user)", false)
 	}
 	return nil
 }
@@ -972,6 +972,13 @@ func ticketToGen(t *ticket.Ticket) generated.Ticket {
 		Outputs:       &t.Outputs,
 		Objective:     objectiveToGenPtr(t.Objective),
 		TicketContext: ticketContextToGenPtr(t.Context),
+	}
+	if t.WorkflowID != "" {
+		out.WorkflowId = &t.WorkflowID
+		out.WorkflowPhase = &t.WorkflowPhase
+	}
+	if t.TargetRepo != "" {
+		out.TargetRepo = &t.TargetRepo
 	}
 	if t.WorkStreamID != "" {
 		out.WorkStreamId = &t.WorkStreamID

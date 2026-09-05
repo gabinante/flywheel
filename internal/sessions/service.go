@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/gabinante/flywheel/internal/harness"
+	"github.com/gabinante/flywheel/internal/runstatus"
 	"log/slog"
 	"os"
 	"strings"
@@ -200,19 +201,38 @@ func (s *Service) Continue(ctx context.Context, id, message string) (string, err
 	if sess == nil {
 		return "", errors.New("session not found")
 	}
+	if running, _ := sess.Metadata["flywheel_running"].(bool); running {
+		return "", errors.New("session is still running; wait for the current run to finish")
+	}
 	kind := harness.Codex
 	if sess.Harness == HarnessClaudeCode {
 		kind = harness.ClaudeCode
 	}
 	workDir := sess.CWD
 	if st, err := os.Stat(workDir); err != nil || !st.IsDir() {
-		workDir, _ = os.UserHomeDir()
+		return "", errors.New("session checkout is missing; restore its working directory before continuing")
 	}
+	info := runstatus.Run{Kind: "conversation", Title: sess.Title}
+	info.ProjectID, _ = sess.Metadata["project_id"].(string)
+	for _, link := range sess.Links {
+		switch link.Kind {
+		case LinkTicket:
+			info.TicketID = link.Ref
+		case LinkReview:
+			info.ReviewID = link.Ref
+		case LinkPR:
+			info.Ref = link.Ref
+		}
+	}
+	ctx = runstatus.WithInfo(ctx, info)
 	res, err := s.runner.Run(ctx, harness.Spec{
-		Harness: kind, WorkDir: workDir, Prompt: message, Sandbox: harness.SandboxFull, Timeout: 30 * time.Minute, Resume: sess.ExternalID,
+		Harness: kind, WorkDir: workDir, Prompt: message, Sandbox: harness.SandboxWorkspaceWrite, Timeout: 30 * time.Minute, Resume: sess.ExternalID,
 	})
-	if err != nil && (res == nil || strings.TrimSpace(res.Output) == "") {
+	if err != nil {
 		return "", err
+	}
+	if res == nil {
+		return "", errors.New("harness returned no result")
 	}
 	go func() { _ = s.RunOnce(context.WithoutCancel(ctx)) }() // pick up the new turns
 	return strings.TrimSpace(res.Output), nil

@@ -1,7 +1,9 @@
 package rest
 
 import (
+	"context"
 	"encoding/json"
+	"github.com/gabinante/flywheel/internal/auth"
 	"net/http"
 	"time"
 
@@ -46,6 +48,7 @@ func (h *WorkflowHandler) RegisterRoutes(mux *http.ServeMux) {
 
 	// Ticket workflow position
 	mux.HandleFunc("GET /api/v1/tickets/{ticketID}/workflow", h.getTicketWorkflow)
+	mux.HandleFunc("POST /api/v1/tickets/{ticketID}/workflow/decision", h.decidePhase)
 
 	// Workflow callback (external async phases)
 	mux.HandleFunc("POST /api/v1/workflow/callback/{token}", h.handleCallback)
@@ -72,6 +75,7 @@ func (h *WorkflowHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /workflow/system", h.upsertSystemWorkflow)
 	mux.HandleFunc("GET /workflow/templates", h.listTemplates)
 	mux.HandleFunc("GET /tickets/{ticketID}/workflow", h.getTicketWorkflow)
+	mux.HandleFunc("POST /tickets/{ticketID}/workflow/decision", h.decidePhase)
 	mux.HandleFunc("POST /workflow/callback/{token}", h.handleCallback)
 	mux.HandleFunc("POST /gate/callback/{token}", h.handleGateCallback)
 }
@@ -148,12 +152,7 @@ func (h *WorkflowHandler) upsertProjectWorkflow(w http.ResponseWriter, r *http.R
 	def.ScopeID = projectID
 
 	// Deactivate any existing project-level workflows, then create/activate new one.
-	if err := h.Store.DeactivateScope(r.Context(), "project", projectID); err != nil {
-		WriteStructuredError(w, apierrors.MapError(err))
-		return
-	}
-	def.IsActive = true
-	if err := h.Store.Create(r.Context(), &def); err != nil {
+	if err := h.Store.ActivateReplacement(r.Context(), &def); err != nil {
 		WriteStructuredError(w, apierrors.MapError(err))
 		return
 	}
@@ -207,12 +206,7 @@ func (h *WorkflowHandler) upsertOrgWorkflow(w http.ResponseWriter, r *http.Reque
 	def.Scope = "org"
 	def.ScopeID = orgID
 
-	if err := h.Store.DeactivateScope(r.Context(), "org", orgID); err != nil {
-		WriteStructuredError(w, apierrors.MapError(err))
-		return
-	}
-	def.IsActive = true
-	if err := h.Store.Create(r.Context(), &def); err != nil {
+	if err := h.Store.ActivateReplacement(r.Context(), &def); err != nil {
 		WriteStructuredError(w, apierrors.MapError(err))
 		return
 	}
@@ -250,12 +244,7 @@ func (h *WorkflowHandler) upsertSystemWorkflow(w http.ResponseWriter, r *http.Re
 	def.Scope = "system"
 	def.ScopeID = ""
 
-	if err := h.Store.DeactivateScope(r.Context(), "system", ""); err != nil {
-		WriteStructuredError(w, apierrors.MapError(err))
-		return
-	}
-	def.IsActive = true
-	if err := h.Store.Create(r.Context(), &def); err != nil {
+	if err := h.Store.ActivateReplacement(r.Context(), &def); err != nil {
 		WriteStructuredError(w, apierrors.MapError(err))
 		return
 	}
@@ -415,7 +404,11 @@ func (h *WorkflowHandler) getTicketWorkflow(w http.ResponseWriter, r *http.Reque
 		WriteStructuredError(w, apierrors.MapError(err))
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"position": pos})
+	callbackURL := ""
+	if marker, ok := t.Outputs["_gate_callback_"+t.WorkflowPhase].(map[string]any); ok && t.WorkflowPhaseEnteredAt != nil && marker["entered_at"] == t.WorkflowPhaseEnteredAt.Format(time.RFC3339Nano) {
+		callbackURL, _ = marker["url"].(string)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"position": pos, "status": t.WorkflowPhaseStatus, "entered_at": t.WorkflowPhaseEnteredAt, "callback_url": callbackURL})
 }
 
 func (h *WorkflowHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
@@ -442,38 +435,66 @@ func (h *WorkflowHandler) handleCallback(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *WorkflowHandler) handleGateCallback(w http.ResponseWriter, r *http.Request) {
-	token := PathParam(r, "token")
 	if h.CallbackHandler == nil {
-		WriteStructuredError(w, apierrors.New(apierrors.CodeInvalidInput, "callbacks not configured", false))
+		http.Error(w, "callbacks not configured", 400)
 		return
 	}
-
-	// Look up token to get ticket/phase info, then delete it.
-	store := h.CallbackHandler.Store()
-	ticketID, _, phaseID, err := store.LookupCallbackToken(r.Context(), token)
+	st, ok := h.CallbackHandler.Store().(*workflow.PostgresCallbackStore)
+	if !ok {
+		http.Error(w, "transactional callbacks unavailable", 503)
+		return
+	}
+	token := PathParam(r, "token")
+	err := st.Transaction(r.Context(), func(ctx context.Context) error {
+		_, entered, err := st.Attempt(ctx, token)
+		if err != nil {
+			return err
+		}
+		id, _, phase, err := st.LookupCallbackToken(ctx, token)
+		if err != nil {
+			return err
+		}
+		return h.Store.WithAdvanceTransaction(ctx, id, func(ctx context.Context) error {
+			t, err := h.TicketSvc.GetTicket(ctx, id)
+			if err != nil {
+				return err
+			}
+			parsed, err := time.Parse(time.RFC3339Nano, entered)
+			if err != nil || t.WorkflowPhaseEnteredAt == nil || !t.WorkflowPhaseEnteredAt.Equal(parsed) || t.WorkflowPhase != phase {
+				return apierrors.New(apierrors.CodeConflict, "stale phase attempt", false)
+			}
+			pos, err := h.Engine.GetPosition(ctx, id, t.WorkflowID, t.WorkflowPhase, t.WorkflowVersion)
+			if err != nil {
+				return err
+			}
+			webhook := false
+			if pos != nil && pos.CurrentPhase != nil && pos.CurrentPhase.Type == workflow.PhaseGate {
+				cfg, _ := workflow.ParseGateConfig(pos.CurrentPhase.Config)
+				if cfg != nil {
+					for _, c := range cfg.EffectiveConditions() {
+						if c.Type == "webhook" {
+							webhook = true
+						}
+					}
+				}
+			}
+			if !webhook {
+				return apierrors.New(apierrors.CodeInvalidInput, "phase is not a webhook gate", false)
+			}
+			if err := h.TicketSvc.PatchOutputs(ctx, id, map[string]any{"_gate_webhook_" + phase: t.WorkflowPhaseEnteredAt.Format(time.RFC3339Nano)}); err != nil {
+				return err
+			}
+			if err := h.TicketSvc.UpdateWorkflowPhaseStatus(ctx, id, "ready"); err != nil {
+				return err
+			}
+			return st.DeleteCallbackToken(ctx, token)
+		})
+	})
 	if err != nil {
-		WriteStructuredError(w, apierrors.New(apierrors.CodeNotFound, "invalid or expired gate callback token", false))
-		return
-	}
-	if err := store.DeleteCallbackToken(r.Context(), token); err != nil {
 		WriteStructuredError(w, apierrors.MapError(err))
 		return
 	}
-
-	// Mark the webhook condition as satisfied by patching ticket outputs.
-	key := "_gate_webhook_" + phaseID
-	if err := h.TicketSvc.PatchOutputs(r.Context(), ticketID, map[string]any{key: true}); err != nil {
-		WriteStructuredError(w, apierrors.MapError(err))
-		return
-	}
-
-	// Reset phase status to "ready" so the reconcile loop re-evaluates all conditions.
-	if err := h.TicketSvc.UpdateWorkflowPhaseStatus(r.Context(), ticketID, "ready"); err != nil {
-		WriteStructuredError(w, apierrors.MapError(err))
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "ticket_id": ticketID, "phase_id": phaseID})
+	writeJSON(w, 200, map[string]any{"status": "ok"})
 }
 
 func validateDefinition(def *workflow.Definition) error {
@@ -509,4 +530,106 @@ func validateDefinition(def *workflow.Definition) error {
 		}
 	}
 	return nil
+}
+
+// decidePhase is an explicit operator decision for the current phase attempt.
+func (h *WorkflowHandler) decidePhase(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if !auth.IsOperator(ctx) {
+		http.Error(w, "operator authentication required", 401)
+		return
+	}
+	id := PathParam(r, "ticketID")
+	t, err := h.TicketSvc.GetTicket(ctx, id)
+	if err != nil {
+		WriteStructuredError(w, apierrors.MapError(err))
+		return
+	}
+	if !EnsureProjectAccess(ctx, w, t.ProjectID, h.AgentStore, h.OrgSvc, h.ProjectSvc) {
+		return
+	}
+	var body struct {
+		Action    string `json:"action"`
+		PhaseID   string `json:"phase_id"`
+		EnteredAt string `json:"entered_at"`
+	}
+	if json.NewDecoder(r.Body).Decode(&body) != nil {
+		http.Error(w, "invalid body", 400)
+		return
+	}
+	err = h.Store.WithAdvanceTransaction(ctx, id, func(ctx context.Context) error {
+		t, err := h.TicketSvc.GetTicket(ctx, id)
+		if err != nil {
+			return err
+		}
+		parsed, err := time.Parse(time.RFC3339Nano, body.EnteredAt)
+		conflict := func(msg string) error { return apierrors.New(apierrors.CodeConflict, msg, false) }
+		if err != nil || t.WorkflowPhaseEnteredAt == nil || body.PhaseID != t.WorkflowPhase || !t.WorkflowPhaseEnteredAt.Equal(parsed) {
+			return conflict("phase changed; refresh before deciding")
+		}
+		pos, err := h.Engine.GetPosition(ctx, id, t.WorkflowID, t.WorkflowPhase, t.WorkflowVersion)
+		if err != nil {
+			return err
+		}
+		if pos == nil || pos.CurrentPhase == nil {
+			return conflict("phase unavailable")
+		}
+		switch body.Action {
+		case "approve":
+			human := pos.CurrentPhase.Type == workflow.PhaseManual
+			if pos.CurrentPhase.Type == workflow.PhaseGate {
+				cfg, _ := workflow.ParseGateConfig(pos.CurrentPhase.Config)
+				if cfg != nil {
+					for _, c := range cfg.EffectiveConditions() {
+						if c.Type == "human_approval" {
+							human = true
+						}
+					}
+				}
+			}
+			if !human || t.WorkflowPhaseStatus == "failed" {
+				return conflict("phase is not awaiting approval")
+			}
+			if pos.CurrentPhase.Type == workflow.PhaseManual {
+				break
+			}
+			if err := h.TicketSvc.PatchOutputs(ctx, id, map[string]any{"_human_approval_" + t.WorkflowPhase: t.WorkflowPhaseEnteredAt.Format(time.RFC3339Nano)}); err != nil {
+				return err
+			}
+			return h.TicketSvc.UpdateWorkflowPhaseStatus(ctx, id, "ready")
+		case "retry":
+			if t.WorkflowPhaseStatus != "failed" {
+				return conflict("only failed phases can be retried")
+			}
+			if pos.CurrentPhase.Type == workflow.PhaseAction {
+				cfg, _ := workflow.ParseActionConfig(pos.CurrentPhase.Config)
+				if cfg != nil && cfg.Action == "merge_pr" {
+					if err := h.TicketSvc.PatchOutputs(ctx, id, map[string]any{"_merge_attempts": 0, "_merge_status": "", "_merge_last_error": ""}); err != nil {
+						return err
+					}
+				}
+			}
+			return h.TicketSvc.UpdateWorkflow(ctx, id, t.WorkflowID, t.WorkflowVersion, t.WorkflowPhase)
+		case "continue":
+			cfg, _ := workflow.ParseAgentConfig(pos.CurrentPhase.Config)
+			if pos.CurrentPhase.Type != workflow.PhaseAgent || cfg == nil || cfg.AutoAdvance == nil || *cfg.AutoAdvance || t.WorkflowPhaseStatus != "blocked" {
+				return conflict("phase is not awaiting continuation")
+			}
+		default:
+			return apierrors.New(apierrors.CodeInvalidInput, "unknown decision", false)
+		}
+		next, err := h.Engine.AdvancePhase(ctx, id, t.WorkflowID, t.WorkflowPhase, "success", map[string]any{"phase_entered_at": body.EnteredAt, "operator_id": GetAgentID(ctx)}, t.WorkflowVersion)
+		if err != nil {
+			return err
+		}
+		if next == nil {
+			return h.TicketSvc.TransitionTicket(ctx, id, ticket.TriggerWorkflowComplete, ticket.Actor{ID: "operator", Type: ticket.ActorSystem}, nil)
+		}
+		return nil
+	})
+	if err != nil {
+		WriteStructuredError(w, apierrors.MapError(err))
+		return
+	}
+	writeJSON(w, 200, map[string]any{"status": "ok"})
 }

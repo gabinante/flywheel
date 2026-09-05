@@ -3,13 +3,13 @@ import { Link } from 'react-router-dom'
 import { TerminalSquare } from 'lucide-react'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { HARNESS_CLASS, HARNESS_LABEL, STATUS_DOT, relativeTime, type AgentSession } from '@/lib/sessions-format'
 import { cn } from '@/lib/utils'
 
 /** Sessions linked to a ticket, by Linear identifier and by ticket id. */
 export function TicketSessionsCard({ refs, base }: { refs: string[]; base: string }) {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [sessions, setSessions] = useState<AgentSession[] | null>(null)
   const key = refs.filter(Boolean).join('|')
 

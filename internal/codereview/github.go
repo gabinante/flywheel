@@ -130,6 +130,7 @@ type PR struct {
 	Body            string
 	Author          string
 	BaseRef         string
+	HeadRepo        string
 	HeadRef         string
 	HeadSHA         string
 	URL             string
@@ -143,15 +144,21 @@ type PR struct {
 // ViewPR fetches PR details. login is used to find the operator's latest review state.
 func (g *GitHub) ViewPR(ctx context.Context, repo string, number int, login string) (*PR, error) {
 	out, err := g.run(ctx, nil, "pr", "view", strconv.Itoa(number), "--repo", repo, "--json",
-		"number,title,body,author,baseRefName,headRefName,headRefOid,url,state,isDraft,reviewDecision,latestReviews,commits")
+		"number,title,body,author,baseRefName,headRefName,headRefOid,url,state,isDraft,reviewDecision,latestReviews,commits,headRepository,headRepositoryOwner")
 	if err != nil {
 		return nil, err
 	}
 	var v struct {
-		Number      int    `json:"number"`
-		Title       string `json:"title"`
-		Body        string `json:"body"`
-		BaseRefName string `json:"baseRefName"`
+		Number         int    `json:"number"`
+		Title          string `json:"title"`
+		Body           string `json:"body"`
+		BaseRefName    string `json:"baseRefName"`
+		HeadRepository struct {
+			Name string `json:"name"`
+		} `json:"headRepository"`
+		HeadRepositoryOwner struct {
+			Login string `json:"login"`
+		} `json:"headRepositoryOwner"`
 		HeadRefName string `json:"headRefName"`
 		HeadRefOid  string `json:"headRefOid"`
 		URL         string `json:"url"`
@@ -176,6 +183,10 @@ func (g *GitHub) ViewPR(ctx context.Context, repo string, number int, login stri
 	}
 	pr := &PR{Repo: repo, Number: v.Number, Title: v.Title, Body: v.Body, Author: v.Author.Login, BaseRef: v.BaseRefName,
 		HeadRef: v.HeadRefName, HeadSHA: v.HeadRefOid, URL: v.URL, State: v.State, IsDraft: v.IsDraft, ReviewDecision: v.ReviewDec}
+	pr.HeadRepo = repo
+	if v.HeadRepository.Name != "" && v.HeadRepositoryOwner.Login != "" {
+		pr.HeadRepo = v.HeadRepositoryOwner.Login + "/" + v.HeadRepository.Name
+	}
 	for _, r := range v.LatestReviews {
 		if strings.EqualFold(r.Author.Login, login) {
 			pr.MyReviewState = r.State

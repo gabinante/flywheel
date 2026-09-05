@@ -3,7 +3,7 @@ import { FolderKanban } from 'lucide-react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { useSlugResolver } from '@/contexts/slug-resolver-provider'
 import { useResolvedRouteParams } from '@/hooks/use-resolved-route-params'
 import type { components } from '@/lib/api/v1'
@@ -27,7 +27,7 @@ function currentSection(pathname: string): string {
  * the thing you actually move between is the project (one per Linear project).
  */
 export function ProjectSwitcher({ expanded }: { expanded: boolean }) {
-  const { token, client } = useAuth()
+  const { client } = useAPI()
   const navigate = useNavigate()
   const location = useLocation()
   const { orgId, projectId } = useResolvedRouteParams()
@@ -37,7 +37,6 @@ export function ProjectSwitcher({ expanded }: { expanded: boolean }) {
 
   // Resolve the org to list projects for: the route's org, else the preferred/first org.
   useEffect(() => {
-    if (!token) return
     let cancelled = false
     ;(async () => {
       let oid = orgId ?? ''
@@ -60,7 +59,7 @@ export function ProjectSwitcher({ expanded }: { expanded: boolean }) {
     return () => {
       cancelled = true
     }
-  }, [client, token, orgId])
+  }, [client, orgId])
 
   const sorted = useMemo(
     () => [...(projects ?? [])].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '')),
@@ -69,7 +68,6 @@ export function ProjectSwitcher({ expanded }: { expanded: boolean }) {
   const current = sorted.find((p) => p.id === projectId) ?? null
   const orgPath = orgIdLoaded ? `/orgs/${orgSlug(orgIdLoaded) ?? orgIdLoaded}` : '/orgs'
 
-  if (!token) return null
 
   if (!expanded) {
     const target = current ? `${orgPath}/projects/${projectSlug(current.id ?? '') ?? current.slug ?? current.id}/command` : `${orgPath}/projects`

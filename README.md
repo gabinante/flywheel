@@ -1,6 +1,6 @@
 # Flywheel
 
-Flywheel is a **local-first control plane for one operator's agentic software delivery**. It sits between
+Flywheel is a **local metaharness for one operator's software delivery**. It sits between
 Linear (tickets), GitHub (pull requests), and the local coding harnesses — **Claude Code** and **Codex** — and
 keeps the ticket as the contract between the human and the agents.
 
@@ -37,8 +37,9 @@ other local stacks:
 | Postgres | 5439 |
 | Redis    | 6389 |
 
-Then open [http://localhost:8090](http://localhost:8090) and click **Sign in** — Flywheel provisions the single
-local operator and issues a session token. There is no external identity provider.
+Then open [http://localhost:8090](http://localhost:8090) to enter your project workspace directly.
+Flywheel provisions the persistent local operator and default workspace at startup. There is no
+marketing homepage, login, or browser session token. MCP harnesses use their own API keys.
 
 - Health: `curl -s http://localhost:8090/healthz`
 - MCP: `http://localhost:8090/mcp` (Streamable HTTP; `X-API-Key` header)

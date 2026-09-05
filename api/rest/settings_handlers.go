@@ -100,6 +100,7 @@ func (s *StrictServer) UpdateOperatorSettings(ctx context.Context, req generated
 			DefaultHealth: strings.TrimSpace(b.Report.DefaultHealth),
 		},
 	}
+	next.Prompts = cur.Prompts
 	next.Layout = cur.Layout // the settings page never edits the layout
 	next.Workers = cur.Workers
 	if b.Workers != nil {
@@ -129,7 +130,7 @@ func (s *StrictServer) UpdateOperatorSettings(ctx context.Context, req generated
 	if b.Linear.ApiKey != nil && strings.TrimSpace(*b.Linear.ApiKey) != "" {
 		next.Linear.APIKey = strings.TrimSpace(*b.Linear.ApiKey)
 	}
-	saved, err := s.SettingsSvc.Update(ctx, next)
+	saved, err := s.SettingsSvc.UpdateOperational(ctx, next)
 	if err != nil {
 		return generated.UpdateOperatorSettings400JSONResponse(seToGen(apierrors.New(apierrors.CodeInvalidInput, err.Error(), false))), nil
 	}

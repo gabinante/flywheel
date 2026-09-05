@@ -17,8 +17,8 @@ var webUIReverseProxyFactory = func(target *url.URL) http.Handler {
 // MountWebUI registers routes to serve the Vite/React production build from
 // distDir. When devProxyURL is set, frontend GET requests that are not claimed
 // by more specific API routes are reverse-proxied to the Vite dev server so
-// HMR works through the main Flywheel origin. The SPA uses browser-history
-// routing, so a catch-all serves index.html for any unmatched GET request.
+// HMR works through the main Flywheel origin. The SPA uses hash routing, with
+// a fallback for frontend document URLs.
 //
 // It returns the handler that serves the SPA shell (or nil when the UI is not
 // mounted) so the router can also route browser document navigations to it —
@@ -31,7 +31,13 @@ func MountWebUI(mux *http.ServeMux, distDir, devProxyURL string) http.Handler {
 		} else {
 			slog.Info("web UI: proxying frontend requests", "target", target.String())
 			proxy := webUIReverseProxyFactory(target)
-			mux.Handle("GET /", proxy)
+			mux.Handle("GET /", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if isReservedWebUIPath(r.URL.Path) && !strings.HasPrefix(r.URL.Path, "/assets/") {
+					http.NotFound(w, r)
+					return
+				}
+				proxy.ServeHTTP(w, r)
+			}))
 			return proxy
 		}
 	}
@@ -58,6 +64,10 @@ func MountWebUI(mux *http.ServeMux, distDir, devProxyURL string) http.Handler {
 	// router can handle client-side routes like /orgs/:orgId/projects/...
 	// Skip paths with file extensions (missing assets, source maps, etc.).
 	spa := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isReservedWebUIPath(r.URL.Path) {
+			http.NotFound(w, r)
+			return
+		}
 		if ext := filepath.Ext(r.URL.Path); ext != "" && ext != ".html" {
 			http.NotFound(w, r)
 			return
@@ -93,7 +103,7 @@ func WebUINavigation(spa http.Handler, next http.Handler) http.Handler {
 
 func isDocumentRequest(r *http.Request) bool {
 	if r.Header.Get("Authorization") != "" {
-		return false // API clients authenticate; browsers navigating do not.
+		return false // Explicit API credentials imply an API request.
 	}
 	if dest := r.Header.Get("Sec-Fetch-Dest"); dest != "" {
 		return dest == "document"

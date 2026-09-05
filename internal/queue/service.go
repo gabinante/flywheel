@@ -162,3 +162,29 @@ func (s *Service) ForceReleaseLease(ctx context.Context, ticketID string) error 
 	actor := ticket.Actor{ID: "operator", Type: ticket.ActorSystem}
 	return s.ticketSvc.TransitionTicket(ctx, ticketID, ticket.TriggerLeaseExpired, actor, nil)
 }
+
+func (s *Service) ClaimTicketByID(ctx context.Context, agentID, projectID, ticketID string) (*ticket.Ticket, *Lease, error) {
+	if existing, err := s.leases.GetLease(ctx, ticketID); err == nil && existing != nil && existing.AgentID == agentID {
+		t, err := s.ticketList.GetTicket(ctx, ticketID)
+		if err != nil || t == nil || t.ProjectID != projectID {
+			return nil, nil, ErrNoTicketAvailable
+		}
+		if t.State == ticket.StateDraft {
+			// The next workflow phase needs a fresh claim and lease. A leftover
+			// lease from the submitted phase must not return an unclaimed draft.
+			if err := s.leases.ReleaseLease(ctx, ticketID, existing.Token); err != nil {
+				return nil, nil, err
+			}
+			return s.claimTicketByID(ctx, projectID, ticketID, agentID)
+		}
+		if t.State != ticket.StatePlanning && t.State != ticket.StateExecuting {
+			return nil, nil, ErrNoTicketAvailable
+		}
+		expires, err := s.leases.RenewLease(ctx, ticketID, existing.Token, s.leases.TTL())
+		if err != nil {
+			return nil, nil, err
+		}
+		return t, &Lease{TicketID: ticketID, AgentID: agentID, Token: existing.Token, ExpiresAt: expires, Renewable: true}, nil
+	}
+	return s.claimTicketByID(ctx, projectID, ticketID, agentID)
+}

@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/gabinante/flywheel/internal/auth"
 	"github.com/gabinante/flywheel/internal/prompts"
+	"github.com/gabinante/flywheel/internal/runstatus"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -41,17 +44,18 @@ type Worker interface {
 }
 
 type Config struct {
-	Enabled       bool
-	RepoDir       string
-	ServerURL     string
-	AgentID       string
-	HistoryLimit  int
-	RunLimit      int
-	RunEventLimit int
-	AgentRunner   string
-	AgentDriver   string
-	AgentModel    string
-	WorkerConfig  dispatch.Config
+	WorkspaceResolver func(context.Context, string) (string, error)
+	Enabled           bool
+	RepoDir           string
+	ServerURL         string
+	AgentID           string
+	HistoryLimit      int
+	RunLimit          int
+	RunEventLimit     int
+	AgentRunner       string
+	AgentDriver       string
+	AgentModel        string
+	WorkerConfig      dispatch.Config
 }
 
 type eventSubscriber struct {
@@ -60,12 +64,14 @@ type eventSubscriber struct {
 }
 
 type Service struct {
-	store    ConversationStore
-	projects ProjectGetter
-	worker   Worker
-	router   *dispatch.ProjectWorkerRouter
-	cfg      Config
-	playbook Playbook
+	sessions  dispatch.SessionRecorder
+	runtimeMu sync.RWMutex
+	store     ConversationStore
+	projects  ProjectGetter
+	worker    Worker
+	router    *dispatch.ProjectWorkerRouter
+	cfg       Config
+	playbook  Playbook
 
 	serverCtx  context.Context
 	activeRuns sync.Map // runID → context.CancelFunc
@@ -153,13 +159,30 @@ func (s *Service) SendUserMessage(ctx context.Context, projectID, content string
 	if content == "" {
 		return nil, ErrMessageContentRequired
 	}
-	if s.worker == nil && !s.cfg.Enabled {
+	s.runtimeMu.RLock()
+	hasWorker := s.worker != nil
+	s.runtimeMu.RUnlock()
+	if !hasWorker && !s.cfg.Enabled {
 		return nil, ErrWorkerNotConfigured
 	}
 
 	proj, err := s.projects.GetProject(ctx, projectID)
 	if err != nil {
 		return nil, err
+	}
+
+	workDir := ""
+	if s.cfg.WorkspaceResolver != nil && proj.RepoURL != "" {
+		workDir, err = s.cfg.WorkspaceResolver(ctx, projectID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if workDir == "" {
+		workDir, err = os.MkdirTemp("", "flywheel-planner-")
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	userMsg := Message{
@@ -200,13 +223,6 @@ func (s *Service) SendUserMessage(ctx context.Context, projectID, content string
 
 	systemPrompt := strings.TrimSpace(dispatch.AssembleCoordinatorPrompt(proj, s.cfg.ServerURL, s.cfg.AgentID) + "\n\n" + s.playbook.PromptAppendix())
 	taskMessage := buildConversationTask(proj, thread.Messages)
-	workDir := strings.TrimSpace(s.cfg.RepoDir)
-	if workDir == "" {
-		workDir = strings.TrimSpace(proj.RepoURL)
-	}
-	if workDir == "" {
-		workDir = "."
-	}
 
 	// Launch worker in background goroutine detached from the HTTP context.
 	runCopy := run
@@ -370,14 +386,18 @@ func (s *Service) updatePhase(ctx context.Context, run *Run, phase OrchestratorP
 }
 
 func (s *Service) runOrchestratorWorker(ctx context.Context, proj *project.Project, run *Run, projectID, systemPrompt, taskMessage, workDir string) (*dispatch.WorkerResult, dispatch.RoutedWorker, error) {
+	ctx = auth.WithRun(ctx, auth.RunGrant{Role: "orchestrator", ProjectID: projectID})
 	candidates := []dispatch.RoutedWorker{{
 		ID:         dispatch.DefaultProjectWorkerID,
 		Name:       "Default server worker",
 		Config:     s.cfg.WorkerConfig,
 		UseDefault: true,
 	}}
-	if s.router != nil {
-		candidates = s.router.Candidates(proj, dispatch.WorkerRoleOrchestrator)
+	s.runtimeMu.RLock()
+	router := s.router
+	s.runtimeMu.RUnlock()
+	if router != nil {
+		candidates = router.Candidates(proj, dispatch.WorkerRoleOrchestrator)
 	}
 
 	var lastResult *dispatch.WorkerResult
@@ -407,6 +427,7 @@ func (s *Service) runOrchestratorWorker(ctx context.Context, proj *project.Proje
 			"model":   run.Model,
 		})
 
+		ctx = runstatus.WithInfo(ctx, runstatus.Run{Kind: "orchestrator", ProjectID: projectID, Worker: candidate.Name, Model: candidate.Config.AgentModel})
 		var (
 			result *dispatch.WorkerResult
 			err    error
@@ -425,6 +446,7 @@ func (s *Service) runOrchestratorWorker(ctx context.Context, proj *project.Proje
 		} else {
 			result, err = worker.Spawn(ctx, run.ID, projectID, systemPrompt, taskMessage, workDir, s.cfg.ServerURL)
 		}
+		dispatch.RecordWorkerSession(context.WithoutCancel(ctx), s.sessions, result, candidate, projectID, run.ID, "orchestrator", workDir, taskMessage)
 		if err == nil && result != nil && result.Success {
 			return result, candidate, nil
 		}
@@ -450,6 +472,8 @@ func (s *Service) runOrchestratorWorker(ctx context.Context, proj *project.Proje
 }
 
 func (s *Service) resolveWorker(candidate dispatch.RoutedWorker) Worker {
+	s.runtimeMu.RLock()
+	defer s.runtimeMu.RUnlock()
 	if candidate.UseDefault {
 		if s.worker != nil {
 			return s.worker
@@ -736,3 +760,17 @@ func init() {
 		Description: "Prepended to every command-center turn, before the conversation transcript.",
 		UsedBy:      "Command Center", Default: defaultOrchestratorTurnPrompt})
 }
+
+// ApplyWorkers replaces the shared routing library used by new planning runs.
+func (s *Service) ApplyWorkers(cfg dispatch.Config, workers project.DispatchConfig) {
+	s.runtimeMu.Lock()
+	defer s.runtimeMu.Unlock()
+	s.worker = dispatch.NewWorker(cfg)
+	s.router = dispatch.NewProjectWorkerRouterWithGlobal(cfg, workers)
+}
+
+func (s *Service) SetWorkspaceResolver(fn func(context.Context, string) (string, error)) {
+	s.cfg.WorkspaceResolver = fn
+}
+
+func (s *Service) SetSessionRecorder(recorder dispatch.SessionRecorder) { s.sessions = recorder }

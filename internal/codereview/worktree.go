@@ -3,6 +3,7 @@ package codereview
 import (
 	"context"
 	"fmt"
+	"github.com/gabinante/flywheel/internal/gitworkspace"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -41,11 +42,14 @@ func (w *Workspaces) RepoDir(ctx context.Context, repo string) (string, error) {
 		name = repo[i+1:]
 	}
 	primary := filepath.Join(w.Root, name)
-	if isGitRepo(primary) {
+	if isGitRepo(primary) && gitworkspace.Matches(ctx, primary, repo) {
 		return primary, nil
 	}
 	managed := filepath.Join(w.Root, ".flywheel", "clones", strings.ReplaceAll(repo, "/", "__"))
 	if isGitRepo(managed) {
+		if !gitworkspace.Matches(ctx, managed, repo) {
+			return "", fmt.Errorf("repository origin mismatch: %s", managed)
+		}
 		return managed, nil
 	}
 	if err := os.MkdirAll(filepath.Dir(managed), 0o755); err != nil {
@@ -82,16 +86,8 @@ func (w *Workspaces) Prepare(ctx context.Context, repo string, number int) (stri
 	if strings.Contains(name, "__") { // managed clone: owner__name
 		name = name[strings.Index(name, "__")+2:]
 	}
-	wt := filepath.Join(w.Root, name+"-worktrees", fmt.Sprintf("review-%d", number))
-	if _, err := os.Stat(wt); err == nil {
-		_, _ = gitRun(ctx, repoDir, "worktree", "remove", "--force", wt)
-		_ = os.RemoveAll(wt)
-	}
-	_, _ = gitRun(ctx, repoDir, "worktree", "prune")
-	if err := os.MkdirAll(filepath.Dir(wt), 0o755); err != nil {
-		return "", "", err
-	}
-	if _, err := gitRun(ctx, repoDir, "worktree", "add", "--detach", "--quiet", wt, sha); err != nil {
+	wt, err := gitworkspace.CreateAt(ctx, repoDir, filepath.Join(w.Root, name+"-worktrees"), fmt.Sprintf("review-%d", number), repo, sha, "")
+	if err != nil {
 		return "", "", err
 	}
 	return wt, sha, nil
@@ -102,9 +98,5 @@ func (w *Workspaces) Remove(ctx context.Context, repo, wt string) {
 	if wt == "" {
 		return
 	}
-	if repoDir, err := w.RepoDir(ctx, repo); err == nil {
-		_, _ = gitRun(ctx, repoDir, "worktree", "remove", "--force", wt)
-		_, _ = gitRun(ctx, repoDir, "worktree", "prune")
-	}
-	_ = os.RemoveAll(wt)
+	_ = gitworkspace.Remove(ctx, wt)
 }

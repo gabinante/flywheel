@@ -33,8 +33,8 @@ func TestClaudeDriverBuildCLIArgs(t *testing.T) {
 	if !strings.Contains(argStr, "--print") {
 		t.Error("expected --print flag")
 	}
-	if !strings.Contains(argStr, "--dangerously-skip-permissions") {
-		t.Error("expected --dangerously-skip-permissions flag")
+	if !strings.Contains(argStr, "--permission-mode acceptEdits") {
+		t.Error("expected --permission-mode acceptEdits flag")
 	}
 	if !strings.Contains(argStr, "--system-prompt") {
 		t.Error("expected --system-prompt flag")

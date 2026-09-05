@@ -13,6 +13,7 @@ import { LinearRefBadge } from '@/components/linear-ref-badge'
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { TicketSessionsCard } from '@/components/ticket-sessions-card'
 import { ReviewQueueCelebration } from '@/components/review-queue-celebration'
+import { WorkflowControls } from '@/components/workflow-controls'
 import { TicketLifecycle } from '@/components/ticket-lifecycle'
 import { TicketOutputsCard } from '@/components/ticket-outputs'
 import { TicketRelationshipsCard } from '@/components/ticket-relationships-card'
@@ -25,7 +26,7 @@ import { WorkStreamSummaryCard } from '@/components/work-stream-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
 import { useProjectPaths } from '@/hooks/use-project-paths'
 import { useResolvedRouteParams } from '@/hooks/use-resolved-route-params'
@@ -87,7 +88,7 @@ function formatDate(iso: string): string {
 export function TicketDetailPage() {
   const { orgId, projectId, ticketId } = useResolvedRouteParams()
   const { orgSlug, projectSlug, base } = useProjectPaths()
-  const { client, token } = useAuth()
+  const { client } = useAPI()
   const [ticket, setTicket] = useState<Ticket | null | undefined>(undefined)
   const [workflowPos, setWorkflowPos] = useState<WorkflowPositionData | null>(null)
   const [workStream, setWorkStream] = useState<
@@ -148,13 +149,12 @@ export function TicketDetailPage() {
   // Fetch workflow position when ticket has a workflow
   useEffect(() => {
     if (!ticket?.workflow_id || !ticketId) {
-      setWorkflowPos(null)
       return
     }
     let cancelled = false
     ;(async () => {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (token) headers['Authorization'] = `Bearer ${token}`
+
       const resp = await fetch(`/tickets/${ticketId}/workflow`, { headers })
       if (cancelled || !resp.ok) return
       const data = await resp.json().catch(() => null)
@@ -166,7 +166,7 @@ export function TicketDetailPage() {
       })
     })()
     return () => { cancelled = true }
-  }, [ticket?.workflow_id, ticket?.workflow_phase, ticketId, token])
+  }, [ticket?.workflow_id, ticket?.workflow_phase, ticketId])
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -386,10 +386,12 @@ export function TicketDetailPage() {
         {/* Lifecycle state visualization */}
         <TicketLifecycle
           currentState={ticket.state}
-          workflowPhases={workflowPos?.phases}
-          currentPhaseId={workflowPos?.currentPhaseId}
+          workflowPhases={ticket.workflow_id ? workflowPos?.phases : undefined}
+          currentPhaseId={ticket.workflow_id ? workflowPos?.currentPhaseId : undefined}
         />
       </div>
+
+      {ticket.workflow_id && <WorkflowControls key={ticketId} ticketId={ticketId} onChanged={() => void reloadTicket()} />}
 
       {/* ── Manual state transition ───────────────────────── */}
       <TicketTransitionPanel

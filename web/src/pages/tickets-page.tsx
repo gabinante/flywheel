@@ -24,7 +24,7 @@ import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { StyledSelect } from '@/components/ui/styled-select'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { useProjectPaths } from '@/hooks/use-project-paths'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
 import { TicketsPageSkeleton } from '@/components/ui/skeleton'
@@ -381,7 +381,7 @@ export function TicketsPage() {
   const { orgId, projectId, orgSlug, projectSlug, base } = useProjectPaths()
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
-  const { client } = useAuth()
+  const { client } = useAPI()
   const workStreamFilter = searchParams.get('work_stream_id') ?? ''
   const [allTickets, setAllTickets] = useState<Ticket[] | null>(null)
   const [prs, setPrs] = useState<PullRequestCard[]>([])

@@ -44,9 +44,9 @@ func Implement() Definition {
 				OnFailure: "implement",
 			},
 			{
-				ID: "merge", Name: "Merge", Type: PhaseExternal,
+				ID: "merge", Name: "Merge", Type: PhaseAction,
 				Description: "Merge once approved; the Linear issue moves to Done.",
-				Config:      map[string]any{"mode": "sync"},
+				Config:      map[string]any{"action": "merge_pr"},
 			},
 		},
 	}
@@ -70,7 +70,7 @@ func StandardSDLC() Definition {
 			},
 			{
 				ID: "agentic-review", Name: "Agentic Code Review", Type: PhaseAgent,
-				Description: "Agent reviews code and provides feedback. Loops back to execution on rejection. Auto-passes after max iterations.",
+				Description: "Agent reviews code and provides feedback. Loops back to execution on rejection. Stops for operator review after max iterations.",
 				Config:      map[string]any{"role": "validator", "max_iterations": 3},
 				OnFailure:   "execute",
 			},
@@ -84,14 +84,14 @@ func StandardSDLC() Definition {
 				},
 			},
 			{
-				ID: "merge", Name: "Merge", Type: PhaseExternal,
+				ID: "merge", Name: "Merge", Type: PhaseAction,
 				Description: "Merge the approved PR.",
-				Config:      map[string]any{"mode": "sync"},
+				Config:      map[string]any{"action": "merge_pr"},
 			},
 			{
-				ID: "deploy-dev", Name: "Deploy to Dev", Type: PhaseExternal,
-				Description: "Deploy merged changes to the dev environment.",
-				Config:      map[string]any{"mode": "async"},
+				ID: "deploy-dev", Name: "Verify Dev Deployment", Type: PhaseGate,
+				Description: "Operator verifies deployment to dev. Configure an external phase URL to automate deployment.",
+				Config:      map[string]any{"conditions": []any{map[string]any{"type": "human_approval"}}},
 			},
 		},
 	}
@@ -109,9 +109,9 @@ func FastTrack() Definition {
 				Config:      map[string]any{"role": "executor"},
 			},
 			{
-				ID: "merge", Name: "Auto-Merge", Type: PhaseExternal,
+				ID: "merge", Name: "Auto-Merge", Type: PhaseAction,
 				Description: "Automatically merge the PR.",
-				Config:      map[string]any{"mode": "sync"},
+				Config:      map[string]any{"action": "merge_pr"},
 			},
 		},
 	}
@@ -197,9 +197,9 @@ func SubticketSDLC() Definition {
 				OnFailure:   "execute",
 			},
 			{
-				ID: "merge", Name: "Merge", Type: PhaseExternal,
+				ID: "merge", Name: "Merge", Type: PhaseAction,
 				Description: "Merge the approved subticket PR.",
-				Config:      map[string]any{"mode": "sync"},
+				Config:      map[string]any{"action": "merge_pr"},
 			},
 		},
 	}
@@ -226,35 +226,35 @@ func FullPipeline() Definition {
 				},
 			},
 			{
-				ID: "open-pr", Name: "Open PR", Type: PhaseExternal,
+				ID: "open-pr", Name: "Verify PR", Type: PhaseGate,
 				Description: "Open a pull request.",
-				Config:      map[string]any{"mode": "sync"},
+				Config:      map[string]any{"conditions": []any{map[string]any{"type": "human_approval"}}},
 			},
 			{
-				ID: "pre-merge-test", Name: "Pre-Merge Tests", Type: PhaseExternal,
+				ID: "pre-merge-test", Name: "Pre-Merge Tests", Type: PhaseGate,
 				Description: "Run CI checks before merge.",
-				Config:      map[string]any{"mode": "poll", "poll_interval": "30s", "poll_timeout": "30m"},
+				Config:      map[string]any{"conditions": []any{map[string]any{"type": "github_checks"}}},
 				OnFailure:   "execute",
 			},
 			{
-				ID: "merge", Name: "Merge", Type: PhaseExternal,
+				ID: "merge", Name: "Merge", Type: PhaseAction,
 				Description: "Merge the PR.",
-				Config:      map[string]any{"mode": "sync"},
+				Config:      map[string]any{"action": "merge_pr"},
 			},
 			{
-				ID: "deploy", Name: "Deploy", Type: PhaseExternal,
-				Description: "Deploy the validated changes.",
-				Config:      map[string]any{"mode": "async"},
+				ID: "deploy", Name: "Verify Deployment", Type: PhaseGate,
+				Description: "Operator verifies deployment. Configure an external phase URL to automate deployment.",
+				Config:      map[string]any{"conditions": []any{map[string]any{"type": "human_approval"}}},
 			},
 			{
-				ID: "post-deploy-test", Name: "Post-Deploy Tests", Type: PhaseExternal,
-				Description: "Run tests after deployment.",
-				Config:      map[string]any{"mode": "poll", "poll_interval": "30s", "poll_timeout": "10m"},
+				ID: "post-deploy-test", Name: "Verify Post-Deploy Tests", Type: PhaseGate,
+				Description: "Operator verifies post-deploy tests, or configures an external poll endpoint.",
+				Config:      map[string]any{"conditions": []any{map[string]any{"type": "human_approval"}}},
 			},
 			{
-				ID: "observe", Name: "Observe", Type: PhaseExternal,
-				Description: "Post-deploy monitoring window.",
-				Config:      map[string]any{"mode": "poll", "poll_interval": "30s", "poll_timeout": "5m"},
+				ID: "observe", Name: "Verify Observation", Type: PhaseGate,
+				Description: "Operator verifies the monitoring window, or configures an external poll endpoint.",
+				Config:      map[string]any{"conditions": []any{map[string]any{"type": "human_approval"}}},
 			},
 		},
 	}

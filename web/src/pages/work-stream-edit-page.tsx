@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { useProjectPaths } from '@/hooks/use-project-paths'
 import { useResolvedRouteParams } from '@/hooks/use-resolved-route-params'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
@@ -25,7 +25,7 @@ export function WorkStreamEditPage() {
   const { workStreamId } = useResolvedRouteParams()
   const { orgId, projectId, orgSlug, projectSlug, base } = useProjectPaths()
   const navigate = useNavigate()
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [stream, setStream] = useState<WorkStream | null | undefined>(undefined)
   const [name, setName] = useState('')
   const [plan, setPlan] = useState('')

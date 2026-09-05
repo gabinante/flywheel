@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/gabinante/flywheel/internal/gitworkspace"
 	"github.com/gabinante/flywheel/internal/prompts"
+	"github.com/gabinante/flywheel/internal/runstatus"
+	"github.com/google/uuid"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -27,7 +29,7 @@ type FeedbackConfig struct {
 
 // FeedbackSystemPrompt is the operator's "address feedback on the PR" instruction, generalized.
 const FeedbackSystemPrompt = `You are addressing review feedback on a pull request you (the operator) authored. You are in a git worktree
-checked out on the PR branch with the remote tracking branch set; the gh CLI is authenticated.
+checked out at the current PR head; the gh CLI is authenticated.
 
 Work like a careful engineer landing their own PR:
 1. Read the PR and every unresolved review thread (gh pr view, gh api repos/{owner}/{repo}/pulls/{n}/comments and
@@ -47,7 +49,7 @@ deliberately left open.`
 func BuildFeedbackPrompt(round *FeedbackRound, pr *PR) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Address the review that %s left on %s#%d (%s): %s\n", round.Reviewer, round.Repo, round.Number, round.ReviewState, pr.Title)
-	fmt.Fprintf(&b, "PR: %s\nBranch: %s (base %s)\n", pr.URL, pr.HeadRef, pr.BaseRef)
+	fmt.Fprintf(&b, "PR: %s\nBranch: %s (base %s). This checkout is detached; push explicitly with git push %s HEAD:refs/heads/%s.\n", pr.URL, pr.HeadRef, pr.BaseRef, "https://github.com/"+firstNonEmpty(pr.HeadRepo, pr.Repo)+".git", pr.HeadRef)
 	if round.CommentCount > 0 {
 		fmt.Fprintf(&b, "The review has %d inline comment(s).\n", round.CommentCount)
 	}
@@ -70,18 +72,27 @@ func (s *Service) AddressFeedback(ctx context.Context, roundID string) (*Feedbac
 	if round.State == "dispatched" {
 		return round, errors.New("feedback is already being addressed")
 	}
-	// One run addresses every unresolved thread on the PR, so all of its new rounds go along.
-	_, _ = s.store.UpdateFeedbackRoundsByPR(ctx, round.Repo, round.Number, "new", "dispatched", "")
-	_ = s.store.UpdateFeedbackRound(ctx, round.ID, "dispatched", "", "")
+	s.mu.Lock()
+	runCtx := s.runCtx
+	s.mu.Unlock()
+	if runCtx == nil || runCtx.Err() != nil {
+		return nil, errors.New("review service is not running")
+	}
+	runID := uuid.NewString()
+	if err := s.store.ClaimFeedback(ctx, round.Repo, round.Number, round.ID, runID); err != nil {
+		return nil, err
+	}
 	round.State = "dispatched"
-	go s.runAddressFeedback(context.WithoutCancel(ctx), round)
+	go s.runAddressFeedback(runCtx, round, runID)
 	return round, nil
 }
 
-func (s *Service) runAddressFeedback(ctx context.Context, round *FeedbackRound) {
+func (s *Service) runAddressFeedback(ctx context.Context, round *FeedbackRound, runID string) {
+	ctx, cancel := context.WithTimeout(ctx, s.feedback().Timeout)
+	defer cancel()
 	fail := func(err error) {
 		slog.Warn("codereview: address feedback failed", "pr", round.Ref(), "error", err)
-		_, _ = s.store.UpdateFeedbackRoundsByPR(ctx, round.Repo, round.Number, "dispatched", "new", "")
+		_ = s.store.FinishFeedback(context.WithoutCancel(ctx), runID, "new", "")
 	}
 	login, _ := s.gh.Login(ctx)
 	pr, err := s.gh.ViewPR(ctx, round.Repo, round.Number, login)
@@ -90,15 +101,17 @@ func (s *Service) runAddressFeedback(ctx context.Context, round *FeedbackRound) 
 		return
 	}
 	if pr.State != "OPEN" {
-		_, _ = s.store.UpdateFeedbackRoundsByPR(ctx, round.Repo, round.Number, "dispatched", "ignored", "")
+		_ = s.store.FinishFeedback(context.WithoutCancel(ctx), runID, "ignored", "")
 		return
 	}
-	wt, err := s.ws.PrepareBranch(ctx, round.Repo, pr.HeadRef, round.Number)
+	ws := &Workspaces{Root: s.conf().RepoRoot}
+	headRepo := firstNonEmpty(pr.HeadRepo, round.Repo)
+	wt, err := ws.PrepareBranch(ctx, headRepo, pr.HeadRef, round.Number)
 	if err != nil {
 		fail(fmt.Errorf("prepare branch worktree: %w", err))
 		return
 	}
-	defer s.ws.Remove(ctx, round.Repo, wt)
+	defer ws.Remove(context.WithoutCancel(ctx), headRepo, wt)
 
 	fb := s.feedback()
 	kind, err := harness.ParseKind(firstNonEmpty(fb.Harness, "claude"))
@@ -108,6 +121,7 @@ func (s *Service) runAddressFeedback(ctx context.Context, round *FeedbackRound) 
 	}
 	prompt := BuildFeedbackPrompt(round, pr)
 	started := time.Now()
+	ctx = runstatus.WithInfo(ctx, runstatus.Run{Kind: "feedback", Ref: round.Ref(), Title: round.Title})
 	res, runErr := s.runner.Run(ctx, harness.Spec{
 		Harness: kind, Model: fb.Model, Effort: fb.Effort, WorkDir: wt,
 		SystemPrompt: withPrefix(fb.PromptPrefix, prompts.Text("pr_feedback")), Prompt: prompt, Sandbox: harness.SandboxWorkspaceWrite, Timeout: fb.Timeout,
@@ -132,11 +146,11 @@ func (s *Service) runAddressFeedback(ctx context.Context, round *FeedbackRound) 
 		}
 	}
 	if runErr != nil {
-		_, _ = s.store.UpdateFeedbackRoundsByPR(ctx, round.Repo, round.Number, "dispatched", "new", sessionID)
+		_ = s.store.FinishFeedback(context.WithoutCancel(ctx), runID, "new", sessionID)
 		slog.Warn("codereview: address feedback run failed", "pr", round.Ref(), "error", runErr)
 		return
 	}
-	_, _ = s.store.UpdateFeedbackRoundsByPR(ctx, round.Repo, round.Number, "dispatched", "addressed", sessionID)
+	_ = s.store.FinishFeedback(context.WithoutCancel(ctx), runID, "addressed", sessionID)
 	slog.Info("codereview: addressed review feedback", "pr", round.Ref(), "reviewer", round.Reviewer, "session", sessionID)
 }
 
@@ -154,26 +168,11 @@ func (w *Workspaces) PrepareBranch(ctx context.Context, repo, branch string, num
 	if strings.Contains(name, "__") {
 		name = name[strings.Index(name, "__")+2:]
 	}
-	wt := filepath.Join(w.Root, name+"-worktrees", fmt.Sprintf("feedback-%d", number))
-	if _, err := os.Stat(wt); err == nil {
-		_, _ = gitRun(ctx, repoDir, "worktree", "remove", "--force", wt)
-		_ = os.RemoveAll(wt)
-	}
-	_, _ = gitRun(ctx, repoDir, "worktree", "prune")
-	if err := os.MkdirAll(filepath.Dir(wt), 0o755); err != nil {
+	sha, err := gitRun(ctx, repoDir, "rev-parse", "FETCH_HEAD")
+	if err != nil {
 		return "", err
 	}
-	// Check out the branch (creating a local branch tracking origin when needed). If the branch is
-	// already checked out elsewhere (the operator's own worktree), git refuses; fall back to a detached
-	// checkout of the same commit and push explicitly by refspec.
-	if _, err := gitRun(ctx, repoDir, "worktree", "add", "--quiet", wt, branch); err != nil {
-		if _, err2 := gitRun(ctx, repoDir, "worktree", "add", "--quiet", "--track", "-b", branch, wt, "origin/"+branch); err2 != nil {
-			if _, err3 := gitRun(ctx, repoDir, "worktree", "add", "--quiet", "--detach", wt, "origin/"+branch); err3 != nil {
-				return "", err3
-			}
-		}
-	}
-	return wt, nil
+	return gitworkspace.CreateAt(ctx, repoDir, filepath.Join(w.Root, name+"-worktrees"), fmt.Sprintf("feedback-%d", number), repo, strings.TrimSpace(sha), "")
 }
 
 // withPrefix prepends a worker's base prompt to a service system prompt.

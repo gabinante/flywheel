@@ -7,7 +7,7 @@ const AgentGuideURI = "flywheel://docs/agent-guide"
 // Uses (param) instead of `param` so the string can be a single raw literal.
 const AgentGuideContent = `# Flywheel MCP – Agent guide
 
-Use this flow when working on tickets via Flywheel. Your identity is tied to your OAuth login; you only see projects in organizations you belong to.
+Use this flow when working on tickets via Flywheel. Your identity is tied to your registered local MCP agent; you only see projects in organizations you belong to.
 
 ## Setup
 
@@ -25,11 +25,11 @@ All three methods give you the same set of tools. The server sends instructions 
 
 ## Typical flow
 
-1. **list_projects** (no args when using OAuth) – Returns projects in all organizations you are a member of. Optionally pass (org_id) to limit to one org.
+1. **list_projects** (no args with a registered MCP key) – Returns projects in all organizations you are a member of. Optionally pass (org_id) to limit to one org.
 2. **get_project_context** (project_id) – Load conventions, key files, system prompt, and extra hints for the project.
 3. **list_tickets** (project_id, optional state, priority) – See available tickets. Filter by state (e.g. pending) or priority (0–3).
 4. **Work stream branch (when repo_url + work_stream)** – If you **create_work_stream** or will claim tickets tied to a work stream: in the same session, create or checkout the branch (see **git_instruction** from **create_work_stream** / **get_work_stream**), then **update_work_stream** with **branch** = the real branch name (run: git branch --show-current). Do this **before** **claim_ticket** when practical.
-5. **claim_ticket** (project_id) – Claim the next available ticket. Returns the ticket and a **lease** (lease_token, expires_at). agent_id is inferred from OAuth.
+5. **claim_ticket** (project_id) – Claim the next available ticket. Returns the ticket and a **lease** (lease_token, expires_at). agent_id is inferred from MCP credentials.
 6. **get_ticket** (ticket_id) – Load the full payload: objective, success criteria, acceptance test, context pack, dependency outputs, prior attempts, human answers. This is your main input for doing the work.
 7. **start_ticket** (ticket_id, lease_token) – Move the ticket to **executing**.
 8. **While working, interleave log_step** so reviewers see what you did:
@@ -59,9 +59,9 @@ Shapes:
 
 | Tool | Purpose |
 |------|--------|
-| list_orgs | List organizations you belong to (id, name, slug). OAuth required. |
+| list_orgs | List organizations you belong to (id, name, slug). Registered local MCP key required. |
 | create_project | Create a project in your default org (name, optional slug). For initiatives/epics. |
-| list_projects | List projects for your org(s). Default: active only; pass include_closed: true to include closed. OAuth required; org_id optional. |
+| list_projects | List projects for your org(s). Default: active only; pass include_closed: true to include closed. Registered local MCP key required; org_id optional. |
 | update_project_status | Set project status to active or closed (project_id, status). Use to close when done or reopen for follow-up. |
 | create_ticket | Create a pending ticket in a project (project_id, title, description, optional type/priority). Fails if project is closed. |
 | get_project_context | Context pack for a project (conventions, key files, system prompt). |
@@ -322,7 +322,7 @@ Tool errors are returned as **JSON** in the error message. Parse the error strin
 - **code** – Stable code: lease_expired, unauthorized, forbidden, not_found, conflict, invalid_input, internal.
 - **retriable** – If true, you may retry (e.g. lease_expired: try renew_lease or re-claim; not_found for "no ticket available": the client may prompt the user via elicitation, or try again later).
 
-Use **code** to decide: lease_expired → renew or re-claim; unauthorized → ensure OAuth/sign-in; conflict → refresh ticket state; invalid_input → fix arguments. For the full list of codes and when to retry vs stop, see **docs/structured-errors.md**.
+Use **code** to decide: lease_expired → renew or re-claim; unauthorized → check your MCP key; conflict → refresh ticket state; invalid_input → fix arguments. For the full list of codes and when to retry vs stop, see **docs/structured-errors.md**.
 
 ## Stuck tickets and runbook
 

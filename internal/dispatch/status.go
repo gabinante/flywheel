@@ -32,30 +32,7 @@ type Status struct {
 
 // GetStatus returns the current dispatcher status with optional project-scoped diagnostics.
 func (d *Dispatcher) GetStatus(ctx context.Context, projectID string) Status {
-	d.mu.Lock()
-	ids := make([]string, 0, len(d.active))
-	seen := make(map[string]struct{}, len(d.active))
-	for id := range d.active {
-		ticketID := strings.TrimPrefix(id, "review:")
-		ticketID = strings.TrimPrefix(ticketID, "resolve:")
-		if ticketID == "" {
-			continue
-		}
-		if _, ok := seen[ticketID]; ok {
-			continue
-		}
-		seen[ticketID] = struct{}{}
-		ids = append(ids, ticketID)
-	}
-	d.mu.Unlock()
-
-	s := Status{
-		Enabled:         d.enabled.Load(),
-		ActiveWorkers:   len(ids),
-		MaxWorkers:      d.cfg.MaxWorkers,
-		ActiveTicketIDs: ids,
-		Timestamp:       time.Now().UTC(),
-	}
+	s := d.Summary()
 
 	// Collect diagnostics and determine idle reason.
 	diag := d.collectDiagnostics(ctx, projectID)
@@ -182,4 +159,33 @@ func (d *Dispatcher) allDraftsBlocked(ctx context.Context, projectID string) boo
 		}
 	}
 	return true
+}
+
+// Summary reports global dispatch capacity without scanning ticket history.
+func (d *Dispatcher) Summary() Status {
+	d.mu.Lock()
+	ids := make([]string, 0, len(d.active))
+	seen := make(map[string]struct{}, len(d.active))
+	for id := range d.active {
+		ticketID := strings.TrimPrefix(id, "review:")
+		ticketID = strings.TrimPrefix(ticketID, "resolve:")
+		if ticketID == "" {
+			continue
+		}
+		if _, ok := seen[ticketID]; ok {
+			continue
+		}
+		seen[ticketID] = struct{}{}
+		ids = append(ids, ticketID)
+	}
+	d.mu.Unlock()
+
+	return Status{
+		Enabled:         d.enabled.Load(),
+		ActiveWorkers:   len(ids),
+		MaxWorkers:      d.config().MaxWorkers,
+		ActiveTicketIDs: ids,
+		Timestamp:       time.Now().UTC(),
+	}
+
 }

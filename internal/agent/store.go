@@ -65,12 +65,12 @@ func (s *Store) GetByAPIKey(ctx context.Context, apiKey string) (*Agent, error) 
 	return &a, nil
 }
 
-// GetByUserID returns the agent linked to a user (OAuth).
+// GetByUserID returns the agent linked to a local user.
 func (s *Store) GetByUserID(ctx context.Context, userID string) (*Agent, error) {
 	var a Agent
 	var apiKey, uid *string
 	err := s.pool.QueryRow(ctx,
-		`SELECT id, user_id, name, type, api_key, created_at FROM agents WHERE user_id = $1`, userID).
+		`SELECT id, user_id, name, type, api_key, created_at FROM agents WHERE user_id = $1 ORDER BY (api_key IS NULL) DESC, created_at, id LIMIT 1`, userID).
 		Scan(&a.ID, &uid, &a.Name, &a.Type, &apiKey, &a.CreatedAt)
 	if err != nil {
 		return nil, err

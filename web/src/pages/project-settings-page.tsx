@@ -1,3 +1,4 @@
+import { useDraft } from '@/hooks/use-draft'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import {
@@ -33,7 +34,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ProjectPageSkeleton } from '@/components/ui/skeleton'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { useProjectPaths } from '@/hooks/use-project-paths'
 import { useResolvedRouteParams } from '@/hooks/use-resolved-route-params'
 import { formatApiError } from '@/lib/api/client'
@@ -153,26 +154,19 @@ function DispatchControlCard({
   onToggle: () => void
   onProjectChange: (project: Project) => void
 }) {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const dispatchOn = project.dispatch_enabled !== false
   const currentMax =
     typeof project.dispatch_config?.max_active_workers === 'number' &&
     project.dispatch_config.max_active_workers > 0
       ? project.dispatch_config.max_active_workers
       : 0
-  const [maxWorkers, setMaxWorkers] = useState(currentMax)
+  const [maxWorkers, setMaxWorkers] = useDraft(currentMax)
   const [limitSaving, setLimitSaving] = useState(false)
   const [limitSavedAt, setLimitSavedAt] = useState<number | null>(null)
   const [limitError, setLimitError] = useState<string | null>(null)
 
-  useEffect(() => {
-    const val =
-      typeof project.dispatch_config?.max_active_workers === 'number' &&
-      project.dispatch_config.max_active_workers > 0
-        ? project.dispatch_config.max_active_workers
-        : 0
-    setMaxWorkers(val)
-  }, [project.dispatch_config?.max_active_workers])
+
 
   async function saveLimit() {
     setLimitSaving(true)
@@ -282,17 +276,14 @@ function RepositorySettingsCard({
   project: Project
   onProjectChange: (project: Project) => void
 }) {
-  const { client } = useAuth()
-  const [repoUrl, setRepoUrl] = useState(project.repo_url ?? '')
-  const [defaultBranch, setDefaultBranch] = useState(project.default_branch ?? '')
+  const { client } = useAPI()
+  const [repoUrl, setRepoUrl] = useDraft(project.repo_url ?? '')
+  const [defaultBranch, setDefaultBranch] = useDraft(project.default_branch ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
 
-  useEffect(() => {
-    setRepoUrl(project.repo_url ?? '')
-    setDefaultBranch(project.default_branch ?? '')
-  }, [project.repo_url, project.default_branch])
+
 
   async function saveRepo() {
     setSaving(true)
@@ -373,9 +364,7 @@ function ConnectLocalWorkerCard() {
 
   async function fetchConfig() {
     setLoading(true)
-    const resp = await fetch('/worker-config', {
-      headers: { Authorization: `Bearer ${sessionStorage.getItem('flywheel_jwt') ?? ''}` },
-    })
+    const resp = await fetch('/worker-config')
     if (resp.ok) {
       const data = await resp.json()
       setConfig(JSON.stringify(data, null, 2))
@@ -479,7 +468,7 @@ function SettingsOverview({
 export function ProjectSettingsPage() {
   const { section } = useResolvedRouteParams()
   const { orgId, projectId, orgSlug, projectSlug, base } = useProjectPaths()
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [project, setProject] = useState<Project | null | undefined>(undefined)
   const [err, setErr] = useState<string | null>(null)
   const [dispatchSaving, setDispatchSaving] = useState(false)

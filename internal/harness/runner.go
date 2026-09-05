@@ -12,6 +12,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/gabinante/flywheel/internal/process"
+	"github.com/gabinante/flywheel/internal/runlimit"
+	"github.com/gabinante/flywheel/internal/runstatus"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -138,6 +141,24 @@ func New(cfg Config) *CLIRunner {
 
 // Run executes the spec.
 func (r *CLIRunner) Run(ctx context.Context, spec Spec) (*Result, error) {
+	info := runstatus.Info(ctx)
+	info.Harness = string(spec.Harness)
+	info.Model = spec.Model
+	info.WorkDir = spec.WorkDir
+	info.Prompt = spec.Prompt
+	if info.Kind == "" {
+		info.Kind = "harness"
+		info.Title = "Harness run"
+	}
+	ctx, finish := runstatus.Default.Begin(ctx, info)
+	defer finish()
+	release, err := runlimit.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	runstatus.Session(ctx, spec.Resume)
+
 	if spec.Timeout <= 0 {
 		spec.Timeout = 30 * time.Minute
 	}
@@ -171,6 +192,7 @@ func tomlString(s string) string {
 type codexEvent struct {
 	Type     string `json:"type"`
 	ThreadID string `json:"thread_id"`
+	Message  string `json:"message"`
 	Item     *struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
@@ -237,13 +259,14 @@ func (r *CLIRunner) runCodex(ctx context.Context, spec Spec) (*Result, error) {
 	cctx, cancel := context.WithTimeout(ctx, spec.Timeout)
 	defer cancel()
 	cmd := exec.CommandContext(cctx, bin, args...)
+	process.Configure(cmd)
 	cmd.Stdin = strings.NewReader(fullPrompt(spec))
 	cmd.Env = append(os.Environ(), spec.Env...)
 	if spec.WorkDir != "" {
 		cmd.Dir = spec.WorkDir
 	}
 	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	cmd.Stderr = runstatus.WatchOutput(ctx, &stderr)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, err
@@ -252,11 +275,14 @@ func (r *CLIRunner) runCodex(ctx context.Context, spec Spec) (*Result, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("harness: start codex: %w", err)
 	}
-	res := &Result{Harness: Codex, Command: bin + " " + strings.Join(args, " "), Model: spec.Model, ExternalSessionID: spec.Resume}
+	runstatus.Started(cctx, cmd.Process.Pid)
+	res := &Result{Harness: Codex, Command: bin + " " + strings.Join(redactArgs(args), " "), Model: spec.Model, ExternalSessionID: spec.Resume}
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 1<<20), 64<<20)
 	var lastErr string
+	completed := false
 	for sc.Scan() {
+		runstatus.ParseOutput(ctx, sc.Bytes())
 		var ev codexEvent
 		if json.Unmarshal(sc.Bytes(), &ev) != nil {
 			continue
@@ -264,22 +290,36 @@ func (r *CLIRunner) runCodex(ctx context.Context, spec Spec) (*Result, error) {
 		switch ev.Type {
 		case "thread.started":
 			res.ExternalSessionID = ev.ThreadID
+			runstatus.Session(ctx, ev.ThreadID)
 		case "item.completed":
 			if ev.Item != nil && ev.Item.Type == "agent_message" {
 				res.Output = ev.Item.Text
 			}
 		case "turn.completed":
+			completed = true
 			if ev.Usage != nil {
-				res.TokensIn += ev.Usage.InputTokens + ev.Usage.CachedInputTokens
+				res.TokensIn += ev.Usage.InputTokens
 				res.TokensOut += ev.Usage.OutputTokens
 			}
 		case "error", "turn.failed":
+			lastErr = ev.Message
+			if lastErr == "" {
+				lastErr = ev.Type
+			}
 			if ev.Error != nil {
 				lastErr = ev.Error.Message
 			}
 		}
 	}
+	scanErr := sc.Err()
+	if scanErr != nil {
+		cancel()
+	}
 	waitErr := cmd.Wait()
+	runstatus.Exited(ctx)
+	if waitErr == nil {
+		waitErr = scanErr
+	}
 	res.Duration = time.Since(start)
 	res.Stderr = truncate(stderr.String(), 4000)
 	if exitErr, ok := waitErr.(*exec.ExitError); ok {
@@ -299,6 +339,12 @@ func (r *CLIRunner) runCodex(ctx context.Context, spec Spec) (*Result, error) {
 			lastErr = firstLine(stderr.String())
 		}
 		return res, fmt.Errorf("harness: codex exited %d: %s", res.ExitCode, lastErr)
+	}
+	if lastErr != "" {
+		return res, fmt.Errorf("harness: codex: %s", lastErr)
+	}
+	if !completed {
+		return res, errors.New("harness: codex exited without a completed turn")
 	}
 	return res, nil
 }
@@ -327,7 +373,7 @@ func (r *CLIRunner) runClaude(ctx context.Context, spec Spec) (*Result, error) {
 	if bin == "" {
 		bin = r.conf().ClaudeBin
 	}
-	args := []string{"-p", "--output-format", "json"}
+	args := []string{"-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages"}
 	if spec.Resume != "" {
 		args = append(args, "--resume", spec.Resume)
 	}
@@ -348,6 +394,10 @@ func (r *CLIRunner) runClaude(ctx context.Context, spec Spec) (*Result, error) {
 	if len(spec.OutputSchema) > 0 {
 		args = append(args, "--json-schema", string(spec.OutputSchema))
 	}
+	if spec.Effort != "" {
+		args = append(args, "--effort", spec.Effort)
+	}
+	args = append(args, "--strict-mcp-config")
 	var mcpPath string
 	if len(spec.MCP) > 0 {
 		tmp, err := os.MkdirTemp("", "flywheel-claude-")
@@ -377,6 +427,7 @@ func (r *CLIRunner) runClaude(ctx context.Context, spec Spec) (*Result, error) {
 	cctx, cancel := context.WithTimeout(ctx, spec.Timeout)
 	defer cancel()
 	cmd := exec.CommandContext(cctx, bin, args...)
+	process.Configure(cmd)
 	if spec.WorkDir != "" {
 		cmd.Dir = spec.WorkDir
 	}
@@ -385,18 +436,48 @@ func (r *CLIRunner) runClaude(ctx context.Context, spec Spec) (*Result, error) {
 	env = filterEnv(env, "CLAUDECODE")
 	env = append(env, "CLAUDE_CODE_ENTRYPOINT=flywheel-dispatch")
 	cmd.Env = env
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	var stderr bytes.Buffer
+	cmd.Stderr = runstatus.WatchOutput(ctx, &stderr)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
 	start := time.Now()
-	runErr := cmd.Run()
-	res := &Result{Harness: ClaudeCode, Command: bin + " " + strings.Join(redactArgs(args), " "), Model: spec.Model, Duration: time.Since(start), Stderr: truncate(stderr.String(), 4000)}
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("harness: start claude: %w", err)
+	}
+	runstatus.Started(cctx, cmd.Process.Pid)
+	sc := bufio.NewScanner(stdout)
+	sc.Buffer(make([]byte, 64*1024), 64<<20)
+	var cr claudeResult
+	complete := false
+	nativeID := spec.Resume
+	for sc.Scan() {
+		runstatus.ParseOutput(ctx, sc.Bytes())
+		var event claudeResult
+		if json.Unmarshal(sc.Bytes(), &event) == nil {
+			if event.SessionID != "" {
+				nativeID = event.SessionID
+			}
+			if event.Type == "result" {
+				cr, complete = event, true
+			}
+		}
+	}
+	if sc.Err() != nil {
+		cancel()
+	}
+	runErr := cmd.Wait()
+	runstatus.Exited(ctx)
+	if runErr == nil {
+		runErr = sc.Err()
+	}
+	res := &Result{Harness: ClaudeCode, ExternalSessionID: nativeID, Command: bin + " " + strings.Join(redactArgs(args), " "), Model: spec.Model, Duration: time.Since(start), Stderr: truncate(stderr.String(), 4000)}
 	if exitErr, ok := runErr.(*exec.ExitError); ok {
 		res.ExitCode = exitErr.ExitCode()
 	}
-	var cr claudeResult
-	if err := json.Unmarshal(bytes.TrimSpace(stdout.Bytes()), &cr); err == nil {
-		res.ExternalSessionID = cr.SessionID
+	if complete {
+		runstatus.Session(ctx, cr.SessionID)
 		res.Output = cr.Result
 		res.TokensIn = cr.Usage.InputTokens + cr.Usage.CacheReadInputTokens + cr.Usage.CacheCreationInputTokens
 		res.TokensOut = cr.Usage.OutputTokens
@@ -409,14 +490,15 @@ func (r *CLIRunner) runClaude(ctx context.Context, spec Spec) (*Result, error) {
 		if cr.IsError {
 			return res, fmt.Errorf("harness: claude reported an error: %s", truncate(cr.Result, 300))
 		}
-	} else if runErr == nil {
-		res.Output = strings.TrimSpace(stdout.String())
 	}
 	if runErr != nil {
 		if errors.Is(cctx.Err(), context.DeadlineExceeded) {
 			return res, fmt.Errorf("harness: claude timed out after %s", spec.Timeout)
 		}
 		return res, fmt.Errorf("harness: claude exited %d: %s", res.ExitCode, firstLine(stderr.String()))
+	}
+	if !complete {
+		return res, errors.New("harness: claude exited without a final result")
 	}
 	return res, nil
 }
@@ -436,7 +518,9 @@ func filterEnv(env []string, prefix string) []string {
 func redactArgs(args []string) []string {
 	out := make([]string, len(args))
 	for i, a := range args {
-		if len(a) > 120 {
+		if strings.Contains(a, "http_headers") || strings.Contains(a, "X-API-Key") {
+			out[i] = "[redacted credentials]"
+		} else if len(a) > 120 {
 			out[i] = a[:60] + "…"
 		} else {
 			out[i] = a

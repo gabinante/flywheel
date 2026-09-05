@@ -120,27 +120,21 @@ func (m *mockProjectGetter) GetProject(_ context.Context, id string) (*project.P
 // project ID, so EnsureClone finds it and skips network cloning. Returns the repo dir.
 func seedTestClone(t *testing.T, d *Dispatcher, projectID string) string {
 	t.Helper()
-	safe := strings.ReplaceAll(projectID, "/", "-")
-	dir := filepath.Join(d.clones.BaseDir, safe)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	repo := createBareRepo(t, "fixture")
+	proj, err := d.projects.GetProject(context.Background(), projectID)
+	if err != nil {
 		t.Fatal(err)
 	}
-	for _, args := range [][]string{
-		{"init", "--initial-branch=main"},
-		{"commit", "--allow-empty", "-m", "init"},
-	} {
-		cmd := exec.Command("git", args...)
-		cmd.Dir = dir
-		cmd.Env = append(os.Environ(),
-			"GIT_AUTHOR_NAME=Test",
-			"GIT_AUTHOR_EMAIL=test@test.com",
-			"GIT_COMMITTER_NAME=Test",
-			"GIT_COMMITTER_EMAIL=test@test.com",
-		)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %s: %v", args, out, err)
-		}
+	proj.RepoURL = repo
+	safe := strings.ReplaceAll(projectID, "/", "-")
+	dir := filepath.Join(d.clones.BaseDir, safe)
+	if err := os.MkdirAll(filepath.Dir(dir), 0755); err != nil {
+		t.Fatal(err)
 	}
+	if out, err := exec.Command("git", "clone", repo, dir).CombinedOutput(); err != nil {
+		t.Fatalf("clone fixture: %s: %v", out, err)
+	}
+
 	return dir
 }
 
@@ -603,8 +597,11 @@ func TestTryDispatchDependenciesMet(t *testing.T) {
 
 	d.tryDispatch(context.Background(), tk)
 
-	// Wait for the spawned goroutine to run.
-	time.Sleep(500 * time.Millisecond)
+	// Wait for the actual worker invocation; Git fetch duration varies under load.
+	deadline := time.Now().Add(5 * time.Second)
+	for worker.callCount() < 1 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
 
 	if worker.callCount() != 1 {
 		t.Errorf("expected 1 worker call, got %d", worker.callCount())
@@ -613,7 +610,7 @@ func TestTryDispatchDependenciesMet(t *testing.T) {
 
 func TestHandleTicketDone(t *testing.T) {
 	bus := events.NewInProcessBus()
-	tg := newMockTicketGetter()
+	tg := newMockTicketGetter(&ticket.Ticket{ID: "t-1", State: ticket.StateClosed})
 	pg := newMockProjectGetter()
 	cfg := Config{MaxWorkers: 5, WorktreeDir: t.TempDir(), RepoDir: t.TempDir()}
 

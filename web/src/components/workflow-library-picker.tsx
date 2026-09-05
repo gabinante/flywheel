@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import type { components } from '@/lib/api/v1'
 
 type WorkflowPhase = components['schemas']['WorkflowPhase']
@@ -25,7 +25,7 @@ interface Props {
 }
 
 export function WorkflowLibraryPicker({ orgId, onSelect }: Props) {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [entries, setEntries] = useState<LibraryEntry[]>([])
@@ -45,6 +45,7 @@ export function WorkflowLibraryPicker({ orgId, onSelect }: Props) {
 
   useEffect(() => {
     if (open) {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Begin an external request and reset its loading state.
       void fetchEntries()
       setSearch('')
       setConfirmDelete(null)

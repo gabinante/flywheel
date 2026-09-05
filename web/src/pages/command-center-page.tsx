@@ -1,10 +1,9 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { CommandCenterRail } from '@/components/command-center/command-center-rail'
+import { ActiveWorkPanel } from '@/components/command-center/active-work-panel'
 import { OrchestratorConsole } from '@/components/command-center/orchestrator-console'
 import { TicketInspector } from '@/components/command-center/ticket-inspector'
 import { Badge } from '@/components/ui/badge'
-import { useRightRail } from '@/contexts/use-right-rail'
 import { useProjectPaths } from '@/hooks/use-project-paths'
 import { useProjectRailData } from '@/hooks/use-project-rail-data'
 import type { components } from '@/lib/api/v1'
@@ -12,18 +11,18 @@ import type { components } from '@/lib/api/v1'
 type Ticket = components['schemas']['Ticket']
 
 export function CommandCenterPage() {
-  const { orgId, projectId, orgSlug, projectSlug } = useProjectPaths()
-  const { clearRailContent, setOpen, setRailContent } = useRightRail()
+  const { orgId, projectId } = useProjectPaths()
   const {
     activeTickets,
     pendingReviews,
     escalations,
-    activityItems,
     loading,
     refresh,
   } = useProjectRailData(projectId)
-  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null)
-  const didAutoSelectEscalation = useRef(false)
+  const [selection, setSelection] = useState<{ projectId: string | undefined; id: string | null | undefined }>({ projectId, id: undefined })
+  if (selection.projectId !== projectId) setSelection({ projectId, id: undefined })
+  const selectedTicketId = selection.projectId === projectId && selection.id !== undefined ? selection.id : escalations[0]?.ticket.id ?? null
+  const setSelectedTicketId = useCallback((id: string | null) => setSelection({ projectId, id }), [projectId])
   const navigableTickets = useMemo(() => {
     const seen = new Set<string>()
     const ordered: Ticket[] = []
@@ -40,19 +39,6 @@ export function CommandCenterPage() {
   }, [activeTickets, escalations, pendingReviews])
   const selectedEscalation =
     escalations.find((item) => item.ticket.id === selectedTicketId) ?? null
-
-  useEffect(() => {
-    didAutoSelectEscalation.current = false
-    setSelectedTicketId(null)
-  }, [projectId])
-
-  useEffect(() => {
-    if (didAutoSelectEscalation.current || selectedTicketId) return
-    const firstEscalatedTicketId = escalations[0]?.ticket.id
-    if (!firstEscalatedTicketId) return
-    didAutoSelectEscalation.current = true
-    setSelectedTicketId(firstEscalatedTicketId)
-  }, [escalations, selectedTicketId])
 
   // Keyboard navigation
   useEffect(() => {
@@ -84,41 +70,7 @@ export function CommandCenterPage() {
 
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [navigableTickets, selectedTicketId])
-
-  useLayoutEffect(() => {
-    setOpen(true)
-    return () => clearRailContent()
-  }, [clearRailContent, setOpen])
-
-  useLayoutEffect(() => {
-    if (!orgId || !projectId) return
-    setRailContent(
-      <CommandCenterRail
-        tickets={activeTickets}
-        pendingReviews={pendingReviews}
-        escalations={escalations}
-        activityItems={activityItems}
-        loading={loading}
-        orgId={orgSlug}
-        projectId={projectSlug}
-        selectedTicketId={selectedTicketId}
-        onSelectTicket={setSelectedTicketId}
-      />,
-    )
-  }, [
-    activeTickets,
-    activityItems,
-    escalations,
-    loading,
-    orgId,
-    orgSlug,
-    pendingReviews,
-    projectId,
-    projectSlug,
-    selectedTicketId,
-    setRailContent,
-  ])
+  }, [navigableTickets, selectedTicketId, setSelectedTicketId])
 
   if (!orgId || !projectId) {
     return <p className="text-destructive text-sm">Missing route params.</p>
@@ -157,19 +109,19 @@ export function CommandCenterPage() {
         onMessageComplete={() => void refresh()}
       />
 
-      <div className="lg:hidden">
-        <CommandCenterRail
+      <details className="rounded-xl border border-white/10 bg-card/60 p-4">
+        <summary className="mb-3 cursor-pointer text-sm font-medium">Project work</summary>
+        <ActiveWorkPanel
           tickets={activeTickets}
           pendingReviews={pendingReviews}
           escalations={escalations}
-          activityItems={activityItems}
           loading={loading}
           orgId={orgId}
           projectId={projectId}
           selectedTicketId={selectedTicketId}
           onSelectTicket={setSelectedTicketId}
         />
-      </div>
+      </details>
 
       <div className="min-h-[280px] rounded-2xl border border-white/10 bg-card/60 backdrop-blur-sm">
         {selectedTicketId ? (
@@ -188,7 +140,7 @@ export function CommandCenterPage() {
                 Select a ticket to inspect state, trace, and outputs.
               </p>
               <p className="text-xs leading-relaxed text-muted-foreground/70">
-                Use the queue snapshot or activity list to switch between blocked, active, and pending-review tickets.
+                Open Project work to inspect tickets here, or use the global tray to open a ticket or session.
               </p>
             </div>
           </div>

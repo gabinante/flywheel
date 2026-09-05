@@ -148,7 +148,12 @@ func (p *claudeStreamParser) ParseLine(line string) ([]ParsedEvent, bool) {
 }
 
 // Result implements OutputParser.
-func (p *claudeStreamParser) Result() *ParsedResult { return p.result }
+func (p *claudeStreamParser) Result() *ParsedResult {
+	if p.result == nil {
+		return &ParsedResult{IsError: true, Error: "claude exited without a final result"}
+	}
+	return p.result
+}
 
 // Transcript implements OutputParser.
 func (p *claudeStreamParser) Transcript() string { return strings.Join(p.transcript, "\n\n") }

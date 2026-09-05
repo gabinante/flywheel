@@ -39,7 +39,7 @@ docker compose logs server
 
 3. **Missing .env** – If `docker compose up` fails with "no such file: .env" or similar, run `cp .env.example .env` and edit it with your secrets.
 
-4. **Invalid `.env`** – Run `make varlock-validate`. An empty `JWT_SECRET` is fine for startup (a per-process secret is generated) but UI sessions will not survive restarts.
+4. **Invalid `.env`** – Run `make varlock-validate`. An empty `JWT_SECRET` is fine for startup (a per-process callback secret is generated); the local UI has no sign-in session.
 
 5. **Port 8090 already in use** – Another process is bound to 8090 (`make dev` kills a previous Flywheel server first). Change `PORT` in the server’s environment or stop the other process.
 

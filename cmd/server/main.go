@@ -4,6 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
+	"github.com/gabinante/flywheel/internal/overview"
+	"github.com/gabinante/flywheel/internal/runlimit"
+	"github.com/gabinante/flywheel/internal/runstatus"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
 	"net/http"
 	"os"
@@ -115,6 +120,19 @@ func run(ctx context.Context, cfg *config.Config) {
 		pool.Close()
 	}()
 	defer cancelServices() // LIFO: context cancelled BEFORE pool closes
+	// Recovery runs only while this server owns the database-wide process lock.
+	owner, err := pool.Acquire(ctx)
+	if err != nil {
+		slog.Error("server lock connection failed", "error", err)
+		return
+	}
+	defer owner.Release()
+	var locked bool
+	if err := owner.QueryRow(ctx, "SELECT pg_try_advisory_lock(734981205)").Scan(&locked); err != nil || !locked {
+		slog.Error("another Flywheel server owns this database", "error", err)
+		return
+	}
+	defer owner.Exec(context.WithoutCancel(ctx), "SELECT pg_advisory_unlock(734981205)")
 
 	// Event bus: Postgres durable bus by default for at-least-once delivery.
 	var bus events.DurableEventBus
@@ -135,6 +153,10 @@ func run(ctx context.Context, cfg *config.Config) {
 	workStreamStore := workstream.NewStore(pool)
 	workStreamSvc := workstream.NewService(workStreamStore)
 	ticketStore := ticket.NewStore(pool)
+	if err := ticketStore.RecoverInterruptedWorkflows(ctx); err != nil {
+		slog.Error("workflow recovery failed", "error", err)
+		return
+	}
 	transitionStore := ticket.NewTransitionStore(pool)
 	ticketSvc := ticket.NewService(ticketStore, bus, projectSvc)
 	ticketSvc.SetTransitionStore(transitionStore)
@@ -152,13 +174,16 @@ func run(ctx context.Context, cfg *config.Config) {
 	// Workflow engine: configurable pipelines per system/org/project.
 	workflowStore := workflow.NewStore(pool)
 	workflowEngine := workflow.NewEngine(workflowStore, ticketStore)
+	workflowEngine.SetCompletion(func(ctx context.Context, id string) error {
+		return ticketSvc.TransitionTicket(ctx, id, ticket.TriggerWorkflowComplete, ticket.Actor{ID: "workflow", Type: ticket.ActorSystem}, nil)
+	})
 	workflowResolver := workflow.NewResolver(workflowEngine)
 	ticketSvc.SetWorkflowResolver(workflowResolver)
 
 	// Gate requirement checkers: automated conditions that must pass for gate phases.
 	checkerRegistry := gate.NewCheckerRegistry()
 	checkerRegistry.Register(gate.RequireGitHubChecks, &gate.GitHubChecksChecker{})
-	checkerRegistry.Register(gate.RequireHumanApproval, &gate.HumanApprovalChecker{})
+	checkerRegistry.Register(gate.RequireHumanApproval, &gate.HumanApprovalChecker{Reviews: &humanApprovalBridge{pool: pool}})
 	checkerRegistry.Register(gate.RequireHTTPCheck, &gate.HTTPCheckChecker{Client: &http.Client{Timeout: 10 * time.Second}})
 	checkerRegistry.Register(gate.RequireWebhook, &gate.WebhookChecker{})
 	ticketSvc.SetRequirementChecker(&requirementCheckerBridge{registry: checkerRegistry})
@@ -184,27 +209,42 @@ func run(ctx context.Context, cfg *config.Config) {
 	scheduler.SetFailureSummarizer(ticketSvc)
 	go scheduler.Run(ctx)
 
-	// Operator JWT secret. Generated per process when unset; the UI then needs
-	// to sign in again after a restart.
+	// Signing secret for workflow callbacks and legacy MCP bearer credentials.
 	jwtSecret := cfg.Auth.JWTSecret
 	if jwtSecret == "" {
 		jwtSecret = autoGenerateSecret()
-		slog.Warn("auth: JWT_SECRET unset; generated a per-process secret (UI sessions will not survive restarts)")
+		slog.Warn("JWT_SECRET unset; generated a per-process callback signing secret")
 	}
 
 	// Workflow callback + external executor: async phase support.
 	callbackStore := workflow.NewPostgresCallbackStore(pool)
 	callbackHandler := workflow.NewCallbackHandler([]byte(jwtSecret), callbackStore, workflowEngine)
+	callbackHandler.SetCompletion(func(ctx context.Context, id string) error {
+		return ticketSvc.TransitionTicket(ctx, id, ticket.TriggerWorkflowComplete, ticket.Actor{ID: "workflow", Type: ticket.ActorSystem}, nil)
+	})
 	externalExecutor := workflow.NewExternalExecutor(callbackHandler, cfg.Auth.BaseURL)
 
 	leaseValidator := &leaseValidatorAdapter{leases: queueRedis}
 	agentStore := agent.NewStore(pool)
 	agentSvc := agent.NewService(agentStore)
+	userStore := user.NewStore(pool)
+
+	// Every local control request uses this identity; no browser sign-in is needed.
+	provisioner := &auth.Provisioner{UserStore: userStore, AgentStore: agentStore}
+	operatorUser, operatorAgent, err := provisioner.Provision(ctx, auth.LocalOperator())
+	if err != nil {
+		slog.Error("local operator provisioning failed", "error", err)
+		return
+	}
+	if err := orgSvc.EnsureDefaultOrgForUser(ctx, operatorUser.ID, operatorUser.Email); err != nil {
+		slog.Error("local workspace provisioning failed", "error", err)
+		return
+	}
+
 	execStore := execution.NewStore(pool)
 	execSvc := execution.NewService(execStore, leaseValidator)
 	reviewStore := review.NewStore(pool)
 	reviewSvc := review.NewService(reviewStore, ticketSvc, bus)
-	userStore := user.NewStore(pool)
 
 	// Operator settings: environment values seed the defaults; the saved row (edited in the UI) wins.
 	settingsSvc, err := settings.Load(ctx, settings.NewStore(pool), settings.FromConfig(cfg))
@@ -232,6 +272,12 @@ func run(ctx context.Context, cfg *config.Config) {
 		CodexDir:  cfg.Sessions.CodexDir,
 		Interval:  cfg.Sessions.Interval,
 	})
+	if err := sessionsSvc.RecoverManagedRuns(ctx); err != nil {
+		slog.Error("session recovery failed", "error", err)
+		return
+	}
+	runstatus.Default.SetObserver(sessionsSvc.RecordRun)
+
 	sessionsSvc.Start(ctx)
 
 	// Code review: PR-keyed reviews by a local harness, posted through the operator's gh CLI.
@@ -332,11 +378,6 @@ func run(ctx context.Context, cfg *config.Config) {
 	// Progress monitor: bridges ticket lifecycle events → command center system messages.
 	_ = progress.NewMonitor(bus, orchestratorSvc, ticketSvc)
 
-	// Auth: single local operator + API keys for agents.
-	authMiddleware := rest.AuthMiddleware(jwtSecret, agentSvc)
-	provisioner := &auth.Provisioner{UserStore: userStore, AgentStore: agentStore}
-	authHandler := rest.NewAuthHandler(provisioner, orgSvc, jwtSecret, cfg.Auth.BaseURL, cfg.Auth.SuccessRedirectURL, 0)
-
 	mcpSrv, err := mcp.NewServer(&mcp.Backend{
 		Project:    projectSvc,
 		WorkStream: workStreamSvc,
@@ -356,17 +397,31 @@ func run(ctx context.Context, cfg *config.Config) {
 		slog.Error("mcp server init failed", "error", err)
 		os.Exit(1)
 	}
+	validateRun := func(ctx context.Context, g auth.RunGrant) error {
+		if g.PhaseID == "" {
+			return nil
+		}
+		t, err := ticketSvc.GetTicket(ctx, g.TicketID)
+		if err != nil {
+			return err
+		}
+		expected, err := time.Parse(time.RFC3339Nano, g.PhaseEnteredAt)
+		if err != nil || t.WorkflowPhaseEnteredAt == nil || !t.WorkflowPhaseEnteredAt.Equal(expected) || t.WorkflowPhase != g.PhaseID || t.WorkflowPhaseStatus == "failed" || t.State == ticket.StateClosed {
+			return fmt.Errorf("stale workflow attempt")
+		}
+		return nil
+	}
 	mcpHandler := &rest.MCPHTTPHandler{
-		Handler:   mcp.NewStreamableHTTPHandler(mcpSrv),
-		BaseURL:   cfg.Auth.BaseURL,
-		JWTSecret: jwtSecret,
-		AgentSvc:  agentSvc,
+		ValidateRun: validateRun,
+		Handler:     mcp.NewStreamableHTTPHandler(mcpSrv),
+		JWTSecret:   jwtSecret,
+		AgentSvc:    agentSvc,
 	}
 	mcpSSEHandler := &rest.MCPHTTPHandler{
-		Handler:   mcp.NewSSEHandler(mcpSrv),
-		BaseURL:   cfg.Auth.BaseURL,
-		JWTSecret: jwtSecret,
-		AgentSvc:  agentSvc,
+		ValidateRun: validateRun,
+		Handler:     mcp.NewSSEHandler(mcpSrv),
+		JWTSecret:   jwtSecret,
+		AgentSvc:    agentSvc,
 	}
 
 	// Dispatcher: background workers for tickets in agent phases. Always constructed;
@@ -390,7 +445,27 @@ func run(ctx context.Context, cfg *config.Config) {
 		ReconcileInterval:    cfg.Dispatch.ReconcileInterval,
 		TraceSvc:             execSvc,
 	}, bus, ticketSvc, projectSvc)
+	dispatcher.SetSessionRecorder(sessionsSvc)
+	orchestratorSvc.SetSessionRecorder(sessionsSvc)
 	dispatcher.SetLeaseReleaser(queueSvc)
+	runlimit.Configure(dcfg.MaxWorkers)
+	dispatcher.SetReservation(func(ctx context.Context, t *ticket.Ticket) (func(context.Context) error, error) {
+		key := settingsSvc.Current().Dispatch.WorkerAPIKey
+		a, err := agentSvc.AuthenticateAgent(ctx, key)
+		if err != nil {
+			return nil, err
+		}
+		if a == nil {
+			return nil, fmt.Errorf("dispatch worker key is not configured")
+		}
+		_, lease, err := queueSvc.ClaimTicketByID(ctx, a.ID, t.ProjectID, t.ID)
+		if err != nil {
+			return nil, err
+		}
+		return func(ctx context.Context) error { _, err := queueSvc.RenewLease(ctx, t.ID, lease.Token); return err }, nil
+	})
+	orchestratorSvc.SetWorkspaceResolver(dispatcher.ProjectRepoDir)
+	orchestratorSvc.ApplyWorkers(orchestratorWorkerCfg, drt.Workers)
 	dispatcher.SetFailureSummarizer(ticketSvc)
 	dispatcher.SetTicketTransitioner(ticketSvc)
 	dispatcher.SetWorkflowEngine(workflowEngine)
@@ -405,6 +480,12 @@ func run(ctx context.Context, cfg *config.Config) {
 	settingsSvc.OnChange(func(next settings.Settings) {
 		rt := next.DispatchRuntime()
 		dispatcher.Apply(rt)
+		runlimit.Configure(rt.MaxWorkers)
+		plannerCfg := orchestratorWorkerCfg
+		plannerCfg.ClaudePath = rt.ClaudePath
+		plannerCfg.CodexPath = rt.CodexPath
+		plannerCfg.DriverDefaults = rt.Defaults
+		orchestratorSvc.ApplyWorkers(plannerCfg, rt.Workers)
 		dispatcher.SetEnabled(rt.Enabled)
 	})
 
@@ -415,9 +496,9 @@ func run(ctx context.Context, cfg *config.Config) {
 	}
 
 	router := rest.NewRouter(rest.RouterConfig{
+		OverviewHandler: &rest.OverviewHandler{Store: overview.NewStore(pool), Dispatcher: dispatcher, CodeReviews: codeReviewSvc},
 		StrictServer:    strictServer,
-		AuthMiddleware:  authMiddleware,
-		AuthHandler:     authHandler,
+		AuthMiddleware:  rest.LocalOperatorMiddleware(operatorAgent.ID),
 		MCPHandler:      mcpHandler,
 		MCPSSEHandler:   mcpSSEHandler,
 		AgentsHandler:   &rest.AgentsHandler{AgentSvc: agentSvc},
@@ -455,7 +536,7 @@ func run(ctx context.Context, cfg *config.Config) {
 // stops background goroutines before the pool is closed.
 func serve(cfg *config.Config, router http.Handler, dispatcher *dispatch.Dispatcher, bus events.DurableEventBus, cancelServices context.CancelFunc) {
 	srv := &http.Server{
-		Addr:              ":" + cfg.Server.Port,
+		Addr:              "127.0.0.1:" + cfg.Server.Port,
 		Handler:           router,
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
@@ -504,4 +585,12 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+type humanApprovalBridge struct{ pool *pgxpool.Pool }
+
+func (b *humanApprovalBridge) HasApprovedReview(ctx context.Context, ticketID string) (bool, error) {
+	var approved bool
+	err := b.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM state_transitions st JOIN tickets t ON t.id=st.ticket_id WHERE t.id=$1 AND st.actor_type='human' AND st.trigger IN ('approve','validate') AND st.created_at>=t.workflow_phase_entered_at)`, ticketID).Scan(&approved)
+	return approved, err
 }

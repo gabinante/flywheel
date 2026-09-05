@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, GitPullRequest, RefreshCw } from 'lucide-rea
 
 import { PRCardRow } from '@/components/pr-card-row'
 import { Button } from '@/components/ui/button'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { formatApiError } from '@/lib/api/client'
 import { relativeTime } from '@/lib/sessions-format'
 import type { components } from '@/lib/api/v1'
@@ -73,7 +73,7 @@ function RepoSection({
 }
 
 export function MyPRsPage() {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [data, setData] = useState<MyPullRequests | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)

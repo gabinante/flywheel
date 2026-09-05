@@ -4,7 +4,7 @@ import { CalendarClock, Play, RefreshCw, Settings as SettingsIcon } from 'lucide
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { formatApiError } from '@/lib/api/client'
 import { relativeTime } from '@/lib/sessions-format'
 import type { components } from '@/lib/api/v1'
@@ -36,7 +36,7 @@ function untilLabel(iso: string | undefined, now: number) {
 }
 
 export function SchedulePage() {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [items, setItems] = useState<ScheduledAction[] | null>(null)
   const [now, setNow] = useState(0)
   const [err, setErr] = useState<string | null>(null)

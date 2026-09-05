@@ -9,49 +9,54 @@ import (
 	"github.com/gabinante/flywheel/internal/auth"
 )
 
-// MCPHTTPHandler wraps an MCP Streamable HTTP handler and returns 401 with
-// WWW-Authenticate when the request has no valid Bearer or X-API-Key, so Cursor
-// can discover the OAuth metadata and start the sign-in flow.
+// MCPHTTPHandler authenticates harness requests independently of the local UI.
+// Workers use X-API-Key; existing programmatic bearer credentials remain valid.
 type MCPHTTPHandler struct {
-	Handler   http.Handler
-	BaseURL   string
-	JWTSecret string
-	AgentSvc  *agent.Service
+	Handler     http.Handler
+	JWTSecret   string
+	AgentSvc    *agent.Service
+	ValidateRun func(context.Context, auth.RunGrant) error
 }
 
-// ServeHTTP authenticates the request; if unauthenticated, returns 401 with
-// resource_metadata so the client can perform OAuth. Otherwise injects agent_id
-// into context and delegates to the MCP handler.
+// ServeHTTP injects only the identity and capabilities proven by MCP credentials.
 func (h *MCPHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	agentID := ""
 	if authHeader := r.Header.Get("Authorization"); strings.HasPrefix(authHeader, "Bearer ") {
 		token := strings.TrimPrefix(authHeader, "Bearer ")
 		if id, err := auth.VerifyJWT(h.JWTSecret, token); err == nil {
 			agentID = id
+			r = r.WithContext(auth.WithOperator(r.Context()))
 		}
 	}
 	if agentID == "" {
 		if apiKey := r.Header.Get("X-API-Key"); apiKey != "" {
+			if grant, ok := auth.LookupRun(apiKey); ok {
+				if h.ValidateRun != nil {
+					if err := h.ValidateRun(r.Context(), grant); err != nil {
+						http.Error(w, "workflow attempt is no longer active", http.StatusForbidden)
+						return
+					}
+				}
+				apiKey = grant.ParentKey
+				r = r.WithContext(auth.WithRun(r.Context(), grant))
+			}
 			if a, err := h.AgentSvc.AuthenticateAgent(r.Context(), apiKey); err == nil && a != nil {
 				agentID = a.ID
 			}
 		}
 	}
 	if agentID == "" {
-		// MCP client (e.g. Cursor) will use resource_metadata to discover OAuth and open browser.
-		metadataURL := h.BaseURL + "/.well-known/oauth-protected-resource"
-		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+metadataURL+`"`)
-		w.WriteHeader(http.StatusUnauthorized)
+		http.Error(w, "MCP credentials required: configure X-API-Key", http.StatusUnauthorized)
 		return
 	}
-	// Verify agent exists (e.g. after DB reset, JWT may reference a deleted agent).
-	// Return 401 so the client re-authenticates and gets a fresh agent.
 	if _, err := h.AgentSvc.GetAgent(r.Context(), agentID); err != nil {
-		metadataURL := h.BaseURL + "/.well-known/oauth-protected-resource"
-		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+metadataURL+`"`)
-		w.WriteHeader(http.StatusUnauthorized)
+		http.Error(w, "MCP agent no longer exists: register a new API key", http.StatusUnauthorized)
 		return
 	}
 	ctx := context.WithValue(r.Context(), ContextKeyAgentID, agentID)
 	h.Handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+func isMCPPath(path string) bool {
+	return path == "/mcp" || strings.HasPrefix(path, "/mcp/") || path == "/sse" || strings.HasPrefix(path, "/sse/")
 }

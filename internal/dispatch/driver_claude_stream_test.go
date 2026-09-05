@@ -63,8 +63,8 @@ func TestClaudeStreamParserPassesThroughPlainText(t *testing.T) {
 			t.Fatalf("expected %q to pass through, got ok=%v events=%v", line, ok, events)
 		}
 	}
-	if p.Result() != nil {
-		t.Fatal("expected no result without a result record")
+	if p.Result() == nil || !p.Result().IsError {
+		t.Fatal("expected an incomplete-run error without a result record")
 	}
 }
 

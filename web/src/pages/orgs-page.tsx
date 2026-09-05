@@ -7,7 +7,7 @@ import { StaggerItem, StaggerList } from '@/components/stagger-list'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ListPageSkeleton } from '@/components/ui/skeleton'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 
@@ -83,7 +83,7 @@ function EmptyOrgsState() {
 }
 
 export function OrgsPage() {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [orgs, setOrgs] = useState<Org[] | null>(null)
   const [projectCounts, setProjectCounts] = useState<Record<string, number>>({})
   const [err, setErr] = useState<string | null>(null)

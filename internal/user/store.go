@@ -7,7 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Store persists users (GitHub identities).
+// Store persists local operator identities.
 type Store struct {
 	pool *pgxpool.Pool
 }

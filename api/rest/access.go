@@ -53,8 +53,8 @@ func CheckOrgAccess(ctx context.Context, orgID string, agentStore AgentGetter, o
 		return apierrors.New(apierrors.CodeUnauthorized, "agent not found", false)
 	}
 	if a.UserID == "" {
-		slog.Warn("CheckOrgAccess denied: OAuth required", "org", orgID, "agent", agentID)
-		return apierrors.New(apierrors.CodeUnauthorized, "OAuth required (agent must be linked to a user)", false)
+		slog.Warn("CheckOrgAccess denied: operator identity required", "org", orgID, "agent", agentID)
+		return apierrors.New(apierrors.CodeUnauthorized, "operator identity required (agent must be linked to a user)", false)
 	}
 	orgIDs, err := orgSvc.ListOrgIDsForUser(ctx, a.UserID)
 	if err != nil {
@@ -107,7 +107,7 @@ func ResolveProjectID(ctx context.Context, orgID, projectIDOrSlug string, resolv
 	return p.ID
 }
 
-// EnsureOrgAccess requires an authenticated agent with OAuth (user link), verifies the user is a member of the given org,
+// EnsureOrgAccess requires an authenticated agent with a local user link (user link), verifies the user is a member of the given org,
 // and writes 401/403 and returns false if not. Returns true when the caller has access.
 func EnsureOrgAccess(ctx context.Context, w http.ResponseWriter, orgID string, agentStore AgentGetter, orgSvc OrgMemberLister) bool {
 	if err := CheckOrgAccess(ctx, orgID, agentStore, orgSvc); err != nil {
@@ -117,7 +117,7 @@ func EnsureOrgAccess(ctx context.Context, w http.ResponseWriter, orgID string, a
 	return true
 }
 
-// EnsureProjectAccess requires an authenticated agent with OAuth, loads the project to get org_id, and verifies the user
+// EnsureProjectAccess requires an authenticated agent with a local user link, loads the project to get org_id, and verifies the user
 // is a member of that org. Writes 401/403/404 and returns false if not. Returns true when the caller has access.
 func EnsureProjectAccess(ctx context.Context, w http.ResponseWriter, projectID string, agentStore AgentGetter, orgSvc OrgMemberLister, projectSvc ProjectGetterForAccess) bool {
 	if err := CheckProjectAccess(ctx, projectID, agentStore, orgSvc, projectSvc); err != nil {

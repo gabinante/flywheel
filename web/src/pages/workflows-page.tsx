@@ -5,7 +5,7 @@ import { ArrowLeft, Library, Plus, Trash2, Workflow as WorkflowIcon } from 'luci
 import { WorkflowTimelineEditor } from '@/components/workflow-timeline-editor'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { resolvePreferredOrgId } from '@/lib/org-preferences'
 import type { components } from '@/lib/api/v1'
 
@@ -21,7 +21,7 @@ type LibraryEntry = {
 }
 
 function useOrgId() {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [orgId, setOrgId] = useState<string | null>(null)
   useEffect(() => {
     let cancelled = false
@@ -38,7 +38,7 @@ function useOrgId() {
 
 /** The workflow library: built-in templates, saved library workflows, and the org default. */
 export function WorkflowsPage() {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const orgId = useOrgId()
   const [entries, setEntries] = useState<LibraryEntry[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -154,7 +154,7 @@ export function WorkflowEditorPage() {
   const { id } = useParams()
   const [params] = useSearchParams()
   const navigate = useNavigate()
-  const { client } = useAuth()
+  const { client } = useAPI()
   const orgId = useOrgId()
   const templateId = params.get('template')
   const [template, setTemplate] = useState<{ name: string; description?: string; phases: WorkflowPhase[] } | null>(null)

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { StyledSelect } from '@/components/ui/styled-select'
 import { Textarea } from '@/components/ui/textarea'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 import { relativeTime } from '@/lib/sessions-format'
@@ -78,7 +78,7 @@ function ReportEditor({
 }
 
 export function ProjectReportsCard({ projectId }: { projectId: string }) {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [update, setUpdate] = useState<Report | null>(null)
   const [weekly, setWeekly] = useState<Report | null>(null)
   const [history, setHistory] = useState<Report[]>([])

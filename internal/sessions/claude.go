@@ -83,6 +83,7 @@ func (c *claudeCollector) run(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	touched := 0
+	var failures error
 	for _, pd := range projDirs {
 		if !pd.IsDir() || pd.Name() == "memory" {
 			continue
@@ -100,6 +101,7 @@ func (c *claudeCollector) run(ctx context.Context) (int, error) {
 				path := filepath.Join(dir, e.Name())
 				if ok, err := c.ingestFile(ctx, path, offsets[path], "", nil); err != nil {
 					slog.Warn("sessions: claude ingest failed", "path", path, "error", err)
+					failures = errors.Join(failures, err)
 				} else if ok {
 					touched++
 				}
@@ -125,6 +127,7 @@ func (c *claudeCollector) run(ctx context.Context) (int, error) {
 					}
 					if ok, err := c.ingestFile(ctx, path, offsets[path], e.Name(), meta); err != nil {
 						slog.Warn("sessions: claude subagent ingest failed", "path", path, "error", err)
+						failures = errors.Join(failures, err)
 					} else if ok {
 						touched++
 					}
@@ -132,7 +135,7 @@ func (c *claudeCollector) run(ctx context.Context) (int, error) {
 			}
 		}
 	}
-	return touched, nil
+	return touched, failures
 }
 
 // ingestFile tails one transcript from offset. parentSID is set for subagent transcripts.
@@ -312,13 +315,7 @@ func (c *claudeCollector) ingestFile(ctx context.Context, path string, offset in
 		sess.Title = truncate(sess.FirstPrompt, 80)
 	}
 	sess.IngestOffset = consumed
-	if err := c.store.Upsert(ctx, sess); err != nil {
-		return false, err
-	}
-	if err := c.store.AppendPrompts(ctx, sess.ID, prompts); err != nil {
-		return false, err
-	}
-	if err := c.store.AddLinks(ctx, sess.ID, links); err != nil {
+	if err := c.store.Ingest(ctx, sess, prompts, links); err != nil {
 		return false, err
 	}
 	return true, nil

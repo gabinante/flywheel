@@ -14,9 +14,10 @@ export function OrgProjectCrumbs({
 }: OrgProjectCrumbsProps) {
   return (
     <>
-      <Link to={`/orgs/${orgId}/projects`} className="hover:underline">
+      <Link to={orgId ? `/orgs/${orgId}/projects` : "/orgs"} className="hover:underline">
         Projects
       </Link>
+      {projectId && <>
       <span className="px-1">/</span>
       <Link
         to={`/orgs/${orgId}/projects/${projectId}`}
@@ -24,6 +25,7 @@ export function OrgProjectCrumbs({
       >
         {projectLabel}
       </Link>
+      </>}
     </>
   )
 }

@@ -36,6 +36,10 @@ This file is the shared operating guide for coding agents working in this repo.
   - `linear/`: Linear as the ticket store — discovers led projects, projects issues onto tickets, files Flywheel tickets as issues, pushes state changes and comments back.
   - `report/`: Linear reporting parity — delta project status updates and the weekly roundup, rendered from Flywheel data + `gh`.
   - `sessions/`: ingests Claude Code (`~/.claude/projects`) and Codex (`~/.codex`) sessions read-only, links them to PRs and Linear issues.
+  - `runstatus/`: tracks live Flywheel-managed harness invocations and publishes native session IDs as soon as available.
+    Progress separates process attachment, real output recency, semantic work, and reported usage; quiet is not a hang.
+    Keep event history bounded, never copy raw thinking/tool payloads into global progress, and preserve final summaries on sessions.
+  - `overview/`: joins live work and operator decisions across projects for the global right tray (`GET /api/overview`).
   - `progress/`: bridges ticket lifecycle events into the command center thread.
 - `api/openapi.yaml`: REST contract. `api/rest/`: HTTP handlers. `api/mcp/`: MCP tools and agent guide.
 - `db/migrations/`: SQL migrations.
@@ -56,6 +60,9 @@ This file is the shared operating guide for coding agents working in this repo.
   operator settings. Do not hard-code a role preamble in a new service — register it.
 - There is a single organization. It is not shown as a navigation level: `/orgs` forwards to its project list and
   projects are the main separation.
+- The right tray is global and consistent on every page: in-flight work with ticket/session links, and items
+  needing operator action. Project-specific context stays in the page. Active work comes from managed runs,
+  dispatcher reservations, and external/review workflow state, not recently modified session files.
 
 ## Local dev
 
@@ -64,12 +71,13 @@ This file is the shared operating guide for coding agents working in this repo.
 - `make dev` — the primary dev command. Ensures Docker Postgres+Redis are running (compose project
   `flywheel`), runs migrations, then starts the Go server on `:8090`. Re-invoke to restart.
 - `make dev-infra` — start only Postgres and Redis. `make dev-stop` — kill the server only.
+- `scripts/test-hardening.sh` — build the server and web app, then run database regressions and Playwright with disposable Docker databases and fake local harnesses on port 8091. Requires Docker, web dependencies, and Playwright Chromium.
 - `make test` — Go tests. `make web-build` — production web build. `make generate` — regenerate from
   OpenAPI (requires `oapi-codegen`; `go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest`).
 - `cd web && npm run dev` — Vite dev server (HMR); `npm run gen:api` after OpenAPI changes.
 - `make varlock-validate` — validate `.env` against `.env.schema`.
-- Sign-in is `GET /auth/login`: it provisions the single local operator and hands the UI a JWT. There is no
-  external identity provider.
+- Opening `/` enters the local workspace directly. Server startup provisions the persistent local operator
+  and default organization. There is no homepage, login, browser token, or external identity provider.
 
 ## MCP setup
 
@@ -81,7 +89,7 @@ Claude Code (`~/.claude/.mcp.json` or the repo's `.claude/settings.json`):
 { "mcpServers": { "flywheel": { "url": "http://localhost:8090/mcp", "headers": { "X-API-Key": "<key>" } } } }
 ```
 
-Dispatched workers receive MCP config automatically. After restarting the server, MCP clients reconnect;
+Dispatched workers receive a short-lived, ticket/phase/role-scoped credential automatically. Credential files live outside checkouts with mode 0600. Operator REST controls use the startup-provisioned local identity without browser credentials; the server binds to loopback and rejects untrusted Host/Origin headers. MCP keys authenticate separately and do not inherit the REST operator context. After restarting the server, MCP clients reconnect;
 if tools error after a restart, start a new session.
 
 ## Platform rules
@@ -105,7 +113,7 @@ if tools error after a restart, start a new session.
 - Runner is `cli` only. Drivers: `claude` (default), `codex`, `generic`.
 - Worktrees follow the operator's layout: `<DISPATCH_WORKTREE_DIR>/<repo>-worktrees/<slug>` (default root `~/git`), cut from
   the operator's own checkout at `<root>/<repo>` when it exists. Linear-backed tickets branch as `<identifier>-<title-slug>`
-  (e.g. `rlep-3488-review-fixes`). Review worktrees are `review-<n>`, feedback worktrees `feedback-<n>`; both are removed after the run.
+  (e.g. `rlep-3488-review-fixes`). Review worktrees are `review-<n>-<unique>`, feedback worktrees `feedback-<n>-<unique>`. Flywheel records ownership outside each checkout and removes only owned, clean worktrees. Dirty or unknown directories are preserved.
 - `DISPATCH_AGENT_MODEL` / `DISPATCH_AGENT_REASONING_EFFORT` are passed to harnesses that accept them.
 - Orchestrator and dispatch worker configs can differ (`ORCHESTRATOR_AGENT_*`).
 

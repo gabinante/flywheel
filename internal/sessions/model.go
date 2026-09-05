@@ -80,6 +80,9 @@ type Session struct {
 
 // Status derives the session status at time now.
 func (s *Session) Status(now time.Time) Status {
+	if running, _ := s.Metadata["flywheel_running"].(bool); running {
+		return StatusActive
+	}
 	if s.EndedAt != nil {
 		return StatusEnded
 	}
@@ -115,6 +118,7 @@ type Prompt struct {
 
 // Filter narrows a session listing.
 type Filter struct {
+	ProjectID        string
 	Harness          Harness
 	Origin           Origin
 	Repo             string

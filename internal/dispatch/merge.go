@@ -8,6 +8,7 @@ package dispatch
 import (
 	"context"
 	"fmt"
+	"github.com/gabinante/flywheel/internal/workflow"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -50,10 +51,23 @@ func (d *Dispatcher) spawnWaitingReviewers(ctx context.Context, projectID string
 // Skips review if the PR HEAD commit hasn't changed since the last review
 // to prevent duplicate reviews when the executor re-submits without new commits.
 func (d *Dispatcher) spawnReviewer(ctx context.Context, t *ticket.Ticket) {
+	if t.WorkflowID != "" {
+		if d.workflowEngine == nil {
+			return
+		}
+		pos, err := d.workflowEngine.GetPosition(ctx, t.ID, t.WorkflowID, t.WorkflowPhase, t.WorkflowVersion)
+		if err != nil || pos == nil || pos.CurrentPhase == nil || pos.CurrentPhase.Type != workflow.PhaseAgent {
+			return
+		}
+		cfg, _ := workflow.ParseAgentConfig(pos.CurrentPhase.Config)
+		if cfg.Role != "validator" {
+			return
+		}
+	}
 	// Guard: don't re-review the same commit. If the PR HEAD hasn't changed
 	// since our last review, the executor failed to address feedback — escalate
 	// instead of posting another identical review.
-	if prURL, ok := t.Outputs["pr_url"].(string); ok && prURL != "" {
+	if prURL, ok := t.Outputs["pr_url"].(string); t.WorkflowID == "" && ok && prURL != "" {
 		headSHA := d.prHeadCommit(ctx, prURL)
 		if headSHA != "" {
 			if lastReviewed, ok := t.Outputs["_last_reviewed_commit"].(string); ok && lastReviewed == headSHA {
@@ -69,18 +83,31 @@ func (d *Dispatcher) spawnReviewer(ctx context.Context, t *ticket.Ticket) {
 
 	reviewKey := "review:" + t.ID
 
-	workerCtx, _, active, limit, started := d.startActive(ctx, reviewKey, t.ProjectID)
+	workerCtx, cancel, active, limit, started := d.startActive(ctx, reviewKey, t.ProjectID)
 	if !started {
 		slog.Info("dispatch: at capacity, deferring review", "ticket", t.ID, "project", t.ProjectID, "active", active, "max", limit)
 		return
 	}
 
+	if t.WorkflowID != "" && d.workflowPhaseUpdater != nil {
+		ok, err := d.claimPhase(ctx, t)
+		if err != nil || !ok {
+			cancel()
+			d.mu.Lock()
+			delete(d.active, reviewKey)
+			delete(d.activeProjects, reviewKey)
+			d.mu.Unlock()
+			return
+		}
+	}
+	reviewedHead := d.prHeadCommit(ctx, prURLForTicket(t))
 	ticketID := t.ID
 	projectID := t.ProjectID
 	prURL, _ := t.Outputs["pr_url"].(string)
 	d.wg.Add(1)
 	go func() {
 		defer d.wg.Done()
+		defer cancel()
 		defer func() {
 			d.mu.Lock()
 			delete(d.active, reviewKey)
@@ -89,9 +116,9 @@ func (d *Dispatcher) spawnReviewer(ctx context.Context, t *ticket.Ticket) {
 
 			// Persist the PR HEAD commit that was reviewed so future spawn
 			// attempts can detect no-new-commits re-submissions.
-			if prURL != "" {
-				if headSHA := d.prHeadCommit(ctx, prURL); headSHA != "" {
-					d.persistReviewedCommit(ctx, ticketID, projectID, headSHA)
+			if t.WorkflowID == "" && prURL != "" {
+				if reviewedHead != "" {
+					d.persistReviewedCommit(ctx, ticketID, projectID, reviewedHead)
 				}
 			}
 
@@ -110,6 +137,9 @@ func (d *Dispatcher) spawnReviewer(ctx context.Context, t *ticket.Ticket) {
 
 // prHeadCommit returns the HEAD commit SHA of a PR, or "" on error.
 func (d *Dispatcher) prHeadCommit(ctx context.Context, prURL string) string {
+	if prURL == "" {
+		return ""
+	}
 	cmd := d.ghCommand(ctx, "pr", "view", prURL, "--json", "headRefOid", "--jq", ".headRefOid")
 	out, err := cmd.Output()
 	if err != nil {
@@ -137,7 +167,7 @@ func (d *Dispatcher) runReviewer(ctx context.Context, t *ticket.Ticket) error {
 
 	// Use the typed validator prompt for consistency.
 	depOutputs := make(map[string]map[string]any)
-	prompt := AssembleTypedWorkerPrompt(WorkerTypeValidator, proj, t, depOutputs, d.cfg.ServerURL, d.cfg.AgentID, nil)
+	prompt := AssembleTypedWorkerPrompt(WorkerTypeValidator, proj, t, depOutputs, d.config().ServerURL, d.config().AgentID, nil)
 
 	// Reviewer works in the repo dir (needs access to the code for `gh` and `make test`).
 	// Use the existing worktree if available (the worker's branch), otherwise use
@@ -197,6 +227,12 @@ func (d *Dispatcher) handleReviewerExit(ctx context.Context, ticketID string) {
 		return // Reviewer acted (approve/reject already moved the state)
 	}
 
+	if t.WorkflowID != "" {
+		if t.WorkflowPhaseStatus == "running" && d.workflowPhaseUpdater != nil {
+			_ = d.workflowPhaseUpdater.UpdateWorkflowPhaseStatus(bgCtx, t.ID, "failed")
+		}
+		return
+	}
 	// Immediate GitHub check — don't wait 60s for reconcile.
 	d.reconcileGitHubReviewStatus(bgCtx, []*ticket.Ticket{t})
 
@@ -428,6 +464,9 @@ func (d *Dispatcher) reconcileAwaitingValidationPRs(ctx context.Context, reviewi
 		return
 	}
 	for _, t := range reviewing {
+		if t.WorkflowID != "" {
+			continue
+		}
 		if ctx.Err() != nil {
 			return
 		}
@@ -529,6 +568,9 @@ func isValidPRURL(prURL string) bool {
 // to conflicts, it spawns a conflict resolver worker. On success, it advances
 // the ticket through deploying → observing → closed.
 func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL string) {
+	if !d.workflowMergePhase(ctx, t) {
+		return
+	}
 	// State guard: only merge from validated state. Prevents re-entrancy when
 	// ticket.closed event re-enters handleTicketDone.
 	if t.State != ticket.StateValidated {
@@ -590,7 +632,11 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 		return
 	}
 
-	// Validate CI checks before attempting merge.
+	head := d.prHeadCommit(ctx, prURL)
+	if head == "" {
+		return
+	}
+	// Validate CI checks for the captured head before attempting merge.
 	if !d.validatePRChecks(ctx, t, prURL, repoDir) {
 		newAttempts := attempts + 1
 		d.persistMergeState(ctx, t.ID, newAttempts, "checks_failing", "CI checks not passing")
@@ -600,7 +646,10 @@ func (d *Dispatcher) autoMergePR(ctx context.Context, t *ticket.Ticket, prURL st
 		return
 	}
 
-	cmd := d.ghCommand(ctx, "pr", "merge", prURL, "--squash")
+	if d.prHeadCommit(ctx, prURL) != head {
+		return
+	}
+	cmd := d.ghCommand(ctx, "pr", "merge", prURL, "--squash", "--match-head-commit", head)
 	cmd.Dir = repoDir
 	out, mergeErr := cmd.CombinedOutput()
 	if mergeErr != nil {
@@ -652,6 +701,9 @@ func (d *Dispatcher) closeMergedTicket(ctx context.Context, t *ticket.Ticket) {
 
 	// Workflow-aware: advance the current phase, then process the next one.
 	if t.WorkflowID != "" && d.workflowEngine != nil && t.WorkflowPhase != "" {
+		if !d.workflowMergePhase(ctx, t) {
+			return
+		}
 		next := d.advanceWorkflowIfNeeded(ctx, t, "success")
 		if next == nil {
 			// Workflow complete — close the ticket.
@@ -684,6 +736,11 @@ func (d *Dispatcher) closeMergedTicket(ctx context.Context, t *ticket.Ticket) {
 // escalateMergeFailure publishes an escalation event when merge attempts exceed the threshold.
 // The ticket stays in validated state for manual intervention.
 func (d *Dispatcher) escalateMergeFailure(ctx context.Context, t *ticket.Ticket, reason string) {
+	if t.WorkflowID != "" && d.workflowPhaseUpdater != nil {
+		if err := d.workflowPhaseUpdater.UpdateWorkflowPhaseStatus(ctx, t.ID, "failed"); err != nil {
+			events.Retry(ctx, err)
+		}
+	}
 	slog.Warn("dispatch: escalating merge failure", "ticket", t.ID, "reason", reason)
 	d.persistMergeState(ctx, t.ID, maxMergeAttempts, "escalated", reason)
 	_ = d.bus.Publish(ctx, events.Event{
@@ -868,36 +925,8 @@ func (d *Dispatcher) runConflictResolver(ctx context.Context, t *ticket.Ticket, 
 
 	slog.Info("dispatch: conflict resolver completed, retrying merge", "ticket", t.ID)
 
-	_ = d.worktrees.Remove(t.ID)
-	cmd := d.ghCommand(ctx, "pr", "merge", prURL, "--squash")
-	cmd.Dir = repoDir
-	out, mergeErr := cmd.CombinedOutput()
-	if mergeErr != nil {
-		output := string(out)
-		slog.Error("dispatch: retry merge still failed", "ticket", t.ID, "error", mergeErr, "output", output)
-
-		// Read current attempts from outputs for accurate count.
-		attempts := 0
-		if fresh, ferr := d.tickets.GetTicket(ctx, t.ID); ferr == nil && fresh != nil {
-			if v, ok := fresh.Outputs["_merge_attempts"]; ok {
-				switch n := v.(type) {
-				case float64:
-					attempts = int(n)
-				case int:
-					attempts = n
-				}
-			}
-		}
-		d.persistMergeState(ctx, t.ID, attempts+1, "conflict", truncate(output, 500))
-
-		return fmt.Errorf("retry merge: %w", mergeErr)
-	}
-
-	slog.Info("dispatch: auto-merged PR after conflict resolution", "ticket", t.ID)
-	d.persistMergeState(ctx, t.ID, 0, "merged", "")
-	d.cleanupTicketBranch(ctx, t.ID, t.ProjectID)
-
-	d.publishMergedEvent(ctx, t, prURL)
-	d.closeMergedTicket(ctx, t)
+	d.autoMergePR(ctx, t, prURL)
 	return nil
 }
+
+func prURLForTicket(t *ticket.Ticket) string { url, _ := t.Outputs["pr_url"].(string); return url }

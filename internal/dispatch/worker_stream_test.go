@@ -83,9 +83,9 @@ func TestCLIWorkerSpawnStreamKeepsPlainTextOnExitFailure(t *testing.T) {
 	}
 }
 
-func TestCLIWorkerSpawnStreamFallsBackToTranscriptWithoutResult(t *testing.T) {
+func TestCLIWorkerSpawnStreamRetainsPartialTranscriptButRequiresResult(t *testing.T) {
 	res, _ := spawnScripted(t, `echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Partial thoughts."}]}}'`)
-	if !res.Success || res.Output != "Partial thoughts." {
-		t.Fatalf("expected transcript fallback, got %#v", res)
+	if res.Success || res.Output != "Partial thoughts." || !strings.Contains(res.Error, "without a final result") {
+		t.Fatalf("expected incomplete run with retained transcript, got %#v", res)
 	}
 }

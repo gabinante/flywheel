@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { StyledSelect } from '@/components/ui/styled-select'
 import { Switch } from '@/components/ui/switch'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 
@@ -97,7 +97,7 @@ function Toggle({ id, label, hint, checked, onChange }: { id: string; label: str
 }
 
 export function OperatorSettingsPage() {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [settings, setSettings] = useState<OperatorSettings | null>(null)
   const [apiKey, setApiKey] = useState('')
   const [clearKey, setClearKey] = useState(false)

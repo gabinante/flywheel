@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { formatApiError } from '@/lib/api/client'
 
 type TicketReviewPanelProps = {
@@ -22,7 +22,7 @@ export function TicketReviewPanel({
   ticketId,
   onReviewed,
 }: TicketReviewPanelProps) {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [notes, setNotes] = useState('')
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)

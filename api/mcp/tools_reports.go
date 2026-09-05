@@ -18,6 +18,11 @@ func RegisterReportTools(s *mcp.Server, b *Backend) {
 			if req != nil && req.Session != nil {
 				ctx = context.WithValue(ctx, sessionContextKey{}, req.Session)
 			}
+			if req != nil && req.Params != nil {
+				if err := authorizeRun(ctx, req.Params.Name, args); err != nil {
+					return toolErrTriple(apierrors.New(apierrors.CodeForbidden, err.Error(), false))
+				}
+			}
 			return f(b, ctx, args)
 		}
 	}

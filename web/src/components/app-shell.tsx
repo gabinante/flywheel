@@ -3,7 +3,6 @@ import { Link, Outlet } from 'react-router-dom'
 
 import {
   Keyboard,
-  LogOut,
   PanelRightClose,
   PanelRightOpen,
 } from 'lucide-react'
@@ -18,7 +17,6 @@ import { RightRailWidgets } from '@/components/right-rail-widgets'
 import { Button } from '@/components/ui/button'
 import { RightRailProvider } from '@/contexts/right-rail-provider'
 import { SidebarProvider } from '@/contexts/sidebar-provider'
-import { useAuth } from '@/contexts/use-auth'
 import { useRightRail } from '@/contexts/use-right-rail'
 import { cn } from '@/lib/utils'
 
@@ -79,7 +77,6 @@ function EnhancedRightRailToggle() {
  * Inner shell rendered within RightRailProvider so it can access useRightRail.
  */
 function AppShellInner() {
-  const { token, signOut } = useAuth()
 
   // Track scroll position for blur-on-scroll effect
   const [scrolled, setScrolled] = useState(false)
@@ -139,24 +136,20 @@ function AppShellInner() {
                 <Link
                   to="/"
                   className="shrink-0 transition-opacity duration-150 hover:opacity-80"
-                  aria-label="Flywheel home"
+                  aria-label="Flywheel projects"
                 >
                   <FlywheelLogo />
                 </Link>
 
                 {/* Separator + breadcrumbs */}
-                {token && (
-                  <>
-                    <div className="h-5 w-px shrink-0 bg-white/10" aria-hidden />
-                    <HeaderBreadcrumbs className="min-w-0" />
-                  </>
-                )}
+                <div className="h-5 w-px shrink-0 bg-white/10" aria-hidden />
+                <HeaderBreadcrumbs className="min-w-0" />
               </div>
 
               {/* ─── Right: actions ─── */}
               <div className="flex shrink-0 items-center gap-1.5">
                 {/* Dispatch status indicator */}
-                {token && <DispatchStatusIndicator />}
+                <DispatchStatusIndicator />
 
                 {/* Keyboard shortcut hint */}
                 <Button
@@ -172,33 +165,6 @@ function AppShellInner() {
 
                 {/* Right rail toggle (more discoverable) */}
                 <EnhancedRightRailToggle />
-
-                {/* Separator */}
-                <div className="mx-1 h-5 w-px bg-white/10" aria-hidden />
-
-                {/* Auth buttons */}
-                {token ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={signOut}
-                    className="gap-1.5 text-muted-foreground transition-colors duration-150 hover:text-destructive"
-                  >
-                    <LogOut className="size-3.5" />
-                    <span className="hidden sm:inline">Sign out</span>
-                  </Button>
-                ) : (
-                  <Button
-                    asChild
-                    size="sm"
-                    className="bg-primary/90 backdrop-blur-sm transition-all duration-200 hover:bg-primary"
-                  >
-                    <a href="/auth/login" className="gap-1.5">
-                      Sign in
-                    </a>
-                  </Button>
-                )}
               </div>
             </div>
           </header>
@@ -223,11 +189,10 @@ function AppShellInner() {
 }
 
 export function AppShell() {
-  const { token } = useAuth()
 
   return (
     <SidebarProvider>
-      <RightRailProvider railContent={token ? <RightRailWidgets /> : undefined}>
+      <RightRailProvider railContent={<RightRailWidgets />}>
         <AppShellInner />
       </RightRailProvider>
     </SidebarProvider>

@@ -62,9 +62,12 @@ func ParseExternalConfig(config map[string]any) (*ExternalPhaseConfig, error) {
 
 // AgentPhaseConfig is the typed config for an agent phase.
 type AgentPhaseConfig struct {
+	Harness       string `json:"harness,omitempty"`
+	Model         string `json:"model,omitempty"`
+	Effort        string `json:"effort,omitempty"`
 	Role          string `json:"role"`                     // executor, planner, validator, deployer, investigator
 	Goal          string `json:"goal"`                     // freeform objective
-	Prompt        string `json:"prompt,omitempty"`          // custom system prompt supplement
+	Prompt        string `json:"prompt,omitempty"`         // custom system prompt supplement
 	AutoAdvance   *bool  `json:"auto_advance"`             // advance on successful submit (default true)
 	MaxIterations int    `json:"max_iterations,omitempty"` // 0 = unlimited; for review loops
 }
@@ -166,9 +169,12 @@ func validateAgentPhaseConfig(config map[string]any) []string {
 	if err != nil {
 		return []string{fmt.Sprintf("invalid agent config: %v", err)}
 	}
-	errs = append(errs, detectUnknownKeys(config, "role", "goal", "prompt", "auto_advance", "max_iterations")...)
+	errs = append(errs, detectUnknownKeys(config, "role", "goal", "prompt", "auto_advance", "max_iterations", "harness", "model", "effort")...)
 	if cfg.Role != "" && !ValidRoles[cfg.Role] {
 		errs = append(errs, fmt.Sprintf("unknown agent role %q; known roles: executor, planner, validator, deployer, investigator, operator, decomposer, fast-executor", cfg.Role))
+	}
+	if cfg.Harness != "" && cfg.Harness != "codex" && cfg.Harness != "claude" {
+		errs = append(errs, "harness must be claude or codex")
 	}
 	if cfg.MaxIterations < 0 {
 		errs = append(errs, "max_iterations must be >= 0")
@@ -187,6 +193,9 @@ func validateExternalPhaseConfig(config map[string]any) []string {
 	validModes := map[string]bool{"sync": true, "async": true, "poll": true}
 	if !validModes[cfg.Mode] {
 		errs = append(errs, fmt.Sprintf("invalid external mode %q; must be sync, async, or poll", cfg.Mode))
+	}
+	if cfg.URL == "" && (cfg.Mode != "poll" || cfg.PollURL == "") {
+		errs = append(errs, "external phase requires a URL")
 	}
 	if cfg.PollInterval != "" {
 		if _, parseErr := time.ParseDuration(cfg.PollInterval); parseErr != nil {
@@ -232,6 +241,8 @@ func validateActionPhaseConfig(config map[string]any) []string {
 	errs = append(errs, detectUnknownKeys(config, "action", "params")...)
 	if cfg.Action == "" {
 		errs = append(errs, "action phase requires a non-empty 'action'")
+	} else if cfg.Action != "merge_pr" {
+		errs = append(errs, "unsupported action; use merge_pr or an external phase with a URL")
 	}
 	return errs
 }
@@ -381,4 +392,66 @@ func (e *ExternalExecutor) renderBody(template, ticketID, workflowID, phaseID, c
 	result = strings.ReplaceAll(result, "{{workflow_id}}", workflowID)
 	result = strings.ReplaceAll(result, "{{callback_url}}", callbackURL)
 	return []byte(result), nil
+}
+
+// PollOnce performs a read-only status probe. With no JSON condition, configured
+// success HTTP statuses satisfy it. A condition is a dotted JSON path with a
+// boolean true value (for example deployment.ready).
+func (e *ExternalExecutor) PollOnce(ctx context.Context, cfg *ExternalPhaseConfig) (bool, error) {
+	url := cfg.PollURL
+	if url == "" {
+		url = cfg.URL
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return false, err
+	}
+	for k, v := range cfg.Headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := e.client.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	codes := cfg.SuccessStatus
+	if len(codes) == 0 {
+		codes = []int{200}
+	}
+	success := false
+	for _, code := range codes {
+		if resp.StatusCode == code {
+			success = true
+		}
+	}
+	if !success {
+		return false, nil
+	}
+	if cfg.PollSuccessCondition == "" {
+		return true, nil
+	}
+	var value any
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&value); err != nil {
+		return false, err
+	}
+	for _, part := range strings.Split(cfg.PollSuccessCondition, ".") {
+		m, ok := value.(map[string]any)
+		if !ok {
+			return false, nil
+		}
+		value = m[part]
+	}
+	ready, _ := value.(bool)
+	return ready, nil
+}
+
+func (e *ExternalExecutor) GateCallback(ctx context.Context, ticketID, workflowID, phaseID string) (string, error) {
+	if e.callback == nil {
+		return "", fmt.Errorf("callbacks not configured")
+	}
+	token, err := e.callback.GenerateToken(ctx, ticketID, workflowID, phaseID, 24*time.Hour)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s/gate/callback/%s", e.baseURL, token), nil
 }

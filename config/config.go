@@ -44,9 +44,8 @@ func Load() *Config {
 			LeaseTTLMinutes: getEnvInt("LEASE_TTL_MINUTES", 10),
 		},
 		Auth: AuthConfig{
-			BaseURL:            baseURL,
-			SuccessRedirectURL: getEnv("AUTH_SUCCESS_REDIRECT_URL", ""),
-			JWTSecret:          getEnv("JWT_SECRET", ""),
+			BaseURL:   baseURL,
+			JWTSecret: getEnv("JWT_SECRET", ""),
 		},
 		Dispatch: DispatchConfig{
 			Enabled:                     getEnvBool("DISPATCH_ENABLED", false),
@@ -290,12 +289,10 @@ type ServerConfig struct {
 	WebDevProxyURL string // optional Vite dev server URL to reverse proxy for HMR in local development.
 }
 
-// AuthConfig configures local operator sign-in. There is no external identity
-// provider: GET /auth/login issues a JWT for the single local operator.
+// AuthConfig configures callback URLs and signing. The local UI needs no login.
 type AuthConfig struct {
-	BaseURL            string
-	SuccessRedirectURL string
-	JWTSecret          string // empty = generated per process (UI sessions do not survive restarts)
+	BaseURL   string
+	JWTSecret string // empty = generated per process; used for callbacks and legacy MCP credentials
 }
 
 type DBConfig struct {

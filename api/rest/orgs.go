@@ -36,7 +36,7 @@ func (h *OrgsHandler) createOrg(w http.ResponseWriter, r *http.Request) {
 		WriteStructuredError(w, apierrors.New(apierrors.CodeInvalidInput, "invalid body", false))
 		return
 	}
-	// When the agent has OAuth (UserID set), we create the org and add them as owner so they see it in list orgs and pass access checks. When the agent is API-key-only (UserID empty), we create the org with no membership: the creator is not in org_members and will not see this org via ListOrgsForUser or EnsureOrgAccess. Use OAuth-linked agents for normal org/project workflows; API-key-only creation is for automation where the caller may not need to list or access the org via membership.
+	// When the agent has a user link (UserID set), we create the org and add them as owner so they see it in list orgs and pass access checks. When the agent is API-key-only (UserID empty), we create the org with no membership: the creator is not in org_members and will not see this org via ListOrgsForUser or EnsureOrgAccess. Use user-linked agents for normal org/project workflows; API-key-only creation is for automation where the caller may not need to list or access the org via membership.
 	var o *org.Org
 	if agent.UserID != "" {
 		o, err = h.OrgSvc.CreateOrgWithOwner(r.Context(), body.Name, body.Slug, agent.UserID)
@@ -64,7 +64,7 @@ func (h *OrgsHandler) listOrgs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if agent.UserID == "" {
-		WriteStructuredError(w, apierrors.New(apierrors.CodeUnauthorized, "list orgs requires OAuth (agent must be linked to a user)", false))
+		WriteStructuredError(w, apierrors.New(apierrors.CodeUnauthorized, "list orgs requires a local user link (agent must be linked to a user)", false))
 		return
 	}
 	orgs, err := h.OrgSvc.ListOrgsForUser(r.Context(), agent.UserID)

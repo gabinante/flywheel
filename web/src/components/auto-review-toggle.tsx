@@ -4,7 +4,7 @@ import { Bot, Settings as SettingsIcon } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { patchSettings, type OperatorSettings } from '@/lib/settings-api'
 import type { components } from '@/lib/api/v1'
 
@@ -16,7 +16,7 @@ type CodeReviewStatus = components['schemas']['CodeReviewStatus']
  * the results are posted to GitHub or kept as dry runs.
  */
 export function AutoReviewToggle() {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [settings, setSettings] = useState<OperatorSettings | null>(null)
   const [status, setStatus] = useState<CodeReviewStatus | null>(null)
   const [busy, setBusy] = useState<string | null>(null)

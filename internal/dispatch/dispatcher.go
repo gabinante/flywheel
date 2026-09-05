@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/gabinante/flywheel/internal/auth"
+	"github.com/gabinante/flywheel/internal/runstatus"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -138,6 +140,9 @@ type Config struct {
 // Supports both the legacy Bus interface (exact Subscribe) and the new DurableEventBus
 // (pattern-based SubscribePattern) for at-least-once delivery.
 type Dispatcher struct {
+	sessions             SessionRecorder
+	reserve              func(context.Context, *ticket.Ticket) (func(context.Context) error, error)
+	cfgMu                sync.RWMutex
 	cfg                  Config
 	enabled              atomic.Bool     // dispatch on/off at runtime (operator setting)
 	runCtx               context.Context // set by Start; used to kick a reconcile on enable
@@ -235,7 +240,7 @@ type Runtime struct {
 // Apply updates the runtime worker configuration: concurrency, the default
 // harness/model/effort and binaries used for new workers. Running workers are unaffected.
 func (d *Dispatcher) Apply(rt Runtime) {
-	d.mu.Lock()
+	d.cfgMu.Lock()
 	if rt.MaxWorkers > 0 {
 		d.cfg.MaxWorkers = rt.MaxWorkers
 	}
@@ -258,13 +263,13 @@ func (d *Dispatcher) Apply(rt Runtime) {
 		d.cfg.AgentCLIPath = ""
 	}
 	cfg := d.cfg
-	d.mu.Unlock()
+	d.cfgMu.Unlock()
 	worker := NewWorker(cfg)
 	router := NewProjectWorkerRouterWithGlobal(cfg, rt.Workers)
-	d.mu.Lock()
+	d.cfgMu.Lock()
 	d.worker = worker
 	d.workerRouter = router
-	d.mu.Unlock()
+	d.cfgMu.Unlock()
 	slog.Info("dispatch: runtime config applied", "max_workers", cfg.MaxWorkers, "driver", cfg.AgentDriver, "model", cfg.AgentModel, "effort", cfg.AgentReasoningEffort)
 }
 
@@ -279,71 +284,71 @@ func (d *Dispatcher) Start(ctx context.Context) {
 
 	if d.durableBus != nil {
 		// Use pattern-based subscriptions for durable delivery.
-		_ = d.durableBus.SubscribePattern("ticket.created", "dispatcher:ready", func(_ context.Context, e events.Event) {
-			d.handleTicketReady(ctx, e)
+		_ = d.durableBus.SubscribePattern("ticket.created", "dispatcher:ready", func(deliveryCtx context.Context, e events.Event) {
+			d.handleTicketReady(deliveryCtx, e)
 		})
-		_ = d.durableBus.SubscribePattern("ticket.unblocked", "dispatcher:ready", func(_ context.Context, e events.Event) {
-			d.handleTicketReady(ctx, e)
+		_ = d.durableBus.SubscribePattern("ticket.unblocked", "dispatcher:ready", func(deliveryCtx context.Context, e events.Event) {
+			d.handleTicketReady(deliveryCtx, e)
 		})
-		_ = d.durableBus.SubscribePattern("ticket.rejected", "dispatcher:rejected", func(_ context.Context, e events.Event) {
-			d.handleTicketRejected(ctx, e)
+		_ = d.durableBus.SubscribePattern("ticket.rejected", "dispatcher:rejected", func(deliveryCtx context.Context, e events.Event) {
+			d.handleTicketRejected(deliveryCtx, e)
 		})
-		_ = d.durableBus.SubscribePattern("ticket.submitted", "dispatcher:submitted", func(_ context.Context, e events.Event) {
-			d.handleTicketSubmitted(ctx, e)
+		_ = d.durableBus.SubscribePattern("ticket.submitted", "dispatcher:submitted", func(deliveryCtx context.Context, e events.Event) {
+			d.handleTicketSubmitted(deliveryCtx, e)
 		})
-		_ = d.durableBus.SubscribePattern("ticket.closed", "dispatcher:done", func(_ context.Context, e events.Event) {
-			d.handleTicketDone(ctx, e)
+		_ = d.durableBus.SubscribePattern("ticket.closed", "dispatcher:done", func(deliveryCtx context.Context, e events.Event) {
+			d.handleTicketDone(deliveryCtx, e)
 		})
-		_ = d.durableBus.SubscribePattern("ticket.approved", "dispatcher:done", func(_ context.Context, e events.Event) {
-			d.handleTicketDone(ctx, e)
+		_ = d.durableBus.SubscribePattern("ticket.approved", "dispatcher:done", func(deliveryCtx context.Context, e events.Event) {
+			d.handleTicketDone(deliveryCtx, e)
 		})
-		_ = d.durableBus.SubscribePattern(events.EventTestsFailed, "dispatcher:tests-failed", func(_ context.Context, e events.Event) {
-			d.handleTestsFailed(ctx, e)
+		_ = d.durableBus.SubscribePattern(events.EventTestsFailed, "dispatcher:tests-failed", func(deliveryCtx context.Context, e events.Event) {
+			d.handleTestsFailed(deliveryCtx, e)
 		})
-		_ = d.durableBus.SubscribePattern("ticket.rolled_back", "dispatcher:rolled-back", func(_ context.Context, e events.Event) {
-			d.handleTicketRolledBack(ctx, e)
+		_ = d.durableBus.SubscribePattern("ticket.rolled_back", "dispatcher:rolled-back", func(deliveryCtx context.Context, e events.Event) {
+			d.handleTicketRolledBack(deliveryCtx, e)
 		})
-		_ = d.durableBus.SubscribePattern("ticket.cancelled", "dispatcher:cancelled", func(_ context.Context, e events.Event) {
-			d.handleTicketCancelled(ctx, e)
+		_ = d.durableBus.SubscribePattern("ticket.cancelled", "dispatcher:cancelled", func(deliveryCtx context.Context, e events.Event) {
+			d.handleTicketCancelled(deliveryCtx, e)
 		})
-		_ = d.durableBus.SubscribePattern("ticket.input_provided", "dispatcher:input-provided", func(_ context.Context, e events.Event) {
-			d.handleTicketInputProvided(ctx, e)
+		_ = d.durableBus.SubscribePattern("ticket.input_provided", "dispatcher:input-provided", func(deliveryCtx context.Context, e events.Event) {
+			d.handleTicketInputProvided(deliveryCtx, e)
 		})
 	} else {
 		// Legacy exact subscriptions (backward compatible).
-		d.bus.Subscribe(events.EventTicketCreated, func(_ context.Context, e events.Event) {
-			d.handleTicketReady(ctx, e)
+		d.bus.Subscribe(events.EventTicketCreated, func(deliveryCtx context.Context, e events.Event) {
+			d.handleTicketReady(deliveryCtx, e)
 		})
-		d.bus.Subscribe(events.EventTicketUnblocked, func(_ context.Context, e events.Event) {
-			d.handleTicketReady(ctx, e)
+		d.bus.Subscribe(events.EventTicketUnblocked, func(deliveryCtx context.Context, e events.Event) {
+			d.handleTicketReady(deliveryCtx, e)
 		})
-		d.bus.Subscribe(events.EventTicketRejected, func(_ context.Context, e events.Event) {
-			d.handleTicketRejected(ctx, e)
+		d.bus.Subscribe(events.EventTicketRejected, func(deliveryCtx context.Context, e events.Event) {
+			d.handleTicketRejected(deliveryCtx, e)
 		})
-		d.bus.Subscribe(events.EventTicketSubmitted, func(_ context.Context, e events.Event) {
-			d.handleTicketSubmitted(ctx, e)
+		d.bus.Subscribe(events.EventTicketSubmitted, func(deliveryCtx context.Context, e events.Event) {
+			d.handleTicketSubmitted(deliveryCtx, e)
 		})
-		d.bus.Subscribe(events.EventTicketDone, func(_ context.Context, e events.Event) {
-			d.handleTicketDone(ctx, e)
+		d.bus.Subscribe(events.EventTicketDone, func(deliveryCtx context.Context, e events.Event) {
+			d.handleTicketDone(deliveryCtx, e)
 		})
-		d.bus.Subscribe(events.EventTicketApproved, func(_ context.Context, e events.Event) {
-			d.handleTicketDone(ctx, e)
+		d.bus.Subscribe(events.EventTicketApproved, func(deliveryCtx context.Context, e events.Event) {
+			d.handleTicketDone(deliveryCtx, e)
 		})
-		d.bus.Subscribe(events.EventTestsFailed, func(_ context.Context, e events.Event) {
-			d.handleTestsFailed(ctx, e)
+		d.bus.Subscribe(events.EventTestsFailed, func(deliveryCtx context.Context, e events.Event) {
+			d.handleTestsFailed(deliveryCtx, e)
 		})
-		d.bus.Subscribe(events.EventTicketRolledBack, func(_ context.Context, e events.Event) {
-			d.handleTicketRolledBack(ctx, e)
+		d.bus.Subscribe(events.EventTicketRolledBack, func(deliveryCtx context.Context, e events.Event) {
+			d.handleTicketRolledBack(deliveryCtx, e)
 		})
-		d.bus.Subscribe(events.EventTicketCancelled, func(_ context.Context, e events.Event) {
-			d.handleTicketCancelled(ctx, e)
+		d.bus.Subscribe(events.EventTicketCancelled, func(deliveryCtx context.Context, e events.Event) {
+			d.handleTicketCancelled(deliveryCtx, e)
 		})
-		d.bus.Subscribe(events.EventTicketInputProvided, func(_ context.Context, e events.Event) {
-			d.handleTicketInputProvided(ctx, e)
+		d.bus.Subscribe(events.EventTicketInputProvided, func(deliveryCtx context.Context, e events.Event) {
+			d.handleTicketInputProvided(deliveryCtx, e)
 		})
 	}
 
-	slog.Info("dispatch started", "max_workers", d.cfg.MaxWorkers, "worktree_dir", d.cfg.WorktreeDir, "project", d.cfg.ProjectID, "durable", d.durableBus != nil)
+	slog.Info("dispatch started", "max_workers", d.config().MaxWorkers, "worktree_dir", d.config().WorktreeDir, "project", d.config().ProjectID, "durable", d.durableBus != nil)
 
 	// Scan for existing pending tickets on startup.
 	d.wg.Add(1)
@@ -354,7 +359,7 @@ func (d *Dispatcher) Start(ctx context.Context) {
 
 	// Periodic reconciliation: retry validated tickets with pending CI, pick up
 	// any tickets that fell through the cracks between events.
-	reconcileInterval := d.cfg.ReconcileInterval
+	reconcileInterval := d.config().ReconcileInterval
 	if reconcileInterval <= 0 {
 		reconcileInterval = 60 * time.Second
 	}
@@ -447,8 +452,8 @@ func (d *Dispatcher) SetWorkflowPhaseUpdater(wpu WorkflowPhaseUpdater) {
 
 // scanLimitValue returns the configured scan limit or the default.
 func (d *Dispatcher) scanLimitValue() int {
-	if d.cfg.ScanLimit > 0 {
-		return d.cfg.ScanLimit
+	if d.config().ScanLimit > 0 {
+		return d.config().ScanLimit
 	}
 	return defaultScanLimit
 }
@@ -463,9 +468,6 @@ func (d *Dispatcher) ghCommand(ctx context.Context, args ...string) *exec.Cmd {
 // cachedGetProject returns a project, using the per-reconcile cache if active.
 // Outside of scanPending (reconcileCache == nil), goes directly to the DB.
 func (d *Dispatcher) cachedGetProject(ctx context.Context, id string) (*project.Project, error) {
-	if d.reconcileCache != nil {
-		return d.reconcileCache.GetProject(ctx, id)
-	}
 	return d.projects.GetProject(ctx, id)
 }
 
@@ -491,15 +493,13 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 	}
 
 	// Set up per-reconcile project cache; cleared on exit.
-	d.reconcileCache = newProjectCache(d.projects)
-	defer func() { d.reconcileCache = nil }()
 
 	scanLimit := d.scanLimitValue()
 
 	// Reviewers first — finish in-progress work before starting new work.
 	// This handles tickets stuck in awaiting_review when the reviewer was
 	// deferred due to capacity (worker still occupied the slot at submit time).
-	reviewing, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, ticket.StateAwaitingValidation)
+	reviewing, err := d.tickets.ListByState(ctx, d.config().ProjectID, ticket.StateAwaitingValidation)
 	if err != nil {
 		if ctx.Err() != nil {
 			return
@@ -528,7 +528,7 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
 	}
-	validated, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, ticket.StateValidated)
+	validated, err := d.tickets.ListByState(ctx, d.config().ProjectID, ticket.StateValidated)
 	if err != nil {
 		if ctx.Err() != nil {
 			return
@@ -539,6 +539,9 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 			validated = validated[:scanLimit]
 		}
 		for _, t := range validated {
+			if t.WorkflowID != "" {
+				continue
+			}
 			if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
 				continue
 			}
@@ -637,7 +640,7 @@ func (d *Dispatcher) scanPending(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
 	}
-	pending, err := d.tickets.ListByState(ctx, d.cfg.ProjectID, ticket.StateDraft)
+	pending, err := d.tickets.ListByState(ctx, d.config().ProjectID, ticket.StateDraft)
 	if err != nil {
 		if ctx.Err() != nil {
 			return
@@ -699,8 +702,8 @@ func (d *Dispatcher) resolveProjectRepoDir(ctx context.Context, projectID string
 		return "", fmt.Errorf("project %s has no repo_url configured", projectID)
 	}
 	// Prefer the operator's own checkout at <code root>/<repo> when it exists and points at the same remote.
-	if name := repoNameFromURL(proj.RepoURL); name != "" && d.cfg.WorktreeDir != "" {
-		primary := filepath.Join(d.cfg.WorktreeDir, name)
+	if name := repoNameFromURL(proj.RepoURL); name != "" && d.config().WorktreeDir != "" {
+		primary := filepath.Join(d.config().WorktreeDir, name)
 		if st, err := os.Stat(filepath.Join(primary, ".git")); err == nil && (st.IsDir() || st.Mode().IsRegular()) {
 			if sameRemote(currentRemoteURL(primary), proj.RepoURL) {
 				return primary, nil
@@ -733,12 +736,13 @@ func (d *Dispatcher) handleTicketReady(ctx context.Context, e events.Event) {
 	// Verify ticket is eligible (pending + dependencies met).
 	t, err := d.tickets.GetTicket(ctx, ticketID)
 	if err != nil {
+		events.Retry(ctx, err)
 		slog.Error("dispatch: get ticket failed", "ticket", ticketID, "error", err)
 		return
 	}
 
 	// Filter by project if configured (legacy env var approach).
-	if d.cfg.ProjectID != "" && t.ProjectID != d.cfg.ProjectID {
+	if d.config().ProjectID != "" && t.ProjectID != d.config().ProjectID {
 		return
 	}
 
@@ -760,16 +764,23 @@ func (d *Dispatcher) handleTicketRejected(ctx context.Context, e events.Event) {
 	}
 	t, err := d.tickets.GetTicket(ctx, ticketID)
 	if err != nil {
+		events.Retry(ctx, err)
 		slog.Error("dispatch: rejected get ticket failed", "ticket", ticketID, "error", err)
 		return
 	}
-	if d.cfg.ProjectID != "" && t.ProjectID != d.cfg.ProjectID {
+	if d.config().ProjectID != "" && t.ProjectID != d.config().ProjectID {
 		return
 	}
 	if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
 		return
 	}
 	if t.State != ticket.StateExecuting {
+		return
+	}
+	if t.WorkflowID != "" {
+		if d.eventMatchesPhase(t, e) {
+			d.advanceWorkflowIfNeeded(ctx, t, "failed")
+		}
 		return
 	}
 	d.advanceWorkflowIfNeeded(ctx, t, "failed")
@@ -793,6 +804,9 @@ func (d *Dispatcher) handleTestsFailed(ctx context.Context, e events.Event) {
 	}
 	t, err := d.tickets.GetTicket(ctx, ticketID)
 	if err != nil || t == nil {
+		return
+	}
+	if t.WorkflowID != "" {
 		return
 	}
 	if prURL != "" {
@@ -885,10 +899,11 @@ func (d *Dispatcher) handleTicketInputProvided(ctx context.Context, e events.Eve
 
 	t, err := d.tickets.GetTicket(ctx, ticketID)
 	if err != nil {
+		events.Retry(ctx, err)
 		slog.Error("dispatch: input_provided get ticket failed", "ticket", ticketID, "error", err)
 		return
 	}
-	if d.cfg.ProjectID != "" && t.ProjectID != d.cfg.ProjectID {
+	if d.config().ProjectID != "" && t.ProjectID != d.config().ProjectID {
 		return
 	}
 	if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
@@ -936,6 +951,10 @@ func (d *Dispatcher) handleTicketInputProvided(ctx context.Context, e events.Eve
 }
 
 func (d *Dispatcher) tryDispatch(ctx context.Context, t *ticket.Ticket) {
+	if t.WorkflowID != "" {
+		return
+	}
+
 	if t.State != ticket.StateDraft {
 		return
 	}
@@ -992,9 +1011,10 @@ func (d *Dispatcher) handleTicketSubmitted(ctx context.Context, e events.Event) 
 	t, err := d.tickets.GetTicket(ctx, ticketID)
 	if err != nil || t == nil {
 		slog.Error("dispatch: reviewer get ticket failed", "ticket", ticketID, "error", err)
+		events.Retry(ctx, err)
 		return
 	}
-	if d.cfg.ProjectID != "" && t.ProjectID != d.cfg.ProjectID {
+	if d.config().ProjectID != "" && t.ProjectID != d.config().ProjectID {
 		return
 	}
 	if !d.isProjectDispatchEnabled(ctx, t.ProjectID) {
@@ -1010,26 +1030,28 @@ func (d *Dispatcher) handleTicketSubmitted(ctx context.Context, e events.Event) 
 			d.persistReviewAttempt(ctx, t.ID, 0)
 		}
 	}
-	nextPhase := d.advanceWorkflowIfNeeded(ctx, t, "success")
-	if nextPhase != nil {
-		switch nextPhase.Type {
-		case workflow.PhaseAgent:
-			// If the next phase is a validator-like agent, spawn reviewer.
-			agentCfg, _ := workflow.ParseAgentConfig(nextPhase.Config)
-			if agentCfg != nil && agentCfg.Role == "validator" {
-				d.spawnReviewer(ctx, t)
-				return
-			}
-			// Other agent phases: spawn a regular worker.
-			d.spawn(ctx, t)
-			return
-		case workflow.PhaseGate, workflow.PhaseExternal, workflow.PhaseAction:
-			// Non-agent phases: set status=ready and let processReadyPhase handle it.
-			if d.workflowPhaseUpdater != nil {
-				_ = d.workflowPhaseUpdater.UpdateWorkflowPhaseStatus(ctx, t.ID, "ready")
-			}
+	if t.WorkflowID != "" {
+		if !d.eventMatchesPhase(t, e) {
 			return
 		}
+		pos, err := d.workflowEngine.GetPosition(ctx, t.ID, t.WorkflowID, t.WorkflowPhase, t.WorkflowVersion)
+		if err != nil || pos == nil || pos.CurrentPhase == nil || pos.CurrentPhase.Type != workflow.PhaseAgent {
+			events.Retry(ctx, err)
+			return
+		}
+		cfg, _ := workflow.ParseAgentConfig(pos.CurrentPhase.Config)
+		if cfg.Role == "validator" {
+			return
+		}
+		if cfg.AutoAdvance != nil && !*cfg.AutoAdvance {
+			events.Retry(ctx, d.workflowPhaseUpdater.UpdateWorkflowPhaseStatus(ctx, t.ID, "blocked"))
+			return
+		}
+		next := d.advanceWorkflowIfNeeded(ctx, t, "success")
+		if next == nil {
+			d.completeWorkflow(ctx, t)
+		}
+		return // next phase is picked up after this worker releases its slot
 	}
 	// No workflow or legacy: fall through to default behavior.
 	d.spawnReviewer(ctx, t)
@@ -1041,6 +1063,29 @@ func (d *Dispatcher) handleTicketDone(ctx context.Context, e events.Event) {
 		return
 	}
 
+	t, err := d.tickets.GetTicket(ctx, ticketID)
+	if err != nil || t == nil {
+		return
+	}
+	if t.WorkflowID != "" {
+		if t.State == ticket.StateClosed {
+			_ = d.worktrees.Remove(ticketID)
+			return
+		}
+		if !d.eventMatchesPhase(t, e) {
+			return
+		}
+		pos, err := d.workflowEngine.GetPosition(ctx, t.ID, t.WorkflowID, t.WorkflowPhase, t.WorkflowVersion)
+		if err == nil && pos != nil && pos.CurrentPhase != nil && pos.CurrentPhase.Type == workflow.PhaseAgent {
+			cfg, _ := workflow.ParseAgentConfig(pos.CurrentPhase.Config)
+			if cfg.Role == "validator" {
+				if next := d.advanceWorkflowIfNeeded(ctx, t, "success"); next == nil {
+					d.completeWorkflow(ctx, t)
+				}
+			}
+		}
+		return
+	}
 	// Cancel any active worker/reviewer for this ticket.
 	d.mu.Lock()
 	if cancel, ok := d.active[ticketID]; ok {
@@ -1051,7 +1096,7 @@ func (d *Dispatcher) handleTicketDone(ctx context.Context, e events.Event) {
 	d.mu.Unlock()
 
 	// Advance workflow and auto-merge the PR if outputs contain a pr_url.
-	t, err := d.tickets.GetTicket(ctx, ticketID)
+	t, err = d.tickets.GetTicket(ctx, ticketID)
 	if err == nil && t != nil {
 		d.advanceWorkflowIfNeeded(ctx, t, "success")
 		if prURL, ok := t.Outputs["pr_url"].(string); ok && prURL != "" {
@@ -1080,10 +1125,15 @@ func (d *Dispatcher) advanceWorkflowIfNeeded(ctx context.Context, t *ticket.Tick
 	if t.WorkflowID == "" || t.WorkflowPhase == "" || d.workflowEngine == nil {
 		return nil
 	}
-	next, err := d.workflowEngine.AdvancePhase(ctx, t.ID, t.WorkflowID, t.WorkflowPhase, outcome, nil, t.WorkflowVersion)
+	meta := map[string]any{}
+	if t.WorkflowPhaseEnteredAt != nil {
+		meta["phase_entered_at"] = t.WorkflowPhaseEnteredAt.Format(time.RFC3339Nano)
+	}
+	next, err := d.workflowEngine.AdvancePhase(ctx, t.ID, t.WorkflowID, t.WorkflowPhase, outcome, meta, t.WorkflowVersion)
 	if err != nil {
+		events.Retry(ctx, err)
 		slog.Error("dispatch: workflow advance failed", "ticket", t.ID, "error", err)
-		return nil
+		return &workflow.Phase{ID: t.WorkflowPhase}
 	}
 	if next != nil {
 		t.WorkflowPhase = next.ID
@@ -1123,15 +1173,29 @@ func (d *Dispatcher) checkWorkStreamCompletion(ctx context.Context, completed *t
 
 func (d *Dispatcher) spawn(ctx context.Context, t *ticket.Ticket) {
 	// Register as active.
-	workerCtx, _, active, limit, started := d.startActive(ctx, t.ID, t.ProjectID)
+	workerCtx, cancel, active, limit, started := d.startActive(ctx, t.ID, t.ProjectID)
 	if !started {
 		slog.Info("dispatch: at capacity, deferring worker", "ticket", t.ID, "project", t.ProjectID, "active", active, "max", limit)
 		return
 	}
 
+	if t.WorkflowID != "" && d.workflowPhaseUpdater != nil {
+		ok, err := d.claimPhase(ctx, t)
+		if err != nil || !ok {
+			d.mu.Lock()
+			if cancel := d.active[t.ID]; cancel != nil {
+				cancel()
+			}
+			delete(d.active, t.ID)
+			delete(d.activeProjects, t.ID)
+			d.mu.Unlock()
+			return
+		}
+	}
 	d.wg.Add(1)
 	go func() {
 		defer d.wg.Done()
+		defer cancel()
 		defer func() {
 			d.mu.Lock()
 			delete(d.active, t.ID)
@@ -1153,6 +1217,9 @@ func (d *Dispatcher) spawn(ctx context.Context, t *ticket.Ticket) {
 		// escalating, immediately release the lease so the ticket returns to
 		// draft (pending) for retry. This avoids waiting for TTL expiry (Layer 2).
 		d.handleWorkerExit(t.ID)
+		if fresh, err := d.tickets.GetTicket(context.WithoutCancel(ctx), t.ID); err == nil && fresh != nil && fresh.WorkflowID != "" && fresh.WorkflowPhase == t.WorkflowPhase && fresh.WorkflowPhaseStatus != "failed" && fresh.State == ticket.StateDraft && d.workflowPhaseUpdater != nil {
+			_ = d.workflowPhaseUpdater.UpdateWorkflowPhaseStatus(context.WithoutCancel(ctx), t.ID, "ready")
+		}
 	}()
 
 	slog.Info("dispatch: spawned worker", "ticket", t.ID, "project", t.ProjectID, "active", active, "max", limit)
@@ -1234,7 +1301,7 @@ func (d *Dispatcher) runTypedWorkerWithProject(ctx context.Context, t *ticket.Ti
 	}
 
 	// Assemble type-specific prompt.
-	prompt := AssembleTypedWorkerPrompt(wt, proj, t, depOutputs, d.cfg.ServerURL, d.cfg.AgentID, phaseOverrides)
+	prompt := AssembleTypedWorkerPrompt(wt, proj, t, depOutputs, d.config().ServerURL, d.config().AgentID, phaseOverrides)
 	if roleDef, ok := dispatchRoleDefinition(proj, role); ok {
 		prompt = appendCustomRoleContext(prompt, roleDef)
 	}
@@ -1252,7 +1319,8 @@ func (d *Dispatcher) runTypedWorkerWithProject(ctx context.Context, t *ticket.Ti
 		slog.Info("dispatch: no-repo mode, using temp workdir", "ticket", t.ID, "workdir", workDir)
 	} else {
 		// Repo mode: every project gets its own isolated clone via resolveProjectRepoDir.
-		// Workers must never use d.cfg.RepoDir (the server's own codebase).
+		// Workers must never use d.config().RepoDir (the server's own codebase).
+		defaultBranch := proj.DefaultBranch
 		repoDir, err := d.resolveProjectRepoDir(ctx, t.ProjectID)
 		if err != nil {
 			return fmt.Errorf("dispatch: resolve project repo: %w", err)
@@ -1260,15 +1328,16 @@ func (d *Dispatcher) runTypedWorkerWithProject(ctx context.Context, t *ticket.Ti
 
 		// If ticket targets a secondary repo, resolve that instead.
 		if t.TargetRepo != "" && d.repoResolver != nil && d.clones != nil {
-			repoURL, _, resolveErr := d.repoResolver.ResolveRepo(ctx, t.ProjectID, t.TargetRepo)
+			repoURL, base, resolveErr := d.repoResolver.ResolveRepo(ctx, t.ProjectID, t.TargetRepo)
 			if resolveErr != nil {
-				slog.Warn("dispatch: resolve repo failed, falling back to primary", "target_repo", t.TargetRepo, "ticket", t.ID, "error", resolveErr)
+				return fmt.Errorf("resolve target repository: %w", resolveErr)
 			} else if repoURL != "" {
 				cloneDir, cloneErr := d.clones.EnsureClone(repoURL, t.ProjectID+"/"+t.TargetRepo)
 				if cloneErr != nil {
 					return fmt.Errorf("clone repo %s: %w", t.TargetRepo, cloneErr)
 				}
 				repoDir = cloneDir
+				defaultBranch = base
 			}
 		}
 
@@ -1278,39 +1347,12 @@ func (d *Dispatcher) runTypedWorkerWithProject(ctx context.Context, t *ticket.Ti
 			// Create a git worktree for isolation.
 			branch := d.branchForTicket(ctx, t)
 			var err error
-			workDir, err = d.worktrees.CreateFromRepo(t.ID, branch, repoDir, proj.DefaultBranch)
+			workDir, err = d.worktrees.CreateFromRepo(t.ID, branch, repoDir, defaultBranch)
 			if err != nil {
-				// If ancestry validation failed, try resetting the clone and retrying once.
-				if strings.Contains(err.Error(), "no common history") && d.clones != nil {
-					slog.Warn("dispatch: ancestry validation failed, resetting clone and retrying", "ticket", t.ID, "error", err)
-					cloneAlias := proj.ID
-					if t.TargetRepo != "" {
-						cloneAlias = proj.ID + "/" + t.TargetRepo
-					}
-					if resetErr := d.clones.ResetClone(cloneAlias); resetErr != nil {
-						slog.Error("dispatch: clone reset failed", "ticket", t.ID, "error", resetErr)
-					} else {
-						// Re-ensure the clone after reset.
-						repoURL := proj.RepoURL
-						if t.TargetRepo != "" && d.repoResolver != nil {
-							if resolved, _, resolveErr := d.repoResolver.ResolveRepo(ctx, t.ProjectID, t.TargetRepo); resolveErr == nil && resolved != "" {
-								repoURL = resolved
-							}
-						}
-						if newCloneDir, cloneErr := d.clones.EnsureClone(repoURL, cloneAlias); cloneErr == nil {
-							repoDir = newCloneDir
-							workDir, err = d.worktrees.CreateFromRepo(t.ID, branch, repoDir, proj.DefaultBranch)
-						}
-					}
+				if d.failureSummarizer != nil {
+					_ = d.failureSummarizer.AppendFailureSummary(ctx, t.ID, fmt.Sprintf("Worktree creation failed: %s", err))
 				}
-				if err != nil {
-					// Inject failure context so the next attempt knows why this failed.
-					if d.failureSummarizer != nil {
-						reason := fmt.Sprintf("Worktree creation failed: %s", err)
-						_ = d.failureSummarizer.AppendFailureSummary(ctx, t.ID, reason)
-					}
-					return err
-				}
+				return err
 			}
 			// Persist branch name so merge/cleanup know exactly which branch to target.
 			if d.outputPatcher != nil {
@@ -1326,6 +1368,38 @@ func (d *Dispatcher) runTypedWorkerWithProject(ctx context.Context, t *ticket.Ti
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-time.After(100 * time.Millisecond):
+	}
+
+	if d.reserve != nil {
+		renew, err := d.reserve(ctx, t)
+		if err != nil {
+			return err
+		}
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(ctx)
+		defer cancel()
+		if renew != nil {
+			go func() {
+				tick := time.NewTicker(time.Minute)
+				defer tick.Stop()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-tick.C:
+						fresh, err := d.tickets.GetTicket(ctx, t.ID)
+						if err == nil && fresh.State != ticket.StatePlanning && fresh.State != ticket.StateExecuting {
+							return
+						}
+						if err := renew(ctx); err != nil {
+							slog.Error("dispatch: lease renewal failed", "ticket", t.ID, "error", err)
+							cancel()
+							return
+						}
+					}
+				}
+			}()
+		}
 	}
 
 	// Build type-specific task prompt.
@@ -1524,7 +1598,7 @@ func (d *Dispatcher) activeCount() int {
 }
 
 func (d *Dispatcher) projectWorkerLimit(ctx context.Context, projectID string) int {
-	limit := d.cfg.MaxWorkers
+	limit := d.config().MaxWorkers
 	if d.projects == nil || projectID == "" {
 		return limit
 	}
@@ -1570,7 +1644,7 @@ func (d *Dispatcher) startActive(ctx context.Context, key, projectID string) (co
 		return nil, nil, d.activeCountForProjectLocked(projectID), limit, false
 	}
 	active := d.activeCountForProjectLocked(projectID)
-	if active >= limit {
+	if active >= limit || (d.config().MaxWorkers > 0 && len(d.active) >= d.config().MaxWorkers) {
 		cancel()
 		return nil, nil, active, limit, false
 	}
@@ -1605,6 +1679,9 @@ func (d *Dispatcher) hasHigherPriorityWork(ctx context.Context, projectID string
 	validated, err := d.tickets.ListByState(ctx, projectID, ticket.StateValidated)
 	if err == nil {
 		for _, t := range validated {
+			if t.WorkflowID != "" {
+				continue
+			}
 			prURL, _ := t.Outputs["pr_url"].(string)
 			if !isValidPRURL(prURL) {
 				continue
@@ -1660,11 +1737,38 @@ func (d *Dispatcher) hasHigherPriorityWork(ctx context.Context, projectID string
 // spawnConflictResolver, runConflictResolver) are in merge.go.
 
 func (d *Dispatcher) spawnWorker(ctx context.Context, proj *project.Project, ticketID, projectID, role string, wt WorkerType, systemPrompt, taskMessage, workDir string) (*WorkerResult, RoutedWorker, error) {
+	ctx = auth.WithRun(ctx, auth.RunGrant{Role: role})
+	d.cfgMu.RLock()
 	router := d.workerRouter
+	d.cfgMu.RUnlock()
 	if router == nil {
-		router = NewProjectWorkerRouter(d.cfg)
+		router = NewProjectWorkerRouter(d.config())
 	}
 	candidates := router.Candidates(proj, role)
+	if t, err := d.tickets.GetTicket(ctx, ticketID); err == nil && t != nil && t.WorkflowID != "" && d.workflowEngine != nil {
+		if pos, err := d.workflowEngine.GetPosition(ctx, t.ID, t.WorkflowID, t.WorkflowPhase, t.WorkflowVersion); err == nil && pos != nil && pos.CurrentPhase != nil {
+			ctx = auth.WithRun(ctx, auth.RunGrant{Role: role, PhaseID: t.WorkflowPhase, PhaseEnteredAt: phaseEnteredAt(t)})
+			phase, _ := workflow.ParseAgentConfig(pos.CurrentPhase.Config)
+			for i := range candidates {
+				if phase.Harness != "" {
+					candidates[i].Config.AgentDriver = phase.Harness
+					candidates[i].Config.AgentCLIPath = ""
+					defaults := candidates[i].Config.DriverDefaults[phase.Harness]
+					candidates[i].Config.AgentModel = defaults.Model
+					candidates[i].Config.AgentReasoningEffort = defaults.Effort
+					candidates[i].UseDefault = false
+				}
+				if phase.Model != "" {
+					candidates[i].Config.AgentModel = phase.Model
+					candidates[i].UseDefault = false
+				}
+				if phase.Effort != "" {
+					candidates[i].Config.AgentReasoningEffort = phase.Effort
+					candidates[i].UseDefault = false
+				}
+			}
+		}
+	}
 	var lastResult *WorkerResult
 	var lastErr error
 	var lastWorker RoutedWorker
@@ -1689,11 +1793,12 @@ func (d *Dispatcher) spawnWorker(ctx context.Context, proj *project.Project, tic
 			"model", candidate.Config.AgentModel,
 		)
 
+		ctx = runstatus.WithInfo(ctx, runstatus.Run{Worker: candidate.Name, Model: candidate.Config.AgentModel})
 		var (
 			result *WorkerResult
 			err    error
 		)
-		if streamable, ok := worker.(StreamableWorker); ok && d.cfg.TraceSvc != nil {
+		if streamable, ok := worker.(StreamableWorker); ok && d.config().TraceSvc != nil {
 			onOutput, waitForTrace := d.traceWorkerOutput(ticketID, wt)
 			result, err = streamable.SpawnStream(
 				ctx,
@@ -1702,13 +1807,14 @@ func (d *Dispatcher) spawnWorker(ctx context.Context, proj *project.Project, tic
 				sp,
 				taskMessage,
 				workDir,
-				d.cfg.ServerURL,
+				d.config().ServerURL,
 				onOutput,
 			)
 			waitForTrace()
 		} else {
-			result, err = worker.Spawn(ctx, ticketID, projectID, sp, taskMessage, workDir, d.cfg.ServerURL)
+			result, err = worker.Spawn(ctx, ticketID, projectID, sp, taskMessage, workDir, d.config().ServerURL)
 		}
+		RecordWorkerSession(context.WithoutCancel(ctx), d.sessions, result, candidate, projectID, ticketID, role, workDir, taskMessage)
 		if err == nil && result != nil && result.Success {
 			return result, candidate, nil
 		}
@@ -1732,6 +1838,8 @@ func (d *Dispatcher) spawnWorker(ctx context.Context, proj *project.Project, tic
 }
 
 func (d *Dispatcher) resolveWorker(candidate RoutedWorker) Worker {
+	d.cfgMu.RLock()
+	defer d.cfgMu.RUnlock()
 	if candidate.UseDefault {
 		if d.worker != nil {
 			return d.worker
@@ -1753,7 +1861,7 @@ func (d *Dispatcher) traceWorkerOutput(ticketID string, wt WorkerType) (WorkerOu
 	go func() {
 		defer wg.Done()
 		for chunk := range chunks {
-			if err := d.cfg.TraceSvc.AppendSystemStep(context.Background(), ticketID, execution.Step{
+			if err := d.config().TraceSvc.AppendSystemStep(context.Background(), ticketID, execution.Step{
 				Type:       execution.StepTypeObservation,
 				WorkerType: string(wt),
 				Payload: map[string]any{
@@ -1794,3 +1902,41 @@ func workerRoleForType(wt WorkerType) string {
 }
 
 // PR/merge/review functions are in merge.go.
+
+func (d *Dispatcher) config() Config { d.cfgMu.RLock(); defer d.cfgMu.RUnlock(); return d.cfg }
+
+func (d *Dispatcher) eventMatchesPhase(t *ticket.Ticket, e events.Event) bool {
+	phase, _ := e.Payload["workflow_phase"].(string)
+	if phase != "" && phase != t.WorkflowPhase {
+		return false
+	}
+	entered, _ := e.Payload["workflow_phase_entered_at"].(string)
+	return entered == "" || (t.WorkflowPhaseEnteredAt != nil && entered == t.WorkflowPhaseEnteredAt.Format(time.RFC3339Nano))
+}
+func (d *Dispatcher) completeWorkflow(ctx context.Context, t *ticket.Ticket) {
+	if d.ticketTransitioner != nil {
+		_ = d.ticketTransitioner.TransitionTicket(ctx, t.ID, ticket.TriggerWorkflowComplete, ticket.Actor{ID: "dispatcher", Type: ticket.ActorSystem}, nil)
+	}
+}
+func (d *Dispatcher) workflowMergePhase(ctx context.Context, t *ticket.Ticket) bool {
+	if t.WorkflowID == "" {
+		return true
+	}
+	if d.workflowEngine == nil {
+		return false
+	}
+	pos, err := d.workflowEngine.GetPosition(ctx, t.ID, t.WorkflowID, t.WorkflowPhase, t.WorkflowVersion)
+	if err != nil || pos == nil || pos.CurrentPhase == nil {
+		return false
+	}
+	cfg, _ := workflow.ParseActionConfig(pos.CurrentPhase.Config)
+	return pos.CurrentPhase.Type == workflow.PhaseAction && cfg.Action == "merge_pr"
+}
+
+func (d *Dispatcher) ProjectRepoDir(ctx context.Context, projectID string) (string, error) {
+	return d.resolveProjectRepoDir(ctx, projectID)
+}
+
+func (d *Dispatcher) SetReservation(fn func(context.Context, *ticket.Ticket) (func(context.Context) error, error)) {
+	d.reserve = fn
+}

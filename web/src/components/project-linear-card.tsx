@@ -4,7 +4,7 @@ import { ExternalLink, Link2, RefreshCw, Unlink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 import { relativeTime } from '@/lib/sessions-format'
@@ -12,7 +12,7 @@ import { relativeTime } from '@/lib/sessions-format'
 type ProjectLinearLink = components['schemas']['ProjectLinearLink']
 
 export function ProjectLinearCard({ projectId }: { projectId: string }) {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [link, setLink] = useState<ProjectLinearLink | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)

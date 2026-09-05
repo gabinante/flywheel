@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -53,7 +54,7 @@ func TestWorktreeCreateAndRemove(t *testing.T) {
 	}
 
 	expected := filepath.Join(baseDir, filepath.Base(repoDir)+"-worktrees", "test-ticket")
-	if dir != expected {
+	if !strings.HasPrefix(dir, expected+"-") {
 		t.Errorf("Create returned %q, want %q", dir, expected)
 	}
 
@@ -99,16 +100,11 @@ func TestWorktreeCreateExistingBranch(t *testing.T) {
 	baseDir := t.TempDir()
 	m := &WorktreeManager{BaseDir: baseDir, RepoDir: repoDir}
 
-	dir, err := m.Create("existing", "ticket/existing")
-	if err != nil {
-		t.Fatalf("Create with existing branch: %v", err)
-	}
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		t.Fatalf("worktree directory does not exist after fallback: %s", dir)
+	_, err := m.Create("existing", "ticket/existing")
+	if err == nil {
+		t.Fatal("must not adopt an existing unowned branch")
 	}
 
-	// Cleanup.
-	_ = m.Remove("existing")
 }
 
 func TestWorktreeCreateCleansUpLeftover(t *testing.T) {
@@ -136,8 +132,11 @@ func TestWorktreeCreateCleansUpLeftover(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create with leftover dir: %v", err)
 	}
-	if dir != leftoverDir {
-		t.Errorf("expected %q, got %q", leftoverDir, dir)
+	if dir == leftoverDir {
+		t.Fatal("reused unowned directory")
+	}
+	if _, err := os.Stat(leftoverDir); err != nil {
+		t.Fatal("unowned directory was removed")
 	}
 
 	_ = m.Remove("leftover")
@@ -214,13 +213,9 @@ func TestMultiRepoCloneManager_DirStructure(t *testing.T) {
 	baseDir := t.TempDir()
 	mgr := NewMultiRepoCloneManager(baseDir)
 
-	// Verify the clone directory uses the alias for naming.
-	cloneDir := filepath.Join(baseDir, "proj1-backend")
-	if err := os.MkdirAll(filepath.Join(cloneDir, ".git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	dir, err := mgr.EnsureClone("https://example.com/repo.git", "proj1/backend")
+	// Verify the clone directory uses the alias with a real local origin.
+	repo := createBareRepo(t, "structure")
+	dir, err := mgr.EnsureClone(repo, "proj1/backend")
 	if err != nil {
 		t.Fatalf("EnsureClone: %v", err)
 	}
@@ -283,14 +278,17 @@ func TestMultiRepoCloneManager_URLChanged(t *testing.T) {
 		t.Fatalf("expected remote %s, got %s", repoA, got)
 	}
 
-	// Call EnsureClone with repo B under the same alias — should re-clone.
+	// A different repository gets a separate clone without deleting prior work.
 	dir2, err := mgr.EnsureClone(repoB, alias)
 	if err != nil {
 		t.Fatalf("EnsureClone(B): %v", err)
 	}
 
-	if dir2 != dir {
-		t.Fatalf("expected same path %s, got %s", dir, dir2)
+	if dir2 == dir {
+		t.Fatal("repository change reused the previous clone")
+	}
+	if currentRemoteURL(dir) != repoA {
+		t.Fatal("previous clone was replaced")
 	}
 
 	got2 := currentRemoteURL(dir2)

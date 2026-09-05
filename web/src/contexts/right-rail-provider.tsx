@@ -15,8 +15,7 @@ export function RightRailProvider({
 }) {
   const [persisted, setPersisted] = useLocalStorage(STORAGE_KEY, true)
   const [isNarrow, setIsNarrow] = useState(false)
-  const [overrideContent, setOverrideContent] = useState<ReactNode>(undefined)
-  const [hasOverride, setHasOverride] = useState(false)
+  const [narrowOpen, setNarrowOpen] = useState(false)
 
   // Watch for viewport width changes to auto-collapse on narrow viewports
   useEffect(() => {
@@ -29,50 +28,39 @@ export function RightRailProvider({
     return () => mql.removeEventListener('change', handler)
   }, [])
 
-  // Effective open state: persisted preference AND wide viewport
-  const isOpen = persisted && !isNarrow
+  // Narrow screens start closed but remain accessible through the same toggle.
+  const isOpen = isNarrow ? narrowOpen : persisted
 
   const toggle = useCallback(() => {
-    setPersisted((prev) => !prev)
-  }, [setPersisted])
+    if (isNarrow) setNarrowOpen(prev => !prev)
+    else setPersisted((prev) => !prev)
+  }, [isNarrow, setPersisted])
 
   const setOpen = useCallback(
     (open: boolean) => {
-      setPersisted(open)
+      if (isNarrow) setNarrowOpen(open)
+      else setPersisted(open)
     },
-    [setPersisted],
+    [isNarrow, setPersisted],
   )
 
-  const setRailContent = useCallback((content: ReactNode) => {
-    setOverrideContent(content)
-    setHasOverride(true)
-  }, [])
-
-  const clearRailContent = useCallback(() => {
-    setOverrideContent(undefined)
-    setHasOverride(false)
-  }, [])
-
-  const effectiveContent = hasOverride ? overrideContent : railContent
-  const hasContent = effectiveContent != null
+  const hasContent = railContent != null
 
   const value = useMemo(
     () => ({
       isOpen: isOpen && hasContent,
+      isOverlay: isNarrow,
       toggle,
       setOpen,
-      children: effectiveContent,
+      children: railContent,
       hasContent,
-      setRailContent,
-      clearRailContent,
     }),
     [
-      clearRailContent,
-      effectiveContent,
       hasContent,
+      railContent,
       isOpen,
+      isNarrow,
       setOpen,
-      setRailContent,
       toggle,
     ],
   )

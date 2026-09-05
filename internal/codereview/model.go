@@ -131,10 +131,11 @@ func (f *FeedbackRound) Ref() string { return f.Repo + "#" + itoa(f.Number) }
 
 // Filter narrows request listings.
 type Filter struct {
-	State  State
-	Repo   string
-	Limit  int
-	Offset int
+	ProjectID string
+	State     State
+	Repo      string
+	Limit     int
+	Offset    int
 }
 
 // PollerStatus reports the background loops.

@@ -24,7 +24,7 @@ func (c *WebhookChecker) Check(_ context.Context, req GateRequirement, rctx Chec
 	}
 
 	key := fmt.Sprintf("_gate_webhook_%s", rctx.PhaseID)
-	if v, ok := rctx.Outputs[key]; ok && v != nil && v != false {
+	if v, ok := rctx.Outputs[key].(string); ok && rctx.PhaseEnteredAt != "" && v == rctx.PhaseEnteredAt {
 		return GateRequirementStatus{
 			Requirement: req,
 			Satisfied:   true,

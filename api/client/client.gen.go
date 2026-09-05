@@ -1725,16 +1725,20 @@ type PostGateCallbackJSONBody struct {
 
 // ListCodeReviewsParams defines parameters for ListCodeReviews.
 type ListCodeReviewsParams struct {
-	State  *string `form:"state,omitempty" json:"state,omitempty"`
-	Repo   *string `form:"repo,omitempty" json:"repo,omitempty"`
-	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset *int    `form:"offset,omitempty" json:"offset,omitempty"`
+	// ProjectId Restrict results to this project's repositories before pagination
+	ProjectId *string `form:"project_id,omitempty" json:"project_id,omitempty"`
+	State     *string `form:"state,omitempty" json:"state,omitempty"`
+	Repo      *string `form:"repo,omitempty" json:"repo,omitempty"`
+	Limit     *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset    *int    `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // ListFeedbackRoundsParams defines parameters for ListFeedbackRounds.
 type ListFeedbackRoundsParams struct {
-	State *string `form:"state,omitempty" json:"state,omitempty"`
-	Limit *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	// ProjectId Restrict results to this project's repositories before pagination
+	ProjectId *string `form:"project_id,omitempty" json:"project_id,omitempty"`
+	State     *string `form:"state,omitempty" json:"state,omitempty"`
+	Limit     *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // AskCodeReviewJSONBody defines parameters for AskCodeReview.
@@ -1813,8 +1817,10 @@ type PreviewWeeklyRoundupParams struct {
 
 // ListSessionsParams defines parameters for ListSessions.
 type ListSessionsParams struct {
-	Harness *ListSessionsParamsHarness `form:"harness,omitempty" json:"harness,omitempty"`
-	Origin  *ListSessionsParamsOrigin  `form:"origin,omitempty" json:"origin,omitempty"`
+	// ProjectId Restrict results to this project's repositories before pagination
+	ProjectId *string                    `form:"project_id,omitempty" json:"project_id,omitempty"`
+	Harness   *ListSessionsParamsHarness `form:"harness,omitempty" json:"harness,omitempty"`
+	Origin    *ListSessionsParamsOrigin  `form:"origin,omitempty" json:"origin,omitempty"`
 
 	// Repo Repository as owner/name or bare name.
 	Repo   *string                   `form:"repo,omitempty" json:"repo,omitempty"`
@@ -2160,7 +2166,7 @@ type ClientInterface interface {
 	// Corresponds with GET /me/reviews (the `GetMyReviews` operationId).
 	GetMyReviews(ctx context.Context, params *GetMyReviewsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetMeStats Lifetime stats for the authenticated agent (tickets created, reviews approved/rejected). For gamification.
+	// GetMeStats Lifetime stats for the local operator (tickets created, reviews approved/rejected). For gamification.
 	//
 	// Corresponds with GET /me/stats (the `GetMeStats` operationId).
 	GetMeStats(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2170,19 +2176,19 @@ type ClientInterface interface {
 	// Corresponds with GET /me/stats/history (the `GetMeStatsHistory` operationId).
 	GetMeStatsHistory(ctx context.Context, params *GetMeStatsHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListOrgs List organizations for the authenticated user (OAuth required)
+	// ListOrgs List organizations for the local operator
 	//
 	// Corresponds with GET /orgs (the `ListOrgs` operationId).
 	ListOrgs(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// CreateOrgWithBody Create organization (auth required)
+	// CreateOrgWithBody Create organization
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /orgs (the `CreateOrg` operationId).
 	CreateOrgWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// CreateOrg Create organization (auth required)
+	// CreateOrg Create organization
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -2921,7 +2927,7 @@ func (c *Client) GetMyReviews(ctx context.Context, params *GetMyReviewsParams, r
 	return c.Client.Do(req)
 }
 
-// GetMeStats Lifetime stats for the authenticated agent (tickets created, reviews approved/rejected). For gamification.
+// GetMeStats Lifetime stats for the local operator (tickets created, reviews approved/rejected). For gamification.
 //
 // Corresponds with GET /me/stats (the `GetMeStats` operationId).
 func (c *Client) GetMeStats(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2951,7 +2957,7 @@ func (c *Client) GetMeStatsHistory(ctx context.Context, params *GetMeStatsHistor
 	return c.Client.Do(req)
 }
 
-// ListOrgs List organizations for the authenticated user (OAuth required)
+// ListOrgs List organizations for the local operator
 //
 // Corresponds with GET /orgs (the `ListOrgs` operationId).
 func (c *Client) ListOrgs(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2966,7 +2972,7 @@ func (c *Client) ListOrgs(ctx context.Context, reqEditors ...RequestEditorFn) (*
 	return c.Client.Do(req)
 }
 
-// CreateOrgWithBody Create organization (auth required)
+// CreateOrgWithBody Create organization
 //
 // Takes any type of body and a specified content type.
 //
@@ -2983,7 +2989,7 @@ func (c *Client) CreateOrgWithBody(ctx context.Context, contentType string, body
 	return c.Client.Do(req)
 }
 
-// CreateOrg Create organization (auth required)
+// CreateOrg Create organization
 //
 // Takes a body of the `application/json` content type.
 //
@@ -4096,6 +4102,18 @@ func NewListCodeReviewsRequest(server string, params *ListCodeReviewsParams) (*h
 		// per the OpenAPI spec (e.g. "color=blue,black,brown").
 		var rawQueryFragments []string
 
+		if params.ProjectId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project_id", *params.ProjectId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.State != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "state", *params.State, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
@@ -4225,6 +4243,18 @@ func NewListFeedbackRoundsRequest(server string, params *ListFeedbackRoundsParam
 		// styled parameters, preserving literal commas as delimiters
 		// per the OpenAPI spec (e.g. "color=blue,black,brown").
 		var rawQueryFragments []string
+
+		if params.ProjectId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project_id", *params.ProjectId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
 
 		if params.State != nil {
 
@@ -6293,6 +6323,18 @@ func NewListSessionsRequest(server string, params *ListSessionsParams) (*http.Re
 		// per the OpenAPI spec (e.g. "color=blue,black,brown").
 		var rawQueryFragments []string
 
+		if params.ProjectId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "project_id", *params.ProjectId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.Harness != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "harness", *params.Harness, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
@@ -7377,7 +7419,7 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /me/reviews (the `GetMyReviews` operationId).
 	GetMyReviewsWithResponse(ctx context.Context, params *GetMyReviewsParams, reqEditors ...RequestEditorFn) (*GetMyReviewsResponse, error)
 
-	// GetMeStatsWithResponse Lifetime stats for the authenticated agent (tickets created, reviews approved/rejected). For gamification.
+	// GetMeStatsWithResponse Lifetime stats for the local operator (tickets created, reviews approved/rejected). For gamification.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -7391,21 +7433,21 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /me/stats/history (the `GetMeStatsHistory` operationId).
 	GetMeStatsHistoryWithResponse(ctx context.Context, params *GetMeStatsHistoryParams, reqEditors ...RequestEditorFn) (*GetMeStatsHistoryResponse, error)
 
-	// ListOrgsWithResponse List organizations for the authenticated user (OAuth required)
+	// ListOrgsWithResponse List organizations for the local operator
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /orgs (the `ListOrgs` operationId).
 	ListOrgsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListOrgsResponse, error)
 
-	// CreateOrgWithBodyWithResponse Create organization (auth required)
+	// CreateOrgWithBodyWithResponse Create organization
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /orgs (the `CreateOrg` operationId).
 	CreateOrgWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateOrgResponse, error)
 
-	// CreateOrgWithResponse Create organization (auth required)
+	// CreateOrgWithResponse Create organization
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11710,7 +11752,7 @@ func (c *ClientWithResponses) GetMyReviewsWithResponse(ctx context.Context, para
 	return ParseGetMyReviewsResponse(rsp)
 }
 
-// GetMeStatsWithResponse Lifetime stats for the authenticated agent (tickets created, reviews approved/rejected). For gamification.
+// GetMeStatsWithResponse Lifetime stats for the local operator (tickets created, reviews approved/rejected). For gamification.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -11736,7 +11778,7 @@ func (c *ClientWithResponses) GetMeStatsHistoryWithResponse(ctx context.Context,
 	return ParseGetMeStatsHistoryResponse(rsp)
 }
 
-// ListOrgsWithResponse List organizations for the authenticated user (OAuth required)
+// ListOrgsWithResponse List organizations for the local operator
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -11749,7 +11791,7 @@ func (c *ClientWithResponses) ListOrgsWithResponse(ctx context.Context, reqEdito
 	return ParseListOrgsResponse(rsp)
 }
 
-// CreateOrgWithBodyWithResponse Create organization (auth required)
+// CreateOrgWithBodyWithResponse Create organization
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -11762,7 +11804,7 @@ func (c *ClientWithResponses) CreateOrgWithBodyWithResponse(ctx context.Context,
 	return ParseCreateOrgResponse(rsp)
 }
 
-// CreateOrgWithResponse Create organization (auth required)
+// CreateOrgWithResponse Create organization
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //

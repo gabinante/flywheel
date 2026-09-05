@@ -16,8 +16,8 @@ import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
 import { ReviewQueueCelebration } from '@/components/review-queue-celebration'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import type { FlywheelClient } from '@/contexts/auth-context'
-import { useAuth } from '@/contexts/use-auth'
+import type { FlywheelClient } from '@/contexts/api-context'
+import { useAPI } from '@/contexts/use-api'
 import { useProjectPaths } from '@/hooks/use-project-paths'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
 import { ReviewsPageSkeleton, Skeleton } from '@/components/ui/skeleton'
@@ -291,7 +291,7 @@ function Kbd({ children }: { children: React.ReactNode }) {
 
 export function ReviewsPage() {
   const { orgId, projectId, orgSlug, projectSlug, base } = useProjectPaths()
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [tickets, setTickets] = useState<Ticket[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [notesById, setNotesById] = useState<Record<string, string>>({})

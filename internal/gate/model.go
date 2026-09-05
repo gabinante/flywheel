@@ -35,6 +35,7 @@ type GateRequirement struct {
 type GateRequirementStatus struct {
 	Requirement GateRequirement `json:"requirement"`
 	Satisfied   bool            `json:"satisfied"`
+	Failed      bool            `json:"failed,omitempty"` // conclusive failure; pending/unavailable remain blocked
 	Reason      string          `json:"reason,omitempty"`
 	CheckedAt   time.Time       `json:"checked_at,omitempty"`
 }

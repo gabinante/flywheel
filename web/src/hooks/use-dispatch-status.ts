@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
 
-import { useAuth } from '@/contexts/use-auth'
 
 /** Ticket count breakdown by state. */
 export interface StatusDiagnostics {
@@ -30,21 +29,16 @@ export interface DispatchStatus {
  * Optionally scoped to a specific project.
  */
 export function useDispatchStatus(projectId?: string) {
-  const { token } = useAuth()
-
   const { data: status = null, isLoading: loading } = useQuery<DispatchStatus | null>({
     queryKey: ['dispatch-status', projectId ?? ''],
     queryFn: async () => {
       const url = projectId
         ? `/api/dispatch/status?project_id=${encodeURIComponent(projectId)}`
         : '/api/dispatch/status'
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const res = await fetch(url)
       if (!res.ok) return null
       return (await res.json()) as DispatchStatus
     },
-    enabled: Boolean(token),
     refetchInterval: 10_000,
   })
 

@@ -67,6 +67,12 @@ func (s *StrictServer) ListSessions(ctx context.Context, req generated.ListSessi
 		return nil, err
 	}
 	f := sessions.Filter{}
+	if req.Params.ProjectId != nil {
+		f.ProjectID = *req.Params.ProjectId
+		if err := CheckProjectAccess(ctx, f.ProjectID, s.AgentStore, s.OrgSvc, s.ProjectSvc); err != nil {
+			return nil, err
+		}
+	}
 	p := req.Params
 	if p.Harness != nil {
 		f.Harness = sessions.Harness(*p.Harness)

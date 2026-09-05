@@ -128,6 +128,16 @@ export function AgentPhaseConfig({ phase, onChange }: PhaseConfigProps) {
           />
         </Label>
       </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Label>Harness
+          <Select value={(config.harness as string) || 'inherit'} onValueChange={(v) => onChange(updateConfig(phase, 'harness', v === 'inherit' ? '' : v))}>
+            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="inherit">Project default</SelectItem><SelectItem value="claude">Claude Code</SelectItem><SelectItem value="codex">Codex</SelectItem></SelectContent>
+          </Select>
+        </Label>
+        <Label>Model<Input value={(config.model as string) || ''} placeholder="Harness default" onChange={(e) => onChange(updateConfig(phase, 'model', e.target.value))} /></Label>
+        <Label>Reasoning effort<Input value={(config.effort as string) || ''} placeholder="Harness default" onChange={(e) => onChange(updateConfig(phase, 'effort', e.target.value))} /></Label>
+      </div>
       <Label>
         Custom instructions
         <Textarea
@@ -385,13 +395,15 @@ export function ActionPhaseConfigForm({ phase, onChange }: PhaseConfigProps) {
   return (
     <div className="space-y-3">
       <Label>
-        Action name
-        <Input
+        Action
+        <select
           value={(config.action as string) || ''}
           onChange={(e) => onChange(updateConfig(phase, 'action', e.target.value))}
-          placeholder="registered_handler_name"
-          className="font-mono"
-        />
+          className="block w-full rounded-md border border-input bg-background px-3 py-2"
+        >
+          <option value="" disabled>Select an action</option>
+          <option value="merge_pr">Merge pull request after required checks pass</option>
+        </select>
       </Label>
       <Label>
         Parameters (JSON)

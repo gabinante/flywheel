@@ -2,6 +2,7 @@ package linear
 
 import (
 	"context"
+	"github.com/gabinante/flywheel/db"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -49,7 +50,7 @@ func (s *Store) UpsertLink(ctx context.Context, l *ProjectLink) error {
 	if l.TeamKeys == nil {
 		l.TeamKeys = []string{}
 	}
-	_, err := s.pool.Exec(ctx, `
+	_, err := db.Executor(ctx, s.pool).Exec(ctx, `
 		INSERT INTO project_linear_links (project_id, linear_project_id, linear_project_name, linear_project_url, team_ids, team_keys)
 		VALUES ($1, $2, $3, $4, $5, $6)
 		ON CONFLICT (project_id) DO UPDATE SET
@@ -66,16 +67,16 @@ func (s *Store) UpsertLink(ctx context.Context, l *ProjectLink) error {
 // MarkSynced records a successful (or failed) sync pass.
 func (s *Store) MarkSynced(ctx context.Context, projectID string, at time.Time, syncErr string) error {
 	if syncErr != "" {
-		_, err := s.pool.Exec(ctx, `UPDATE project_linear_links SET last_error = $2, updated_at = now() WHERE project_id = $1`, projectID, syncErr)
+		_, err := db.Executor(ctx, s.pool).Exec(ctx, `UPDATE project_linear_links SET last_error = $2, updated_at = now() WHERE project_id = $1`, projectID, syncErr)
 		return err
 	}
-	_, err := s.pool.Exec(ctx, `UPDATE project_linear_links SET synced_at = $2, last_error = '', updated_at = now() WHERE project_id = $1`, projectID, at)
+	_, err := db.Executor(ctx, s.pool).Exec(ctx, `UPDATE project_linear_links SET synced_at = $2, last_error = '', updated_at = now() WHERE project_id = $1`, projectID, at)
 	return err
 }
 
 // ListLinks returns all project links.
 func (s *Store) ListLinks(ctx context.Context) ([]*ProjectLink, error) {
-	rows, err := s.pool.Query(ctx, `SELECT `+linkCols+` FROM project_linear_links ORDER BY linear_project_name`)
+	rows, err := db.Executor(ctx, s.pool).Query(ctx, `SELECT `+linkCols+` FROM project_linear_links ORDER BY linear_project_name`)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +94,7 @@ func (s *Store) ListLinks(ctx context.Context) ([]*ProjectLink, error) {
 
 // LinkByProject returns the link for a Flywheel project, or nil.
 func (s *Store) LinkByProject(ctx context.Context, projectID string) (*ProjectLink, error) {
-	l, err := scanLink(s.pool.QueryRow(ctx, `SELECT `+linkCols+` FROM project_linear_links WHERE project_id = $1`, projectID))
+	l, err := scanLink(db.Executor(ctx, s.pool).QueryRow(ctx, `SELECT `+linkCols+` FROM project_linear_links WHERE project_id = $1`, projectID))
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -102,7 +103,7 @@ func (s *Store) LinkByProject(ctx context.Context, projectID string) (*ProjectLi
 
 // LinkByLinearProject returns the link for a Linear project id, or nil.
 func (s *Store) LinkByLinearProject(ctx context.Context, linearProjectID string) (*ProjectLink, error) {
-	l, err := scanLink(s.pool.QueryRow(ctx, `SELECT `+linkCols+` FROM project_linear_links WHERE linear_project_id = $1`, linearProjectID))
+	l, err := scanLink(db.Executor(ctx, s.pool).QueryRow(ctx, `SELECT `+linkCols+` FROM project_linear_links WHERE linear_project_id = $1`, linearProjectID))
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -130,7 +131,7 @@ func (s *Store) UpsertRef(ctx context.Context, ticketID string, ref ticket.Exter
 	if ref.Labels == nil {
 		ref.Labels = []string{}
 	}
-	_, err := s.pool.Exec(ctx, `
+	_, err := db.Executor(ctx, s.pool).Exec(ctx, `
 		INSERT INTO ticket_external_refs (ticket_id, provider, external_id, identifier, url, state_name, state_type, assignee, team_key, priority, labels, branch_name, updated_at, synced_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now())
 		ON CONFLICT (ticket_id) DO UPDATE SET
@@ -145,7 +146,7 @@ func (s *Store) UpsertRef(ctx context.Context, ticketID string, ref ticket.Exter
 
 // RefByExternalID returns the ticket id and projection for a Linear issue id, or nil.
 func (s *Store) RefByExternalID(ctx context.Context, provider, externalID string) (string, *ticket.ExternalRef, error) {
-	r, err := scanRef(s.pool.QueryRow(ctx, `SELECT `+refCols+` FROM ticket_external_refs WHERE provider = $1 AND external_id = $2`, provider, externalID))
+	r, err := scanRef(db.Executor(ctx, s.pool).QueryRow(ctx, `SELECT `+refCols+` FROM ticket_external_refs WHERE provider = $1 AND external_id = $2`, provider, externalID))
 	if err == pgx.ErrNoRows {
 		return "", nil, nil
 	}
@@ -157,7 +158,7 @@ func (s *Store) RefByExternalID(ctx context.Context, provider, externalID string
 
 // RefByTicketID returns the projection for a ticket, or nil.
 func (s *Store) RefByTicketID(ctx context.Context, ticketID string) (*ticket.ExternalRef, error) {
-	r, err := scanRef(s.pool.QueryRow(ctx, `SELECT `+refCols+` FROM ticket_external_refs WHERE ticket_id = $1`, ticketID))
+	r, err := scanRef(db.Executor(ctx, s.pool).QueryRow(ctx, `SELECT `+refCols+` FROM ticket_external_refs WHERE ticket_id = $1`, ticketID))
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -173,7 +174,7 @@ func (s *Store) RefsByTicketIDs(ctx context.Context, ticketIDs []string) (map[st
 	if len(ticketIDs) == 0 {
 		return out, nil
 	}
-	rows, err := s.pool.Query(ctx, `SELECT `+refCols+` FROM ticket_external_refs WHERE ticket_id = ANY($1)`, ticketIDs)
+	rows, err := db.Executor(ctx, s.pool).Query(ctx, `SELECT `+refCols+` FROM ticket_external_refs WHERE ticket_id = ANY($1)`, ticketIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +193,7 @@ func (s *Store) RefsByTicketIDs(ctx context.Context, ticketIDs []string) (map[st
 // TicketIDByIdentifier implements ticket.ExternalRefLookup.
 func (s *Store) TicketIDByIdentifier(ctx context.Context, identifier string) (string, error) {
 	var id string
-	err := s.pool.QueryRow(ctx, `SELECT ticket_id FROM ticket_external_refs WHERE identifier = $1`, identifier).Scan(&id)
+	err := db.Executor(ctx, s.pool).QueryRow(ctx, `SELECT ticket_id FROM ticket_external_refs WHERE identifier = $1`, identifier).Scan(&id)
 	if err == pgx.ErrNoRows {
 		return "", nil
 	}
@@ -202,21 +203,21 @@ func (s *Store) TicketIDByIdentifier(ctx context.Context, identifier string) (st
 // CountRefsByProject returns how many tickets in a project carry a projection.
 func (s *Store) CountRefsByProject(ctx context.Context, projectID string) (int, error) {
 	var n int
-	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM ticket_external_refs r JOIN tickets t ON t.id = r.ticket_id WHERE t.project_id = $1`, projectID).Scan(&n)
+	err := db.Executor(ctx, s.pool).QueryRow(ctx, `SELECT count(*) FROM ticket_external_refs r JOIN tickets t ON t.id = r.ticket_id WHERE t.project_id = $1`, projectID).Scan(&n)
 	return n, err
 }
 
 // CountRefs returns the total number of ticket projections.
 func (s *Store) CountRefs(ctx context.Context) (int, error) {
 	var n int
-	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM ticket_external_refs`).Scan(&n)
+	err := db.Executor(ctx, s.pool).QueryRow(ctx, `SELECT count(*) FROM ticket_external_refs`).Scan(&n)
 	return n, err
 }
 
 // DefaultOrgID returns the operator's organization (the oldest org), or "".
 func (s *Store) DefaultOrgID(ctx context.Context) (string, error) {
 	var id string
-	err := s.pool.QueryRow(ctx, `SELECT id FROM orgs ORDER BY created_at LIMIT 1`).Scan(&id)
+	err := db.Executor(ctx, s.pool).QueryRow(ctx, `SELECT id FROM orgs ORDER BY created_at LIMIT 1`).Scan(&id)
 	if err == pgx.ErrNoRows {
 		return "", nil
 	}
@@ -225,6 +226,6 @@ func (s *Store) DefaultOrgID(ctx context.Context) (string, error) {
 
 // DeleteLink removes a project's Linear link (ticket projections are kept).
 func (s *Store) DeleteLink(ctx context.Context, projectID string) error {
-	_, err := s.pool.Exec(ctx, `DELETE FROM project_linear_links WHERE project_id = $1`, projectID)
+	_, err := db.Executor(ctx, s.pool).Exec(ctx, `DELETE FROM project_linear_links WHERE project_id = $1`, projectID)
 	return err
 }

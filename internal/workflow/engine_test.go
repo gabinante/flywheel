@@ -333,16 +333,16 @@ func TestAdvancePhase_MaxIterationsExhausted(t *testing.T) {
 	// Advance from execute back to review again.
 	updater.phases["t-1"] = "review"
 
-	// Third failure — count=3 >= max=3, should auto-succeed to gate
+	// Third failure — count=3 >= max=3, must remain failed at review
 	next, err = engine.AdvancePhase(context.Background(), "t-1", "wf-1", "review", "failed", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if next == nil || next.ID != "gate" {
-		t.Fatalf("third failure: expected auto-advance to gate, got %+v", next)
+	if next == nil || next.ID != "review" {
+		t.Fatalf("third failure: expected failure to stay at review, got %+v", next)
 	}
-	if updater.phases["t-1"] != "gate" {
-		t.Fatalf("expected phase updated to gate, got %s", updater.phases["t-1"])
+	if updater.phases["t-1"] != "review" {
+		t.Fatalf("expected phase to remain review, got %s", updater.phases["t-1"])
 	}
 }
 

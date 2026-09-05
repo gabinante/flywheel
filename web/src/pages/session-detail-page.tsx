@@ -4,10 +4,12 @@ import { ArrowLeft, Copy, ExternalLink, GitBranch } from 'lucide-react'
 
 import { AgentConversation, type ConversationMessage } from '@/components/agent-conversation'
 import { OrgProjectCrumbs } from '@/components/org-project-crumbs'
+import { RunProgress } from '@/components/run-progress'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { useAuth } from '@/contexts/use-auth'
+import { useOperatorOverview, type RunProgressData } from '@/hooks/use-operator-overview'
+import { useAPI } from '@/contexts/use-api'
 import { useProjectPaths } from '@/hooks/use-project-paths'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
 import { formatApiError } from '@/lib/api/client'
@@ -37,7 +39,7 @@ function Meta({ label, value, mono }: { label: string; value: string | number | 
 }
 
 function ContinueSession({ sessionId, harness, onReplied }: { sessionId: string; harness: string; onReplied: () => void }) {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [messages, setMessages] = useState<ConversationMessage[]>([])
   const send = async (text: string) => {
     const mine: ConversationMessage = { id: `u-${Date.now()}`, role: 'user', content: text, created_at: new Date().toISOString() }
@@ -63,12 +65,16 @@ function ContinueSession({ sessionId, harness, onReplied }: { sessionId: string;
 }
 
 export function SessionDetailPage() {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const { sessionId } = useParams<{ sessionId: string }>()
   const { base, projectId, orgSlug, projectSlug } = useProjectPaths()
   const projectLabel = useProjectBreadcrumbLabel(projectId)
+  const { data: overview } = useOperatorOverview()
+  const live = overview?.in_flight.find(item => item.session_href === `/sessions/${sessionId}`)
   const [reloadTick, setReloadTick] = useState(0)
   const [detail, setDetail] = useState<SessionDetail | null>(null)
+  const running = (overview?.in_flight.some(item => item.session_href === `/sessions/${sessionId}`) ?? false)
+    || (detail?.session.id === sessionId && detail?.session.metadata?.flywheel_running === true)
   const [err, setErr] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -90,7 +96,15 @@ export function SessionDetailPage() {
     }
   }, [client, sessionId, reloadTick])
 
+  useEffect(() => {
+    if (!running) return
+    const timer = window.setInterval(() => setReloadTick(tick => tick + 1), 5_000)
+    return () => window.clearInterval(timer)
+  }, [running])
+
   const s = detail?.session
+  const savedProgress = s?.metadata?.flywheel_progress as RunProgressData | undefined
+  const progress = live?.progress ?? (savedProgress && { ...savedProgress, worker_state: running ? savedProgress.worker_state : 'exited' as const })
 
   const copyPath = () => {
     if (!s?.transcript_path) return
@@ -142,6 +156,8 @@ export function SessionDetailPage() {
             <h1 className="text-lg font-semibold tracking-tight">{s.title || s.first_prompt || s.external_id}</h1>
           </header>
 
+          {progress && <RunProgress progress={progress} />}
+
           <Card className="border-white/10 bg-white/5 backdrop-blur-md">
             <CardContent className="grid grid-cols-2 gap-4 p-4 md:grid-cols-4">
               <Meta label="Repository" value={s.repo} />
@@ -149,11 +165,11 @@ export function SessionDetailPage() {
               <Meta label="Model" value={s.model} />
               <Meta label="Effort" value={s.reasoning_effort} />
               <Meta label="Started" value={`${relativeTime(s.started_at)} · ${new Date(s.started_at).toLocaleString()}`} />
-              <Meta label="Last activity" value={relativeTime(s.last_activity_at)} />
-              <Meta label="Duration" value={duration(s.started_at, s.ended_at ?? s.last_activity_at)} />
-              <Meta label="Tokens" value={`${compact(s.tokens_in)} in / ${compact(s.tokens_out)} out`} />
+              <Meta label="Last activity" value={relativeTime(running ? progress?.last_activity_at ?? s.last_activity_at : s.last_activity_at)} />
+              <Meta label="Duration" value={duration(s.started_at, running ? overview?.updated_at ?? s.last_activity_at : s.ended_at ?? s.last_activity_at)} />
+              <Meta label={running ? 'Tokens (this run)' : 'Tokens'} value={running && progress ? progress.tokens_in === undefined && progress.tokens_out === undefined ? 'Not reported yet' : `${compact(progress.tokens_in)} in / ${compact(progress.tokens_out)} out` : `${compact(s.tokens_in)} in / ${compact(s.tokens_out)} out`} />
               <Meta label="Prompts" value={s.prompt_count} />
-              <Meta label="Tool calls" value={s.tool_call_count} />
+              <Meta label={running ? 'Tool calls (this run)' : 'Tool calls'} value={running && progress ? progress.tool_calls : s.tool_call_count} />
               <Meta label="Working directory" value={s.cwd} mono />
               <Meta label="External id" value={s.external_id} mono />
             </CardContent>
@@ -249,7 +265,8 @@ export function SessionDetailPage() {
             )}
           </div>
 
-          <ContinueSession sessionId={s.id} harness={s.harness} onReplied={() => setReloadTick((t) => t + 1)} />
+          {running ? <p role="status" className="text-xs text-muted-foreground">This session is running. You can continue it after the current run finishes.</p> :
+            <ContinueSession sessionId={s.id} harness={s.harness} onReplied={() => setReloadTick((t) => t + 1)} />}
         </div>
       )}
     </div>

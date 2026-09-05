@@ -56,12 +56,7 @@ export function AnimatedOutlet() {
  * the stale route from re-rendering while fading out.
  */
 function FrozenOutlet({ children }: { children: React.ReactNode }) {
-  const frozen = React.useRef(children)
-  // Update the frozen ref only when new content arrives (not on unmount)
-  React.useEffect(() => {
-    if (children) {
-      frozen.current = children
-    }
-  }, [children])
-  return <>{children ?? frozen.current}</>
+  const [frozen, setFrozen] = React.useState(children)
+  if (children && children !== frozen) setFrozen(children)
+  return <>{children ?? frozen}</>
 }

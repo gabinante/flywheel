@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gabinante/flywheel/internal/prompts"
+	"github.com/gabinante/flywheel/internal/runstatus"
 	"log/slog"
 	"strings"
 	"time"
@@ -46,11 +47,12 @@ func (s *Service) Ask(ctx context.Context, reviewID, message string) (*Message, 
 	}
 
 	// A checkout of the PR head so the agent can look at the code (and post with gh).
-	wt, _, err := s.ws.Prepare(ctx, req.Repo, req.Number)
+	ws := &Workspaces{Root: s.conf().RepoRoot}
+	wt, _, err := ws.Prepare(ctx, req.Repo, req.Number)
 	if err != nil {
 		return userMsg, nil, fmt.Errorf("prepare worktree: %w", err)
 	}
-	defer s.ws.Remove(ctx, req.Repo, wt)
+	defer ws.Remove(context.WithoutCancel(ctx), req.Repo, wt)
 
 	resume := req.SessionExternalID
 	prompt := message
@@ -61,6 +63,7 @@ func (s *Service) Ask(ctx context.Context, reviewID, message string) (*Message, 
 		Harness: kind, Model: firstNonEmpty(req.Model, cfg.Model), Effort: firstNonEmpty(req.ReasoningEffort, cfg.Effort), WorkDir: wt,
 		SystemPrompt: prompts.Text("review_conversation"), Prompt: prompt, Sandbox: harness.SandboxFull, Timeout: 20 * time.Minute, Resume: resume,
 	}
+	ctx = runstatus.WithInfo(ctx, runstatus.Run{Kind: "conversation", ReviewID: req.ID, Ref: req.Ref(), Title: req.Title})
 	res, runErr := s.runner.Run(ctx, spec)
 	if runErr != nil && (res == nil || strings.TrimSpace(res.Output) == "") && resume != "" {
 		// The old session may be gone (pruned, different machine). Forget it and retry once

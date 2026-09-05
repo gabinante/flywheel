@@ -3,6 +3,7 @@ package ticket
 import (
 	"context"
 	"fmt"
+	"github.com/gabinante/flywheel/db"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -174,6 +175,18 @@ var ErrAcceptanceCriteriaRequired = fmt.Errorf("tasks and bugs require at least 
 // If idempotencyKey is non-empty and (projectID, idempotencyKey) was used before, returns the existing ticket.
 // workStreamID is optional; caller must validate it exists and belongs to project.
 func (s *Service) CreateTicket(ctx context.Context, projectID, title string, typ TicketType, priority Priority, createdBy string, dependsOn []string, workStreamID string, objective Objective, ticketContext TicketContext, idempotencyKey string, targetRepo ...string) (*Ticket, error) {
+	if tx, ok := s.store.(interface {
+		Transaction(context.Context, func(context.Context) error) error
+	}); ok && !db.InTransaction(ctx) {
+		var result *Ticket
+		err := tx.Transaction(ctx, func(ctx context.Context) error {
+			var err error
+			result, err = s.CreateTicket(ctx, projectID, title, typ, priority, createdBy, dependsOn, workStreamID, objective, ticketContext, idempotencyKey, targetRepo...)
+			return err
+		})
+		return result, err
+	}
+
 	// Normalize nil to empty slice so depends_on is always persisted as a
 	// valid array (not NULL) and serializes as [] rather than null.
 	if dependsOn == nil {
@@ -235,6 +248,8 @@ func (s *Service) CreateTicket(ctx context.Context, projectID, title string, typ
 			t.WorkflowID = wfID
 			t.WorkflowVersion = wfVersion
 			t.WorkflowPhase = phaseID
+			t.WorkflowPhaseStatus = "ready"
+			t.WorkflowPhaseEnteredAt = &now
 		}
 	}
 	if err := s.store.Create(ctx, t); err != nil {
@@ -321,6 +336,14 @@ type ExternalImport struct {
 // it does not require acceptance criteria and starts in the mapped state. The
 // ticket.created event carries external_provider so sync subscribers can ignore it.
 func (s *Service) ImportExternal(ctx context.Context, in ExternalImport) (*Ticket, error) {
+	if tx, ok := s.store.(interface {
+		Transaction(context.Context, func(context.Context) error) error
+	}); ok && !db.InTransaction(ctx) {
+		var result *Ticket
+		err := tx.Transaction(ctx, func(ctx context.Context) error { var err error; result, err = s.ImportExternal(ctx, in); return err })
+		return result, err
+	}
+
 	p, err := s.project.GetProject(ctx, in.ProjectID)
 	if err != nil {
 		return nil, fmt.Errorf("project: %w", err)
@@ -358,6 +381,15 @@ func (s *Service) ImportExternal(ctx context.Context, in ExternalImport) (*Ticke
 		CreatedBy:  in.Provider,
 		CreatedAt:  created,
 		UpdatedAt:  now,
+	}
+	if s.workflowResolver != nil && state == StateDraft {
+		wfID, version, phase, err := s.workflowResolver.ResolveForProject(ctx, p.OrgID, in.ProjectID)
+		if err != nil {
+			return nil, err
+		}
+		t.WorkflowID, t.WorkflowVersion, t.WorkflowPhase = wfID, version, phase
+		t.WorkflowPhaseStatus = "ready"
+		t.WorkflowPhaseEnteredAt = &now
 	}
 	if err := s.store.Create(ctx, t); err != nil {
 		return nil, err
@@ -542,9 +574,23 @@ func (s *Service) PatchTicketMetadata(ctx context.Context, ticketID string, titl
 // If a PolicyEvaluator is set, it evaluates policy rules before executing the transition.
 // The policy decision is included in the transition event payload for audit purposes.
 func (s *Service) TransitionTicket(ctx context.Context, id string, trigger string, actor Actor, payload map[string]any) error {
+	if tx, ok := s.store.(interface {
+		Transaction(context.Context, func(context.Context) error) error
+	}); ok && !db.InTransaction(ctx) {
+		return tx.Transaction(ctx, func(ctx context.Context) error { return s.TransitionTicket(ctx, id, trigger, actor, payload) })
+	}
+
 	t, err := s.store.GetByID(ctx, id)
 	if err != nil {
 		return err
+	}
+	if trigger == TriggerWorkflowComplete {
+		if t.WorkflowID == "" || t.WorkflowPhase != "" {
+			return fmt.Errorf("workflow must finish all phases before closing")
+		}
+		if t.State == StateClosed {
+			return nil
+		}
 	}
 
 	// Evaluate policy if evaluator is set.
@@ -590,7 +636,7 @@ func (s *Service) TransitionTicket(ctx context.Context, id string, trigger strin
 			assignedTo = aid
 		}
 	}
-	if trigger == TriggerLeaseExpired || trigger == TriggerReject || trigger == TriggerRollback || trigger == TriggerCancel {
+	if trigger == TriggerLeaseExpired || trigger == TriggerReject || trigger == TriggerRollback || trigger == TriggerCancel || trigger == TriggerWorkflowContinue {
 		assignedTo = ""
 	}
 	if err := s.store.UpdateState(ctx, id, t.Version, newState, assignedTo); err != nil {
@@ -600,6 +646,13 @@ func (s *Service) TransitionTicket(ctx context.Context, id string, trigger strin
 
 	// Include policy decision in the event payload for audit trail.
 	eventExtra := payload
+	if eventExtra == nil {
+		eventExtra = map[string]any{}
+	}
+	eventExtra["workflow_phase"] = t.WorkflowPhase
+	if t.WorkflowPhaseEnteredAt != nil {
+		eventExtra["workflow_phase_entered_at"] = t.WorkflowPhaseEnteredAt.Format(time.RFC3339Nano)
+	}
 	if policyDecision != nil {
 		if eventExtra == nil {
 			eventExtra = make(map[string]any)
@@ -614,7 +667,7 @@ func (s *Service) TransitionTicket(ctx context.Context, id string, trigger strin
 			eventExtra["policy_rules"] = ruleNames
 		}
 	}
-	s.emitTransitionEvent(trigger, id, t.Title, newState, t.ProjectID, actor, eventExtra)
+	s.emitTransitionEvent(ctx, trigger, id, t.Title, newState, t.ProjectID, actor, eventExtra)
 	return nil
 }
 
@@ -634,6 +687,17 @@ func (s *Service) GetPolicyDecision(ctx context.Context, id string, trigger stri
 // SubmitTicket validates outputs and transitions to awaiting_validation. Lease token is validated by caller (queue) if needed.
 // If an AcceptanceRunner is set and the ticket has objective.acceptance_test, the test is run first; on failure the submit is rejected with AcceptanceTestFailure.
 func (s *Service) SubmitTicket(ctx context.Context, id string, leaseToken string, outputs map[string]any) error {
+	for key := range outputs {
+		if strings.HasPrefix(key, "_") {
+			return fmt.Errorf("output keys starting with underscore are reserved")
+		}
+	}
+	if tx, ok := s.store.(interface {
+		Transaction(context.Context, func(context.Context) error) error
+	}); ok && !db.InTransaction(ctx) {
+		return tx.Transaction(ctx, func(ctx context.Context) error { return s.SubmitTicket(ctx, id, leaseToken, outputs) })
+	}
+
 	t, err := s.store.GetByID(ctx, id)
 	if err != nil {
 		return err
@@ -686,14 +750,14 @@ func (s *Service) SubmitTicket(ctx context.Context, id string, leaseToken string
 	}
 	_ = leaseToken
 	s.recordTransition(ctx, id, fromState, newState, TriggerSubmit, Actor{ID: t.AssignedTo, Type: ActorAgent})
-	s.emitTransitionEvent(
+	s.emitTransitionEvent(ctx,
 		TriggerSubmit,
 		id,
 		t.Title,
 		newState,
 		t.ProjectID,
 		Actor{ID: t.AssignedTo, Type: ActorAgent},
-		nil,
+		phaseEventMetadata(t),
 	)
 
 	// Auto-approve if enabled and acceptance test was present and passed.
@@ -705,7 +769,7 @@ func (s *Service) SubmitTicket(ctx context.Context, id string, leaseToken string
 			if err == nil {
 				if err := s.store.UpdateState(ctx, id, t2.Version, approveState, t2.AssignedTo); err == nil {
 					s.recordTransition(ctx, id, t2.State, approveState, TriggerApprove, Actor{ID: "system", Type: ActorSystem})
-					s.emitTransitionEvent(
+					s.emitTransitionEvent(ctx,
 						TriggerApprove,
 						id,
 						t2.Title,
@@ -776,7 +840,7 @@ func (s *Service) InjectEscalationAnswer(ctx context.Context, ticketID, answer s
 
 // emitTransitionEvent publishes a typed event for the given trigger/transition.
 // Events are keyed by ticket ID for ordered delivery within an entity.
-func (s *Service) emitTransitionEvent(trigger, ticketID, title string, newState State, projectID string, actor Actor, extra map[string]any) {
+func (s *Service) emitTransitionEvent(ctx context.Context, trigger, ticketID, title string, newState State, projectID string, actor Actor, extra map[string]any) {
 	payload := map[string]any{"ticket_id": ticketID, "state": string(newState)}
 	if projectID != "" {
 		payload["project_id"] = projectID
@@ -794,7 +858,7 @@ func (s *Service) emitTransitionEvent(trigger, ticketID, title string, newState 
 	eventType := triggerToEventType(trigger, newState)
 	if eventType != "" {
 		event := events.NewEvent(eventType, payload).WithEntityKey("ticket:" + ticketID)
-		_ = s.bus.Publish(context.Background(), event)
+		_ = s.bus.Publish(ctx, event)
 	}
 }
 
@@ -860,4 +924,12 @@ func isKnownState(s State) bool {
 		}
 	}
 	return false
+}
+
+func phaseEventMetadata(t *Ticket) map[string]any {
+	m := map[string]any{"workflow_phase": t.WorkflowPhase}
+	if t.WorkflowPhaseEnteredAt != nil {
+		m["workflow_phase_entered_at"] = t.WorkflowPhaseEnteredAt.Format(time.RFC3339Nano)
+	}
+	return m
 }

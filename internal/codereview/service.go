@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gabinante/flywheel/internal/prompts"
+	"github.com/gabinante/flywheel/internal/runstatus"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -48,13 +49,14 @@ type Config struct {
 
 // Service runs the review queue and the GitHub watchers.
 type Service struct {
-	store    *Store
-	gh       *GitHub
-	ws       *Workspaces
-	runner   harness.Runner
-	sessions *sessions.Service
-	bus      events.Bus
-	cfg      Config
+	activeReviews sync.Map
+	store         *Store
+	gh            *GitHub
+	ws            *Workspaces
+	runner        harness.Runner
+	sessions      *sessions.Service
+	bus           events.Bus
+	cfg           Config
 
 	fb FeedbackConfig
 
@@ -65,6 +67,7 @@ type Service struct {
 	active    int32
 	startedAt time.Time
 	started   bool
+	runCtx    context.Context
 }
 
 // conf returns a snapshot of the current review config.
@@ -94,7 +97,7 @@ func (s *Service) Apply(cfg Config, fb FeedbackConfig) {
 	s.cfgMu.Lock()
 	s.cfg = cfg
 	s.fb = fb
-	s.ws.Root = cfg.RepoRoot
+
 	s.cfgMu.Unlock()
 	s.mu.Lock()
 	s.status.Enabled, s.status.Harness, s.status.Publish = cfg.Enabled, cfg.Harness, cfg.Publish
@@ -167,8 +170,13 @@ func (s *Service) Start(ctx context.Context) {
 		return
 	}
 	s.started = true
+	s.runCtx = ctx
 	s.mu.Unlock()
 	s.startedAt = time.Now()
+	if err := s.store.RecoverInterrupted(ctx); err != nil {
+		slog.Error("codereview: recovery failed", "error", err)
+		return
+	}
 	cfg := s.conf()
 	if !cfg.Enabled {
 		slog.Info("codereview: disabled until enabled in settings")
@@ -340,13 +348,23 @@ func (s *Service) Enqueue(ctx context.Context, text string, origin Origin, opts 
 	return out, nil
 }
 
+// ActiveReviewIDs includes preparation and publication, when no harness is attached.
+func (s *Service) ActiveReviewIDs() []string {
+	var ids []string
+	s.activeReviews.Range(func(key, _ any) bool { ids = append(ids, key.(string)); return true })
+	return ids
+}
+
 // process runs one review attempt end to end.
 func (s *Service) process(ctx context.Context, req *Request) {
+	ctx, cancel := context.WithCancel(ctx)
+	s.activeReviews.Store(req.ID, cancel)
+	defer func() { cancel(); s.activeReviews.Delete(req.ID) }()
 	cfg := s.conf()
 	fail := func(err error) {
 		req.State = StateFailed
 		req.Error = err.Error()
-		_ = s.store.Update(ctx, req)
+		_ = s.store.Update(context.WithoutCancel(ctx), req)
 		slog.Warn("codereview: failed", "pr", req.Ref(), "error", err)
 	}
 	login, _ := s.gh.Login(ctx)
@@ -373,12 +391,13 @@ func (s *Service) process(ctx context.Context, req *Request) {
 	req.Error = ""
 	_ = s.store.Update(ctx, req)
 
-	wt, sha, err := s.ws.Prepare(ctx, req.Repo, req.Number)
+	ws := &Workspaces{Root: cfg.RepoRoot}
+	wt, sha, err := ws.Prepare(ctx, req.Repo, req.Number)
 	if err != nil {
 		fail(fmt.Errorf("prepare worktree: %w", err))
 		return
 	}
-	defer s.ws.Remove(ctx, req.Repo, wt)
+	defer ws.Remove(context.WithoutCancel(ctx), req.Repo, wt)
 	req.WorktreePath = wt
 	if sha != "" {
 		req.HeadSHA = sha
@@ -386,6 +405,11 @@ func (s *Service) process(ctx context.Context, req *Request) {
 	diff, err := s.gh.Diff(ctx, req.Repo, req.Number)
 	if err != nil {
 		fail(fmt.Errorf("diff: %w", err))
+		return
+	}
+	current, checkErr := s.gh.ViewPR(ctx, req.Repo, req.Number, login)
+	if checkErr != nil || current.HeadSHA != req.HeadSHA {
+		fail(errors.New("PR head changed while preparing the review; rerun on the current head"))
 		return
 	}
 	diffIdx := ParseUnifiedDiff(diff)
@@ -415,6 +439,7 @@ func (s *Service) process(ctx context.Context, req *Request) {
 	}
 	prompt := BuildReviewPrompt(pr, diffPath, diffIdx.Files(), prior)
 	started := time.Now()
+	ctx = runstatus.WithInfo(ctx, runstatus.Run{Kind: "code_review", ReviewID: req.ID, Ref: req.Ref(), Title: req.Title})
 	res, runErr := s.runner.Run(ctx, harness.Spec{
 		Harness: kind, Model: req.Model, Effort: req.ReasoningEffort, WorkDir: wt,
 		SystemPrompt: withPrefix(cfg.PromptPrefix, prompts.Text("code_review")), Prompt: prompt, OutputSchema: FindingsSchema,
@@ -489,6 +514,15 @@ func (s *Service) process(ctx context.Context, req *Request) {
 		return
 	}
 
+	fresh, err := s.store.Get(ctx, req.ID)
+	if err != nil || fresh == nil || fresh.State == StateClosed || fresh.Attempt != req.Attempt || ctx.Err() != nil {
+		return
+	}
+	current, checkErr = s.gh.ViewPR(ctx, req.Repo, req.Number, login)
+	if checkErr != nil || current.State != "OPEN" || current.HeadSHA != req.HeadSHA {
+		fail(errors.New("PR changed before publication; rerun on the current head"))
+		return
+	}
 	event := "APPROVE"
 	if req.Verdict == VerdictRequestChanges {
 		event = "REQUEST_CHANGES"
@@ -503,7 +537,7 @@ func (s *Service) process(ctx context.Context, req *Request) {
 		in.Comments = append(in.Comments, ReviewComment{Path: f.Path, Line: f.Line, Side: "RIGHT", Body: InlineCommentBody(f)})
 	}
 	posted, err := s.gh.CreateReview(ctx, req.Repo, req.Number, in)
-	if err != nil && len(in.Comments) > 0 {
+	if err != nil && len(in.Comments) > 0 && strings.Contains(err.Error(), "422") {
 		// Some line was not commentable after all; fall back to everything in the body.
 		body2, _, _ := ComposeReview(summary, findings, &DiffIndex{files: map[string]map[int]bool{}})
 		in.Comments = nil
@@ -781,6 +815,9 @@ func (s *Service) Rerun(ctx context.Context, id string) (*Request, error) {
 
 // Close stops watching a PR.
 func (s *Service) Close(ctx context.Context, id string) (*Request, error) {
+	if cancel, ok := s.activeReviews.Load(id); ok {
+		cancel.(context.CancelFunc)()
+	}
 	r, err := s.store.Get(ctx, id)
 	if err != nil || r == nil {
 		return r, err
@@ -796,8 +833,8 @@ func (s *Service) Close(ctx context.Context, id string) (*Request, error) {
 }
 
 // FeedbackRounds lists landed reviews on the operator's PRs.
-func (s *Service) FeedbackRounds(ctx context.Context, state string, limit int) ([]*FeedbackRound, error) {
-	return s.store.ListFeedbackRounds(ctx, state, limit)
+func (s *Service) FeedbackRounds(ctx context.Context, state string, limit int, projectIDs ...string) ([]*FeedbackRound, error) {
+	return s.store.ListFeedbackRounds(ctx, state, limit, projectIDs...)
 }
 
 // FeedbackRound returns one round.

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useDraft } from '@/hooks/use-draft'
+import { useState } from 'react'
 import { Info, Minus, Plus, Save } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -12,7 +13,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 
@@ -32,24 +33,19 @@ export function ProjectBasePromptCard({
   project: Project
   onProjectChange: (project: Project) => void
 }) {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const cp = project.context_pack as
     | { system_prompt?: string; conventions?: string; key_files?: KeyFile[] }
     | undefined
 
-  const [systemPrompt, setSystemPrompt] = useState(cp?.system_prompt ?? '')
-  const [conventions, setConventions] = useState(cp?.conventions ?? '')
-  const [keyFiles, setKeyFiles] = useState<KeyFile[]>(cp?.key_files ?? [])
+  const [systemPrompt, setSystemPrompt] = useDraft(cp?.system_prompt ?? '')
+  const [conventions, setConventions] = useDraft(cp?.conventions ?? '')
+  const [keyFiles, setKeyFiles] = useDraft<KeyFile[]>(cp?.key_files ?? EMPTY_KEY_FILES)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
 
-  useEffect(() => {
-    const pack = project.context_pack as typeof cp | undefined
-    setSystemPrompt(pack?.system_prompt ?? '')
-    setConventions(pack?.conventions ?? '')
-    setKeyFiles(pack?.key_files ?? [])
-  }, [project.context_pack])
+
 
   async function save() {
     setSaving(true)
@@ -199,3 +195,5 @@ export function ProjectBasePromptCard({
     </Card>
   )
 }
+
+const EMPTY_KEY_FILES: KeyFile[] = []

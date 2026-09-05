@@ -2,38 +2,22 @@ package gate
 
 import (
 	"context"
+	"encoding/json"
 	"os/exec"
 	"strings"
 	"time"
 )
 
-// GitHubChecksChecker verifies that all GitHub CI checks on a PR have passed.
-// It shells out to `gh pr checks <prURL>` and parses the output.
 type GitHubChecksChecker struct{}
 
-// Check implements RequirementChecker.
-func (c *GitHubChecksChecker) Check(_ context.Context, req GateRequirement, rctx CheckContext) GateRequirementStatus {
-	now := time.Now().UTC()
-
-	if rctx.PRURL == "" {
-		return GateRequirementStatus{
-			Requirement: req,
-			Satisfied:   false,
-			Reason:      "no PR URL available",
-			CheckedAt:   now,
-		}
+func (c *GitHubChecksChecker) Check(ctx context.Context, req GateRequirement, rctx CheckContext) GateRequirementStatus {
+	status, reason := ChecksUnknown, "no PR URL available"
+	if rctx.PRURL != "" {
+		status, reason = ParseGHPRChecksContext(ctx, rctx.PRURL)
 	}
-
-	status, reason := ParseGHPRChecks(rctx.PRURL)
-	return GateRequirementStatus{
-		Requirement: req,
-		Satisfied:   status == ChecksPassed,
-		Reason:      reason,
-		CheckedAt:   now,
-	}
+	return GateRequirementStatus{Requirement: req, Satisfied: status == ChecksPassed, Failed: status == ChecksFailed, Reason: reason, CheckedAt: time.Now().UTC()}
 }
 
-// ChecksStatus represents the aggregate result of CI checks.
 type ChecksStatus int
 
 const (
@@ -43,30 +27,44 @@ const (
 	ChecksUnknown
 )
 
-// ParseGHPRChecks runs `gh pr checks` and returns the aggregate status and a reason string.
-// Extracted from dispatcher.validatePRChecks for reuse.
 func ParseGHPRChecks(prURL string) (ChecksStatus, string) {
-	cmd := exec.Command("gh", "pr", "checks", prURL)
-	out, err := cmd.CombinedOutput()
-	output := string(out)
-
-	if err != nil {
-		if strings.Contains(output, "fail") || strings.Contains(output, "X") {
-			return ChecksFailed, "CI checks failed: " + truncateOutput(output, 200)
-		}
-		if strings.Contains(output, "pending") || strings.Contains(output, "\t-\t") {
-			return ChecksPending, "CI checks still pending"
-		}
-		// No checks configured or other error — treat as passed.
-		return ChecksPassed, "no CI checks configured or checks unavailable"
+	return ParseGHPRChecksContext(context.Background(), prURL)
+}
+func ParseGHPRChecksContext(ctx context.Context, prURL string) (ChecksStatus, string) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "gh", "pr", "checks", prURL, "--json", "name,bucket").Output()
+	var checks []struct {
+		Name   string `json:"name"`
+		Bucket string `json:"bucket"`
 	}
-
+	if json.Unmarshal(out, &checks) != nil || len(checks) == 0 {
+		return ChecksUnknown, "CI checks unavailable or no checks configured; operator approval required"
+	}
+	pending := false
+	for _, check := range checks {
+		switch check.Bucket {
+		case "fail", "cancel":
+			return ChecksFailed, "CI check failed: " + check.Name
+		case "pending":
+			pending = true
+		case "pass", "skipping":
+		default:
+			return ChecksUnknown, "unrecognized CI status: " + check.Bucket
+		}
+	}
+	if pending {
+		return ChecksPending, "CI checks still pending"
+	}
+	if err != nil {
+		return ChecksUnknown, "unable to confirm CI checks"
+	}
 	return ChecksPassed, "all CI checks passed"
 }
-
 func truncateOutput(s string, max int) string {
-	if len(s) <= max {
-		return s
+	s = strings.TrimSpace(s)
+	if len(s) > max {
+		return s[:max] + "..."
 	}
-	return s[:max] + "..."
+	return s
 }

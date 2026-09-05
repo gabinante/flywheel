@@ -14,9 +14,9 @@ import (
 
 // RouterConfig configures the main HTTP router (std net/http only).
 type RouterConfig struct {
+	OverviewHandler     *OverviewHandler
 	StrictServer        *StrictServer
 	AuthMiddleware      func(http.Handler) http.Handler
-	AuthHandler         *AuthHandler
 	MCPHandler          http.Handler
 	MCPSSEHandler       http.Handler // SSE transport for older MCP clients
 	AgentsHandler       *AgentsHandler
@@ -39,7 +39,7 @@ type HealthChecker interface {
 }
 
 // NewRouter returns an http.Handler with global middleware and all routes:
-// healthz and API from the spec-generated server, plus metrics, auth, mcp, agents.
+// healthz and API from the spec-generated server, plus metrics, mcp, agents.
 func NewRouter(cfg RouterConfig) http.Handler {
 	mux := http.NewServeMux()
 
@@ -94,11 +94,6 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	spa := MountWebUI(mux, cfg.WebDist, cfg.WebDevProxyURL)
 
-	// Auth routes (when configured)
-	// Local operator sign-in: issues a JWT for the single local identity.
-	if cfg.AuthHandler != nil {
-		mux.HandleFunc("GET /auth/login", cfg.AuthHandler.login)
-	}
 	if cfg.MCPHandler != nil {
 		// Streamable HTTP transport uses GET (SSE stream), POST (messages), DELETE (session end).
 		// Explicit methods avoid conflict with the SPA catch-all "GET /".
@@ -120,6 +115,10 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		mux.HandleFunc("POST /agents", agents.register)
 		mux.HandleFunc("GET /agents/{agentID}", agents.getAgent)
 	}
+	if cfg.OverviewHandler != nil {
+		mux.HandleFunc("GET /api/overview", cfg.OverviewHandler.get)
+	}
+
 	if cfg.DispatchHandler != nil {
 		mux.HandleFunc("GET /api/dispatch/status", cfg.DispatchHandler.getStatus)
 	}

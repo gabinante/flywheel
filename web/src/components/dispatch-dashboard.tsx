@@ -9,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { useDispatchStatus, type DispatchStatus } from '@/hooks/use-dispatch-status'
 import { cn } from '@/lib/utils'
 
@@ -245,14 +245,14 @@ export function DispatchDashboard({
   projectId: string
   basePath: string
 }) {
-  const { client, token } = useAuth()
+  const { client } = useAPI()
   const { status } = useDispatchStatus(projectId)
   const [workers, setWorkers] = useState<WorkerInfo[]>([])
   const [loading, setLoading] = useState(true)
   const hasLoaded = useRef(false)
 
   const fetchWorkerDetails = useCallback(async () => {
-    if (!projectId || !token) return
+    if (!projectId) return
 
     try {
       // Fetch planning and executing tickets for this project
@@ -316,10 +316,10 @@ export function DispatchDashboard({
       hasLoaded.current = true
       setLoading(false)
     }
-  }, [client, projectId, token])
+  }, [client, projectId])
 
   useEffect(() => {
-    if (!projectId || !token) {
+    if (!projectId) {
       setLoading(false)
       return
     }
@@ -329,7 +329,7 @@ export function DispatchDashboard({
 
     const interval = setInterval(() => void fetchWorkerDetails(), POLL_INTERVAL)
     return () => clearInterval(interval)
-  }, [fetchWorkerDetails, projectId, token])
+  }, [fetchWorkerDetails, projectId])
 
   // Don't render if dispatch is not enabled
   if (status && !status.enabled) return null

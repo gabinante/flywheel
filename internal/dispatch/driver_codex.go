@@ -13,6 +13,7 @@ import (
 // (replacing the operator's interactive MCP servers for the run), and delivers the
 // system prompt as an instructions preamble because Codex has no system-prompt flag.
 type CodexDriver struct {
+	readOnly  bool
 	cliPath   string
 	extraArgs []string
 	model     string
@@ -38,9 +39,13 @@ func (d *CodexDriver) Executable() string {
 // BuildCLIArgs constructs the codex exec invocation. mcpConfigPath is unused:
 // Codex takes MCP configuration as -c overrides, not a Claude-style JSON file.
 func (d *CodexDriver) BuildCLIArgs(systemPrompt, taskMessage string, mcp mcpConnection, _ string) []string {
+	sandbox := "workspace-write"
+	if d.readOnly {
+		sandbox = "read-only"
+	}
 	args := []string{
 		"exec", "--json",
-		"-s", "workspace-write",
+		"-s", sandbox,
 		"-c", "approval_policy=never",
 		"-c", "mcp_servers={}",
 	}

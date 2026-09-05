@@ -80,6 +80,10 @@ func MapError(err error) *StructuredError {
 	if err == nil {
 		return nil
 	}
+	var structured *StructuredError
+	if errors.As(err, &structured) {
+		return structured
+	}
 	var accFail *ticket.AcceptanceTestFailure
 	if errors.As(err, &accFail) {
 		msg := accFail.Error()

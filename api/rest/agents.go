@@ -5,10 +5,11 @@ import (
 	"net/http"
 
 	"github.com/gabinante/flywheel/internal/agent"
+	"github.com/gabinante/flywheel/internal/auth"
 	apierrors "github.com/gabinante/flywheel/internal/errors"
 )
 
-// AgentsHandler handles agent registration (and later auth).
+// AgentsHandler registers and inspects local MCP agents.
 type AgentsHandler struct {
 	AgentSvc *agent.Service
 }
@@ -28,7 +29,12 @@ func (h *AgentsHandler) register(w http.ResponseWriter, r *http.Request) {
 	if body.Type == "" {
 		body.Type = agent.TypeCustom
 	}
-	a, apiKey, err := h.AgentSvc.RegisterAgent(r.Context(), body.Name, body.Type)
+	operator, err := h.AgentSvc.GetAgent(r.Context(), GetAgentID(r.Context()))
+	if err != nil || operator == nil || operator.UserID == "" {
+		WriteStructuredError(w, apierrors.New(apierrors.CodeUnauthorized, "local operator identity required", false))
+		return
+	}
+	a, apiKey, err := h.AgentSvc.RegisterAgentForUser(r.Context(), body.Name, body.Type, operator.UserID)
 	if err != nil {
 		WriteStructuredError(w, apierrors.MapError(err))
 		return
@@ -45,7 +51,7 @@ func (h *AgentsHandler) getAgent(w http.ResponseWriter, r *http.Request) {
 		WriteStructuredError(w, apierrors.New(apierrors.CodeUnauthorized, "authentication required", false))
 		return
 	}
-	if callerID != agentID {
+	if callerID != agentID && !auth.IsOperator(r.Context()) {
 		WriteStructuredError(w, apierrors.New(apierrors.CodeForbidden, "you may only access your own agent record", false))
 		return
 	}

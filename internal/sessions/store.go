@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/gabinante/flywheel/db"
 	"strings"
 	"time"
 
@@ -59,7 +60,7 @@ func (st *Store) Upsert(ctx context.Context, sess *Session) error {
 		sess.Metadata = map[string]any{}
 	}
 	meta, _ := json.Marshal(sess.Metadata)
-	err := st.pool.QueryRow(ctx, `
+	err := db.Executor(ctx, st.pool).QueryRow(ctx, `
 		INSERT INTO agent_sessions (id, harness, external_id, origin, parent_external_id, cwd, repo, branch, model,
 			reasoning_effort, title, first_prompt, transcript_path, tokens_in, tokens_out, prompt_count, tool_call_count,
 			started_at, last_activity_at, ended_at, ingest_offset, metadata)
@@ -75,14 +76,14 @@ func (st *Store) Upsert(ctx context.Context, sess *Session) error {
 			title              = CASE WHEN EXCLUDED.title <> '' THEN EXCLUDED.title ELSE agent_sessions.title END,
 			first_prompt       = CASE WHEN EXCLUDED.first_prompt <> '' THEN EXCLUDED.first_prompt ELSE agent_sessions.first_prompt END,
 			transcript_path    = CASE WHEN EXCLUDED.transcript_path <> '' THEN EXCLUDED.transcript_path ELSE agent_sessions.transcript_path END,
-			tokens_in          = EXCLUDED.tokens_in,
-			tokens_out         = EXCLUDED.tokens_out,
-			prompt_count       = EXCLUDED.prompt_count,
-			tool_call_count    = EXCLUDED.tool_call_count,
+			tokens_in          = GREATEST(agent_sessions.tokens_in, EXCLUDED.tokens_in),
+			tokens_out         = GREATEST(agent_sessions.tokens_out, EXCLUDED.tokens_out),
+			prompt_count       = GREATEST(agent_sessions.prompt_count, EXCLUDED.prompt_count),
+			tool_call_count    = GREATEST(agent_sessions.tool_call_count, EXCLUDED.tool_call_count),
 			started_at         = LEAST(agent_sessions.started_at, EXCLUDED.started_at),
 			last_activity_at   = GREATEST(agent_sessions.last_activity_at, EXCLUDED.last_activity_at),
-			ended_at           = EXCLUDED.ended_at,
-			ingest_offset      = EXCLUDED.ingest_offset,
+			ended_at           = CASE WHEN EXCLUDED.metadata->>'flywheel_running'='true' THEN NULL ELSE COALESCE(EXCLUDED.ended_at,agent_sessions.ended_at) END,
+			ingest_offset      = GREATEST(agent_sessions.ingest_offset, EXCLUDED.ingest_offset),
 			metadata           = agent_sessions.metadata || EXCLUDED.metadata,
 			updated_at         = now()
 		RETURNING id`,
@@ -95,7 +96,7 @@ func (st *Store) Upsert(ctx context.Context, sess *Session) error {
 
 // GetByExternal returns the session for a harness-native id, or nil when unknown.
 func (st *Store) GetByExternal(ctx context.Context, harness Harness, externalID string) (*Session, error) {
-	row := st.pool.QueryRow(ctx, `SELECT `+sessionCols+` FROM agent_sessions s WHERE s.harness = $1 AND s.external_id = $2`, string(harness), externalID)
+	row := db.Executor(ctx, st.pool).QueryRow(ctx, `SELECT `+sessionCols+` FROM agent_sessions s WHERE s.harness = $1 AND s.external_id = $2`, string(harness), externalID)
 	s, err := scanSession(row)
 	if err == pgx.ErrNoRows {
 		return nil, nil
@@ -105,7 +106,7 @@ func (st *Store) GetByExternal(ctx context.Context, harness Harness, externalID 
 
 // Get returns a session with its links, or nil when unknown.
 func (st *Store) Get(ctx context.Context, id string) (*Session, error) {
-	row := st.pool.QueryRow(ctx, `SELECT `+sessionCols+` FROM agent_sessions s WHERE s.id = $1`, id)
+	row := db.Executor(ctx, st.pool).QueryRow(ctx, `SELECT `+sessionCols+` FROM agent_sessions s WHERE s.id = $1`, id)
 	s, err := scanSession(row)
 	if err == pgx.ErrNoRows {
 		return nil, nil
@@ -123,7 +124,7 @@ func (st *Store) Get(ctx context.Context, id string) (*Session, error) {
 
 // IngestState returns transcript path → consumed byte offset for a harness.
 func (st *Store) IngestState(ctx context.Context, harness Harness) (map[string]int64, error) {
-	rows, err := st.pool.Query(ctx, `SELECT transcript_path, ingest_offset FROM agent_sessions WHERE harness = $1 AND transcript_path <> ''`, string(harness))
+	rows, err := db.Executor(ctx, st.pool).Query(ctx, `SELECT transcript_path, ingest_offset FROM agent_sessions WHERE harness = $1 AND transcript_path <> ''`, string(harness))
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +155,7 @@ func (st *Store) AppendPrompts(ctx context.Context, sessionID string, prompts []
 		batch.Queue(`INSERT INTO session_prompts (id, session_id, seq, role, text, ts) VALUES ($1,$2,$3,$4,$5,$6)
 			ON CONFLICT (session_id, seq) DO NOTHING`, id, sessionID, p.Seq, p.Role, p.Text, p.TS)
 	}
-	res := st.pool.SendBatch(ctx, batch)
+	res := db.Executor(ctx, st.pool).SendBatch(ctx, batch)
 	defer res.Close()
 	for range prompts {
 		if _, err := res.Exec(); err != nil {
@@ -177,7 +178,7 @@ func (st *Store) AddLinks(ctx context.Context, sessionID string, links []Link) e
 		}
 		batch.Queue(`INSERT INTO session_links (session_id, kind, ref, source) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`, sessionID, l.Kind, l.Ref, src)
 	}
-	res := st.pool.SendBatch(ctx, batch)
+	res := db.Executor(ctx, st.pool).SendBatch(ctx, batch)
 	defer res.Close()
 	for range links {
 		if _, err := res.Exec(); err != nil {
@@ -189,7 +190,7 @@ func (st *Store) AddLinks(ctx context.Context, sessionID string, links []Link) e
 
 // ResolveParents fills parent_session_id for sessions whose parent has since been ingested.
 func (st *Store) ResolveParents(ctx context.Context) (int64, error) {
-	tag, err := st.pool.Exec(ctx, `UPDATE agent_sessions c SET parent_session_id = p.id
+	tag, err := db.Executor(ctx, st.pool).Exec(ctx, `UPDATE agent_sessions c SET parent_session_id = p.id
 		FROM agent_sessions p
 		WHERE c.parent_session_id IS NULL AND c.parent_external_id <> ''
 		  AND p.harness = c.harness AND p.external_id = c.parent_external_id`)
@@ -206,6 +207,9 @@ func (st *Store) List(ctx context.Context, f Filter) ([]*Session, int, error) {
 	arg := func(v any) string {
 		args = append(args, v)
 		return fmt.Sprintf("$%d", len(args))
+	}
+	if f.ProjectID != "" {
+		where = append(where, "("+db.ProjectRepoPredicate("s.repo", arg(f.ProjectID))+" OR s.metadata->>'project_id'="+arg(f.ProjectID)+")")
 	}
 	if f.Harness != "" {
 		where = append(where, "s.harness = "+arg(string(f.Harness)))
@@ -226,11 +230,11 @@ func (st *Store) List(ctx context.Context, f Filter) ([]*Session, int, error) {
 	}
 	switch f.Status {
 	case StatusActive:
-		where = append(where, "s.ended_at IS NULL AND s.last_activity_at > now() - interval '5 minutes'")
+		where = append(where, "(s.metadata->>'flywheel_running'='true' OR (s.ended_at IS NULL AND s.last_activity_at > now() - interval '5 minutes'))")
 	case StatusIdle:
-		where = append(where, "s.ended_at IS NULL AND s.last_activity_at <= now() - interval '5 minutes' AND s.last_activity_at > now() - interval '1 hour'")
+		where = append(where, "COALESCE(s.metadata->>'flywheel_running','false')<>'true' AND s.ended_at IS NULL AND s.last_activity_at <= now() - interval '5 minutes' AND s.last_activity_at > now() - interval '1 hour'")
 	case StatusEnded:
-		where = append(where, "(s.ended_at IS NOT NULL OR s.last_activity_at <= now() - interval '1 hour')")
+		where = append(where, "COALESCE(s.metadata->>'flywheel_running','false')<>'true' AND (s.ended_at IS NOT NULL OR s.last_activity_at <= now() - interval '1 hour')")
 	}
 	if f.Ref != "" {
 		where = append(where, "EXISTS (SELECT 1 FROM session_links sl WHERE sl.session_id = s.id AND sl.ref = "+arg(f.Ref)+")")
@@ -247,14 +251,14 @@ func (st *Store) List(ctx context.Context, f Filter) ([]*Session, int, error) {
 		clause = " WHERE " + strings.Join(where, " AND ")
 	}
 	var total int
-	if err := st.pool.QueryRow(ctx, `SELECT count(*) FROM agent_sessions s`+clause, args...).Scan(&total); err != nil {
+	if err := db.Executor(ctx, st.pool).QueryRow(ctx, `SELECT count(*) FROM agent_sessions s`+clause, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	limit := f.Limit
 	if limit <= 0 || limit > 500 {
 		limit = 50
 	}
-	rows, err := st.pool.Query(ctx, `SELECT `+sessionCols+` FROM agent_sessions s`+clause+
+	rows, err := db.Executor(ctx, st.pool).Query(ctx, `SELECT `+sessionCols+` FROM agent_sessions s`+clause+
 		` ORDER BY s.last_activity_at DESC LIMIT `+arg(limit)+` OFFSET `+arg(f.Offset), args...)
 	if err != nil {
 		return nil, 0, err
@@ -288,7 +292,7 @@ func (st *Store) linksFor(ctx context.Context, ids []string) (map[string][]Link,
 	if len(ids) == 0 {
 		return out, nil
 	}
-	rows, err := st.pool.Query(ctx, `SELECT session_id, kind, ref, source, created_at FROM session_links WHERE session_id = ANY($1) ORDER BY created_at`, ids)
+	rows, err := db.Executor(ctx, st.pool).Query(ctx, `SELECT session_id, kind, ref, source, created_at FROM session_links WHERE session_id = ANY($1) ORDER BY created_at`, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -308,7 +312,7 @@ func (st *Store) ListPrompts(ctx context.Context, sessionID string, limit int) (
 	if limit <= 0 || limit > 1000 {
 		limit = 200
 	}
-	rows, err := st.pool.Query(ctx, `SELECT id, session_id, seq, role, text, ts FROM session_prompts WHERE session_id = $1 ORDER BY seq LIMIT $2`, sessionID, limit)
+	rows, err := db.Executor(ctx, st.pool).Query(ctx, `SELECT id, session_id, seq, role, text, ts FROM session_prompts WHERE session_id = $1 ORDER BY seq LIMIT $2`, sessionID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -326,7 +330,7 @@ func (st *Store) ListPrompts(ctx context.Context, sessionID string, limit int) (
 
 // ListChildren returns subagent sessions spawned by parentID.
 func (st *Store) ListChildren(ctx context.Context, parentID string) ([]*Session, error) {
-	rows, err := st.pool.Query(ctx, `SELECT `+sessionCols+` FROM agent_sessions s WHERE s.parent_session_id = $1 ORDER BY s.started_at`, parentID)
+	rows, err := db.Executor(ctx, st.pool).Query(ctx, `SELECT `+sessionCols+` FROM agent_sessions s WHERE s.parent_session_id = $1 ORDER BY s.started_at`, parentID)
 	if err != nil {
 		return nil, err
 	}
@@ -344,7 +348,7 @@ func (st *Store) ListChildren(ctx context.Context, parentID string) ([]*Session,
 
 // ListByLink returns sessions linked to a given ref, most recent first.
 func (st *Store) ListByLink(ctx context.Context, kind, ref string) ([]*Session, error) {
-	rows, err := st.pool.Query(ctx, `SELECT `+sessionCols+` FROM agent_sessions s
+	rows, err := db.Executor(ctx, st.pool).Query(ctx, `SELECT `+sessionCols+` FROM agent_sessions s
 		JOIN session_links l ON l.session_id = s.id WHERE l.kind = $1 AND l.ref = $2 ORDER BY s.last_activity_at DESC`, kind, ref)
 	if err != nil {
 		return nil, err
@@ -363,7 +367,7 @@ func (st *Store) ListByLink(ctx context.Context, kind, ref string) ([]*Session, 
 
 // Counts returns session counts by harness.
 func (st *Store) Counts(ctx context.Context) (map[string]int, int, error) {
-	rows, err := st.pool.Query(ctx, `SELECT harness, count(*) FROM agent_sessions GROUP BY harness`)
+	rows, err := db.Executor(ctx, st.pool).Query(ctx, `SELECT harness, count(*) FROM agent_sessions GROUP BY harness`)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -408,7 +412,7 @@ func (st *Store) StatsSince(ctx context.Context, since, until time.Time, repos [
 		args = append(args, repos, bare)
 		repoClause = " AND (repo = ANY($3) OR split_part(repo, '/', 2) = ANY($4) OR repo = ANY($4))"
 	}
-	rows, err := st.pool.Query(ctx, `SELECT harness, count(*), COALESCE(sum(tokens_in),0), COALESCE(sum(tokens_out),0), COALESCE(sum(tool_call_count),0)
+	rows, err := db.Executor(ctx, st.pool).Query(ctx, `SELECT harness, count(*), COALESCE(sum(tokens_in),0), COALESCE(sum(tokens_out),0), COALESCE(sum(tool_call_count),0)
 		FROM agent_sessions WHERE origin <> 'subagent' AND last_activity_at >= $1 AND last_activity_at < $2`+repoClause+` GROUP BY harness ORDER BY harness`, args...)
 	if err != nil {
 		return nil, err
@@ -427,6 +431,18 @@ func (st *Store) StatsSince(ctx context.Context, since, until time.Time, repos [
 
 // touch is a helper for callers that only need to bump activity (used by hooks later).
 func (st *Store) touch(ctx context.Context, id string, at time.Time) error {
-	_, err := st.pool.Exec(ctx, `UPDATE agent_sessions SET last_activity_at = GREATEST(last_activity_at, $2), updated_at = now() WHERE id = $1`, id, at)
+	_, err := db.Executor(ctx, st.pool).Exec(ctx, `UPDATE agent_sessions SET last_activity_at = GREATEST(last_activity_at, $2), updated_at = now() WHERE id = $1`, id, at)
 	return err
+}
+
+func (st *Store) Ingest(ctx context.Context, sess *Session, prompts []Prompt, links []Link) error {
+	return db.Transaction(ctx, st.pool, func(ctx context.Context) error {
+		if err := st.Upsert(ctx, sess); err != nil {
+			return err
+		}
+		if err := st.AppendPrompts(ctx, sess.ID, prompts); err != nil {
+			return err
+		}
+		return st.AddLinks(ctx, sess.ID, links)
+	})
 }

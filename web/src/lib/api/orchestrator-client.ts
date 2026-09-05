@@ -66,14 +66,10 @@ export type OrchestratorThread = {
 
 async function orchestratorFetch<T>(
   path: string,
-  token: string | null,
   init?: RequestInit,
 ): Promise<{ data: T | null; error: string | null }> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-  }
-  if (token) {
-    headers.Authorization = `Bearer ${token}`
   }
   try {
     const res = await fetch(path, {
@@ -92,21 +88,18 @@ async function orchestratorFetch<T>(
   }
 }
 
-export function getOrchestratorThread(token: string | null, projectId: string) {
+export function getOrchestratorThread(projectId: string) {
   return orchestratorFetch<OrchestratorThread>(
     `/api/command-center/projects/${encodeURIComponent(projectId)}/orchestrator`,
-    token,
   )
 }
 
 export function sendOrchestratorMessage(
-  token: string | null,
   projectId: string,
   content: string,
 ) {
   return orchestratorFetch<OrchestratorThread>(
     `/api/command-center/projects/${encodeURIComponent(projectId)}/orchestrator/messages`,
-    token,
     {
       method: 'POST',
       body: JSON.stringify({ content }),
@@ -115,19 +108,16 @@ export function sendOrchestratorMessage(
 }
 
 export function cancelOrchestratorRun(
-  token: string | null,
   projectId: string,
   runId: string,
 ) {
   return orchestratorFetch<{ status: string }>(
     `/api/command-center/projects/${encodeURIComponent(projectId)}/orchestrator/runs/${encodeURIComponent(runId)}`,
-    token,
     { method: 'DELETE' },
   )
 }
 
 export function subscribeOrchestratorEvents(
-  token: string | null,
   projectId: string,
   onEvent: (event: OrchestratorRunEvent) => void,
   onError?: () => void,
@@ -143,9 +133,6 @@ export function subscribeOrchestratorEvents(
       try {
         const headers: Record<string, string> = {
           Accept: 'text/event-stream',
-        }
-        if (token) {
-          headers.Authorization = `Bearer ${token}`
         }
         const res = await fetch(url, {
           headers,

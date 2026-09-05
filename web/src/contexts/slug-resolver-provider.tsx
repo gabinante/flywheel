@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -30,19 +30,15 @@ export function useSlugResolver() {
 }
 
 export function SlugResolverProvider({ children }: { children: React.ReactNode }) {
-  const { token, client } = useAuth()
+  const { client } = useAPI()
   const [orgMap, setOrgMap] = useState<SlugMap>({ slugToId: new Map(), idToSlug: new Map() })
   const [projectMaps, setProjectMaps] = useState<Map<string, SlugMap>>(new Map())
   const [orgsReady, setOrgsReady] = useState(false)
   const loadedOrgIds = useRef<Set<string>>(new Set())
 
-  // Fetch orgs on mount / token change
+  // Fetch local workspace identifiers on mount.
   useEffect(() => {
-    if (!token) {
-      setOrgMap({ slugToId: new Map(), idToSlug: new Map() })
-      setOrgsReady(false)
-      return
-    }
+    loadedOrgIds.current.clear()
     let cancelled = false
     ;(async () => {
       const { data, response } = await client.GET('/orgs', {})
@@ -63,7 +59,7 @@ export function SlugResolverProvider({ children }: { children: React.ReactNode }
       setOrgsReady(true)
     })()
     return () => { cancelled = true }
-  }, [client, token])
+  }, [client])
 
   const resolveOrgId = useCallback(
     (slugOrUUID: string | undefined): string | undefined => {
@@ -76,7 +72,7 @@ export function SlugResolverProvider({ children }: { children: React.ReactNode }
 
   const loadProjectsForOrg = useCallback(
     (orgId: string) => {
-      if (!token || loadedOrgIds.current.has(orgId)) return
+      if (loadedOrgIds.current.has(orgId)) return
       loadedOrgIds.current.add(orgId)
       ;(async () => {
         const { data, response } = await client.GET('/orgs/{orgID}/projects', {
@@ -98,7 +94,7 @@ export function SlugResolverProvider({ children }: { children: React.ReactNode }
         })
       })()
     },
-    [client, token],
+    [client],
   )
 
   const resolveProjectId = useCallback(

@@ -44,7 +44,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { formatApiError } from '@/lib/api/client'
 import type { components } from '@/lib/api/v1'
 import {
@@ -351,7 +351,7 @@ export function WorkflowTimelineEditor({
   template?: { name: string; description?: string; phases: WorkflowPhase[] }
   onCreated?: (id: string) => void
 }) {
-  const { client } = useAuth()
+  const { client } = useAPI()
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(null)
   const [phases, setPhases] = useState<WorkflowPhase[]>([])
   const [name, setName] = useState('')
@@ -557,7 +557,6 @@ export function WorkflowTimelineEditor({
   // Measure DOM positions and compute SVG arcs after render
   useEffect(() => {
     if (loopSegments.length === 0 || !timelineRef.current) {
-      setArcPaths([])
       return
     }
     // Use requestAnimationFrame to ensure layout is settled
@@ -746,7 +745,7 @@ export function WorkflowTimelineEditor({
           </DndContext>
 
           {/* Loop arc overlay */}
-          {arcPaths.length > 0 ? (
+          {loopSegments.length > 0 && arcPaths.length > 0 ? (
             <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
               <defs>
                 <marker id="loop-arrow" markerWidth="6" markerHeight="8" refX="6" refY="4" orient="auto">

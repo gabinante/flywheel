@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useAuth } from '@/contexts/use-auth'
+import { useAPI } from '@/contexts/use-api'
 import { formatApiError } from '@/lib/api/client'
 import { cn } from '@/lib/utils'
 import {
@@ -345,7 +345,7 @@ export function ExecutionTraceCard({
   ticketId,
   ticketState,
 }: ExecutionTraceCardProps) {
-  const { client } = useAuth()
+  const { client } = useAPI()
   // All steps loaded so far, in chronological order (oldest first).
   const [steps, setSteps] = useState<TraceStep[] | null>(null)
   const [totalCount, setTotalCount] = useState(0)

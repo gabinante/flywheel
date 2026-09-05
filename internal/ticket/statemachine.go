@@ -8,10 +8,13 @@ import (
 // Trigger constants for state transitions.
 const (
 	// --- Core lifecycle triggers ---
-	TriggerStart    = "start"    // planning → executing
-	TriggerSubmit   = "submit"   // executing → awaiting_validation
-	TriggerValidate = "validate" // awaiting_validation → validated
-	TriggerClose    = "close"    // validated → closed
+	TriggerWorkflowContinue = "workflow_continue"
+	TriggerWorkflowValidate = "workflow_validate"
+	TriggerWorkflowComplete = "workflow_complete"
+	TriggerStart            = "start"    // planning → executing
+	TriggerSubmit           = "submit"   // executing → awaiting_validation
+	TriggerValidate         = "validate" // awaiting_validation → validated
+	TriggerClose            = "close"    // validated → closed
 
 	// --- Input / escalation triggers ---
 	TriggerRequestInput = "request_input" // planning|executing → awaiting_input
@@ -52,6 +55,7 @@ const (
 
 // Actor identifies who is performing the transition.
 type Actor struct {
+	Role string
 	ID   string
 	Type ActorType
 }
@@ -76,6 +80,17 @@ type StateMachine struct {
 func NewStateMachine() *StateMachine {
 	sm := &StateMachine{}
 	sm.transitions = []Transition{
+		// Workflow routing uses explicit system transitions; approval remains separate.
+		{StateDraft, StateClosed, TriggerWorkflowComplete, []GuardFn{guardSystemOnly}},
+		{StatePlanning, StateClosed, TriggerWorkflowComplete, []GuardFn{guardSystemOnly}},
+		{StateExecuting, StateClosed, TriggerWorkflowComplete, []GuardFn{guardSystemOnly}},
+		{StateAwaitingValidation, StateDraft, TriggerWorkflowContinue, []GuardFn{guardSystemOnly}},
+		{StatePlanning, StateDraft, TriggerWorkflowContinue, []GuardFn{guardSystemOnly}},
+		{StateExecuting, StateDraft, TriggerWorkflowContinue, []GuardFn{guardSystemOnly}},
+		{StateValidated, StateDraft, TriggerWorkflowContinue, []GuardFn{guardSystemOnly}},
+		{StateAwaitingValidation, StateValidated, TriggerWorkflowValidate, []GuardFn{guardSystemOnly}},
+		{StateAwaitingValidation, StateClosed, TriggerWorkflowComplete, []GuardFn{guardSystemOnly}},
+		{StateValidated, StateClosed, TriggerWorkflowComplete, []GuardFn{guardSystemOnly}},
 		// === Happy path ===
 		{StatePlanning, StateExecuting, TriggerStart, []GuardFn{guardIsLeaseholder}},
 		{StateExecuting, StateAwaitingValidation, TriggerSubmit, []GuardFn{guardIsLeaseholder, guardOutputsPresent}},
@@ -93,17 +108,17 @@ func NewStateMachine() *StateMachine {
 		{StateAwaitingInput, StateExecuting, TriggerProvideInput, []GuardFn{guardIsHuman, guardResumeExec}},
 		{StateAwaitingInput, StatePlanning, TriggerProvideInput, []GuardFn{guardIsHuman}},
 		// Approve also resolves awaiting_input → executing (backward compat with escalation flow).
-		{StateAwaitingInput, StateExecuting, TriggerApprove, []GuardFn{guardIsHuman}},
+		{StateAwaitingInput, StateExecuting, TriggerApprove, []GuardFn{guardReviewer}},
 
 		// === Failure arcs ===
 		{StateExecuting, StatePlanning, TriggerReplan, []GuardFn{guardIsLeaseholder}},
 		{StateValidated, StatePlanning, TriggerInvalidate, []GuardFn{guardIsHuman}},
 
 		// === Rejection ===
-		{StateAwaitingValidation, StateExecuting, TriggerReject, []GuardFn{guardIsHuman}},
+		{StateAwaitingValidation, StateExecuting, TriggerReject, []GuardFn{guardReviewer}},
 
 		// === Approval (also works as validate alias) ===
-		{StateAwaitingValidation, StateValidated, TriggerApprove, []GuardFn{guardIsHuman}},
+		{StateAwaitingValidation, StateValidated, TriggerApprove, []GuardFn{guardReviewer}},
 
 		// === Rollback (stage-specific rollback to draft; side effects handled by rollback service) ===
 		{StateExecuting, StateDraft, TriggerRollback, []GuardFn{}},
@@ -239,4 +254,11 @@ func guardResumeExec(_ *Ticket, _ Actor, payload map[string]any, _ []*Ticket) er
 		return errors.New("resume_state must be 'executing' to resume execution from awaiting_input")
 	}
 	return nil
+}
+
+func guardReviewer(t *Ticket, actor Actor, payload map[string]any, deps []*Ticket) error {
+	if actor.Type == ActorAgent && actor.Role == "validator" {
+		return nil
+	}
+	return guardIsHuman(t, actor, payload, deps)
 }

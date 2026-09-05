@@ -34,50 +34,44 @@ const headingBase = 'scroll-mt-4 font-sans text-foreground first:mt-0'
 
 const planComponents: Components = {
   pre: ({ children }) => <>{children}</>,
-  h1: ({ node: _n, children, ...rest }) => (
+  h1: ({ children }) => (
     <h1
       className={`${headingBase} mt-6 mb-2 text-lg font-semibold tracking-tight`}
-      {...rest}
     >
       {children}
     </h1>
   ),
-  h2: ({ node: _n, children, ...rest }) => (
+  h2: ({ children }) => (
     <h2
       className={`${headingBase} mt-6 mb-2 text-base font-semibold tracking-tight`}
-      {...rest}
     >
       {children}
     </h2>
   ),
-  h3: ({ node: _n, children, ...rest }) => (
+  h3: ({ children }) => (
     <h3
       className={`${headingBase} mt-5 mb-1.5 text-sm font-semibold tracking-tight`}
-      {...rest}
     >
       {children}
     </h3>
   ),
-  h4: ({ node: _n, children, ...rest }) => (
+  h4: ({ children }) => (
     <h4
       className={`${headingBase} mt-4 mb-1 text-sm font-medium tracking-tight`}
-      {...rest}
     >
       {children}
     </h4>
   ),
-  h5: ({ node: _n, children, ...rest }) => (
+  h5: ({ children }) => (
     <h5
       className={`${headingBase} mt-4 mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground`}
-      {...rest}
     >
       {children}
     </h5>
   ),
-  h6: ({ node: _n, children, ...rest }) => (
+  h6: ({ children }) => (
     <h6
       className={`${headingBase} mt-4 mb-1 text-xs font-medium tracking-tight text-muted-foreground`}
-      {...rest}
     >
       {children}
     </h6>
@@ -94,8 +88,7 @@ const planComponents: Components = {
         return (
           <code
             className="box-decoration-clone rounded-md border border-white/10 bg-white/[0.06] px-1 py-px font-mono text-[0.8125em] leading-[inherit] text-foreground [overflow-wrap:anywhere] [word-break:break-word]"
-            {...rest}
-          >
+                >
             {children}
           </code>
         )
