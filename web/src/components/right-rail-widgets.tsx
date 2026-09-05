@@ -1,3 +1,4 @@
+import { useActivityStatus } from '@/contexts/use-activity'
 import { Link } from 'react-router-dom'
 import { AlertCircle, ArrowUpRight, CircleCheck, LoaderCircle, RefreshCw, TerminalSquare } from 'lucide-react'
 
@@ -54,6 +55,7 @@ function WorkCard({ item, attention = false }: { item: WorkItem; attention?: boo
 }
 
 export function RightRailWidgets() {
+  const activityStatus = useActivityStatus()
   const { data, isPending, isError, refetch, isFetching } = useOperatorOverview()
   return (
     <div className="flex min-w-0 flex-col gap-5">
@@ -61,6 +63,9 @@ export function RightRailWidgets() {
         <div>
           <h2 className="text-sm font-semibold">Your work</h2>
           <p className="mt-0.5 text-[11px] text-muted-foreground">Across all projects</p>
+          <p role="status" aria-label="Activity connection" className={`mt-1 text-[10px] ${activityStatus === 'live' ? 'text-primary' : 'text-amber-300'}`}>
+            {activityStatus === 'live' ? 'Live updates connected' : activityStatus === 'connecting' ? 'Connecting live updates…' : 'Reconnecting · checking for updates every 15s'}
+          </p>
         </div>
         <Button variant="ghost" size="icon-sm" aria-label="Refresh current work" disabled={isFetching} onClick={() => void refetch()}>
           <RefreshCw className={`size-3.5 ${isFetching ? 'animate-spin' : ''}`} />

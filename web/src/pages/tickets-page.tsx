@@ -1,3 +1,4 @@
+import { useActivityVersion } from '@/contexts/use-activity'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -378,6 +379,7 @@ function TicketCard({
 // ---------------------------------------------------------------------------
 
 export function TicketsPage() {
+  const activityVersion = useActivityVersion('tickets')
   const { orgId, projectId, orgSlug, projectSlug, base } = useProjectPaths()
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -422,7 +424,7 @@ export function TicketsPage() {
     return () => {
       cancelled = true
     }
-  }, [client, projectId])
+  }, [client, projectId, activityVersion])
 
   // ---- Validate work stream filter ----
   useEffect(() => {
@@ -463,7 +465,7 @@ export function TicketsPage() {
     return () => {
       cancelled = true
     }
-  }, [client, projectId, workStreamFilter])
+  }, [client, projectId, workStreamFilter, activityVersion])
 
   // ---- Derived data ----
   const refineOptions = useMemo((): readonly TicketState[] => {
@@ -483,7 +485,7 @@ export function TicketsPage() {
     return () => {
       cancelled = true
     }
-  }, [client, projectId])
+  }, [client, projectId, activityVersion])
 
   const prsByTicket = useMemo(() => {
     const m = new Map<string, PullRequestCard[]>()

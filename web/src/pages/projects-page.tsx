@@ -1,3 +1,4 @@
+import { useActivityVersion } from '@/contexts/use-activity'
 import { useDraft } from '@/hooks/use-draft'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -221,6 +222,8 @@ function EmptyProjectsState({ orgId }: { orgId: string }) {
 }
 
 export function ProjectsPage() {
+  const activityVersion = useActivityVersion('projects')
+  const statsVersion = useActivityVersion('tickets', 'sessions')
   const { orgId, orgParam } = useResolvedRouteParams()
   const { client } = useAPI()
   const [projects, setProjects] = useState<Project[] | null>(null)
@@ -263,7 +266,7 @@ export function ProjectsPage() {
     return () => {
       cancelled = true
     }
-  }, [client, orgId])
+  }, [client, orgId, activityVersion])
 
   useEffect(() => {
     let cancelled = false
@@ -313,7 +316,7 @@ export function ProjectsPage() {
     return () => {
       cancelled = true
     }
-  }, [client, projects])
+  }, [client, projects, statsVersion])
 
   const toggleDispatch = useCallback(
     async (project: Project) => {

@@ -1,3 +1,4 @@
+import { useActivityVersion } from '@/contexts/use-activity'
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
@@ -86,6 +87,7 @@ function formatDate(iso: string): string {
 }
 
 export function TicketDetailPage() {
+  const activityVersion = useActivityVersion('tickets', 'workflows')
   const { orgId, projectId, ticketId } = useResolvedRouteParams()
   const { orgSlug, projectSlug, base } = useProjectPaths()
   const { client } = useAPI()
@@ -144,7 +146,7 @@ export function TicketDetailPage() {
     return () => {
       cancelled = true
     }
-  }, [client, ticketId])
+  }, [client, ticketId, activityVersion])
 
   // Fetch workflow position when ticket has a workflow
   useEffect(() => {
@@ -166,7 +168,7 @@ export function TicketDetailPage() {
       })
     })()
     return () => { cancelled = true }
-  }, [ticket?.workflow_id, ticket?.workflow_phase, ticketId])
+  }, [ticket?.workflow_id, ticket?.workflow_phase, ticketId, activityVersion])
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -248,7 +250,7 @@ export function TicketDetailPage() {
     return () => {
       cancelled = true
     }
-  }, [client, projectId])
+  }, [client, projectId, activityVersion])
 
   useEffect(() => {
     if (!projectId || !ticket?.work_stream_id) {
@@ -282,7 +284,7 @@ export function TicketDetailPage() {
     return () => {
       cancelled = true
     }
-  }, [client, projectId, ticket?.work_stream_id])
+  }, [client, projectId, ticket?.work_stream_id, activityVersion])
 
   if (!orgId || !projectId || !ticketId) {
     return <p className="text-destructive text-sm">Missing route params.</p>

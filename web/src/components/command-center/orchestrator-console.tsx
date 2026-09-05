@@ -1,3 +1,4 @@
+import { useActivityVersion } from '@/contexts/use-activity'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   CheckCircle2,
@@ -24,7 +25,6 @@ import {
   cancelOrchestratorRun,
   getOrchestratorThread,
   sendOrchestratorMessage,
-  subscribeOrchestratorEvents,
   type OrchestratorMessage,
   type OrchestratorPhase,
   type OrchestratorRun,
@@ -33,9 +33,6 @@ import {
 } from '@/lib/api/orchestrator-client'
 import { cn } from '@/lib/utils'
 
-const POLL_INTERVAL = 15_000
-const SSE_FALLBACK_POLL_INTERVAL = 1_200
-const SSE_BACKGROUND_POLL_INTERVAL = 30_000
 
 type PendingUserMessage = {
   id: string
@@ -401,8 +398,7 @@ export function OrchestratorConsole({
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pendingMessage, setPendingMessage] = useState<PendingUserMessage | null>(null)
-  const [sseConnected, setSseConnected] = useState(false)
-  const [sseRetryKey, setSseRetryKey] = useState(0)
+  const activityVersion = useActivityVersion('orchestrator', 'settings')
   const transcriptRef = useRef<HTMLDivElement | null>(null)
   const messages = useMemo(() => thread?.messages ?? [], [thread?.messages])
   const runs = useMemo(() => thread?.runs ?? [], [thread?.runs])
@@ -413,14 +409,6 @@ export function OrchestratorConsole({
     [runs],
   )
   const showLivePlanner = sending || activeRun !== null
-
-  // Adaptive polling: fast during active runs without SSE, slow background with SSE
-  const pollInterval = useMemo(() => {
-    if (showLivePlanner) {
-      return sseConnected ? SSE_BACKGROUND_POLL_INTERVAL : SSE_FALLBACK_POLL_INTERVAL
-    }
-    return POLL_INTERVAL
-  }, [showLivePlanner, sseConnected])
 
   const applyThread = useCallback((next: OrchestratorThread | null) => {
     setThread(normalizeThread(next))
@@ -439,40 +427,8 @@ export function OrchestratorConsole({
 
   useEffect(() => {
     const immediate = window.setTimeout(() => void fetchThread(), 0)
-    const interval = window.setInterval(() => void fetchThread(), pollInterval)
-    return () => {
-      window.clearTimeout(immediate)
-      window.clearInterval(interval)
-    }
-  }, [fetchThread, pollInterval])
-
-  // SSE connection: open when live planner is active, close when inactive.
-  useEffect(() => {
-    if (!showLivePlanner) {
-      return
-    }
-    const sub = subscribeOrchestratorEvents(
-
-      projectId,
-      () => {
-        setSseConnected(true)
-        // On each event, re-fetch the full thread to stay consistent.
-        void fetchThread()
-      },
-      () => {
-        setSseConnected(false)
-        // Schedule a retry after 3s if still live
-        const retryTimer = window.setTimeout(() => {
-          setSseRetryKey((k) => k + 1)
-        }, 3000)
-        return () => window.clearTimeout(retryTimer)
-      },
-    )
-    return () => {
-      sub.close()
-      setSseConnected(false)
-    }
-  }, [showLivePlanner, projectId, fetchThread, sseRetryKey])
+    return () => window.clearTimeout(immediate)
+  }, [fetchThread, activityVersion])
 
   // When run completes while we were sending, clear sending state.
   useEffect(() => {

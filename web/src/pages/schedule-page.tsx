@@ -1,3 +1,4 @@
+import { useActivityVersion } from '@/contexts/use-activity'
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CalendarClock, Play, RefreshCw, Settings as SettingsIcon } from 'lucide-react'
@@ -36,6 +37,7 @@ function untilLabel(iso: string | undefined, now: number) {
 }
 
 export function SchedulePage() {
+  const activityVersion = useActivityVersion('settings', 'reviews', 'review-status', 'projects')
   const { client } = useAPI()
   const [items, setItems] = useState<ScheduledAction[] | null>(null)
   const [now, setNow] = useState(0)
@@ -55,9 +57,7 @@ export function SchedulePage() {
 
   useEffect(() => {
     void Promise.resolve().then(() => load())
-    const t = window.setInterval(() => void load(), 30_000)
-    return () => window.clearInterval(t)
-  }, [load])
+  }, [load, activityVersion])
 
   const run = async (a: ScheduledAction) => {
     if (a.outward && !window.confirm(`Run “${a.name}” now? This posts to ${a.settings_section === 'reports' ? 'Linear' : 'GitHub or Linear'}.`)) return

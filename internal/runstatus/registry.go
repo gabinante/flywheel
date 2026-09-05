@@ -38,12 +38,24 @@ type Registry struct {
 	mu       sync.RWMutex
 	runs     map[string]Run
 	observer Observer
+	onChange func()
 }
 
 var Default = New()
 
 func New() *Registry                       { return &Registry{runs: make(map[string]Run)} }
 func (r *Registry) SetObserver(f Observer) { r.mu.Lock(); defer r.mu.Unlock(); r.observer = f }
+
+// SetOnChange installs a cheap invalidation callback, separate from persistence.
+func (r *Registry) SetOnChange(f func()) { r.mu.Lock(); defer r.mu.Unlock(); r.onChange = f }
+func (r *Registry) changed() {
+	r.mu.RLock()
+	f := r.onChange
+	r.mu.RUnlock()
+	if f != nil {
+		f()
+	}
+}
 func WithInfo(ctx context.Context, info Run) context.Context {
 	return context.WithValue(ctx, infoKey{}, info)
 }
@@ -56,6 +68,7 @@ func (r *Registry) Begin(ctx context.Context, run Run) (context.Context, func())
 	r.mu.Lock()
 	r.runs[run.ID] = run
 	r.mu.Unlock()
+	r.changed()
 	h := &handle{registry: r, id: run.ID}
 	return context.WithValue(ctx, contextKey{}, h), func() { h.finish(ctx) }
 }
@@ -84,6 +97,7 @@ func Running(ctx context.Context) {
 			h.registry.runs[h.id] = v
 		}
 		h.registry.mu.Unlock()
+		h.registry.changed()
 	}
 }
 func Session(ctx context.Context, externalID string) {
@@ -104,6 +118,7 @@ func Session(ctx context.Context, externalID string) {
 	h.registry.runs[h.id] = v
 	h.registry.mu.Unlock()
 	h.observe(ctx, v)
+	h.registry.changed()
 }
 func (h *handle) observe(ctx context.Context, v Run) {
 	h.registry.mu.RLock()
@@ -125,6 +140,7 @@ func (h *handle) observe(ctx context.Context, v Run) {
 		h.registry.runs[h.id] = current
 	}
 	h.registry.mu.Unlock()
+	h.registry.changed()
 }
 func (h *handle) finish(ctx context.Context) {
 	h.registry.mu.RLock()
@@ -140,4 +156,5 @@ func (h *handle) finish(ctx context.Context) {
 	h.registry.mu.Lock()
 	delete(h.registry.runs, h.id)
 	h.registry.mu.Unlock()
+	h.registry.changed()
 }

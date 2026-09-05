@@ -54,6 +54,5 @@ export function useOperatorOverview() {
       return response.json()
     },
     staleTime: 2_000,
-    refetchInterval: 5_000,
   })
 }

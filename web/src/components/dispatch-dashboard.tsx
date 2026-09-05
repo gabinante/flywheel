@@ -1,3 +1,4 @@
+import { useActivityVersion } from '@/contexts/use-activity'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -19,7 +20,6 @@ type Ticket = components['schemas']['Ticket']
 type TraceStep = components['schemas']['TraceStep']
 
 /** Polling interval for active ticket details (ms). */
-const POLL_INTERVAL = 15_000
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -245,6 +245,7 @@ export function DispatchDashboard({
   projectId: string
   basePath: string
 }) {
+  const activityVersion = useActivityVersion('dispatch', 'tickets', 'projects', 'settings')
   const { client } = useAPI()
   const { status } = useDispatchStatus(projectId)
   const [workers, setWorkers] = useState<WorkerInfo[]>([])
@@ -327,9 +328,7 @@ export function DispatchDashboard({
     setLoading(!hasLoaded.current)
     void fetchWorkerDetails()
 
-    const interval = setInterval(() => void fetchWorkerDetails(), POLL_INTERVAL)
-    return () => clearInterval(interval)
-  }, [fetchWorkerDetails, projectId])
+  }, [fetchWorkerDetails, projectId, activityVersion])
 
   // Don't render if dispatch is not enabled
   if (status && !status.enabled) return null

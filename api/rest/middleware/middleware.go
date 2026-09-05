@@ -81,6 +81,11 @@ func (w *responseWriter) Flush() {
 	}
 }
 
+// FlushError preserves streaming write errors through nested middleware.
+func (w *responseWriter) FlushError() error {
+	return http.NewResponseController(w.ResponseWriter).Flush()
+}
+
 // Unwrap returns the underlying ResponseWriter for middleware compatibility (e.g., http.NewResponseController).
 func (w *responseWriter) Unwrap() http.ResponseWriter {
 	return w.ResponseWriter

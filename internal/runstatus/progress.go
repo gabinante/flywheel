@@ -92,6 +92,7 @@ func mutate(ctx context.Context, f func(*Progress)) {
 		return
 	}
 	h.registry.mu.Lock()
+	defer h.registry.changed()
 	defer h.registry.mu.Unlock()
 	if v, exists := h.registry.runs[h.id]; exists {
 		f(&v.Progress)

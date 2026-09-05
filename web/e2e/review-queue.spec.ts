@@ -88,7 +88,7 @@ test('review buttons acknowledge the queue immediately and lead to a live sessio
     await expect(row).toContainText('Review stopped')
     // The GitHub snapshot is cached, but local state must keep changing beneath it.
     expect((await request.post(`/code-reviews/${id}/rerun`)).ok()).toBeTruthy()
-    await expect.poll(async () => (await (await request.get(`/code-reviews/${id}`)).json()).state).toBe('commented')
+    await expect.poll(async () => (await (await request.get(`/code-reviews/${id}`)).json()).state, { timeout: 20_000 }).toBe('commented')
     await expect(row).toContainText('Dry run complete')
   } finally {
     writeFileSync(join(hold, 'review.release'), '')

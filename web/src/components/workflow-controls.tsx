@@ -1,3 +1,4 @@
+import { useActivityVersion } from '@/contexts/use-activity'
 import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -6,6 +7,7 @@ type Phase = { id: string; name: string; type: string; config?: { auto_advance?:
 type Position = { callback_url?: string; status: string; entered_at: string; position?: { current_phase?: Phase } }
 
 export function WorkflowControls({ ticketId, onChanged }: { ticketId: string; onChanged: () => void }) {
+  const activityVersion = useActivityVersion('tickets', 'workflows')
   const [data, setData] = useState<Position | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -19,9 +21,8 @@ export function WorkflowControls({ ticketId, onChanged }: { ticketId: string; on
   useEffect(() => {
     const controller = new AbortController()
     void load(controller.signal)
-    const timer = setInterval(() => void load(controller.signal), 3000)
-    return () => { controller.abort(); clearInterval(timer) }
-  }, [load])
+    return () => { controller.abort() }
+  }, [load, activityVersion])
   const phase = data?.position?.current_phase
   if (!phase || !data) return error ? <p role="alert">{error}</p> : null
   const human = phase.type === 'manual' || phase.config?.conditions?.some((c) => c.type === 'human_approval')

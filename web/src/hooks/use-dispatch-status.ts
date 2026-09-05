@@ -24,7 +24,7 @@ export interface DispatchStatus {
 }
 
 /**
- * Hook that polls the dispatch status endpoint.
+ * Hook for dispatch status, refreshed by the shared activity stream.
  * Returns the current dispatcher state (active workers, capacity, etc.).
  * Optionally scoped to a specific project.
  */
@@ -39,7 +39,6 @@ export function useDispatchStatus(projectId?: string) {
       if (!res.ok) return null
       return (await res.json()) as DispatchStatus
     },
-    refetchInterval: 10_000,
   })
 
   return { status, loading }

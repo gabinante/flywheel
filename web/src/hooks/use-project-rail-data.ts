@@ -156,7 +156,6 @@ export function useProjectRailData(projectId: string | undefined) {
       }
     },
     enabled: Boolean(projectId),
-    refetchInterval: 10_000,
     staleTime: 5_000,
   })
 

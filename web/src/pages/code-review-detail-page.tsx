@@ -1,3 +1,4 @@
+import { useActivityVersion } from '@/contexts/use-activity'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
@@ -30,18 +31,19 @@ function Meta({ label, value }: { label: string; value?: string | number | null 
 }
 
 function ReviewConversation({ reviewId, harness }: { reviewId: string; harness: string }) {
+  const activityVersion = useActivityVersion('reviews')
   const { client } = useAPI()
   const [messages, setMessages] = useState<ConversationMessage[]>([])
 
   useEffect(() => {
     let cancelled = false
     void client.GET('/code-reviews/{reviewID}/messages', { params: { path: { reviewID: reviewId } } }).then(({ data }) => {
-      if (!cancelled && data) setMessages(data.messages)
+      if (!cancelled && data) setMessages(previous => [...data.messages, ...previous.filter(m => m.id.startsWith('tmp-'))])
     })
     return () => {
       cancelled = true
     }
-  }, [client, reviewId])
+  }, [client, reviewId, activityVersion])
 
   const send = async (text: string) => {
     const optimistic: ConversationMessage = { id: `tmp-${Date.now()}`, role: 'user', content: text, created_at: new Date().toISOString() }
@@ -51,7 +53,7 @@ function ReviewConversation({ reviewId, harness }: { reviewId: string; harness: 
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id))
       return formatApiError(error)
     }
-    setMessages((prev) => [...prev.filter((m) => m.id !== optimistic.id), ...data.messages])
+    setMessages((prev) => [...new Map([...prev.filter((m) => m.id !== optimistic.id), ...data.messages].map(m => [m.id, m])).values()])
     return null
   }
 
@@ -67,6 +69,7 @@ function ReviewConversation({ reviewId, harness }: { reviewId: string; harness: 
 }
 
 export function CodeReviewDetailPage() {
+  const activityVersion = useActivityVersion('reviews')
   const { client } = useAPI()
   const queryClient = useQueryClient()
   const { data: service } = useReviewServiceStatus()
@@ -94,12 +97,10 @@ export function CodeReviewDetailPage() {
       setErr(null)
       setR(data)
     })
-    const t = setInterval(refresh, 3_000)
     return () => {
       cancelled = true
-      clearInterval(t)
     }
-  }, [client, reviewId, tick, refresh])
+  }, [client, reviewId, tick, activityVersion])
 
   const act = async (action: 'rerun' | 'close') => {
     if (!reviewId || actionPending) return

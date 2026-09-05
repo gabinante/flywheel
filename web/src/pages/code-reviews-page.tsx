@@ -1,3 +1,4 @@
+import { useActivityVersion } from '@/contexts/use-activity'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ClipboardCheck, ExternalLink, GitPullRequest, MessageSquareWarning, RefreshCw } from 'lucide-react'
@@ -180,6 +181,7 @@ function FeedbackGroupRow({
 }
 
 export function CodeReviewsPage() {
+  const activityVersion = useActivityVersion('reviews', 'review-status', 'settings')
   const { client } = useAPI()
   const { base, projectId, orgSlug, projectSlug } = useProjectPaths()
   const projectLabel = useProjectBreadcrumbLabel(projectId)
@@ -219,12 +221,10 @@ export function CodeReviewsPage() {
       if (st.response.ok && st.data) setStatus(st.data)
       if (fb.response.ok && fb.data) setFeedback(fb.data.rounds.filter((r) => (r.state === 'new' || r.state === 'dispatched')))
     })
-    const t = setInterval(refresh, 10_000)
     return () => {
       cancelled = true
-      clearInterval(t)
     }
-  }, [client, state, tick, refresh, projectId, offset])
+  }, [client, state, tick, projectId, offset, activityVersion])
 
   const submit = async () => {
     if (!text.trim()) return

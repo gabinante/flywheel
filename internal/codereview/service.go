@@ -49,6 +49,7 @@ type Config struct {
 
 // Service runs the review queue and the GitHub watchers.
 type Service struct {
+	onActivity    func()
 	activeReviews sync.Map
 	queueWake     chan struct{}
 	store         *Store
@@ -188,6 +189,7 @@ func (s *Service) Start(ctx context.Context) {
 			s.mu.Lock()
 			s.status.Login = login
 			s.mu.Unlock()
+			s.notifyActivity()
 		} else {
 			slog.Warn("codereview: gh auth check failed", "error", err)
 		}
@@ -237,10 +239,13 @@ func (s *Service) drainQueue(ctx context.Context) {
 	s.mu.Lock()
 	s.status.LastQueueRunAt = &now
 	s.mu.Unlock()
+	if len(reqs) > 0 {
+		defer s.notifyActivity()
+	}
 	for _, r := range reqs {
 		atomic.AddInt32(&s.active, 1)
 		go func(r *Request) {
-			defer func() { atomic.AddInt32(&s.active, -1); s.wakeQueue() }()
+			defer func() { atomic.AddInt32(&s.active, -1); s.notifyActivity(); s.wakeQueue() }()
 			s.process(ctx, r)
 		}(r)
 	}
@@ -272,6 +277,7 @@ func (s *Service) pollLoop(ctx context.Context) {
 		s.status.LastError = ""
 		s.mu.Unlock()
 		s.setError(pollErr)
+		s.notifyActivity()
 	}
 	run()
 	t := time.NewTicker(s.conf().PollInterval)
@@ -294,6 +300,7 @@ func (s *Service) setError(err error) {
 	s.mu.Lock()
 	s.status.LastError = err.Error()
 	s.mu.Unlock()
+	s.notifyActivity()
 }
 
 // EnqueueOptions tune a pasted/MCP request.
@@ -979,4 +986,12 @@ func plural(n int) string {
 		return ""
 	}
 	return "s"
+}
+
+// SetActivityNotifier must be called before Start. The callback must not block.
+func (s *Service) SetActivityNotifier(f func()) { s.onActivity = f }
+func (s *Service) notifyActivity() {
+	if s.onActivity != nil {
+		s.onActivity()
+	}
 }

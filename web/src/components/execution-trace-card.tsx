@@ -1,3 +1,4 @@
+import { useActivityVersion } from '@/contexts/use-activity'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   AlertTriangle,
@@ -59,7 +60,6 @@ const STEP_TYPE_CONFIG: Record<
 
 /** States where the ticket is still being worked on and trace may grow. */
 const IN_PROGRESS_STATES = new Set(['planning', 'executing'])
-const LIVE_POLL_INTERVAL_MS = 1500
 const PAGE_SIZE = 200
 
 function formatTimestamp(iso: string): string {
@@ -354,7 +354,7 @@ export function ExecutionTraceCard({
   const [err, setErr] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const activityVersion = useActivityVersion('tickets')
   // Track how many steps we've fetched so far (offset for next older-page fetch).
   const fetchedCountRef = useRef(0)
 
@@ -362,7 +362,7 @@ export function ExecutionTraceCard({
     ? IN_PROGRESS_STATES.has(ticketState)
     : false
 
-  // Fetch the latest page (offset=0). Used for initial load and live polling.
+  // Fetch the latest page (offset=0). Used for initial load and activity updates.
   const fetchLatestPage = useCallback(
     async (opts?: { silent?: boolean }) => {
       if (!opts?.silent) setLoading(true)
@@ -444,32 +444,10 @@ export function ExecutionTraceCard({
     setLoadingOlder(false)
   }, [client, ticketId, totalCount, steps?.length, loadingOlder])
 
-  // Initial fetch.
+  // Existing rows stay visible while activity refreshes the latest trace page.
   useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      await fetchLatestPage()
-      if (cancelled) return
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [fetchLatestPage])
-
-  // Poll more aggressively while the worker is active so the log view feels live.
-  useEffect(() => {
-    if (isInProgress) {
-      intervalRef.current = setInterval(() => {
-        void fetchLatestPage({ silent: true })
-      }, LIVE_POLL_INTERVAL_MS)
-    }
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-        intervalRef.current = null
-      }
-    }
-  }, [isInProgress, fetchLatestPage])
+    void Promise.resolve().then(() => fetchLatestPage({ silent: true }))
+  }, [fetchLatestPage, activityVersion])
 
   const handleRefresh = () => {
     setRefreshing(true)

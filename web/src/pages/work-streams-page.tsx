@@ -1,3 +1,4 @@
+import { useActivityVersion } from '@/contexts/use-activity'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -168,6 +169,7 @@ function StreamCard({ ws, basePath, tickets, onToggleStatus, toggling }: StreamC
 }
 
 export function WorkStreamsPage() {
+  const activityVersion = useActivityVersion('tickets')
   const { orgId, projectId, orgSlug, projectSlug, base } = useProjectPaths()
   const { client } = useAPI()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -258,7 +260,7 @@ export function WorkStreamsPage() {
     queueMicrotask(() => {
       void loadStreams()
     })
-  }, [loadStreams])
+  }, [loadStreams, activityVersion])
 
   const handleToggleStatus = useCallback(
     async (ws: WorkStream, newStatus: 'active' | 'closed') => {

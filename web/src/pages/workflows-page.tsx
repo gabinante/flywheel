@@ -1,3 +1,4 @@
+import { useActivityVersion } from '@/contexts/use-activity'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Library, Plus, Trash2, Workflow as WorkflowIcon } from 'lucide-react'
@@ -38,6 +39,7 @@ function useOrgId() {
 
 /** The workflow library: built-in templates, saved library workflows, and the org default. */
 export function WorkflowsPage() {
+  const activityVersion = useActivityVersion('workflows')
   const { client } = useAPI()
   const orgId = useOrgId()
   const [entries, setEntries] = useState<LibraryEntry[] | null>(null)
@@ -59,7 +61,7 @@ export function WorkflowsPage() {
     return () => {
       cancelled = true
     }
-  }, [client, orgId])
+  }, [client, orgId, activityVersion])
 
   const remove = async (e: LibraryEntry) => {
     if (!orgId || e.source !== 'library') return

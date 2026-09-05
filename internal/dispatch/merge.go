@@ -97,6 +97,7 @@ func (d *Dispatcher) spawnReviewer(ctx context.Context, t *ticket.Ticket) {
 			delete(d.active, reviewKey)
 			delete(d.activeProjects, reviewKey)
 			d.mu.Unlock()
+			d.notifyActivity()
 			return
 		}
 	}
@@ -113,6 +114,7 @@ func (d *Dispatcher) spawnReviewer(ctx context.Context, t *ticket.Ticket) {
 			delete(d.active, reviewKey)
 			delete(d.activeProjects, reviewKey)
 			d.mu.Unlock()
+			d.notifyActivity()
 
 			// Persist the PR HEAD commit that was reviewed so future spawn
 			// attempts can detect no-new-commits re-submissions.
@@ -875,6 +877,7 @@ func (d *Dispatcher) spawnConflictResolver(ctx context.Context, t *ticket.Ticket
 			delete(d.active, resolveKey)
 			delete(d.activeProjects, resolveKey)
 			d.mu.Unlock()
+			d.notifyActivity()
 			go d.reconcile(ctx)
 		}()
 

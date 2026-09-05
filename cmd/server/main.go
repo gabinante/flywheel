@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"github.com/gabinante/flywheel/internal/activity"
 	"github.com/gabinante/flywheel/internal/overview"
 	"github.com/gabinante/flywheel/internal/runlimit"
 	"github.com/gabinante/flywheel/internal/runstatus"
@@ -133,6 +134,10 @@ func run(ctx context.Context, cfg *config.Config) {
 		return
 	}
 	defer owner.Exec(context.WithoutCancel(ctx), "SELECT pg_advisory_unlock(734981205)")
+
+	activityHub := activity.New()
+	go activityHub.Run(ctx)
+	go activityHub.Listen(ctx, pool.Config().ConnConfig)
 
 	// Event bus: Postgres durable bus by default for at-least-once delivery.
 	var bus events.DurableEventBus
@@ -277,7 +282,9 @@ func run(ctx context.Context, cfg *config.Config) {
 		return
 	}
 	runstatus.Default.SetObserver(sessionsSvc.RecordRun)
+	runstatus.Default.SetOnChange(func() { activityHub.Publish(activity.Runs) })
 
+	sessionsSvc.SetActivityNotifier(func() { activityHub.Publish(activity.Collector) })
 	sessionsSvc.Start(ctx)
 
 	// Code review: PR-keyed reviews by a local harness, posted through the operator's gh CLI.
@@ -287,6 +294,7 @@ func run(ctx context.Context, cfg *config.Config) {
 	reviewCfg.ReviewTimeout, feedbackCfg.Timeout = cfg.Review.Timeout, cfg.Feedback.Timeout
 	codeReviewSvc := codereview.New(codereview.NewStore(pool), codereview.NewGitHub(""), harnessRunner, sessionsSvc, bus, reviewCfg)
 	codeReviewSvc.SetFeedbackConfig(feedbackCfg)
+	codeReviewSvc.SetActivityNotifier(func() { activityHub.Publish(activity.ReviewStatus) })
 	codeReviewSvc.Start(ctx)
 	codeReviewSvc.StartOverviewRefresh(ctx)
 
@@ -476,6 +484,7 @@ func run(ctx context.Context, cfg *config.Config) {
 	dispatcher.SetWorkflowPhaseUpdater(ticketStore)
 	dispatcher.Apply(drt) // installs the shared worker library into the router
 	dispatcher.SetEnabled(dcfg.Enabled)
+	dispatcher.SetActivityNotifier(func() { activityHub.Publish(activity.Dispatch) })
 	dispatcher.Start(ctx)
 	settingsSvc.OnChange(func(next settings.Settings) {
 		rt := next.DispatchRuntime()
@@ -487,6 +496,7 @@ func run(ctx context.Context, cfg *config.Config) {
 		plannerCfg.DriverDefaults = rt.Defaults
 		orchestratorSvc.ApplyWorkers(plannerCfg, rt.Workers)
 		dispatcher.SetEnabled(rt.Enabled)
+		activityHub.Publish(activity.Settings, activity.Dispatch, activity.ReviewStatus)
 	})
 
 	// Start durable bus delivery after all subscriptions are registered.
@@ -496,6 +506,7 @@ func run(ctx context.Context, cfg *config.Config) {
 	}
 
 	router := rest.NewRouter(rest.RouterConfig{
+		ActivityHandler: &rest.ActivityHandler{Hub: activityHub},
 		OverviewHandler: &rest.OverviewHandler{Store: overview.NewStore(pool), Dispatcher: dispatcher, CodeReviews: codeReviewSvc},
 		StrictServer:    strictServer,
 		AuthMiddleware:  rest.LocalOperatorMiddleware(operatorAgent.ID),

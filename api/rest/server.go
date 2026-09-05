@@ -14,6 +14,7 @@ import (
 
 // RouterConfig configures the main HTTP router (std net/http only).
 type RouterConfig struct {
+	ActivityHandler     *ActivityHandler
 	OverviewHandler     *OverviewHandler
 	StrictServer        *StrictServer
 	AuthMiddleware      func(http.Handler) http.Handler
@@ -114,6 +115,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		agents := cfg.AgentsHandler
 		mux.HandleFunc("POST /agents", agents.register)
 		mux.HandleFunc("GET /agents/{agentID}", agents.getAgent)
+	}
+	if cfg.ActivityHandler != nil {
+		mux.HandleFunc("GET /api/activity/events", cfg.ActivityHandler.stream)
 	}
 	if cfg.OverviewHandler != nil {
 		mux.HandleFunc("GET /api/overview", cfg.OverviewHandler.get)

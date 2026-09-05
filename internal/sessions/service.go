@@ -23,11 +23,12 @@ type Config struct {
 
 // Service owns the collectors and exposes session queries.
 type Service struct {
-	store  *Store
-	cfg    Config
-	runner Continuer
-	claude *claudeCollector
-	codex  *codexCollector
+	onActivity func()
+	store      *Store
+	cfg        Config
+	runner     Continuer
+	claude     *claudeCollector
+	codex      *codexCollector
 
 	mu      sync.Mutex
 	status  CollectorStatus
@@ -107,6 +108,7 @@ func (s *Service) RunOnce(ctx context.Context) error {
 		s.status.LastError = ""
 	}
 	s.mu.Unlock()
+	s.notifyActivity()
 	return err
 }
 
@@ -236,4 +238,12 @@ func (s *Service) Continue(ctx context.Context, id, message string) (string, err
 	}
 	go func() { _ = s.RunOnce(context.WithoutCancel(ctx)) }() // pick up the new turns
 	return strings.TrimSpace(res.Output), nil
+}
+
+// SetActivityNotifier must be called before Start. The callback must not block.
+func (s *Service) SetActivityNotifier(f func()) { s.onActivity = f }
+func (s *Service) notifyActivity() {
+	if s.onActivity != nil {
+		s.onActivity()
+	}
 }

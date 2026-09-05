@@ -1,3 +1,4 @@
+import { useActivityVersion } from '@/contexts/use-activity'
 import { useCallback, useEffect, useState } from 'react'
 import { ChevronDown, ChevronRight, GitPullRequest, RefreshCw } from 'lucide-react'
 
@@ -73,6 +74,7 @@ function RepoSection({
 }
 
 export function MyPRsPage() {
+  const activityVersion = useActivityVersion('reviews', 'prs')
   const { client } = useAPI()
   const [data, setData] = useState<MyPullRequests | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -108,7 +110,7 @@ export function MyPRsPage() {
   useEffect(() => {
     // Deferred so the effect body itself stays free of state updates.
     void Promise.resolve().then(() => load())
-  }, [load])
+  }, [load, activityVersion])
 
   const address = async (roundId: string) => {
     setAddressing(roundId)

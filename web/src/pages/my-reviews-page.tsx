@@ -38,7 +38,7 @@ export function MyReviewsPage() {
     if (!result.response.ok || !result.data) throw new Error(formatApiError(result.error))
     return result.data
   }
-  const { data, error } = useQuery({ queryKey: reviewsKey, queryFn: ({ signal }) => load(false, signal), refetchInterval: 3_000 })
+  const { data, error } = useQuery({ queryKey: reviewsKey, queryFn: ({ signal }) => load(false, signal) })
 
   const refresh = async () => {
     setLoading(true)

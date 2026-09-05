@@ -11,6 +11,5 @@ export function useReviewServiceStatus() {
       if (!response.ok || !data) throw new Error(formatApiError(error))
       return data
     },
-    refetchInterval: 3_000,
   })
 }

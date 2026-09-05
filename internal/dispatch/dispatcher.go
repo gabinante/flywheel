@@ -140,6 +140,7 @@ type Config struct {
 // Supports both the legacy Bus interface (exact Subscribe) and the new DurableEventBus
 // (pattern-based SubscribePattern) for at-least-once delivery.
 type Dispatcher struct {
+	onActivity           func()
 	sessions             SessionRecorder
 	reserve              func(context.Context, *ticket.Ticket) (func(context.Context) error, error)
 	cfgMu                sync.RWMutex
@@ -210,6 +211,7 @@ func (d *Dispatcher) Enabled() bool { return d.enabled.Load() }
 // immediate reconcile so waiting tickets are picked up without delay; turning it off
 // lets running workers finish but starts no new ones.
 func (d *Dispatcher) SetEnabled(on bool) {
+	defer d.notifyActivity()
 	was := d.enabled.Swap(on)
 	if on && !was && d.runCtx != nil {
 		go d.reconcile(d.runCtx)
@@ -1189,6 +1191,7 @@ func (d *Dispatcher) spawn(ctx context.Context, t *ticket.Ticket) {
 			delete(d.active, t.ID)
 			delete(d.activeProjects, t.ID)
 			d.mu.Unlock()
+			d.notifyActivity()
 			return
 		}
 	}
@@ -1201,6 +1204,7 @@ func (d *Dispatcher) spawn(ctx context.Context, t *ticket.Ticket) {
 			delete(d.active, t.ID)
 			delete(d.activeProjects, t.ID)
 			d.mu.Unlock()
+			d.notifyActivity()
 
 			// Priority: spawn any waiting reviewers before scanning for new work.
 			d.spawnWaitingReviewers(ctx, t.ProjectID)
@@ -1635,6 +1639,7 @@ func (d *Dispatcher) projectCapacity(ctx context.Context, projectID string) (act
 }
 
 func (d *Dispatcher) startActive(ctx context.Context, key, projectID string) (context.Context, context.CancelFunc, int, int, bool) {
+	defer d.notifyActivity()
 	limit := d.projectWorkerLimit(ctx, projectID)
 	workerCtx, cancel := context.WithCancel(ctx)
 	d.mu.Lock()
@@ -1939,4 +1944,12 @@ func (d *Dispatcher) ProjectRepoDir(ctx context.Context, projectID string) (stri
 
 func (d *Dispatcher) SetReservation(fn func(context.Context, *ticket.Ticket) (func(context.Context) error, error)) {
 	d.reserve = fn
+}
+
+// SetActivityNotifier must be called before Start. The callback must not block.
+func (s *Dispatcher) SetActivityNotifier(f func()) { s.onActivity = f }
+func (s *Dispatcher) notifyActivity() {
+	if s.onActivity != nil {
+		s.onActivity()
+	}
 }

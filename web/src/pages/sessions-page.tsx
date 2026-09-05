@@ -1,3 +1,4 @@
+import { useActivityVersion } from '@/contexts/use-activity'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Activity, ChevronLeft, ChevronRight, GitBranch, Search, TerminalSquare } from 'lucide-react'
@@ -134,6 +135,8 @@ function SessionRow({ session, base }: { session: AgentSession; base: string }) 
 }
 
 export function SessionsPage() {
+  const activityVersion = useActivityVersion('sessions')
+  const collectorVersion = useActivityVersion('collector', 'sessions')
   const { client } = useAPI()
   const { base, projectId, orgSlug, projectSlug } = useProjectPaths()
   const projectLabel = useProjectBreadcrumbLabel(projectId)
@@ -201,12 +204,10 @@ export function SessionsPage() {
       setTotal(data.total)
     })
     void load()
-    const timer = setInterval(load, 10_000)
     return () => {
-      clearInterval(timer)
       cancelled = true
     }
-  }, [client, query])
+  }, [client, query, activityVersion])
 
   useEffect(() => {
     let cancelled = false
@@ -215,12 +216,10 @@ export function SessionsPage() {
         if (!cancelled && response.ok && data) setCollector(data)
       })
     void load()
-    const t = setInterval(load, 30_000)
     return () => {
       cancelled = true
-      clearInterval(t)
     }
-  }, [client])
+  }, [client, collectorVersion])
 
   const pageEnd = Math.min(offset + PAGE_SIZE, total)
 

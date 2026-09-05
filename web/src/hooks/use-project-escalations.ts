@@ -22,7 +22,6 @@ export function useProjectEscalations(projectId: string | undefined) {
       return (data ?? []) as Escalation[]
     },
     enabled: Boolean(projectId),
-    refetchInterval: 10_000,
   })
 
   return { escalations, loading, refresh }

@@ -216,7 +216,7 @@ test('real dispatcher phases drive both harness protocols, exact claims, session
     if (!holdDir || !holdDir.includes('flywheel-hardening.')) throw new Error('Run with the disposable hardening script')
     const tray = page.getByRole('complementary', { name: 'Global work' })
     for (const harness of ['claude', 'codex']) {
-      await expect.poll(async () => (await json('GET', '/api/overview')).in_flight.some((run: { ticket_id: string; harness: string; session_href?: string }) => run.ticket_id === ticket.id && run.harness.startsWith(harness) && !!run.session_href), { timeout: 30_000 }).toBe(true)
+      await expect.poll(async () => (await json('GET', '/api/overview')).in_flight.some((run: { ticket_id: string; harness?: string; session_href?: string }) => run.ticket_id === ticket.id && run.harness?.startsWith(harness) && !!run.session_href), { timeout: 30_000 }).toBe(true)
       await page.goto('/#/settings')
       const row = tray.locator('li').filter({ hasText: ticket.title })
       await expect(row).toHaveCount(1)

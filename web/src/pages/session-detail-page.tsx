@@ -1,3 +1,4 @@
+import { useActivityVersion } from '@/contexts/use-activity'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, Copy, ExternalLink, GitBranch } from 'lucide-react'
@@ -65,6 +66,7 @@ function ContinueSession({ sessionId, harness, onReplied }: { sessionId: string;
 }
 
 export function SessionDetailPage() {
+  const activityVersion = useActivityVersion('sessions')
   const { client } = useAPI()
   const { sessionId } = useParams<{ sessionId: string }>()
   const { base, projectId, orgSlug, projectSlug } = useProjectPaths()
@@ -89,18 +91,15 @@ export function SessionDetailPage() {
           setErr(formatApiError(error))
           return
         }
+        setErr(null)
         setDetail(data)
       })
     return () => {
       cancelled = true
     }
-  }, [client, sessionId, reloadTick])
+  }, [client, sessionId, reloadTick, activityVersion])
 
-  useEffect(() => {
-    if (!running) return
-    const timer = window.setInterval(() => setReloadTick(tick => tick + 1), 5_000)
-    return () => window.clearInterval(timer)
-  }, [running])
+
 
   const s = detail?.session
   const savedProgress = s?.metadata?.flywheel_progress as RunProgressData | undefined

@@ -4,6 +4,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 
 import { AppShell } from '@/components/app-shell'
 import { ErrorBoundary } from '@/components/error-boundary'
+import { ActivityProvider } from '@/contexts/activity-provider'
 import { APIProvider } from '@/contexts/api-provider'
 import { SlugResolverProvider, useSlugResolver } from '@/contexts/slug-resolver-provider'
 import { useAPI } from '@/contexts/use-api'
@@ -117,6 +118,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <APIProvider>
+        <ActivityProvider>
         <ErrorBoundary>
           <HashRouter>
             <SlugResolverProvider>
@@ -212,6 +214,7 @@ export default function App() {
             </SlugResolverProvider>
           </HashRouter>
         </ErrorBoundary>
+              </ActivityProvider>
       </APIProvider>
     </QueryClientProvider>
   )
