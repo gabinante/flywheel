@@ -9,6 +9,7 @@ describe('review status separates agent recommendations from GitHub outcomes', (
   it('distinguishes stopping a review from closing a PR', () => {
     expect(reviewStatus({ ...review, state: 'closed', watch: false }, 'OPEN').label).toBe('Review stopped')
     expect(reviewStatus({ ...review, state: 'closed' }, 'OPEN').label).toBe('Review inactive')
+    expect(reviewStatus({ ...review, state: 'closed', error: 'dropped: team request; watch scope is now direct-only' }, 'OPEN').detail).toContain('earlier team request was removed')
   })
   it('only claims a GitHub outcome when a posted review is recorded', () => {
     expect(reviewStatus({ ...review, state: 'watching', dry_run: true }).label).toBe('Dry run complete')

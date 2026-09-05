@@ -46,8 +46,10 @@ export function reviewStatus(r: CodeReviewRequest, prState?: string) {
       detail: `${recommendation}${recommendation ? ' ' : ''}No successful GitHub submission was recorded for this attempt. Open the review for the error and retry.`,
     }
     case 'closed': return {
-      label: r.watch ? (prState === 'OPEN' ? 'Review inactive' : 'PR closed or merged') : 'Review stopped',
-      detail: r.watch ? 'The PR was closed when Flywheel last checked. A new explicit request or manual review can restart it.' : 'This review was stopped in Flywheel. A new explicit request or manual review can restart it.',
+      label: r.watch ? (prState === 'CLOSED' || prState === 'MERGED' ? 'PR closed or merged' : 'Review inactive') : 'Review stopped',
+      detail: r.error?.startsWith('dropped: team request')
+        ? 'This earlier team request was removed from automatic review. A direct request or manual review can restart it.'
+        : 'No review is queued for this entry in Flywheel. A new explicit request or manual review can restart it.',
     }
     default:
       if (r.dry_run) return { label: 'Dry run complete', detail: `${recommendation} Nothing was posted to GitHub.` }
