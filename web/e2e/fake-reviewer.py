@@ -8,6 +8,7 @@ if 'exec' not in sys.argv:
     print('fake-reviewer 1.0')
     sys.exit(0)
 sys.stdin.read()
+assert '-m' in sys.argv and sys.argv[sys.argv.index('-m')+1] == 'browser-selected-model', 'Selected review model was lost'
 print(json.dumps({'type':'thread.started','thread_id':str(uuid.uuid4())}), flush=True)
 print(json.dumps({'type':'item.completed','item':{'type':'reasoning','text':'Private test reasoning'}}), flush=True)
 print(json.dumps({'type':'item.started','item':{'type':'command_execution','command':'Read example.txt'}}), flush=True)

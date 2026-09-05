@@ -373,6 +373,7 @@ func (s *Service) process(ctx context.Context, req *Request) {
 		return
 	}
 	cfg := s.conf()
+	applyAttemptDefaults(req, cfg)
 	fail := func(err error) {
 		req.State = StateFailed
 		req.Error = err.Error()
@@ -591,6 +592,20 @@ func (s *Service) process(ctx context.Context, req *Request) {
 	_ = s.store.Update(ctx, req)
 	s.publishCompleted(ctx, req, posted.HTMLURL)
 	slog.Info("codereview: posted review", "pr", req.Ref(), "verdict", req.Verdict, "inline", len(inline), "in_body", len(inBody), "url", posted.HTMLURL)
+}
+
+// Legacy queue entries can predate the operator's model settings. A blank model
+// must inherit the selected review defaults, not an unrelated CLI config file.
+func applyAttemptDefaults(req *Request, cfg Config) {
+	if req.Harness == "" {
+		req.Harness = cfg.Harness
+	}
+	kind, err := harness.ParseKind(req.Harness)
+	configured, configErr := harness.ParseKind(cfg.Harness)
+	if err == nil && configErr == nil && kind == configured {
+		req.Model = firstNonEmpty(req.Model, cfg.Model)
+		req.ReasoningEffort = firstNonEmpty(req.ReasoningEffort, cfg.Effort)
+	}
 }
 
 func allIndexes(fs []Finding) []int {

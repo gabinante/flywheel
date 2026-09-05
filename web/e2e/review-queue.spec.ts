@@ -32,6 +32,7 @@ test('review buttons acknowledge the queue immediately and lead to a live sessio
   settings.review.publish = false
   settings.review.harness = 'codex'
   settings.harnesses.codex.bin = fileURLToPath(new URL('./fake-reviewer.py', import.meta.url))
+  settings.harnesses.codex.model = 'browser-selected-model'
   expect((await request.put('/settings', { data: settings })).ok()).toBeTruthy()
   try {
     expect((await request.get('/me/reviews?refresh=true')).ok()).toBeTruthy()
@@ -53,6 +54,11 @@ test('review buttons acknowledge the queue immediately and lead to a live sessio
     await expect(row.getByRole('link', { name: 'View review', exact: true })).toBeVisible()
     const detail = await row.getByRole('link', { name: 'View review', exact: true }).getAttribute('href')
     const id = detail!.split('/').at(-1)!
+    // Older queue entries have no model; they must inherit the selected default.
+    const container = process.env.FLYWHEEL_E2E_PG_CONTAINER!
+    expect(container).toMatch(/^flywheel-hardening-/)
+    expect(id).toMatch(/^[a-f0-9-]+$/)
+    execFileSync('docker', ['exec', container, 'psql', '-U', 'flywheel_test', '-d', 'flywheel_test', '-v', 'ON_ERROR_STOP=1', '-c', `UPDATE code_review_requests SET model='' WHERE id='${id}'`])
     await page.unroute('**/code-reviews')
     settings.review.enabled = true
     expect((await request.put('/settings', { data: settings })).ok()).toBeTruthy()

@@ -64,6 +64,25 @@ func TestExplicitRequestTimeline(t *testing.T) {
 	}
 }
 
+func TestLegacyAttemptsInheritSelectedModel(t *testing.T) {
+	cfg := Config{Harness: "codex", Model: "selected-model", Effort: "high"}
+	r := &Request{Harness: "codex"}
+	applyAttemptDefaults(r, cfg)
+	if r.Model != cfg.Model || r.ReasoningEffort != cfg.Effort {
+		t.Fatalf("defaults lost: %+v", r)
+	}
+	r.Model = "explicit-model"
+	applyAttemptDefaults(r, cfg)
+	if r.Model != "explicit-model" {
+		t.Fatal("overwrote explicit model")
+	}
+	r = &Request{Harness: "claude"}
+	applyAttemptDefaults(r, cfg)
+	if r.Model != "" {
+		t.Fatal("applied a Codex model to Claude")
+	}
+}
+
 func reviewTestStore(t *testing.T) (*Store, *pgxpool.Pool) {
 	t.Helper()
 	url := os.Getenv("FLYWHEEL_TEST_DATABASE_URL")
