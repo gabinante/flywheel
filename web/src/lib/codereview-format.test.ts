@@ -6,6 +6,12 @@ describe('review status separates agent recommendations from GitHub outcomes', (
   it('never describes a failed approval as posted', () => {
     expect(reviewStatus(review)).toEqual({ label: 'Posting failed', detail: expect.stringContaining('Agent recommendation: approve. No successful GitHub submission') })
   })
+  it('shows scheduled recovery instead of a terminal failure', () => {
+    const pending = reviewStatus({ ...review, state: 'queued', verdict: '', retry_at: '2026-09-06T12:00:00Z', retry_count: 1, error: 'PR head changed; a fresh review will use the latest commit.' })
+    expect(pending.label).toBe('Retry scheduled')
+    expect(pending.detail).toContain('Retrying automatically after')
+    expect(pending.detail).toContain('latest commit')
+  })
   it('distinguishes stopping a review from closing a PR', () => {
     expect(reviewStatus({ ...review, state: 'closed', watch: false }, 'OPEN').label).toBe('Review stopped')
     expect(reviewStatus({ ...review, state: 'closed' }, 'OPEN').label).toBe('Review inactive')

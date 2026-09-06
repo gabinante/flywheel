@@ -23,7 +23,7 @@ func codeReviewToGen(r *codereview.Request) generated.CodeReviewRequest {
 		Id: r.ID, Repo: r.Repo, Number: r.Number, Url: r.URL, Title: r.Title, Author: r.Author, Origin: string(r.Origin), Harness: r.Harness,
 		State: string(r.State), Attempt: r.Attempt, Watch: r.Watch, DryRun: r.DryRun, Verdict: r.Verdict, Summary: r.Summary,
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Findings: make([]generated.CodeReviewFinding, 0, len(r.Findings)),
-		ReviewedAt: r.ReviewedAt, LastCheckedAt: r.LastCheckedAt,
+		ReviewedAt: r.ReviewedAt, LastCheckedAt: r.LastCheckedAt, RetryAt: r.RetryAt, RetryCount: &r.RetryCount,
 	}
 	setOpt := func(dst **string, v string) {
 		if v != "" {

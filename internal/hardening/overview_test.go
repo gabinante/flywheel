@@ -136,6 +136,7 @@ func TestReviewOwnershipDistinguishesStaleStateFromServiceWork(t *testing.T) {
 	p := pool(t)
 	ctx := context.Background()
 	id := uuid.NewString()
+	t.Cleanup(func() { p.Exec(ctx, `DELETE FROM code_review_requests WHERE id=$1`, id) })
 	if _, err := p.Exec(ctx, `INSERT INTO code_review_requests(id,repo,number,title,state,updated_at) VALUES($1,$1,1,'Orphaned review','reviewing',now()-interval '2 hours')`, id); err != nil {
 		t.Fatal(err)
 	}
@@ -182,6 +183,7 @@ func TestOverviewKeepsEachReviewerThreadAndItsPublicationSession(t *testing.T) {
 	var reviewIDs []string
 	for number := 1; number <= 2; number++ {
 		id, sessionID := uuid.NewString(), uuid.NewString()
+		t.Cleanup(func() { p.Exec(ctx, `DELETE FROM code_review_requests WHERE id=$1`, id) })
 		reviewIDs = append(reviewIDs, id)
 		if _, err := p.Exec(ctx, `INSERT INTO code_review_requests(id,repo,number,title,state,harness,model,session_id) VALUES($1,$2,$3,'Concurrent review','reviewing','codex','review-model',$4)`, id, repo, number, sessionID); err != nil {
 			t.Fatal(err)

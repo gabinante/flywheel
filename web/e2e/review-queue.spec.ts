@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -138,6 +138,87 @@ test('review buttons acknowledge the queue immediately and lead to a live sessio
     expect((await request.post(`/code-reviews/${id}/rerun`)).ok()).toBeTruthy()
     await expect.poll(async () => (await (await request.get(`/code-reviews/${id}`)).json()).state, { timeout: 20_000 }).toBe('commented')
     await expect(row).toContainText('Dry run complete')
+  } finally {
+    writeFileSync(join(hold, 'review.release'), '')
+    await request.put('/settings', { data: saved })
+  }
+})
+
+test('transient failures and new commits retry automatically with visible persisted status', async ({ page, request, baseURL }) => {
+  test.setTimeout(90_000)
+  expect(new URL(baseURL!).port).toBe('8091')
+  const hold = process.env.FLYWHEEL_E2E_HARNESS_HOLD_DIR!
+  const root = dirname(hold)
+  expect(root).toContain('flywheel-hardening.')
+  const fixture = join(root, 'work', 'review-fixture')
+  const git = (...args: string[]) => execFileSync(process.env.FLYWHEEL_E2E_REAL_GIT!, args, { cwd: fixture }).toString().trim()
+  const prs = JSON.parse(readFileSync(join(root, 'review-fixture.json'), 'utf8'))
+  const pr = { ...prs[0], number: 9, title: 'Automatic recovery fixture', url: 'https://github.com/flywheel-tests/review-fixture/pull/9', headRefOid: git('rev-parse', 'HEAD') }
+  prs.push(pr)
+  git('update-ref', 'refs/pull/9/head', 'HEAD')
+  writeFileSync(join(root, 'review-fixture.json'), JSON.stringify(prs))
+  writeFileSync(join(root, 'review-view-failure-9'), '')
+  rmSync(join(hold, 'review.release'), { force: true })
+  const settings = await (await request.get('/settings')).json()
+  const saved = structuredClone(settings)
+  settings.review.enabled = false
+  settings.review.watch_requested = false
+  settings.review.watch_authored = false
+  settings.review.publish = false
+  settings.review.harness = 'codex'
+  settings.harnesses.codex.bin = fileURLToPath(new URL('./fake-reviewer.py', import.meta.url))
+  settings.harnesses.codex.model = 'browser-selected-model'
+  expect((await request.put('/settings', { data: settings })).ok()).toBeTruthy()
+  try {
+    const queued = await request.post('/code-reviews', { data: { text: pr.url, watch: true } })
+    expect(queued.ok()).toBeTruthy()
+    const id = (await queued.json()).requests[0].id
+    const get = async () => (await (await request.get(`/code-reviews/${id}`)).json())
+    const container = process.env.FLYWHEEL_E2E_PG_CONTAINER!
+    expect(container).toMatch(/^flywheel-hardening-/)
+    expect(id).toMatch(/^[a-f0-9-]+$/)
+    const makeDue = () => execFileSync('docker', ['exec', container, 'psql', '-U', 'flywheel_test', '-d', 'flywheel_test', '-v', 'ON_ERROR_STOP=1', '-c', `UPDATE code_review_requests SET retry_at=now()-interval '1 second' WHERE id='${id}'`])
+    await page.goto(`/#/code-reviews/${id}`)
+    settings.review.enabled = true
+    expect((await request.put('/settings', { data: settings })).ok()).toBeTruthy()
+    await expect(page.locator('main')).toContainText('Retry scheduled')
+    await expect(page.locator('main')).toContainText('Retry 1 of 3')
+    let retry = await get()
+    expect(retry.state).toBe('queued')
+    expect(retry.attempt).toBe(2)
+    expect(Date.parse(retry.retry_at)).toBeGreaterThan(Date.now())
+    expect(retry.session_id).toBeUndefined()
+    // Expire the durable delay without sleeping for it; the real queue still claims it.
+    makeDue()
+    await expect.poll(async () => (await get()).state, { timeout: 20_000 }).toBe('reviewing')
+    const tray = page.getByRole('complementary', { name: 'Global work' })
+    const card = tray.locator('[data-work-id]').filter({ has: page.getByRole('link', { name: 'Open PR flywheel-tests/review-fixture#9 on GitHub' }) })
+    await expect(card.getByRole('link', { name: 'Open reviewer thread' })).toBeVisible()
+    const oldSession = await card.getByRole('link', { name: 'Open reviewer thread' }).getAttribute('href')
+    // A push while the agent is reviewing must invalidate its result, not fail the request.
+    writeFileSync(join(fixture, 'example.txt'), 'example\nnew head\n')
+    git('add', 'example.txt'); git('commit', '-m', 'Change PR while review is running')
+    git('update-ref', 'refs/pull/9/head', 'HEAD')
+    pr.headRefOid = git('rev-parse', 'HEAD')
+    writeFileSync(join(root, 'review-fixture.json'), JSON.stringify(prs))
+    writeFileSync(join(hold, 'review.release'), '')
+    await expect(page.locator('main')).toContainText('PR head changed before publication')
+    await expect(page.locator('main')).toContainText('Retry scheduled')
+    retry = await get()
+    expect(retry.attempt).toBe(3)
+    expect(retry.retry_count).toBe(1)
+    expect(retry.verdict).toBe('')
+    expect(retry.review_url).toBeUndefined()
+    expect(retry.session_id).toBeUndefined()
+    await page.screenshot({ path: 'test-results/review-retry-scheduled.png', fullPage: true })
+    makeDue()
+    await expect.poll(async () => (await get()).state, { timeout: 20_000 }).toBe('watching')
+    await expect(page.locator('main')).toContainText('Dry run complete')
+    const result = await get()
+    expect(result.head_sha).toBe(pr.headRefOid)
+    expect(result.retry_at).toBeUndefined()
+    expect(result.error).toBeUndefined()
+    expect(`#/sessions/${result.session_id}`).not.toBe(oldSession)
   } finally {
     writeFileSync(join(hold, 'review.release'), '')
     await request.put('/settings', { data: saved })

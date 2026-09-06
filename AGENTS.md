@@ -71,6 +71,9 @@ This file is the shared operating guide for coding agents working in this repo.
   Pending requests survive active attempts and restart; manual stops consume outstanding demand.
   My Reviews caches GitHub facts but overlays current queue state on every read. Show recommendations
   separately from confirmed GitHub publication, and clear old session links when starting a new attempt.
+  Review head changes schedule a fresh attempt; transient pre-publication failures retry after 30 seconds,
+  2 minutes, and 10 minutes. Retry deadlines/budgets persist across restart; stop cancels pending retries.
+  Never automatically replay a GitHub submission with an ambiguous outcome.
 
 ## Local dev
 

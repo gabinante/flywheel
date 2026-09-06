@@ -744,16 +744,22 @@ type CodeReviewRequest struct {
 	Origin        string              `json:"origin"`
 	Recipe        *string             `json:"recipe,omitempty"`
 	Repo          string              `json:"repo"`
-	ReviewUrl     *string             `json:"review_url,omitempty"`
-	ReviewedAt    *time.Time          `json:"reviewed_at,omitempty"`
-	SessionId     *string             `json:"session_id,omitempty"`
-	State         string              `json:"state"`
-	Summary       string              `json:"summary"`
-	Title         string              `json:"title"`
-	UpdatedAt     time.Time           `json:"updated_at"`
-	Url           string              `json:"url"`
-	Verdict       string              `json:"verdict"`
-	Watch         bool                `json:"watch"`
+
+	// RetryAt Earliest time a queued automatic retry may start.
+	RetryAt *time.Time `json:"retry_at,omitempty"`
+
+	// RetryCount Automatic failure retries consumed; head changes do not consume this budget.
+	RetryCount *int       `json:"retry_count,omitempty"`
+	ReviewUrl  *string    `json:"review_url,omitempty"`
+	ReviewedAt *time.Time `json:"reviewed_at,omitempty"`
+	SessionId  *string    `json:"session_id,omitempty"`
+	State      string     `json:"state"`
+	Summary    string     `json:"summary"`
+	Title      string     `json:"title"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+	Url        string     `json:"url"`
+	Verdict    string     `json:"verdict"`
+	Watch      bool       `json:"watch"`
 }
 
 // CodeReviewStatus defines model for CodeReviewStatus.

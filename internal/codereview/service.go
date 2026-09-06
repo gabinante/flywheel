@@ -230,7 +230,7 @@ func (s *Service) drainQueue(ctx context.Context) {
 	if free <= 0 {
 		return
 	}
-	reqs, err := s.store.ClaimQueued(ctx, free)
+	reqs, err := s.store.claimQueued(ctx, free, s.ActiveReviewIDs())
 	if err != nil {
 		s.setError(err)
 		return
@@ -381,9 +381,19 @@ func (s *Service) process(ctx context.Context, req *Request) {
 	}
 	cfg := s.conf()
 	applyAttemptDefaults(req, cfg)
+	mayHavePublished := false
 	fail := func(err error) {
+		if ctx.Err() == nil && !mayHavePublished && retryableReviewError(err) && s.retry(ctx, req, err.Error(), false) {
+			return
+		}
 		req.State = StateFailed
 		req.Error = err.Error()
+		if !mayHavePublished && req.RetryCount >= len(retryDelays) {
+			req.Error = "Automatic retries exhausted: " + req.Error
+		}
+		if ctx.Err() != nil && !mayHavePublished {
+			req.Error = "Review interrupted before publication: " + req.Error
+		}
 		_ = s.store.Update(context.WithoutCancel(ctx), req)
 		slog.Warn("codereview: failed", "pr", req.Ref(), "error", err)
 	}
@@ -428,10 +438,25 @@ func (s *Service) process(ctx context.Context, req *Request) {
 		return
 	}
 	current, checkErr := s.gh.ViewPR(ctx, req.Repo, req.Number, login)
-	if checkErr != nil || current.HeadSHA != req.HeadSHA {
-		fail(errors.New("PR head changed while preparing the review; rerun on the current head"))
+	if checkErr != nil {
+		fail(fmt.Errorf("check PR after preparation: %w", checkErr))
 		return
 	}
+	if current.State != "OPEN" || (current.IsDraft && cfg.SkipDrafts) {
+		req.State = StateClosed
+		if current.State == "OPEN" {
+			req.State, req.Error = StateWatching, "draft PR; will review when it is marked ready"
+		}
+		_ = s.store.Update(ctx, req)
+		return
+	}
+	if current.HeadSHA != req.HeadSHA {
+		if !s.retry(ctx, req, "PR head changed while preparing; a fresh review will use the latest commit.", true) {
+			fail(errors.New("could not schedule review of the latest head"))
+		}
+		return
+	}
+	pr = current
 	diffIdx := ParseUnifiedDiff(diff)
 	diffDir, err := os.MkdirTemp("", "flywheel-review-")
 	if err != nil {
@@ -516,9 +541,30 @@ func (s *Service) process(ctx context.Context, req *Request) {
 	if isReReview {
 		body = reReviewBody(findings, repeats, body)
 	}
-	reviewedAt := time.Now()
-	req.ReviewedAt = &reviewedAt
-	req.LastReviewedHeadSHA = req.HeadSHA
+
+	fresh, err := s.store.Get(ctx, req.ID)
+	if err != nil || fresh == nil || fresh.State == StateClosed || fresh.Attempt != req.Attempt || ctx.Err() != nil {
+		return
+	}
+	current, checkErr = s.gh.ViewPR(ctx, req.Repo, req.Number, login)
+	if checkErr != nil {
+		fail(fmt.Errorf("check PR before publication: %w", checkErr))
+		return
+	}
+	if current.State != "OPEN" || (current.IsDraft && cfg.SkipDrafts) {
+		req.State = StateClosed
+		if current.State == "OPEN" {
+			req.State, req.Error = StateWatching, "draft PR; will review when it is marked ready"
+		}
+		_ = s.store.Update(ctx, req)
+		return
+	}
+	if current.HeadSHA != req.HeadSHA {
+		if !s.retry(ctx, req, "PR head changed before publication; a fresh review will use the latest commit.", true) {
+			fail(errors.New("could not schedule review of the latest head"))
+		}
+		return
+	}
 	if req.DryRun || !cfg.Publish {
 		for _, f := range findings {
 			_ = s.store.UpdateFindingStatus(ctx, f.ID, "withheld", 0)
@@ -528,21 +574,14 @@ func (s *Service) process(ctx context.Context, req *Request) {
 			req.State = StateWatching
 		}
 		req.Error = ""
+		reviewedAt := time.Now()
+		req.ReviewedAt, req.LastReviewedHeadSHA = &reviewedAt, req.HeadSHA
 		_ = s.store.Update(ctx, req)
 		s.publishCompleted(ctx, req, "")
 		slog.Info("codereview: dry run complete", "pr", req.Ref(), "verdict", req.Verdict, "findings", len(findings))
 		return
 	}
 
-	fresh, err := s.store.Get(ctx, req.ID)
-	if err != nil || fresh == nil || fresh.State == StateClosed || fresh.Attempt != req.Attempt || ctx.Err() != nil {
-		return
-	}
-	current, checkErr = s.gh.ViewPR(ctx, req.Repo, req.Number, login)
-	if checkErr != nil || current.State != "OPEN" || current.HeadSHA != req.HeadSHA {
-		fail(errors.New("PR changed before publication; rerun on the current head"))
-		return
-	}
 	event := "APPROVE"
 	if req.Verdict == VerdictRequestChanges {
 		event = "REQUEST_CHANGES"
@@ -556,7 +595,18 @@ func (s *Service) process(ctx context.Context, req *Request) {
 		f := findings[i]
 		in.Comments = append(in.Comments, ReviewComment{Path: f.Path, Line: f.Line, Side: "RIGHT", Body: InlineCommentBody(f)})
 	}
+	mayHavePublished = true
 	posted, err := s.gh.CreateReview(ctx, req.Repo, req.Number, in)
+	if err != nil && strings.Contains(err.Error(), "422") {
+		// A push can race the final read. A rejected submission is safe to
+		// reschedule; an uncertain network response must not be posted twice.
+		if latest, checkErr := s.gh.ViewPR(ctx, req.Repo, req.Number, login); checkErr == nil && latest.State == "OPEN" && latest.HeadSHA != req.HeadSHA {
+			if !s.retry(ctx, req, "PR head changed during submission; a fresh review will use the latest commit.", true) {
+				fail(fmt.Errorf("post review: %w", err))
+			}
+			return
+		}
+	}
 	if err != nil && len(in.Comments) > 0 && strings.Contains(err.Error(), "422") {
 		// Some line was not commentable after all; fall back to everything in the body.
 		body2, _, _ := ComposeReview(summary, findings, &DiffIndex{files: map[string]map[int]bool{}})
@@ -596,6 +646,8 @@ func (s *Service) process(ctx context.Context, req *Request) {
 		req.State = StateWatching
 	}
 	req.Error = ""
+	reviewedAt := time.Now()
+	req.ReviewedAt, req.LastReviewedHeadSHA = &reviewedAt, req.HeadSHA
 	_ = s.store.Update(ctx, req)
 	s.publishCompleted(ctx, req, posted.HTMLURL)
 	slog.Info("codereview: posted review", "pr", req.Ref(), "verdict", req.Verdict, "inline", len(inline), "in_body", len(inBody), "url", posted.HTMLURL)
@@ -971,6 +1023,11 @@ func reReviewBody(fresh []Finding, repeats int, full string) string {
 func isRepeatFinding(f Finding, prior []Finding) bool {
 	norm := func(v string) string { return strings.ToLower(strings.TrimSpace(v)) }
 	for _, p := range prior {
+		// Findings from an abandoned head or failed attempt were never posted.
+		// They must not suppress comments on the successful retry.
+		if p.Status != "posted" && p.Status != "in_body" && p.Status != "repeat" {
+			continue
+		}
 		if norm(p.Path) != norm(f.Path) {
 			continue
 		}

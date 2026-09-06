@@ -25,7 +25,7 @@ func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 
 const reqCols = `id, repo, number, url, title, author, base_ref, head_ref, head_sha, origin, recipe, harness, model, reasoning_effort,
 	state, attempt, watch, dry_run, verdict, summary, review_url, my_review_state, my_review_id, last_reviewed_head_sha,
-	session_id, session_external_id, worktree_path, ticket_id, error, last_checked_at, reviewed_at, created_at, updated_at`
+	session_id, session_external_id, worktree_path, ticket_id, error, last_checked_at, reviewed_at, created_at, updated_at, retry_count, retry_at`
 
 type rowScanner interface{ Scan(dest ...any) error }
 
@@ -34,7 +34,7 @@ func scanRequest(r rowScanner) (*Request, error) {
 	if err := r.Scan(&q.ID, &q.Repo, &q.Number, &q.URL, &q.Title, &q.Author, &q.BaseRef, &q.HeadRef, &q.HeadSHA, &q.Origin, &q.Recipe,
 		&q.Harness, &q.Model, &q.ReasoningEffort, &q.State, &q.Attempt, &q.Watch, &q.DryRun, &q.Verdict, &q.Summary, &q.ReviewURL,
 		&q.MyReviewState, &q.MyReviewID, &q.LastReviewedHeadSHA, &q.SessionID, &q.SessionExternalID, &q.WorktreePath, &q.TicketID,
-		&q.Error, &q.LastCheckedAt, &q.ReviewedAt, &q.CreatedAt, &q.UpdatedAt); err != nil {
+		&q.Error, &q.LastCheckedAt, &q.ReviewedAt, &q.CreatedAt, &q.UpdatedAt, &q.RetryCount, &q.RetryAt); err != nil {
 		return nil, err
 	}
 	return &q, nil
@@ -214,13 +214,18 @@ func (s *Store) ListByState(ctx context.Context, st State) ([]*Request, error) {
 
 // ClaimQueued atomically moves up to n queued requests to fetching and returns them.
 func (s *Store) ClaimQueued(ctx context.Context, n int) ([]*Request, error) {
+	return s.claimQueued(ctx, n, nil)
+}
+
+func (s *Store) claimQueued(ctx context.Context, n int, activeIDs []string) ([]*Request, error) {
 	if err := s.PromoteRequested(ctx); err != nil {
 		return nil, err
 	}
 	rows, err := s.pool.Query(ctx, `WITH picked AS (
-			SELECT id FROM code_review_requests WHERE state = 'queued' ORDER BY created_at LIMIT $1 FOR UPDATE SKIP LOCKED)
-		UPDATE code_review_requests r SET state = 'fetching', updated_at = now(), request_handled_at = now(), pending_requested_at = NULL FROM picked WHERE r.id = picked.id
-		RETURNING `+prefixCols("r.", reqCols), n)
+			SELECT id FROM code_review_requests WHERE state = 'queued' AND (retry_at IS NULL OR retry_at <= now())
+			AND NOT (id=ANY($2::text[])) ORDER BY COALESCE(retry_at,created_at),id LIMIT $1 FOR UPDATE SKIP LOCKED)
+		UPDATE code_review_requests r SET state = 'fetching', retry_at=NULL, updated_at = now(), request_handled_at = now(), pending_requested_at = NULL FROM picked WHERE r.id = picked.id
+		RETURNING `+prefixCols("r.", reqCols), n, nonNilIDs(activeIDs))
 	if err != nil {
 		return nil, err
 	}
@@ -248,8 +253,9 @@ func (s *Store) RequeueWithOptions(ctx context.Context, id string, origin Origin
 	return err
 }
 
-const resetAttempt = `state='queued', attempt=attempt+1, error='', verdict='', summary='', review_url='',
+const resetAttemptState = `state='queued', attempt=attempt+1, verdict='', summary='', review_url='',
 	session_id='', session_external_id='', worktree_path='', updated_at=now(), request_handled_at=now(), pending_requested_at=NULL`
+const resetAttempt = resetAttemptState + `, error='', retry_count=0, retry_at=NULL`
 
 // ObserveReviewRequest records each GitHub event once. Requests made during a run
 // remain pending until it finishes; they cannot create a concurrent second worker.
@@ -272,7 +278,7 @@ func (s *Store) PromoteRequested(ctx context.Context) error {
 
 func (s *Store) Stop(ctx context.Context, id string) error {
 	_, err := s.pool.Exec(ctx, `UPDATE code_review_requests SET state='closed', watch=false,
-		pending_requested_at=NULL, request_handled_at=now(), updated_at=now() WHERE id=$1`, id)
+		retry_at=NULL, pending_requested_at=NULL, request_handled_at=now(), updated_at=now() WHERE id=$1`, id)
 	return err
 }
 
@@ -596,11 +602,17 @@ func (s *Store) ClearSession(ctx context.Context, reviewID string) error {
 	return err
 }
 
-// RecoverInterrupted makes interrupted work visible without replaying a possibly
-// published GitHub review. The operator may rerun after inspecting the PR.
+// RecoverInterrupted retries interrupted reads while leaving possibly published
+// GitHub reviews for inspection rather than replaying an uncertain write.
 func (s *Store) RecoverInterrupted(ctx context.Context) error {
-	_, err := s.pool.Exec(ctx, `UPDATE code_review_requests SET state='failed', error='Server stopped during this attempt; inspect GitHub before rerunning', updated_at=now() WHERE state IN ('fetching','reviewing','publishing')`)
+	_, err := s.pool.Exec(ctx, `UPDATE code_review_requests SET state='failed', error=CASE WHEN state='publishing'
+		THEN 'post review: Server stopped during publication; inspect GitHub before rerunning'
+		ELSE 'Review interrupted before publication; retrying after restart' END, updated_at=now()
+		WHERE state IN ('fetching','reviewing','publishing')`)
 	if err != nil {
+		return err
+	}
+	if err := s.recoverRetryableFailures(ctx); err != nil {
 		return err
 	}
 	_, err = s.pool.Exec(ctx, `UPDATE pr_feedback_rounds SET state='new',run_id=NULL WHERE state='dispatched'`)

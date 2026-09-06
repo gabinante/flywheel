@@ -18,6 +18,11 @@ elif args[:2] == ['api', 'graphql']:
     query = next((x for x in args if x.startswith('q=')), '')
     print(json.dumps({'data': {'search': {'nodes': prs if 'review-requested:' in query else []}}}))
 elif pr and args[:3] == ['pr', 'view', str(pr['number'])]:
+    fail_once = root / ('review-view-failure-' + str(pr['number']))
+    if fail_once.exists():
+        fail_once.unlink()
+        print('HTTP 502: temporary GitHub failure', file=sys.stderr)
+        sys.exit(1)
     print(json.dumps({**pr, 'latestReviews': [], 'commits': []}))
 elif pr and args[:3] == ['pr', 'diff', str(pr['number'])]:
     print('diff --git a/example.txt b/example.txt\nnew file mode 100644\n--- /dev/null\n+++ b/example.txt\n@@ -0,0 +1 @@\n+example')

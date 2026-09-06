@@ -3140,6 +3140,13 @@ components:
           type: string
         error:
           type: string
+        retry_count:
+          type: integer
+          description: Automatic failure retries consumed; head changes do not consume this budget.
+        retry_at:
+          type: string
+          format: date-time
+          description: Earliest time a queued automatic retry may start.
         reviewed_at:
           type: string
           format: date-time

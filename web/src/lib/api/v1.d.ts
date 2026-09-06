@@ -1525,6 +1525,13 @@ export interface components {
             my_review_state?: string;
             session_id?: string;
             error?: string;
+            /** @description Automatic failure retries consumed; head changes do not consume this budget. */
+            retry_count?: number;
+            /**
+             * Format: date-time
+             * @description Earliest time a queued automatic retry may start.
+             */
+            retry_at?: string;
             /** Format: date-time */
             reviewed_at?: string;
             /** Format: date-time */

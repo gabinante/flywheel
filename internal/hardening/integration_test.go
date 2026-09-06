@@ -236,6 +236,7 @@ func TestProjectFilteringBeforePaginationAndCurrentFindings(t *testing.T) {
 			repo = "test/repo.with.dots"
 		}
 		req := &codereview.Request{ID: uuid.NewString(), Repo: repo, Number: int(time.Now().UnixNano()%1000000) + i, URL: "https://github.com/" + repo + "/pull/1", Origin: codereview.Origin("manual"), Harness: "codex", State: codereview.StateQueued, Attempt: 2}
+		t.Cleanup(func() { p.Exec(ctx, `DELETE FROM code_review_requests WHERE id=$1`, req.ID) })
 		if err := store.Create(ctx, req); err != nil {
 			t.Fatal(err)
 		}

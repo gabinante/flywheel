@@ -195,7 +195,7 @@ export function CodeReviewDetailPage() {
                 </Link>
               </div>
             )}
-            {r.error && <div className="border-t border-white/10 px-4 py-2 text-xs text-red-200">{r.error}</div>}
+            {r.error && <div className={`border-t border-white/10 px-4 py-2 text-xs ${r.retry_at ? 'text-amber-200' : 'text-red-200'}`}>{r.error}</div>}
           </Card>
 
           {live?.progress && <RunProgress progress={live.progress} />}
