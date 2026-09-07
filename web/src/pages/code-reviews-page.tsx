@@ -8,8 +8,7 @@ import { CodeReviewStatus as ReviewStatus } from '@/components/code-review-statu
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { StyledSelect } from '@/components/ui/styled-select'
-import { Switch } from '@/components/ui/switch'
-import { Textarea } from '@/components/ui/textarea'
+import { QueuePRReviews } from '@/components/queue-pr-reviews'
 import { useAPI } from '@/contexts/use-api'
 import { useProjectPaths } from '@/hooks/use-project-paths'
 import { useProjectBreadcrumbLabel } from '@/hooks/use-project-breadcrumb-label'
@@ -194,9 +193,6 @@ export function CodeReviewsPage() {
   const [feedback, setFeedback] = useState<FeedbackRound[]>([])
   const [status, setStatus] = useState<CodeReviewStatus | null>(null)
   const [err, setErr] = useState<string | null>(null)
-  const [text, setText] = useState('')
-  const [dryRun, setDryRun] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
   const [tick, setTick] = useState(0)
 
   const refresh = useCallback(() => setTick((t) => t + 1), [])
@@ -225,19 +221,6 @@ export function CodeReviewsPage() {
       cancelled = true
     }
   }, [client, state, tick, projectId, offset, activityVersion])
-
-  const submit = async () => {
-    if (!text.trim()) return
-    setSubmitting(true)
-    const { error, response } = await client.POST('/code-reviews', { body: { text, dry_run: dryRun || undefined } })
-    setSubmitting(false)
-    if (!response.ok) {
-      setErr(formatApiError(error))
-      return
-    }
-    setText('')
-    refresh()
-  }
 
   const setFeedbackState = async (ids: string[], st: 'ignored' | 'addressed') => {
     await Promise.all(ids.map((id) => client.POST('/code-reviews/feedback/{roundID}/state', { params: { path: { roundID: id } }, body: { state: st } })))
@@ -299,25 +282,9 @@ export function CodeReviewsPage() {
       )}
       {err && <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{err}</div>}
 
-      <section className="rounded-2xl border border-white/10 bg-white/5 p-3 backdrop-blur-md">
-        <Textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Paste PR URLs or owner/repo#123 references — one or many. Each becomes its own review."
-          className="min-h-[3.5rem] text-sm"
-        />
-        <div className="mt-2 flex flex-wrap items-center gap-3">
-          <Button size="sm" onClick={submit} disabled={submitting || !text.trim()}>
-            <GitPullRequest className="size-4" /> Review
-          </Button>
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Switch checked={dryRun} onCheckedChange={setDryRun} /> Dry run (do not post)
-          </label>
-          <div className="ml-auto">
-            <StyledSelect value={state} onValueChange={(v) => setParams(v === 'all' ? {} : { state: v }, { replace: true })} options={STATE_OPTIONS} aria-label="State" />
-          </div>
-        </div>
-      </section>
+      <QueuePRReviews onQueued={refresh}>
+        <StyledSelect value={state} onValueChange={(v) => setParams(v === 'all' ? {} : { state: v }, { replace: true })} options={STATE_OPTIONS} aria-label="State" />
+      </QueuePRReviews>
 
       {feedback.length > 0 && (
         <section className="flex flex-col gap-2">

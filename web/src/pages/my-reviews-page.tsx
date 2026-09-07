@@ -1,3 +1,4 @@
+import { QueuePRReviews } from '@/components/queue-pr-reviews'
 import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -133,6 +134,7 @@ export function MyReviewsPage() {
       </div>
 
       <AutoReviewToggle />
+      <QueuePRReviews />
 
       {(err || error) && <p role="alert" className="text-sm text-destructive">{err || error?.message}{data ? " Showing the last successful update." : ""}</p>}
       {!data && !err && !error && <p className="text-sm text-muted-foreground">Asking GitHub…</p>}

@@ -114,6 +114,44 @@ test('the global tray keeps cross-project decisions and navigation on every page
   await expect(page).toHaveURL(new RegExp(`/projects/${empty.slug}/tickets/${continueTicket}$`))
   await page.screenshot({ path: 'test-results/global-tray-attention.png', fullPage: true })
 })
+test('global PR views and project reviews share arbitrary PR queueing', async ({ page }) => {
+  expect((await json('GET', '/code-reviews/status')).enabled).toBe(false)
+  for (const path of ['/my/prs', '/my/reviews', `/orgs/${org.slug}/projects/${project.slug}/code-reviews`]) {
+    const refs = [`flywheel-tests/manual-${randomUUID().slice(0, 8)}#13`, `flywheel-tests/manual-${randomUUID().slice(0, 8)}#14`]
+    await page.goto(`/#${path}`)
+    const form = page.getByRole('form', { name: 'Queue PR reviews' })
+    const field = form.getByRole('textbox', { name: 'Review a PR' })
+    await expect(form.getByRole('button', { name: 'Review', exact: true })).toBeDisabled()
+    await field.fill(refs.join('\n'))
+    await form.getByRole('switch').check()
+    await page.route('**/code-reviews', route => route.request().method() === 'POST'
+      ? route.fulfill({ status: 503, json: { message: 'Queue temporarily unavailable' } }) : route.continue())
+    await form.getByRole('button', { name: 'Review', exact: true }).click()
+    await expect(form.getByRole('alert')).toBeVisible()
+    await expect(field).toHaveValue(refs.join('\n'))
+    await page.unroute('**/code-reviews')
+    await form.getByRole('button', { name: 'Review', exact: true }).click()
+    await expect(form.getByRole('status')).toContainText('Review requests ready')
+    await expect(field).toHaveValue('')
+    const ids: string[] = []
+    try {
+      for (const ref of refs) {
+        const href = await form.getByRole('link', { name: ref, exact: true }).getAttribute('href')
+        const id = href!.split('/').at(-1)!
+        ids.push(id)
+        const review = await json('GET', `/code-reviews/${id}`)
+        expect(review.state).toBe('queued')
+        expect(review.dry_run).toBe(true)
+      }
+      if (path === '/my/reviews') await page.screenshot({ path: 'test-results/global-pr-entry.png', fullPage: true })
+      await form.getByRole('link', { name: refs[0], exact: true }).click()
+      await expect(page.locator('main')).toContainText(refs[0])
+    } finally {
+      for (const id of ids) await json('POST', `/code-reviews/${id}/close`)
+    }
+  }
+})
+
 test('tray errors preserve the last known work and the tray opens on narrow screens', async ({ page }) => {
   await page.goto('/#/settings')
   const tray = page.getByRole('complementary', { name: 'Global work' })

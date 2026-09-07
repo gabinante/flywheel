@@ -1,3 +1,4 @@
+import { QueuePRReviews } from '@/components/queue-pr-reviews'
 import { useActivityVersion } from '@/contexts/use-activity'
 import { useCallback, useEffect, useState } from 'react'
 import { ChevronDown, ChevronRight, GitPullRequest, RefreshCw } from 'lucide-react'
@@ -151,6 +152,8 @@ export function MyPRsPage() {
           Refresh
         </Button>
       </div>
+
+      <QueuePRReviews />
 
       {err && <p className="text-sm text-destructive">{err}</p>}
       {!data && !err && <p className="text-sm text-muted-foreground">Asking GitHub…</p>}
