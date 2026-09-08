@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { StyledSelect } from '@/components/ui/styled-select'
 import { PromptLibrary } from '@/components/prompt-library'
+import { modelChoices, effortChoices, workerOptions } from '@/lib/worker-options'
 import { ROLE_OPTIONS } from '@/lib/dispatch-roles'
 import type { components } from '@/lib/api/v1'
 
@@ -162,6 +163,7 @@ export function WorkerWorkspace({
                     <Label>
                       Harness
                       <StyledSelect
+                        aria-label="Harness"
                         className="w-full min-w-0"
                         value={worker.driver || 'default'}
                         options={[
@@ -170,20 +172,34 @@ export function WorkerWorkspace({
                           { value: 'claude', label: 'Claude Code' },
                           { value: 'generic', label: 'Generic CLI' },
                         ]}
-                        onValueChange={(v) => update({ driver: v === 'default' ? undefined : (v as Worker['driver']) })}
+                        onValueChange={(v) => update({ driver: v === 'default' ? undefined : (v as Worker['driver']), model: '', reasoning_effort: '' })}
                       />
                     </Label>
                     <Label>
                       Model
-                      <Input value={worker.model || ''} placeholder="Harness default" onChange={(e) => update({ model: e.target.value })} />
+                      <StyledSelect
+                        aria-label="Model"
+                        className="w-full min-w-0"
+                        value={worker.model || '__harness_default__'}
+                        options={workerOptions(modelChoices(worker.driver), worker.model,
+                          workers.filter(w => w.driver === worker.driver).map(w => w.model || '').concat(
+                            worker.driver === 'codex' || worker.driver === 'claude' ? settings.harnesses[worker.driver].model : []))}
+                        onValueChange={(v) => {
+                          const model = v === '__harness_default__' ? '' : v
+                          update({ model, reasoning_effort: effortChoices(worker.driver, model || (worker.driver === 'codex' || worker.driver === 'claude' ? settings.harnesses[worker.driver].model : '')).includes(worker.reasoning_effort || '') ? worker.reasoning_effort : '' })
+                        }}
+                      />
                     </Label>
                   </div>
                   <Label>
                     Reasoning effort
-                    <Input
-                      value={worker.reasoning_effort || ''}
-                      placeholder="Harness default"
-                      onChange={(e) => update({ reasoning_effort: e.target.value })}
+                    <StyledSelect
+                      aria-label="Reasoning effort"
+                      className="w-full min-w-0"
+                      value={worker.reasoning_effort || '__harness_default__'}
+                      options={workerOptions(effortChoices(worker.driver, worker.model ||
+                        (worker.driver === 'codex' || worker.driver === 'claude' ? settings.harnesses[worker.driver].model : '')), worker.reasoning_effort)}
+                      onValueChange={(v) => update({ reasoning_effort: v === '__harness_default__' ? '' : v })}
                     />
                   </Label>
                   <Label>
@@ -197,7 +213,7 @@ export function WorkerWorkspace({
                     />
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    These instructions supplement the task instructions. Edit shared task instructions under Task assignments.
+                    Changing harness resets model and effort to their defaults. These instructions supplement the task instructions. Edit shared task instructions under Task assignments.
                   </p>
                   <details className="space-y-3">
                     <summary className="cursor-pointer text-sm">Advanced options</summary>
