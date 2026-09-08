@@ -4,7 +4,7 @@ Implementation, PR review, feedback, and orchestrator workers are included in th
 
 Workers → Your workers is the place to define a harness, model, reasoning effort and standing instructions. Save changes before assigning the worker in another page. Task assignments chooses workers for reviews, feedback, implementation, planning and other task types. A workflow step can select its own worker.
 
-Task type describes what a workflow step does and continues to determine its permissions and completion contract. It does not need a custom role to use a custom worker. Worker instructions supplement the task instructions, which can be edited under Task assignments. Harness connections contains shared executable paths, login status and fallback model settings.
+Task type describes what a workflow step does and continues to determine its permissions and completion contract. It does not need a custom role to use a custom worker. The worker editor shows the current instructions for its assigned tasks, including their default text, with inline editing. These task prompts are shared by workers doing the same task. Optional Additional instructions apply only to that worker and are prepended to the task prompt. The full prompt library remains available under Task assignments. Harness connections contains shared executable paths, login status and fallback model settings.
 
 ## Compatibility and resolution
 

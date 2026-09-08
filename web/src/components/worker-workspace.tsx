@@ -14,6 +14,23 @@ import type { components } from '@/lib/api/v1'
 type Settings = components['schemas']['OperatorSettings']
 type Worker = components['schemas']['DispatchWorkerProfile']
 const isBuiltin = (id?: string) => ['builtin-dispatch', 'builtin-orchestrator', 'builtin-review', 'builtin-feedback'].includes(id || '')
+function workerPromptIDs(worker: Worker, settings: Settings): string[] {
+  const ids = new Set<string>()
+  if (worker.id === 'builtin-review' || settings.review.worker_id === worker.id) ids.add('code_review')
+  if (worker.id === 'builtin-feedback' || settings.feedback.worker_id === worker.id) ids.add('pr_feedback')
+  if (worker.id === 'builtin-orchestrator') ids.add('orchestrator')
+  if (worker.id === 'builtin-dispatch') { ids.add('dispatch_executor'); ids.add('dispatch_worker') }
+  for (const [role, policy] of Object.entries(settings.workers.policies || {})) {
+    if (!policy.worker_ids?.includes(worker.id!)) continue
+    if (settings.review.role_id === role) ids.add('code_review')
+    if (settings.feedback.role_id === role) ids.add('pr_feedback')
+    if (role === 'orchestrator') ids.add('orchestrator')
+    else if (role === 'conflict_resolver') ids.add('conflict_resolver')
+    else if (role === 'validator') ids.add('ticket_reviewer')
+    else if (['planner', 'executor', 'deployer', 'investigator', 'operator', 'decomposer', 'fast-executor'].includes(role)) ids.add(`dispatch_${role}`)
+  }
+  return [...ids]
+}
 const TASKS = [
   ...ROLE_OPTIONS.map((t) => (t.key === 'validator' ? { ...t, label: 'Workflow validation' } : t)),
   { key: 'operator', label: 'Operations', description: 'Triage and operational tasks.' },
@@ -86,6 +103,7 @@ export function WorkerWorkspace({
   const [selected, setSelected] = useState<string | null>(null)
   const workers = settings.workers.workers ?? []
   const worker = workers.find((w) => w.id === selected)
+  const promptIDs = worker ? workerPromptIDs(worker, settings) : []
   const update = (patch: Partial<Worker>) =>
     onChange({ ...settings, workers: { ...settings.workers, workers: workers.map((w) => (w.id === selected ? { ...w, ...patch } : w)) } })
   const add = () => {
@@ -204,18 +222,19 @@ export function WorkerWorkspace({
                       onValueChange={(v) => update({ reasoning_effort: v === '__harness_default__' ? '' : v })}
                     />
                   </Label>
+                  {worker && promptIDs.length > 0 && <PromptLibrary key={`${worker.id}:${promptIDs.join(',')}`} promptIDs={promptIDs} title="Instructions" />}
                   <Label>
-                    Instructions
+                    Additional instructions
                     <Textarea
-                      aria-label="Instructions"
+                      aria-label="Additional instructions"
                       rows={8}
                       value={worker.system_prompt || ''}
-                      placeholder="How should this worker approach its tasks?"
+                      placeholder="Optional guidance specific to this worker"
                       onChange={(e) => update({ system_prompt: e.target.value })}
                     />
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    Changing harness resets model and effort to their defaults. These instructions supplement the task instructions. Edit shared task instructions under Task assignments.
+                    Additional instructions are prepended to the task instructions. Leaving this field empty keeps the task instructions in effect.
                   </p>
                   <details className="space-y-3">
                     <summary className="cursor-pointer text-sm">Advanced options</summary>

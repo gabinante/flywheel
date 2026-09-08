@@ -79,9 +79,9 @@ function PromptEditor({ p, onSaved }: { p: PromptDefinition; onSaved: (next: Pro
 }
 
 /** Settings → Prompts: the base prompt of every default worker, editable live. */
-export function PromptLibrary() {
+export function PromptLibrary({ promptIDs, title = 'Task instructions' }: { promptIDs?: string[]; title?: string } = {}) {
   const { client } = useAPI()
-  const [selected, setSelected] = useState('code_review')
+  const [selected, setSelected] = useState(promptIDs?.[0] || 'code_review')
   const [items, setItems] = useState<PromptDefinition[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
@@ -105,17 +105,16 @@ export function PromptLibrary() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ScrollText className="size-4 text-muted-foreground" />
-          Task instructions
+          {title}
         </CardTitle>
         <CardDescription>
-          The base prompt of every default worker. Edits apply to the next run, no restart. Structural parts (project context pack,
-          ticket details, tool protocol, content-defense rules) are appended by Flywheel and are not editable here. Worker instructions are prepended to the task instructions below.
+          These are the instructions sent for this task, including when no additional worker instructions are set. Changes apply to all workers doing this task on their next run. Flywheel adds runtime context and tool protocols separately.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {err && <p className="text-sm text-destructive">{err}</p>}
         {!items && !err && <p className="text-sm text-muted-foreground">Loading…</p>}
-        {items && <StyledSelect aria-label="Task instructions" className="w-full" value={selected} onValueChange={setSelected} options={items.map(p => ({ value: p.id, label: p.name }))} />}
+        {items && (!promptIDs || promptIDs.length > 1) && <StyledSelect aria-label="Task instructions" className="w-full" value={selected} onValueChange={setSelected} options={items.filter(p => !promptIDs || promptIDs.includes(p.id)).map(p => ({ value: p.id, label: p.name }))} />}
         {items?.filter(p => p.id === selected).map((p) => (
           <PromptEditor key={p.id} p={p} onSaved={(next) => setItems((prev) => (prev ?? []).map((x) => (x.id === next.id ? next : x)))} />
         ))}
