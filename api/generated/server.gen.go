@@ -1021,6 +1021,9 @@ type FeedbackSettings struct {
 
 	// RoleId Worker role from the shared library that addresses feedback; empty = use harness/model/effort
 	RoleId *string `json:"role_id,omitempty"`
+
+	// WorkerId Explicit worker assignment; takes precedence over legacy role routing.
+	WorkerId *string `json:"worker_id,omitempty"`
 }
 
 // HarnessDefaults defines model for HarnessDefaults.
@@ -1388,6 +1391,9 @@ type ReviewSettings struct {
 
 	// WatchScope all = review-requested:@me including team requests; direct = only PRs that ask for you personally
 	WatchScope string `json:"watch_scope"`
+
+	// WorkerId Explicit worker assignment; takes precedence over legacy role routing.
+	WorkerId *string `json:"worker_id,omitempty"`
 }
 
 // ReviewerState defines model for ReviewerState.

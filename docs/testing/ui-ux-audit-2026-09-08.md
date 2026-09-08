@@ -52,3 +52,7 @@ These screenshots use synthetic test data and were inspected during the audit:
 Run `scripts/test-hardening.sh` to recreate the audit. `web/playwright-report/index.html` contains browser screenshots, traces for failed expectations, and attached control/layout inventories. `web/test-results/results.json` records outcomes in machine-readable form. The HTML report counts expected failures as satisfied expectations; distinguish those from working features when reporting results.
 
 The planner fixture speaks the Claude event protocol and respects resume session IDs. It holds work until the browser releases it, allowing meaningful assertions about running/cancelled states. Existing dispatch fixtures exercise MCP claims and both harness protocols; reviewer fixtures exercise preparation, retry and session tracking.
+
+## Worker interface follow-up
+
+The worker consolidation replaces the separate settings navigation with Workers, including task assignments and shared harness connections. The AUDIT-11 intent is now covered by selecting a custom worker directly in a workflow step (J19), without requiring a custom role. Legacy roles remain an advanced compatibility feature. The suite now has 44 normal passing tests and two expected failures (G04/G05); the worker editor also has focused mobile and SSE picker checks. See [Workers](../workers.md).

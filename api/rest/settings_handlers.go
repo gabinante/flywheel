@@ -23,12 +23,12 @@ func settingsToGen(s settings.Settings, saved bool) generated.OperatorSettings {
 			ProjectIds: ids, DefaultTeamKey: s.Linear.DefaultTeamKey, SyncIntervalSeconds: s.Linear.SyncIntervalSeconds,
 		},
 		Review: generated.ReviewSettings{
-			Enabled: s.Review.Enabled, RoleId: optStr(s.Review.RoleID), Harness: s.Review.Harness, Model: s.Review.Model, ReasoningEffort: s.Review.ReasoningEffort,
+			Enabled: s.Review.Enabled, WorkerId: optStr(s.Review.WorkerID), RoleId: optStr(s.Review.RoleID), Harness: s.Review.Harness, Model: s.Review.Model, ReasoningEffort: s.Review.ReasoningEffort,
 			Publish: s.Review.Publish, WatchRequested: s.Review.WatchRequested, WatchAuthored: s.Review.WatchAuthored, SkipDrafts: s.Review.SkipDrafts,
 			MaxConcurrent: s.Review.MaxConcurrent, PollIntervalSeconds: s.Review.PollIntervalSeconds, RepoRoot: s.Review.RepoRoot,
 			ReReviewQuietMinutes: s.Review.ReReviewQuietMinutes, ReReviewMinGapMinutes: s.Review.ReReviewMinGapMinutes, WatchScope: s.Review.WatchScope,
 		},
-		Feedback: generated.FeedbackSettings{RoleId: optStr(s.Feedback.RoleID), Harness: s.Feedback.Harness, Model: s.Feedback.Model, ReasoningEffort: s.Feedback.ReasoningEffort, AutoAddress: s.Feedback.AutoAddress},
+		Feedback: generated.FeedbackSettings{WorkerId: optStr(s.Feedback.WorkerID), RoleId: optStr(s.Feedback.RoleID), Harness: s.Feedback.Harness, Model: s.Feedback.Model, ReasoningEffort: s.Feedback.ReasoningEffort, AutoAddress: s.Feedback.AutoAddress},
 		Report: generated.ReportSettings{
 			ProjectUpdatesEnabled: s.Report.ProjectUpdatesEnabled, ProjectUpdateIntervalHours: s.Report.ProjectUpdateIntervalHours,
 			WeeklyEnabled: s.Report.WeeklyEnabled, WeeklyDay: s.Report.WeeklyDay, WeeklyHour: s.Report.WeeklyHour,
@@ -83,14 +83,14 @@ func (s *StrictServer) UpdateOperatorSettings(ctx context.Context, req generated
 			DefaultTeamKey: strings.TrimSpace(b.Linear.DefaultTeamKey), SyncIntervalSeconds: b.Linear.SyncIntervalSeconds,
 		},
 		Review: settings.ReviewSettings{
-			Enabled: b.Review.Enabled, RoleID: derefStr(b.Review.RoleId), Harness: strings.ToLower(strings.TrimSpace(b.Review.Harness)), Model: strings.TrimSpace(b.Review.Model),
+			Enabled: b.Review.Enabled, WorkerID: derefStr(b.Review.WorkerId), RoleID: derefStr(b.Review.RoleId), Harness: strings.ToLower(strings.TrimSpace(b.Review.Harness)), Model: strings.TrimSpace(b.Review.Model),
 			ReasoningEffort: strings.TrimSpace(b.Review.ReasoningEffort), Publish: b.Review.Publish, WatchRequested: b.Review.WatchRequested,
 			WatchAuthored: b.Review.WatchAuthored, SkipDrafts: b.Review.SkipDrafts, MaxConcurrent: b.Review.MaxConcurrent,
 			PollIntervalSeconds: b.Review.PollIntervalSeconds, RepoRoot: strings.TrimSpace(b.Review.RepoRoot),
 			ReReviewQuietMinutes: b.Review.ReReviewQuietMinutes, ReReviewMinGapMinutes: b.Review.ReReviewMinGapMinutes, WatchScope: strings.ToLower(strings.TrimSpace(b.Review.WatchScope)),
 		},
 		Feedback: settings.FeedbackSettings{
-			RoleID: derefStr(b.Feedback.RoleId), Harness: strings.ToLower(strings.TrimSpace(b.Feedback.Harness)), Model: strings.TrimSpace(b.Feedback.Model),
+			WorkerID: derefStr(b.Feedback.WorkerId), RoleID: derefStr(b.Feedback.RoleId), Harness: strings.ToLower(strings.TrimSpace(b.Feedback.Harness)), Model: strings.TrimSpace(b.Feedback.Model),
 			ReasoningEffort: strings.TrimSpace(b.Feedback.ReasoningEffort), AutoAddress: b.Feedback.AutoAddress,
 		},
 		Report: settings.ReportSettings{

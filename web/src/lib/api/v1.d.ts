@@ -1654,6 +1654,8 @@ export interface components {
             re_review_quiet_minutes: number;
             /** @description Never post more than one re-review per PR within this window */
             re_review_min_gap_minutes: number;
+            /** @description Explicit worker assignment; takes precedence over legacy role routing. */
+            worker_id?: string;
             /** @description Worker role from the shared library that performs reviews; empty = use harness/model/effort */
             role_id?: string;
             harness: string;
@@ -1668,6 +1670,8 @@ export interface components {
             repo_root: string;
         };
         FeedbackSettings: {
+            /** @description Explicit worker assignment; takes precedence over legacy role routing. */
+            worker_id?: string;
             /** @description Worker role from the shared library that addresses feedback; empty = use harness/model/effort */
             role_id?: string;
             harness: string;

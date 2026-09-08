@@ -1753,8 +1753,24 @@ func (d *Dispatcher) spawnWorker(ctx context.Context, proj *project.Project, tic
 	if t, err := d.tickets.GetTicket(ctx, ticketID); err == nil && t != nil && t.WorkflowID != "" && d.workflowEngine != nil {
 		if pos, err := d.workflowEngine.GetPosition(ctx, t.ID, t.WorkflowID, t.WorkflowPhase, t.WorkflowVersion); err == nil && pos != nil && pos.CurrentPhase != nil {
 			ctx = auth.WithRun(ctx, auth.RunGrant{Role: role, PhaseID: t.WorkflowPhase, PhaseEnteredAt: phaseEnteredAt(t)})
-			phase, _ := workflow.ParseAgentConfig(pos.CurrentPhase.Config)
+			phase, parseErr := workflow.ParseAgentConfig(pos.CurrentPhase.Config)
+			if parseErr != nil {
+				return nil, RoutedWorker{}, parseErr
+			}
+			if phase.WorkerID != "" {
+				worker, ok := router.Worker(proj, phase.WorkerID)
+				if !ok {
+					return nil, RoutedWorker{}, fmt.Errorf("selected worker %q is missing or disabled", phase.WorkerID)
+				}
+				candidates = []RoutedWorker{worker}
+			}
 			for i := range candidates {
+				// A named worker owns its runtime settings. Old per-phase overrides
+				// only apply to phases that still use task-based routing.
+				if phase.WorkerID != "" {
+					continue
+				}
+
 				if phase.Harness != "" {
 					candidates[i].Config.AgentDriver = phase.Harness
 					candidates[i].Config.AgentCLIPath = ""

@@ -1,3 +1,7 @@
+import { useEffect, useState } from 'react'
+import { useResolvedRouteParams } from '@/hooks/use-resolved-route-params'
+import { useActivityVersion } from '@/contexts/use-activity'
+import { useAPI } from '@/contexts/use-api'
 import { Bot, Cog, Plus, ShieldCheck, Trash2, Zap } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -90,6 +94,25 @@ function updateConfig(phase: WorkflowPhase, key: string, value: unknown): Workfl
 }
 
 export function AgentPhaseConfig({ phase, onChange }: PhaseConfigProps) {
+  const { client } = useAPI()
+  const activityVersion = useActivityVersion('settings', 'projects')
+  const { orgId, projectId } = useResolvedRouteParams()
+  const [workers, setWorkers] = useState<components['schemas']['DispatchWorkerProfile'][]>([])
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const { data } = await client.GET('/settings')
+      let merged = data?.workers.workers ?? []
+      if (orgId && projectId) {
+        const { data: project } = await client.GET('/projects/{projectID}', { params: { path: { projectID: projectId } } })
+        const byID = new Map(merged.map(w => [w.id, w]))
+        for (const worker of project?.dispatch_config?.workers ?? []) byID.set(worker.id, worker)
+        merged = [...byID.values()]
+      }
+      if (!cancelled) setWorkers(merged)
+    })()
+    return () => { cancelled = true }
+  }, [client, orgId, projectId, activityVersion])
   const config = phase.config ?? {}
   const selectedRole = (config.role as string) || 'executor'
   const roleInfo = WORKER_ROLES.find((r) => r.value === selectedRole)
@@ -99,12 +122,12 @@ export function AgentPhaseConfig({ phase, onChange }: PhaseConfigProps) {
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">
           <Label>
-            Worker role
+            Task type
             <Select
               value={selectedRole}
               onValueChange={(v) => onChange(updateConfig(phase, 'role', v))}
             >
-              <SelectTrigger aria-label="Worker role" className="w-full bg-white/5">
+              <SelectTrigger aria-label="Task type" className="w-full bg-white/5">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -128,6 +151,13 @@ export function AgentPhaseConfig({ phase, onChange }: PhaseConfigProps) {
           />
         </Label>
       </div>
+      <Label>Worker
+        <Select value={(config.worker_id as string) || 'inherit'} onValueChange={v => onChange(updateConfig(phase, 'worker_id', v === 'inherit' ? '' : v))}>
+          <SelectTrigger aria-label="Worker" className="w-full"><SelectValue /></SelectTrigger>
+          <SelectContent><SelectItem value="inherit">Use task assignment</SelectItem>{workers.filter(w => w.enabled !== false || w.id === config.worker_id).map(w => <SelectItem key={w.id} value={w.id!}>{w.name || w.id}{w.enabled === false ? ' (disabled)' : ''}</SelectItem>)}{config.worker_id && !workers.some(w => w.id === config.worker_id) ? <SelectItem value={config.worker_id as string}>{config.worker_id as string} (project worker or unavailable)</SelectItem> : null}</SelectContent>
+        </Select>
+      </Label>
+      {!config.worker_id && <details><summary className="cursor-pointer text-xs text-muted-foreground">Override task defaults for this step</summary>
       <div className="grid gap-3 sm:grid-cols-3">
         <Label>Harness
           <Select value={(config.harness as string) || 'inherit'} onValueChange={(v) => onChange(updateConfig(phase, 'harness', v === 'inherit' ? '' : v))}>
@@ -138,6 +168,7 @@ export function AgentPhaseConfig({ phase, onChange }: PhaseConfigProps) {
         <Label>Model<Input value={(config.model as string) || ''} placeholder="Harness default" onChange={(e) => onChange(updateConfig(phase, 'model', e.target.value))} /></Label>
         <Label>Reasoning effort<Input value={(config.effort as string) || ''} placeholder="Harness default" onChange={(e) => onChange(updateConfig(phase, 'effort', e.target.value))} /></Label>
       </div>
+      </details>}
       <Label>
         Custom instructions
         <Textarea

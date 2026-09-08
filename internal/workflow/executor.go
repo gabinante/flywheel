@@ -62,6 +62,7 @@ func ParseExternalConfig(config map[string]any) (*ExternalPhaseConfig, error) {
 
 // AgentPhaseConfig is the typed config for an agent phase.
 type AgentPhaseConfig struct {
+	WorkerID      string `json:"worker_id,omitempty"`
 	Harness       string `json:"harness,omitempty"`
 	Model         string `json:"model,omitempty"`
 	Effort        string `json:"effort,omitempty"`
@@ -169,7 +170,7 @@ func validateAgentPhaseConfig(config map[string]any) []string {
 	if err != nil {
 		return []string{fmt.Sprintf("invalid agent config: %v", err)}
 	}
-	errs = append(errs, detectUnknownKeys(config, "role", "goal", "prompt", "auto_advance", "max_iterations", "harness", "model", "effort")...)
+	errs = append(errs, detectUnknownKeys(config, "role", "goal", "prompt", "auto_advance", "max_iterations", "harness", "model", "effort", "worker_id")...)
 	if cfg.Role != "" && !ValidRoles[cfg.Role] {
 		errs = append(errs, fmt.Sprintf("unknown agent role %q; known roles: executor, planner, validator, deployer, investigator, operator, decomposer, fast-executor", cfg.Role))
 	}

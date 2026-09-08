@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Activity, Bot, Cpu, FileText, GitPullRequest, KeyRound, MessageSquareReply, Save, ScrollText, ServerCog, Settings as SettingsIcon } from 'lucide-react'
+import { Activity, Bot, FileText, GitPullRequest, KeyRound, MessageSquareReply, Save, ServerCog, Settings as SettingsIcon } from 'lucide-react'
 
-import { PromptLibrary } from '@/components/prompt-library'
+import { WorkerWorkspace, WorkerAssignment } from '@/components/worker-workspace'
 
 import { DispatchRoutingEditor } from '@/components/dispatch-routing-editor'
 import { ROLE_OPTIONS } from '@/lib/dispatch-roles'
@@ -28,9 +28,7 @@ type HarnessStatus = components['schemas']['HarnessStatus']
 type SectionID = 'models' | 'workers' | 'prompts' | 'dispatch' | 'linear' | 'review' | 'feedback' | 'reports'
 
 const SECTIONS: Array<{ id: SectionID; label: string; description: string; icon: React.ComponentType<{ className?: string }> }> = [
-  { id: 'models', label: 'Models & harnesses', description: 'Claude Code and Codex binaries and the default model and effort each uses.', icon: Cpu },
-  { id: 'workers', label: 'Workers & roles', description: 'Shared worker profiles, roles, and which worker each role routes to. Projects inherit these.', icon: ServerCog },
-  { id: 'prompts', label: 'Prompts', description: 'The base prompt of every default worker: reviewer, feedback addresser, orchestrator, dispatch worker types.', icon: ScrollText },
+  { id: 'workers', label: 'Workers', description: 'Define workers, choose who handles each task, and connect harnesses.', icon: ServerCog },
   { id: 'dispatch', label: 'Dispatch', description: 'Whether tickets are picked up by implementation workers, and which harness runs them.', icon: Bot },
   { id: 'linear', label: 'Linear', description: 'Personal API key and sync of the projects you lead.', icon: KeyRound },
   { id: 'review', label: 'Code review', description: 'Harness, publishing, and the review-requested / re-review watchers.', icon: GitPullRequest },
@@ -107,7 +105,8 @@ export function OperatorSettingsPage() {
   const [err, setErr] = useState<string | null>(null)
   const [params, setParams] = useSearchParams()
   const requested = params.get('section')
-  const section: SectionID = SECTIONS.some((s) => s.id === requested) ? (requested as SectionID) : 'linear'
+  const resolved = requested === 'models' || requested === 'prompts' ? 'workers' : requested
+  const section: SectionID = SECTIONS.some((s) => s.id === resolved) ? (resolved as SectionID) : 'linear'
   const setSection = (id: SectionID) => setParams(id === 'linear' ? {} : { section: id }, { replace: true })
   const [linearStatus, setLinearStatus] = useState<LinearStatus | null>(null)
   const [reviewStatus, setReviewStatus] = useState<CodeReviewStatus | null>(null)
@@ -203,7 +202,7 @@ export function OperatorSettingsPage() {
     const policy = w.policies?.[roleId]
     const ids = policy?.worker_ids?.length ? policy.worker_ids : (w.workers ?? []).filter((x) => x.enabled !== false).map((x) => x.id ?? '').slice(0, 1)
     const first = (w.workers ?? []).find((x) => x.id === ids[0] && x.enabled !== false)
-    if (!first) return 'No enabled worker routes to this role yet — add one under Workers & roles.'
+    if (!first) return 'No enabled worker routes to this role yet — add one under Workers.'
     return `Routes to “${first.name || first.id}”: ${[first.driver, first.model, first.reasoning_effort].filter(Boolean).join(' / ') || 'harness defaults'}${first.system_prompt ? ' · has a base prompt' : ''}.`
   }
 
@@ -213,7 +212,7 @@ export function OperatorSettingsPage() {
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold">
             <SettingsIcon className="size-5 text-muted-foreground" />
-            Settings
+            {section === 'workers' ? 'Workers' : 'Settings'}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Operator-level configuration. Changes apply to the running server immediately — no restart needed.{' '}
@@ -230,8 +229,8 @@ export function OperatorSettingsPage() {
         </div>
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-[260px_minmax(0,1fr)]">
-        <nav className="space-y-1">
+      <div className={section === 'workers' ? 'space-y-6' : 'grid gap-8 lg:grid-cols-[260px_minmax(0,1fr)]'}>
+        {section !== 'workers' && <nav className="space-y-1">
           {SECTIONS.map((s) => {
             const Icon = s.icon
             const active = section === s.id
@@ -252,13 +251,13 @@ export function OperatorSettingsPage() {
               </button>
             )
           })}
-        </nav>
+        </nav>}
 
         <div className="space-y-6">
-          {section === 'models' && (
+          {section === 'workers' && <WorkerWorkspace key={requested} initialTab={requested === 'models' ? 'connections' : requested === 'prompts' ? 'assignments' : 'workers'} settings={settings} onChange={next => { setSettings(next); setDirty(true) }} connections={
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">Models &amp; harnesses</CardTitle>
+                <CardTitle className="flex items-center gap-2">Harness connections</CardTitle>
                 <CardDescription>
                   Flywheel never calls a model provider directly: it runs the two local harnesses, which carry their own logins. Set the
                   executable and the default model and reasoning effort for each here. Code review, PR feedback, and dispatch choose a
@@ -329,23 +328,17 @@ export function OperatorSettingsPage() {
                 })}
               </CardContent>
             </Card>
-          )}
-
-          {section === 'workers' && (
-            <DispatchRoutingEditor
-              initial={settings.workers}
+} legacy={<DispatchRoutingEditor title="Advanced routing" initial={settings.workers}
               onSave={async (cfg) => {
                 const { data, error, response } = await client.PUT('/settings', { body: toRequest({ ...settings, workers: cfg }, apiKey, clearKey) })
                 if (!response.ok || !data) return formatApiError(error)
                 setSettings(data)
                 setApiKey('')
                 setClearKey(false)
+                setDirty(false)
                 return null
               }}
-            />
-          )}
-
-          {section === 'prompts' && <PromptLibrary />}
+            />} />}
 
           {section === 'dispatch' && (
             <Card>
@@ -507,7 +500,9 @@ export function OperatorSettingsPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <Toggle id="review-enabled" label="Code review enabled" checked={review.enabled} onChange={(v) => update('review', { enabled: v })} />
-                <Field label="Reviewer role" htmlFor="review-role" hint={roleWorkerSummary(review.role_id) ?? 'Pick a role from Workers & roles so reviews use that worker’s harness, model, effort and base prompt.'}>
+                <WorkerAssignment settings={settings} task="review" onChange={next => { setSettings(next); setDirty(true) } } />
+                {!review.worker_id && <details><summary className="cursor-pointer text-sm text-muted-foreground">Default worker and legacy routing</summary>
+                <Field label="Reviewer role" htmlFor="review-role" hint={roleWorkerSummary(review.role_id) ?? 'Pick a role from Workers so reviews use that worker’s harness, model, effort and base prompt.'}>
                   <StyledSelect className="h-9 w-full min-w-0" id="review-role" value={review.role_id || 'none'} onValueChange={(v) => update('review', { role_id: v === 'none' ? '' : v })} options={roleOptions} />
                 </Field>
                 <div className={`grid gap-4 sm:grid-cols-2 xl:grid-cols-3 ${review.role_id ? 'opacity-50' : ''}`}>
@@ -527,6 +522,7 @@ export function OperatorSettingsPage() {
                     />
                   </Field>
                 </div>
+                </details>}
                 <Toggle
                   id="review-publish"
                   label="Publish reviews to GitHub"
@@ -604,7 +600,9 @@ export function OperatorSettingsPage() {
                   checked={feedback.auto_address}
                   onChange={(v) => update('feedback', { auto_address: v })}
                 />
-                <Field label="Feedback role" htmlFor="feedback-role" hint={roleWorkerSummary(feedback.role_id) ?? 'Pick a role from Workers & roles so feedback is addressed by that worker.'}>
+                <WorkerAssignment settings={settings} task="feedback" onChange={next => { setSettings(next); setDirty(true) } } />
+                {!feedback.worker_id && <details><summary className="cursor-pointer text-sm text-muted-foreground">Default worker and legacy routing</summary>
+                <Field label="Feedback role" htmlFor="feedback-role" hint={roleWorkerSummary(feedback.role_id) ?? 'Pick a role from Workers so feedback is addressed by that worker.'}>
                   <StyledSelect className="h-9 w-full min-w-0" id="feedback-role" value={feedback.role_id || 'none'} onValueChange={(v) => update('feedback', { role_id: v === 'none' ? '' : v })} options={roleOptions} />
                 </Field>
                 <div className={`grid gap-4 sm:grid-cols-2 xl:grid-cols-3 ${feedback.role_id ? 'opacity-50' : ''}`}>
@@ -624,6 +622,7 @@ export function OperatorSettingsPage() {
                     />
                   </Field>
                 </div>
+                </details>}
               </CardContent>
             </Card>
           )}

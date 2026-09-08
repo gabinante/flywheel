@@ -135,6 +135,20 @@ func (r *ProjectWorkerRouter) Candidates(proj *project.Project, role string) []R
 	return candidates
 }
 
+// Worker resolves an explicit choice, honoring project overrides without failover.
+func (r *ProjectWorkerRouter) Worker(proj *project.Project, id string) (RoutedWorker, bool) {
+	cfg := r.global.Normalized()
+	if proj != nil {
+		cfg = MergeDispatchConfig(r.global, proj.DispatchConfig)
+	}
+	for _, w := range cfg.Workers {
+		if w.ID == id && w.Enabled {
+			return r.profileWorker(w), true
+		}
+	}
+	return RoutedWorker{}, false
+}
+
 func (r *ProjectWorkerRouter) defaultWorker() RoutedWorker {
 	cfg := cloneDispatchConfig(r.base)
 	return RoutedWorker{

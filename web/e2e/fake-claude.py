@@ -7,7 +7,9 @@ if '--mcp-config' not in sys.argv and not codex:
     print('fake-claude 1.0 (isolated test)')
     sys.exit(0)
 if codex:
-    assert 'model_reasoning_effort="high"' in sys.argv, 'phase effort override was lost'
+    assert 'model_reasoning_effort="high"' in sys.argv, 'assigned worker effort was lost'
+    assert 'assigned-model' in sys.argv, 'assigned worker model was lost'
+    assert 'Follow the assigned worker instructions.' in ' '.join(sys.argv), 'assigned worker instructions were lost'
     config = dict(arg.split('=', 1) for arg in sys.argv if arg.startswith('mcp_servers.flywheel.'))
     server = {'url': json.loads(config['mcp_servers.flywheel.url']), 'headers': dict(re.findall(r'"([^"]+)"\s*=\s*"([^"]+)"', config['mcp_servers.flywheel.http_headers']))}
 else:

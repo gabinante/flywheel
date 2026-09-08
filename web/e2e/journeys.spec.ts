@@ -122,25 +122,42 @@ test('J08 delete a saved workflow with confirmation', async ({ page }) => {
   expect((await api.get(`/api/v1/workflows/${entry.id}`)).status()).toBe(404)
 })
 
-test('J09 create a custom worker and role and retain them after reload', async ({ page }, info) => {
+test('J09 define a worker and assign it to reviews and implementation', async ({ page }, info) => {
   const saved = await json('GET', '/settings')
   try {
     await page.goto('/#/settings?section=workers')
     await page.getByRole('button', { name: 'Add worker', exact: true }).click()
-    await page.getByPlaceholder('Claude implementation').last().fill('Audit worker')
-    await page.getByLabel('Worker ID', { exact: true }).last().fill('audit-worker')
-    await page.getByRole('button', { name: 'Add role', exact: true }).click()
-    await page.getByLabel('Role name', { exact: true }).last().fill('Audit role')
-    await page.getByLabel('Role key', { exact: true }).last().fill('audit_role')
-    await page.getByRole('button', { name: 'Save settings', exact: true }).click()
+    await page.getByLabel('Name', { exact: true }).fill('Audit worker')
+    await page.getByLabel('Model', { exact: true }).fill('audit-model')
+    await page.getByLabel('Instructions', { exact: true }).fill('Keep reviews pragmatic.')
+    await page.getByRole('button', { name: 'Save changes', exact: true }).click()
     await expect(page.getByText('Saved', { exact: true })).toBeVisible()
     await page.reload()
-    await expect(page.getByPlaceholder('Claude implementation').last()).toHaveValue('Audit worker')
-    await expect(page.getByLabel('Role key', { exact: true }).last()).toHaveValue('audit_role')
-    const settings = await json('GET', '/settings')
-    expect(settings.workers.workers.some((w: { id: string }) => w.id === 'audit-worker')).toBe(true)
-    expect(settings.workers.roles.some((r: { id: string }) => r.id === 'audit_role')).toBe(true)
+    await page.getByRole('button', { name: /Audit worker/ }).click()
+    await expect(page.getByLabel('Instructions', { exact: true })).toHaveValue('Keep reviews pragmatic.')
     await evidence(page, info)
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect(page.getByLabel('Instructions', { exact: true })).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    await page.screenshot({ path: info.outputPath('worker-mobile.png'), fullPage: true })
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    await page.getByRole('tab', { name: 'Task assignments' }).click()
+    await page.getByLabel('Review worker', { exact: true }).click()
+    await page.getByRole('option', { name: 'Audit worker', exact: true }).click()
+    await page.getByLabel('Implementation', { exact: false }).first().click()
+    await page.getByRole('option', { name: 'Audit worker', exact: true }).click()
+    await page.getByRole('button', { name: 'Save changes', exact: true }).click()
+    await expect(page.getByText('Saved', { exact: true }).first()).toBeVisible()
+    const settings = await json('GET', '/settings')
+    const worker = settings.workers.workers.find((w: { name: string }) => w.name === 'Audit worker')
+    expect(settings.review.worker_id).toBe(worker.id)
+    expect(settings.workers.policies.executor.worker_ids).toEqual([worker.id])
+    await page.goto('/#/settings?section=review')
+    await expect(page.getByLabel('Review worker', { exact: true })).toContainText('Audit worker')
+    // An invalid assignment must be rejected, rather than silently running someone else.
+    settings.workers.workers.find((w: { id: string }) => w.id === worker.id).enabled = false
+    const invalid = await api.put('/settings', { data: settings })
+    expect(invalid.status()).toBe(400)
   } finally { await json('PUT', '/settings', saved) }
 })
 
@@ -274,20 +291,23 @@ test('J18 add, configure, reorder and remove workflow phases', async ({ page }) 
 })
 
 
-test('G09 assign a custom role to a workflow phase', async ({ page }) => {
-  test.fail(true, 'AUDIT-11: workflow role picker and validator only accept built-in roles')
+test('J19 assign a custom worker directly to a workflow step', async ({ page }) => {
   const saved = await json('GET', '/settings')
   try {
     const settings = structuredClone(saved)
-    settings.workers.roles = [...(settings.workers.roles ?? []), { id: 'audit_custom_role', name: 'Audit custom role', base_type: 'executor' }]
+    settings.workers.workers = [...(settings.workers.workers ?? []), { id: 'audit-custom-worker', name: 'Audit custom worker', enabled: true, driver: 'codex', model: 'audit-model' }]
     await json('PUT', '/settings', settings)
     await page.goto(`/#${projectPath()}/settings/workflow`)
     await page.getByRole('button', { name: 'Agent', exact: true }).click()
-    await page.getByLabel('Worker role', { exact: true }).click()
-    await expect(page.getByRole('option', { name: 'Audit custom role', exact: true })).toBeVisible({ timeout: 2000 })
-    await page.getByRole('option', { name: 'Audit custom role', exact: true }).click()
+    await page.getByLabel('Worker', { exact: true }).click()
+    await expect(page.getByRole('option', { name: 'Audit custom worker', exact: true })).toBeVisible()
+    settings.workers.workers.at(-1).name = 'Updated audit worker'
+    await json('PUT', '/settings', settings)
+    await page.getByRole('option', { name: 'Updated audit worker', exact: true }).click()
     await page.getByRole('button', { name: 'Save pipeline', exact: true }).click()
     await expect(page.getByText('Saved', { exact: true })).toBeVisible()
-    expect((await json('GET', `/projects/${project.id}/workflow`)).workflow.phases.at(-1).config.role).toBe('audit_custom_role')
+    const phase = (await json('GET', `/projects/${project.id}/workflow`)).workflow.phases.at(-1)
+    expect(phase.config.worker_id).toBe('audit-custom-worker')
+    expect(phase.config.role).toBe('executor')
   } finally { await json('PUT', '/settings', saved) }
 })

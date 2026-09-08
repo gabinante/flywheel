@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -68,6 +69,12 @@ func (s Settings) ResolveRole(roleID string) (ResolvedWorker, bool) {
 			continue
 		}
 		for _, id := range pol.WorkerIDs {
+			if strings.TrimSpace(id) == dispatch.DefaultProjectWorkerID {
+				if len(candidates) == 0 {
+					return ResolvedWorker{}, false
+				}
+				break
+			}
 			if w, ok := byID[strings.TrimSpace(id)]; ok {
 				candidates = append(candidates, w)
 			}
@@ -90,6 +97,19 @@ func (s Settings) ResolveRole(roleID string) (ResolvedWorker, bool) {
 		h = ""
 	}
 	return ResolvedWorker{WorkerID: w.ID, WorkerName: w.Name, Harness: h, Model: w.Model, Effort: w.ReasoningEffort, SystemPrompt: w.SystemPrompt}, true
+}
+
+// Explicit assignments never fall through to another worker or a legacy role.
+func (s Settings) resolveAssignment(workerID, roleID string) (ResolvedWorker, bool) {
+	if workerID == "" {
+		return s.ResolveRole(roleID)
+	}
+	for _, w := range s.Workers.Workers {
+		if w.ID == workerID && w.Enabled {
+			return ResolvedWorker{WorkerID: w.ID, WorkerName: w.Name, Harness: w.Driver, Model: w.Model, Effort: w.ReasoningEffort, SystemPrompt: w.SystemPrompt}, true
+		}
+	}
+	return ResolvedWorker{}, false
 }
 
 // HarnessSettings holds per-harness binaries and default model/effort. Review,
@@ -168,6 +188,7 @@ type LinearSettings struct {
 
 // ReviewSettings configures PR-keyed code review.
 type ReviewSettings struct {
+	WorkerID              string `json:"worker_id,omitempty"`
 	Enabled               bool   `json:"enabled"`
 	RoleID                string `json:"role_id"` // worker role from the shared library; empty = use harness/model/effort below
 	Harness               string `json:"harness"`
@@ -187,6 +208,7 @@ type ReviewSettings struct {
 
 // FeedbackSettings configures the address-feedback workflow.
 type FeedbackSettings struct {
+	WorkerID        string `json:"worker_id,omitempty"`
 	RoleID          string `json:"role_id"` // worker role from the shared library; empty = use harness/model/effort below
 	Harness         string `json:"harness"`
 	Model           string `json:"model"`
@@ -322,14 +344,14 @@ func (s Settings) LinearConfig() (string, linear.Config) {
 // model/effort from the harness defaults.
 func (s Settings) ReviewConfig() (codereview.Config, codereview.FeedbackConfig) {
 	rh, rmodel, reffort, rprompt := s.Review.Harness, s.Review.Model, s.Review.ReasoningEffort, ""
-	if w, ok := s.ResolveRole(s.Review.RoleID); ok {
+	if w, ok := s.resolveAssignment(s.Review.WorkerID, s.Review.RoleID); ok {
 		if w.Harness != "" {
 			rh = w.Harness
 		}
 		rmodel, reffort, rprompt = w.Model, w.Effort, w.SystemPrompt
 	}
 	fh, fmodel, feffort, fprompt := s.Feedback.Harness, s.Feedback.Model, s.Feedback.ReasoningEffort, ""
-	if w, ok := s.ResolveRole(s.Feedback.RoleID); ok {
+	if w, ok := s.resolveAssignment(s.Feedback.WorkerID, s.Feedback.RoleID); ok {
 		if w.Harness != "" {
 			fh = w.Harness
 		}
@@ -552,6 +574,28 @@ func (s *Service) UpdateLayout(ctx context.Context, layout LayoutSettings) (Layo
 }
 
 func validate(s Settings) error {
+	for task, id := range map[string]string{"review": s.Review.WorkerID, "feedback": s.Feedback.WorkerID} {
+		if id == "" {
+			continue
+		}
+		found := false
+		for _, w := range s.Workers.Workers {
+			if w.ID != id {
+				continue
+			}
+			found = true
+			if !w.Enabled || (w.Driver != "codex" && w.Driver != "claude") {
+				return fmt.Errorf("%s worker must be enabled and use Codex or Claude Code", task)
+			}
+			if w.CLIPath != "" || len(w.Args) > 0 || w.APIBaseURL != "" || w.CredentialEnvVar != "" || (w.Runner != "" && w.Runner != "cli") {
+				return fmt.Errorf("%s worker must use the shared harness connection without custom runner options", task)
+			}
+		}
+		if !found {
+			return fmt.Errorf("%s worker %q does not exist", task, id)
+		}
+	}
+
 	switch strings.ToLower(s.Review.Harness) {
 	case "codex", "claude":
 	default:

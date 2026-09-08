@@ -134,3 +134,19 @@ func TestProjectWorkerRouter_AnyModeRotatesAcrossWorkers(t *testing.T) {
 		t.Fatalf("expected rotation, got %q then %q", first[0].ID, second[0].ID)
 	}
 }
+
+func TestExplicitWorkerHonorsProjectOverrideAndDoesNotFailOver(t *testing.T) {
+	router := NewProjectWorkerRouterWithGlobal(Config{}, project.DispatchConfig{Workers: []project.DispatchWorkerProfile{{ID: "chosen", Name: "Global", Enabled: true, Driver: "codex", Model: "global-model"}}})
+	proj := &project.Project{DispatchConfig: project.DispatchConfig{Workers: []project.DispatchWorkerProfile{{ID: "chosen", Name: "Project", Enabled: true, Driver: "claude", Model: "project-model", SystemPrompt: "Project instructions"}}}}
+	got, ok := router.Worker(proj, "chosen")
+	if !ok || got.Config.AgentDriver != "claude" || got.Config.AgentModel != "project-model" || got.Config.AgentSystemPrompt != "Project instructions" {
+		t.Fatalf("wrong explicit worker: %+v", got)
+	}
+	proj.DispatchConfig.Workers[0].Enabled = false
+	if _, ok := router.Worker(proj, "chosen"); ok {
+		t.Fatal("disabled project override fell back to global worker")
+	}
+	if _, ok := router.Worker(nil, "missing"); ok {
+		t.Fatal("missing explicit worker fell back to default")
+	}
+}

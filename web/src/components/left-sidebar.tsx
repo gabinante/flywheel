@@ -290,7 +290,7 @@ export function LeftSidebar() {
             { label: 'My Reviews', icon: ClipboardCheck, href: '/my/reviews', match: '/my/reviews' },
             { label: 'Scheduled actions', icon: CalendarClock, href: '/schedule', match: '/schedule' },
             { label: 'Workflows', icon: Workflow, href: '/workflows', match: '/workflows' },
-            { label: 'Workers & roles', icon: ServerCog, href: '/settings?section=workers', match: '/settings?section=workers' },
+            { label: 'Workers', icon: ServerCog, href: '/settings?section=workers', match: '/settings?section=workers' },
           ]}
           expanded={isExpanded}
           currentPath={currentPath}

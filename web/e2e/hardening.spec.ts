@@ -244,7 +244,7 @@ test('real dispatcher phases drive both harness protocols, exact claims, session
   const workerProject = await json('POST', `/orgs/${org.id}/projects`, { name: 'Harness Project', slug: `harness-${randomUUID().slice(0, 8)}` })
   await json('PUT', `/projects/${workerProject.id}/workflow`, { name: 'Live local workflow', phases: [
     { id: 'execute', name: 'Execute', type: 'agent', config: { role: 'operator', harness: 'claude' } },
-    { id: 'followup', name: 'Follow up', type: 'agent', config: { role: 'operator', harness: 'codex', effort: 'high' } },
+    { id: 'followup', name: 'Follow up', type: 'agent', config: { role: 'operator', worker_id: 'browser-codex', harness: 'claude', model: 'stale-override', effort: 'low' } },
     { id: 'approval', name: 'Operator approval', type: 'gate', config: { conditions: [{ type: 'human_approval' }] } },
   ] })
   seed(`UPDATE projects SET dispatch_enabled=(id=${sql(workerProject.id)});`)
@@ -254,7 +254,7 @@ test('real dispatcher phases drive both harness protocols, exact claims, session
   settings.dispatch.driver = 'claude'
   settings.harnesses.claude.bin = fileURLToPath(new URL('./fake-claude.py', import.meta.url))
   settings.harnesses.codex.bin = settings.harnesses.claude.bin
-  settings.workers = { workers: [], policies: {}, roles: [] }
+  settings.workers = { workers: [{ id: 'browser-codex', name: 'Browser Codex worker', enabled: true, driver: 'codex', model: 'assigned-model', reasoning_effort: 'high', system_prompt: 'Follow the assigned worker instructions.' }], policies: { operator: { worker_ids: ['default'] } }, roles: [] }
   await json('PUT', '/settings', settings)
   try {
     const ticket = await json('POST', `/projects/${workerProject.id}/tickets`, { title: 'Real local worker run', type: 'task', created_by: 'browser-test', objective: { description: 'Exercise dispatch through MCP', success_criteria: ['Exact ticket and human approval'] } })

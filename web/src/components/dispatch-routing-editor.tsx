@@ -633,7 +633,7 @@ export function DispatchRoutingEditor({
                           onChange={(event) =>
                             updateWorker(index, { cli_path: event.target.value })
                           }
-                          placeholder={worker.driver === 'codex' ? 'codex (from Models & harnesses)' : worker.driver === 'generic' ? '/path/to/agent' : 'claude (from Models & harnesses)'}
+                          placeholder={worker.driver === 'codex' ? 'codex (from Harness connections)' : worker.driver === 'generic' ? '/path/to/agent' : 'claude (from Harness connections)'}
                         />
                       </Label>
                       <Label>
@@ -643,7 +643,7 @@ export function DispatchRoutingEditor({
                           onChange={(event) =>
                             updateWorker(index, { model: event.target.value })
                           }
-                          placeholder={worker.driver === 'codex' ? 'blank = Codex default from Models & harnesses' : 'blank = harness default from Models & harnesses'}
+                          placeholder={worker.driver === 'codex' ? 'blank = Codex default from Harness connections' : 'blank = harness default from Harness connections'}
                         />
                       </Label>
                       <Label>

@@ -3374,6 +3374,9 @@ components:
         re_review_min_gap_minutes:
           type: integer
           description: Never post more than one re-review per PR within this window
+        worker_id:
+          type: string
+          description: Explicit worker assignment; takes precedence over legacy role routing.
         role_id:
           type: string
           description: Worker role from the shared library that performs reviews; empty = use harness/model/effort
@@ -3401,6 +3404,9 @@ components:
       type: object
       required: [harness, model, reasoning_effort, auto_address]
       properties:
+        worker_id:
+          type: string
+          description: Explicit worker assignment; takes precedence over legacy role routing.
         role_id:
           type: string
           description: Worker role from the shared library that addresses feedback; empty = use harness/model/effort

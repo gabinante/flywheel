@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { RotateCcw, Save, ScrollText } from 'lucide-react'
 
+import { StyledSelect } from '@/components/ui/styled-select'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -80,6 +81,7 @@ function PromptEditor({ p, onSaved }: { p: PromptDefinition; onSaved: (next: Pro
 /** Settings → Prompts: the base prompt of every default worker, editable live. */
 export function PromptLibrary() {
   const { client } = useAPI()
+  const [selected, setSelected] = useState('code_review')
   const [items, setItems] = useState<PromptDefinition[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
@@ -103,18 +105,18 @@ export function PromptLibrary() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ScrollText className="size-4 text-muted-foreground" />
-          Prompts
+          Task instructions
         </CardTitle>
         <CardDescription>
           The base prompt of every default worker. Edits apply to the next run, no restart. Structural parts (project context pack,
-          ticket details, tool protocol, content-defense rules) are appended by Flywheel and are not editable here. Per-worker base
-          prompts under Workers &amp; roles are prepended on top of these.
+          ticket details, tool protocol, content-defense rules) are appended by Flywheel and are not editable here. Worker instructions are prepended to the task instructions below.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {err && <p className="text-sm text-destructive">{err}</p>}
         {!items && !err && <p className="text-sm text-muted-foreground">Loading…</p>}
-        {items?.map((p) => (
+        {items && <StyledSelect aria-label="Task instructions" className="w-full" value={selected} onValueChange={setSelected} options={items.map(p => ({ value: p.id, label: p.name }))} />}
+        {items?.filter(p => p.id === selected).map((p) => (
           <PromptEditor key={p.id} p={p} onSaved={(next) => setItems((prev) => (prev ?? []).map((x) => (x.id === next.id ? next : x)))} />
         ))}
       </CardContent>

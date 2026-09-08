@@ -24,7 +24,7 @@ The test references below are exact title prefixes or distinctive test-title fra
 | 14 | Recover from a missing workflow template rather than wait forever. | G02 |
 | 15 | Receive an error when saving a workflow to the library fails. | G07 |
 | 16 | Create a custom worker profile and retain it across reload. | J09 |
-| 17 | Create a custom role and retain its key and name across reload. | J09 |
+| 17 | Choose a worker for reviews and implementation without creating a role. | J09 |
 | 18 | Route real dispatch phases through both supported harness protocols. | hardening: real dispatcher phases drive both harness protocols |
 | 19 | Edit a built-in agent prompt and restore its default. | J10 |
 | 20 | Save model settings without overwriting separately edited prompts. | hardening: saving operator settings preserves separately edited prompts |
@@ -62,7 +62,7 @@ The test references below are exact title prefixes or distinctive test-title fra
 | 52 | Create a workflow from scratch from the library. | G05 — missing; expected failure; template-based creation works |
 | 53 | Recover from an unknown URL with a link back to projects. | G06 |
 | 54 | Navigate the main global surfaces on desktop and phone widths without a JavaScript crash. | J15 at 1440px and 390px; screenshots and control/layout inventory |
-| 55 | Assign a custom worker role to a workflow phase. | G09 — missing; expected failure; the picker and validator only accept built-in roles |
+| 55 | Assign a custom worker directly to a workflow phase while preserving its task type. | J19; hardening: real dispatcher phases verifies the named worker’s model, effort and instructions |
 
 ## Running and interpreting the suite
 

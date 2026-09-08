@@ -54,10 +54,11 @@ This file is the shared operating guide for coding agents working in this repo.
   `/settings` and stored in Postgres (`operator_settings`, one JSONB row). The dispatcher's worker MCP key is minted
   once and kept there too. The matching env vars
   are only defaults for a fresh install; after the first save the stored row wins, and changes apply live.
+- Workers are the primary user-facing configuration: harness, model, effort, and standing instructions in one definition. Reviews and feedback select `worker_id`; workflow agent phases select `worker_id` independently of their task type (`role`). Explicit workflow selections honor project overrides and fail if missing/disabled; they never silently fall through to another worker. Legacy roles, policies and per-phase overrides remain compatible when no worker is selected.
 - `internal/settings` owns the model; services expose `Apply`/`Reconfigure` and are wired in `cmd/server/main.go`.
 - Built-in agent prompts (code reviewer, feedback addresser, orchestrator, dispatch worker types, ticket reviewer,
   conflict resolver) live in `internal/prompts`: each service registers its default at init and reads
-  `prompts.Text(id)` at run time; overrides are edited at Settings → Prompts (`GET/PUT /prompts`) and stored in
+  `prompts.Text(id)` at run time; overrides are edited at Workers → Task assignments → Task instructions (`GET/PUT /prompts`) and stored in
   operator settings. Do not hard-code a role preamble in a new service — register it.
 - There is a single organization. It is not shown as a navigation level: `/orgs` forwards to its project list and
   projects are the main separation.
