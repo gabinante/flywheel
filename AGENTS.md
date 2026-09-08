@@ -81,7 +81,7 @@ This file is the shared operating guide for coding agents working in this repo.
 - Ports are **non-default on purpose** so Flywheel never collides with other local stacks:
   server **8090**, Postgres **5439**, Redis **6389**.
 - `make dev` — the primary dev command. Ensures Docker Postgres+Redis are running (compose project
-  `flywheel`), runs migrations, then starts the Go server on `:8090`. Re-invoke to restart.
+  `flywheel`), runs migrations, builds the web UI, then starts the Go server on loopback port `8090`. Stop an existing server explicitly before restarting.
 - `make dev-infra` — start only Postgres and Redis. `make dev-stop` — kill the server only.
 - `scripts/test-hardening.sh` — build the server and web app, then run database regressions and Playwright with disposable Docker databases and fake local harnesses on port 8091. Requires Docker, web dependencies, and Playwright Chromium.
 - `make test` — Go tests. `make web-build` — production web build. `make generate` — regenerate from
@@ -125,7 +125,7 @@ if tools error after a restart, start a new session.
 - Runner is `cli` only. Drivers: `claude` (default), `codex`, `generic`.
 - Worktrees follow the operator's layout: `<DISPATCH_WORKTREE_DIR>/<repo>-worktrees/<slug>` (default root `~/git`), cut from
   the operator's own checkout at `<root>/<repo>` when it exists. Linear-backed tickets branch as `<identifier>-<title-slug>`
-  (e.g. `rlep-3488-review-fixes`). Review worktrees are `review-<n>-<unique>`, feedback worktrees `feedback-<n>-<unique>`. Flywheel records ownership outside each checkout and removes only owned, clean worktrees. Dirty or unknown directories are preserved.
+  (e.g. `eng-3488-review-fixes`). Review worktrees are `review-<n>-<unique>`, feedback worktrees `feedback-<n>-<unique>`. Flywheel records ownership outside each checkout and removes only owned, clean worktrees. Dirty or unknown directories are preserved.
 - `DISPATCH_AGENT_MODEL` / `DISPATCH_AGENT_REASONING_EFFORT` are passed to harnesses that accept them.
 - Orchestrator and dispatch worker configs can differ (`ORCHESTRATOR_AGENT_*`).
 

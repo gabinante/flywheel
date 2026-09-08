@@ -7,7 +7,7 @@ Status: phases 0–5 implemented 2026-09-04 (see git history). Runtime toggles m
 Flywheel was built as a multi-tenant "work queue plus shared context" where Flywheel owned the tickets and
 agents were interchangeable CLI harnesses. The operator's real workflow has moved on:
 
-- **Linear is the ticket store.** Tickets live in Linear projects the operator leads (RLETD / RLEP / RLE2 teams).
+- **Linear is the ticket store.** Tickets live in Linear projects the operator leads (ENG / OPS / APP teams).
   Two Claude skills (`weekly-roundup`, `project-status`) and an identical `gh pr create` hook in both
   `~/.claude/settings.json` and `~/.codex/hooks.json` keep GitHub and Linear reconciled by hand.
 - **Codex reviews, Claude Code implements.** Of ~187 Codex threads since 2026-07-27, ~85% are PR reviews
@@ -37,7 +37,7 @@ Goals
    selectable per project and per workflow phase.
 4. Every Codex and Claude Code session (interactive, dispatched, automation, subagent) is tracked and linked
    to PRs and Linear issues.
-5. Local-first: one operator, `AUTH_DEV_BYPASS` identity, non-default ports (no collisions with joinera dev),
+5. Local-first: one operator, `AUTH_DEV_BYPASS` identity, non-default ports (no collisions with example-app dev),
    `make dev` is the whole story.
 
 Non-goals / removals
@@ -58,7 +58,7 @@ Non-goals / removals
 
 | field | source |
 |---|---|
-| `external_provider` = `linear`, `external_id`, `external_identifier` (e.g. `RLETD-465`), `external_url` | Linear |
+| `external_provider` = `linear`, `external_id`, `external_identifier` (e.g. `ENG-465`), `external_url` | Linear |
 | `linear_team_key`, `linear_project_id`, `linear_state_name`, `linear_state_type`, `linear_updated_at` | Linear |
 | `state` (draft / planning / executing / awaiting_validation / validated / closed) | derived from `linear_state_type` + PR state via per-team mapping |
 | workflow position, sessions, PR links, plans | Flywheel only |
@@ -187,7 +187,7 @@ watcher as `address_feedback` whenever a review lands) → `merged` (gate: PR me
 
 ## 4. Runtime and configuration
 
-- Ports (chosen to avoid joinera local dev: 5432, 6378–6383, 8080, 3000/3003, 30030, 7233/8233, 50051,
+- Ports (chosen to avoid example-app local dev: 5432, 6378–6383, 8080, 3000/3003, 30030, 7233/8233, 50051,
   16378–16382): **server 8090, Postgres 5439, Redis 6389**. `make dev` / `dev-stop` parameterized on `PORT`.
 - `docker-compose.yml`: project `flywheel`, `postgres` + `redis` only (server runs natively).
 - `.env.schema` (varlock): `PORT`, `DATABASE_URL`, `REDIS_URL`, `AUTH_DEV_BYPASS`, `LINEAR_API_KEY`,

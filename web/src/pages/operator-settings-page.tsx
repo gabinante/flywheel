@@ -446,7 +446,7 @@ export function OperatorSettingsPage() {
                   onChange={(v) => update('linear', { enabled: v })}
                 />
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="Default team key" htmlFor="linear-team" hint="Team used when filing tickets for a project that isn't linked yet (e.g. RLETD).">
+                  <Field label="Default team key" htmlFor="linear-team" hint="Team used when filing tickets for a project that isn't linked yet (e.g. ENG).">
                     <Input id="linear-team" value={linear.default_team_key} onChange={(e) => update('linear', { default_team_key: e.target.value })} />
                   </Field>
                   <Field label="Sync interval (seconds)" htmlFor="linear-interval">

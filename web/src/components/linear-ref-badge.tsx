@@ -14,7 +14,7 @@ const STATE_TYPE_CLASS: Record<string, string> = {
   canceled: 'border-red-500/30 bg-red-500/10 text-red-200',
 }
 
-/** Compact "RLETD-465 · In Review" chip linking to the Linear issue. */
+/** Compact "ENG-465 · In Review" chip linking to the Linear issue. */
 export function LinearRefBadge({ external, showState = true, className }: { external?: TicketExternalRef; showState?: boolean; className?: string }) {
   const ref = external
   if (!ref) return null

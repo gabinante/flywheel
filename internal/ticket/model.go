@@ -163,7 +163,7 @@ type Ticket struct {
 type ExternalRef struct {
 	Provider   string     `json:"provider"`
 	ExternalID string     `json:"external_id"`
-	Identifier string     `json:"identifier"` // e.g. RLETD-465
+	Identifier string     `json:"identifier"` // e.g. ENG-465
 	URL        string     `json:"url,omitempty"`
 	StateName  string     `json:"state_name,omitempty"`
 	StateType  string     `json:"state_type,omitempty"`

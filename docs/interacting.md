@@ -145,7 +145,7 @@ in the `X-API-Key` header — either `DISPATCH_API_KEY` or an agent key from `PO
 | `submit_ticket` | Submit outputs; move to awaiting_review. |
 | `escalate_ticket` | Ask for human help; move to needs_human. |
 | `renew_lease` | Extend lease TTL. |
-| `get_ticket` also accepts a Linear identifier (e.g. `RLETD-465`) when the project mirrors Linear. | |
+| `get_ticket` also accepts a Linear identifier (e.g. `ENG-465`) when the project mirrors Linear. | |
 | `request_code_review` | Queue in-depth reviews for PR URLs / `owner/repo#N` in free text (dry_run, watch, harness). |
 | `list_code_reviews` / `get_code_review` | Inspect review requests, verdicts, and findings. |
 | `preview_project_update` / `post_project_update` | Delta Linear project status update (done, merged, in review, blocked, feedback, activity). |

@@ -1,7 +1,7 @@
-.PHONY: run run-mcp migrate migrate-create migrate-down test generate docker-up docker-down build build-flywheel-git build-flywheel-mcp web-build varlock-validate install setup-local dev dev-infra dev-stop preflight
+.PHONY: run migrate migrate-create migrate-down test generate docker-up docker-down build web-build varlock-validate setup-local dev dev-infra dev-stop preflight secret-scan
 
 VARLOCK := ./scripts/varlock
-# Local server port. Non-default so it never collides with other local dev stacks (joinera uses 8080/5432/6379).
+# Local server port. Non-default so it never collides with other local dev stacks.
 PORT ?= 8090
 
 generate:
@@ -13,22 +13,13 @@ web-build:
 run:
 	$(VARLOCK) run -- go run ./cmd/server
 
-run-mcp:
-	$(VARLOCK) run -- go run ./cmd/mcp
-
 # Validate .env against .env.schema without starting anything.
 varlock-validate:
 	$(VARLOCK) validate
 
-# For Docker Compose, migrations run in the server container. Use this for hosted/non-Docker deploys.
+# Load the same database configuration as the server. Migration failures are fatal.
 migrate:
-	migrate -path db/migrations -database "$${DATABASE_URL:-postgres://flywheel:flywheel@localhost:5439/flywheel?sslmode=disable}" up
-
-build-flywheel-git:
-	go build -o flywheel-git ./cmd/flywheel-git
-
-build-flywheel-mcp:
-	go build -o flywheel-mcp ./cmd/mcp
+	$(VARLOCK) run -- sh -c 'exec migrate -path db/migrations -database "$$DATABASE_URL" up'
 
 migrate-create:
 	@name=$${NAME:?Usage: make migrate-create NAME=description}; \
@@ -37,7 +28,7 @@ migrate-create:
 	echo "Created db/migrations/$${ts}_$${name}.{up,down}.sql"
 
 migrate-down:
-	migrate -path db/migrations -database "$${DATABASE_URL:-postgres://flywheel:flywheel@localhost:5439/flywheel?sslmode=disable}" down 1
+	$(VARLOCK) run -- sh -c 'exec migrate -path db/migrations -database "$$DATABASE_URL" down 1'
 
 test:
 	go test $$(go list ./... | grep -v 'node_modules')
@@ -48,13 +39,13 @@ docker-up:
 docker-down:
 	docker compose down
 
-# Build the warrant binary.
+# The server hosts both REST and MCP; run from the repository root to find web/dist.
 build:
-	go build -o warrant ./cmd/server
+	mkdir -p bin
+	go build -o bin/flywheel-server ./cmd/server
 
-# Install warrant binary to /usr/local/bin.
-install: build
-	cp warrant /usr/local/bin/warrant
+secret-scan:
+	./scripts/scan-secrets.sh
 
 # ─── Local Development ─────────────────────────────────────────────────────
 
@@ -62,12 +53,11 @@ install: build
 preflight:
 	@bash scripts/dev-preflight.sh
 
-# Start dev: preflight, infra (Postgres+Redis), migrations, then native Go server.
-# Re-runnable: kills existing server on :$(PORT) before starting fresh.
-dev: preflight dev-infra
-	@lsof -ti:$(PORT) | xargs kill 2>/dev/null || true
-	@sleep 1
-	@$(MAKE) migrate 2>/dev/null || true
+# Build the UI as well as the API. Do not kill another running instance implicitly.
+dev: preflight
+	$(MAKE) dev-infra
+	$(MAKE) migrate
+	$(MAKE) web-build
 	$(VARLOCK) run -- go run ./cmd/server
 
 # Start only Docker infra and wait for healthy.
@@ -82,11 +72,11 @@ dev-infra:
 
 # Stop the dev server without stopping infra.
 dev-stop:
-	@lsof -ti:$(PORT) | xargs kill 2>/dev/null || true
+	@lsof -tiTCP:$(PORT) -sTCP:LISTEN | xargs kill 2>/dev/null || true
 	@echo "Server stopped."
 
 # ─── Claude Code Local Setup ─────────────────────────────────────────────────
 
-# One-command setup: build server, provision agent, install MCP proxy, configure Claude Code.
+# Compatibility alias for the supported local development setup.
 setup-local:
 	./scripts/setup-local.sh

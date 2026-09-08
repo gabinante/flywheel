@@ -2488,7 +2488,7 @@ components:
           type: string
         identifier:
           type: string
-          description: e.g. RLETD-465
+          description: e.g. ENG-465
         url:
           type: string
         state_name:

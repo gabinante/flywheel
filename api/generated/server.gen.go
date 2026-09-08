@@ -1579,7 +1579,7 @@ type TicketExternalRef struct {
 	BranchName *string `json:"branch_name,omitempty"`
 	ExternalId string  `json:"external_id"`
 
-	// Identifier e.g. RLETD-465
+	// Identifier e.g. ENG-465
 	Identifier string    `json:"identifier"`
 	Labels     *[]string `json:"labels,omitempty"`
 

@@ -1169,7 +1169,7 @@ export interface components {
         TicketExternalRef: {
             provider: string;
             external_id: string;
-            /** @description e.g. RLETD-465 */
+            /** @description e.g. ENG-465 */
             identifier: string;
             url?: string;
             state_name?: string;

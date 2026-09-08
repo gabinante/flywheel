@@ -79,10 +79,10 @@ func TestSlugify(t *testing.T) {
 }
 
 func TestAbstractBody(t *testing.T) {
-	tk := &ticket.Ticket{ID: "buckeye-12", Title: "Add brief toggle", TargetRepo: "joinera",
+	tk := &ticket.Ticket{ID: "buckeye-12", Title: "Add brief toggle", TargetRepo: "example-app",
 		Objective: ticket.Objective{Description: "Expose the auto-brief flag per environment.", SuccessCriteria: []string{"toggle visible", "flag persisted"}}}
 	body := AbstractBody(tk)
-	for _, want := range []string{"## Abstract\nExpose the auto-brief flag", "**Components:** joinera", "**Before:**", "**After:**", "- toggle visible"} {
+	for _, want := range []string{"## Abstract\nExpose the auto-brief flag", "**Components:** example-app", "**Before:**", "**After:**", "- toggle visible"} {
 		if !contains(body, want) {
 			t.Errorf("body missing %q:\n%s", want, body)
 		}
@@ -104,8 +104,8 @@ func indexOf(s, sub string) int {
 
 func TestParseProjectRef(t *testing.T) {
 	cases := map[string]string{
-		"https://linear.app/joinhandshake/project/synthetic-task-generation-for-buckeye-71c32f62d775":          "71c32f62d775",
-		"https://linear.app/joinhandshake/project/synthetic-task-generation-for-buckeye-71c32f62d775/overview": "71c32f62d775",
+		"https://linear.app/example-org/project/synthetic-task-generation-for-buckeye-71c32f62d775":          "71c32f62d775",
+		"https://linear.app/example-org/project/synthetic-task-generation-for-buckeye-71c32f62d775/overview": "71c32f62d775",
 		"973951f8-6a52-4663-a75f-32b46d93858c": "973951f8-6a52-4663-a75f-32b46d93858c",
 		"71c32f62d775":                         "71c32f62d775",
 		"not a project":                        "",

@@ -29,8 +29,8 @@ func TestIssuesUpdatedSincePaginates(t *testing.T) {
 			if _, has := body.Variables["after"]; has {
 				t.Errorf("first page must not send a cursor")
 			}
-			_, _ = w.Write([]byte(`{"data":{"issues":{"nodes":[{"id":"i1","identifier":"RLETD-1","title":"a","priority":2,
-				"state":{"id":"s","name":"In Review","type":"started"},"team":{"id":"t","key":"RLETD"},
+			_, _ = w.Write([]byte(`{"data":{"issues":{"nodes":[{"id":"i1","identifier":"ENG-1","title":"a","priority":2,
+				"state":{"id":"s","name":"In Review","type":"started"},"team":{"id":"t","key":"ENG"},
 				"labels":{"nodes":[{"name":"bug"}]},"attachments":{"nodes":[]}}],
 				"pageInfo":{"hasNextPage":true,"endCursor":"c1"}}}}`))
 			return
@@ -38,8 +38,8 @@ func TestIssuesUpdatedSincePaginates(t *testing.T) {
 		if body.Variables["after"] != "c1" {
 			t.Errorf("second page cursor = %v, want c1", body.Variables["after"])
 		}
-		_, _ = w.Write([]byte(`{"data":{"issues":{"nodes":[{"id":"i2","identifier":"RLETD-2","title":"b","priority":0,
-			"state":{"id":"s2","name":"Done","type":"completed"},"team":{"id":"t","key":"RLETD"},
+		_, _ = w.Write([]byte(`{"data":{"issues":{"nodes":[{"id":"i2","identifier":"ENG-2","title":"b","priority":0,
+			"state":{"id":"s2","name":"Done","type":"completed"},"team":{"id":"t","key":"ENG"},
 			"labels":{"nodes":[]},"attachments":{"nodes":[]}}],"pageInfo":{"hasNextPage":false,"endCursor":""}}}}`))
 	}))
 	defer srv.Close()
@@ -53,7 +53,7 @@ func TestIssuesUpdatedSincePaginates(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("IssuesUpdatedSince: %v", err)
 	}
-	if len(got) != 2 || got[0].Identifier != "RLETD-1" || got[1].Identifier != "RLETD-2" {
+	if len(got) != 2 || got[0].Identifier != "ENG-1" || got[1].Identifier != "ENG-2" {
 		t.Fatalf("got %+v", got)
 	}
 	if len(got[0].Labels) != 1 || got[0].Labels[0] != "bug" {

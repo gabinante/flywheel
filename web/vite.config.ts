@@ -15,7 +15,7 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '^/(orgs|projects|tickets|agents|mcp|api|invites|worker-config|\\.well-known|healthz|readyz|metrics|me)(/|$)': {
+      '^/(orgs|projects|tickets|agents|mcp|api|invites|worker-config|settings|code-reviews|harnesses|linear|prompts|reports|schedule|sessions|workflow-library|\\.well-known|healthz|readyz|metrics|me)(/|$)': {
         target: apiTarget,
         changeOrigin: false,
       },

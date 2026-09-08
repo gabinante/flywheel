@@ -1,0 +1,7 @@
+# Accepted historical loopback-only MCP keys, plus an old YOUR_JWT documentation example.
+# Exact fingerprints only: new commits and new secrets still fail scanning.
+01ed029a73ad1a37adab3fd8e9ac6a1d7cbe36bf:.warrant-mcp-config.json:flywheel-mcp-key:1
+01ed029a73ad1a37adab3fd8e9ac6a1d7cbe36bf:.warrant-mcp-config.json:generic-api-key:1
+b6df78d1237a0ac58a71587536a8e0d4a9d2d62a:docs/interacting.md:curl-auth-header:29
+c41ee23ee653af404001f278d3a5984c9e078368:.flywheel-mcp-config.json:flywheel-mcp-key:1
+c41ee23ee653af404001f278d3a5984c9e078368:.flywheel-mcp-config.json:generic-api-key:1

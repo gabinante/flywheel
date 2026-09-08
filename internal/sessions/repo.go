@@ -76,8 +76,8 @@ func (r *repoResolver) Resolve(ctx context.Context, cwd, originHint string) stri
 }
 
 // RepoFromPath guesses a repository name from a checkout or worktree path:
-// ~/git/joinera → joinera, ~/git/rle-dp-worktrees/deid → rle-dp,
-// ~/git/joinera-worktrees/x → joinera, ~/git/joinera/.claude/worktrees/y → joinera.
+// ~/git/example-app → example-app, ~/git/rle-dp-worktrees/deid → rle-dp,
+// ~/git/example-app-worktrees/x → example-app, ~/git/example-app/.claude/worktrees/y → example-app.
 func RepoFromPath(cwd string) string {
 	cwd = filepath.Clean(cwd)
 	parts := strings.Split(cwd, string(filepath.Separator))

@@ -145,7 +145,7 @@ func (c *Client) IssuesUpdatedSince(ctx context.Context, projectID string, since
 	}
 }
 
-// IssueByIdentifier fetches one issue by identifier (e.g. RLETD-465) or id.
+// IssueByIdentifier fetches one issue by identifier (e.g. ENG-465) or id.
 func (c *Client) IssueByIdentifier(ctx context.Context, identifier string) (*Issue, error) {
 	var out struct {
 		Issue rawIssue `json:"issue"`

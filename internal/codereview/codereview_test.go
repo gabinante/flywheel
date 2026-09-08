@@ -5,11 +5,11 @@ import (
 )
 
 func TestParsePRRefs(t *testing.T) {
-	refs := ParsePRRefs("review https://github.com/joinhandshake/joinera/pull/20888 and joinhandshake/rle-data-processing#372, also https://github.com/joinhandshake/joinera/pull/20888/files")
+	refs := ParsePRRefs("review https://github.com/example-org/example-app/pull/20888 and example-org/data-pipeline#372, also https://github.com/example-org/example-app/pull/20888/files")
 	if len(refs) != 2 {
 		t.Fatalf("got %d refs: %+v", len(refs), refs)
 	}
-	if refs[0].Repo != "joinhandshake/joinera" || refs[0].Number != 20888 || refs[1].Repo != "joinhandshake/rle-data-processing" || refs[1].Number != 372 {
+	if refs[0].Repo != "example-org/example-app" || refs[0].Number != 20888 || refs[1].Repo != "example-org/data-pipeline" || refs[1].Number != 372 {
 		t.Fatalf("unexpected refs: %+v", refs)
 	}
 }

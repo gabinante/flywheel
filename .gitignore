@@ -20,3 +20,27 @@ web/dist
 # Browser test artifacts
 web/test-results/
 web/playwright-report/
+
+# Local credentials, MCP connection files, and IDE permission overrides
+.env.*
+!.env.example
+!.env.schema
+.mcp.json
+.*-mcp-config.json
+.claude/settings*.json
+.cursor/mcp.json
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local databases, exports, transcripts, and diagnostic logs
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.dump
+*.log
+*.jsonl
+/warrant

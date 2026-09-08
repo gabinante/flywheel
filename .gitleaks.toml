@@ -1,0 +1,9 @@
+[extend]
+useDefault = true
+
+# Local harness credentials are not provider credentials, but catch new accidental commits.
+[[rules]]
+id = "flywheel-mcp-key"
+description = "Flywheel local MCP API key"
+regex = '''\bwf_[a-f0-9]{48}\b'''
+keywords = ["wf_"]

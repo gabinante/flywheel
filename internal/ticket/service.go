@@ -88,7 +88,7 @@ type WorkflowResolver interface {
 type ExternalRefLookup interface {
 	// RefsByTicketIDs returns projections keyed by ticket ID.
 	RefsByTicketIDs(ctx context.Context, ticketIDs []string) (map[string]*ExternalRef, error)
-	// TicketIDByIdentifier resolves an external identifier (e.g. RLETD-465) to a ticket ID, or "".
+	// TicketIDByIdentifier resolves an external identifier (e.g. ENG-465) to a ticket ID, or "".
 	TicketIDByIdentifier(ctx context.Context, identifier string) (string, error)
 }
 
@@ -108,7 +108,7 @@ type Service struct {
 }
 
 // SetExternalRefLookup enables external-tracker projections on read paths and
-// lets GetTicket accept external identifiers such as RLETD-465.
+// lets GetTicket accept external identifiers such as ENG-465.
 func (s *Service) SetExternalRefLookup(l ExternalRefLookup) {
 	s.externalRefs = l
 }
