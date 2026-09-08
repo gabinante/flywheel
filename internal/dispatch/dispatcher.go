@@ -1855,6 +1855,9 @@ func (d *Dispatcher) spawnWorker(ctx context.Context, proj *project.Project, tic
 	if lastErr != nil {
 		return nil, lastWorker, lastErr
 	}
+	if lastResult == nil {
+		return nil, lastWorker, fmt.Errorf("no enabled worker is available for this task")
+	}
 	return lastResult, lastWorker, nil
 }
 

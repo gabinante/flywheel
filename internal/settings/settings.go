@@ -82,7 +82,7 @@ func (s Settings) ResolveRole(roleID string) (ResolvedWorker, bool) {
 	}
 	if len(candidates) == 0 {
 		for _, w := range cfg.Workers {
-			if w.Enabled {
+			if w.Enabled && !project.IsBuiltinWorker(w.ID) {
 				candidates = append(candidates, w)
 				break
 			}
@@ -230,7 +230,7 @@ type ReportSettings struct {
 
 // FromConfig seeds settings from the environment-derived config.
 func FromConfig(cfg *config.Config) Settings {
-	return Settings{
+	s := Settings{
 		Linear: LinearSettings{
 			APIKey: cfg.Linear.APIKey, Enabled: cfg.Linear.Enabled || cfg.Linear.APIKey == "", ProjectIDs: cfg.Linear.ProjectIDs,
 			DefaultTeamKey: cfg.Linear.DefaultTeamKey, SyncIntervalSeconds: int(cfg.Linear.Interval / time.Second),
@@ -253,6 +253,10 @@ func FromConfig(cfg *config.Config) Settings {
 			RoundupDocumentID: cfg.Report.RoundupDocumentID, RoundupProjectID: cfg.Report.RoundupProjectID, DefaultHealth: cfg.Report.DefaultHealth,
 		},
 	}
+	s.ensureBuiltinWorkers(project.DispatchWorkerProfile{ID: project.BuiltinOrchestrator, Name: "Orchestrator", Enabled: true,
+		Driver: cfg.Orchestrator.AgentDriver, Runner: cfg.Orchestrator.AgentRunner, CLIPath: cfg.Orchestrator.AgentCLIPath,
+		Model: cfg.Orchestrator.AgentModel, ReasoningEffort: cfg.Orchestrator.AgentReasoningEffort})
+	return s
 }
 
 func harnessDefaultsFromConfig(cfg *config.Config) HarnessSettings {
@@ -344,14 +348,14 @@ func (s Settings) LinearConfig() (string, linear.Config) {
 // model/effort from the harness defaults.
 func (s Settings) ReviewConfig() (codereview.Config, codereview.FeedbackConfig) {
 	rh, rmodel, reffort, rprompt := s.Review.Harness, s.Review.Model, s.Review.ReasoningEffort, ""
-	if w, ok := s.resolveAssignment(s.Review.WorkerID, s.Review.RoleID); ok {
+	if w, ok := s.resolveAssignment(s.defaultAssignment(s.Review.WorkerID, s.Review.RoleID, project.BuiltinReview), s.Review.RoleID); ok {
 		if w.Harness != "" {
 			rh = w.Harness
 		}
 		rmodel, reffort, rprompt = w.Model, w.Effort, w.SystemPrompt
 	}
 	fh, fmodel, feffort, fprompt := s.Feedback.Harness, s.Feedback.Model, s.Feedback.ReasoningEffort, ""
-	if w, ok := s.resolveAssignment(s.Feedback.WorkerID, s.Feedback.RoleID); ok {
+	if w, ok := s.resolveAssignment(s.defaultAssignment(s.Feedback.WorkerID, s.Feedback.RoleID, project.BuiltinFeedback), s.Feedback.RoleID); ok {
 		if w.Harness != "" {
 			fh = w.Harness
 		}
@@ -470,7 +474,7 @@ func Load(ctx context.Context, store *Store, defaults Settings) (*Service, error
 			}
 		}
 	}
-	s.current.Normalize()
+	s.current.ensureBuiltinWorkers(defaults.builtin(project.BuiltinOrchestrator))
 	return s, nil
 }
 
@@ -513,7 +517,9 @@ func (s *Service) UpdateOperational(ctx context.Context, next Settings) (Setting
 	return s.update(ctx, next)
 }
 func (s *Service) update(ctx context.Context, next Settings) (Settings, error) {
-	next.Normalize()
+	previous := s.Current()
+	next.ensureBuiltinWorkers(previous.builtin(project.BuiltinOrchestrator))
+	next.syncBuiltinSettings(previous)
 	if err := validate(next); err != nil {
 		return Settings{}, err
 	}
@@ -574,7 +580,7 @@ func (s *Service) UpdateLayout(ctx context.Context, layout LayoutSettings) (Layo
 }
 
 func validate(s Settings) error {
-	for task, id := range map[string]string{"review": s.Review.WorkerID, "feedback": s.Feedback.WorkerID} {
+	for task, id := range map[string]string{"review": s.defaultAssignment(s.Review.WorkerID, s.Review.RoleID, project.BuiltinReview), "feedback": s.defaultAssignment(s.Feedback.WorkerID, s.Feedback.RoleID, project.BuiltinFeedback)} {
 		if id == "" {
 			continue
 		}

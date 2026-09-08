@@ -13,6 +13,7 @@ import type { components } from '@/lib/api/v1'
 
 type Settings = components['schemas']['OperatorSettings']
 type Worker = components['schemas']['DispatchWorkerProfile']
+const isBuiltin = (id?: string) => ['builtin-dispatch', 'builtin-orchestrator', 'builtin-review', 'builtin-feedback'].includes(id || '')
 const TASKS = [
   ...ROLE_OPTIONS.map((t) => (t.key === 'validator' ? { ...t, label: 'Workflow validation' } : t)),
   { key: 'operator', label: 'Operations', description: 'Triage and operational tasks.' },
@@ -41,13 +42,14 @@ export function WorkerAssignment({
   onChange: (settings: Settings) => void
 }) {
   const current = settings[task]
+  const defaultWorker = settings.workers.workers?.find(w => w.id === `builtin-${task}`)
   const options = [
-    {
+    ...(!defaultWorker || current.role_id ? [{
       value: 'default',
       label: current.role_id
         ? `Existing routing (${current.role_id})`
-        : `Default ${current.harness} worker${current.model ? ` · ${current.model}` : ''}`,
-    },
+        : settings.workers.workers?.find(w => w.id === `builtin-${task}`)?.name || `Default ${current.harness} worker`,
+    }] : []),
     ...(settings.workers.workers ?? []).filter(supportsReviews).map((w) => ({ value: w.id!, label: w.name || w.id! })),
   ]
   if (current.worker_id && !options.some((o) => o.value === current.worker_id))
@@ -59,7 +61,7 @@ export function WorkerAssignment({
         aria-label={task === 'review' ? 'Review worker' : 'Feedback worker'}
         id={`${task}-worker`}
         className="w-full min-w-0"
-        value={current.worker_id || 'default'}
+        value={current.worker_id || (current.role_id ? 'default' : defaultWorker?.id) || 'default'}
         options={options}
         onValueChange={(v) => onChange({ ...settings, [task]: { ...current, worker_id: v === 'default' ? '' : v } })}
       />
@@ -90,7 +92,7 @@ export function WorkerWorkspace({
     const id = `worker-${crypto.randomUUID().slice(0, 8)}`
     // Adding a definition must not implicitly assign it to unconfigured tasks.
     const policies = { ...settings.workers.policies }
-    const previous = workers.filter((w) => w.enabled !== false).map((w) => w.id!)
+    const previous = workers.filter((w) => w.enabled !== false && !isBuiltin(w.id)).map((w) => w.id!)
     for (const task of [...TASKS, ...(settings.workers.roles ?? []).map((r) => ({ key: r.id! }))]) {
       if (!policies[task.key]?.worker_ids?.length)
         policies[task.key] = {
@@ -273,17 +275,20 @@ export function WorkerWorkspace({
                 const policy = settings.workers.policies?.[task.key]
                 const ids = policy?.worker_ids ?? []
                 const simple = ids.length === 1 && (!policy?.selection_mode || policy.selection_mode === 'ordered')
-                const value = simple ? ids[0] : 'existing'
+                const fallback = workers.find(w => w.id === (task.key === 'orchestrator' ? 'builtin-orchestrator' : 'builtin-dispatch'))
+                const hasImplicitWorkers = workers.some(w => w.enabled !== false && !isBuiltin(w.id))
+                const value = simple ? (ids[0] === 'default' && fallback ? fallback.id! : ids[0]) : !ids.length && !hasImplicitWorkers && fallback ? fallback.id! : 'existing'
+                const defaultName = workers.find(w => w.id === (task.key === 'orchestrator' ? 'builtin-orchestrator' : 'builtin-dispatch'))?.name || 'Default server worker'
                 const options = [
-                  {
+                  ...(value === 'existing' ? [{
                     value: 'existing',
                     label: ids.length
                       ? `Existing routing: ${ids.join(', ')}`
-                      : workers.some((w) => w.enabled !== false)
+                      : workers.some((w) => w.enabled !== false && !isBuiltin(w.id))
                         ? 'Existing routing: all enabled workers'
-                        : 'Default server worker',
-                  },
-                  { value: 'default', label: 'Default server worker' },
+                        : defaultName,
+                  }] : []),
+                  ...(!fallback ? [{ value: 'default', label: defaultName }] : []),
                   ...workers.filter((w) => w.enabled !== false).map((w) => ({ value: w.id!, label: w.name || w.id! })),
                 ]
                 if (!options.some((o) => o.value === value)) options.push({ value, label: `${value} (unavailable)` })

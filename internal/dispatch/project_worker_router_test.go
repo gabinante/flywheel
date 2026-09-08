@@ -150,3 +150,27 @@ func TestExplicitWorkerHonorsProjectOverrideAndDoesNotFailOver(t *testing.T) {
 		t.Fatal("missing explicit worker fell back to default")
 	}
 }
+
+func TestEditableBuiltinsPreserveRouting(t *testing.T) {
+	library := project.DispatchConfig{Workers: []project.DispatchWorkerProfile{
+		{ID: project.BuiltinDispatch, Enabled: true, Driver: "codex", Model: "implementation", SystemPrompt: "Custom instructions"},
+		{ID: project.BuiltinOrchestrator, Enabled: true, Driver: "claude", Model: "planning"},
+		{ID: project.BuiltinReview, Enabled: true, Driver: "codex", Model: "review"},
+	}}
+	router := NewProjectWorkerRouterWithGlobal(Config{}, library)
+	for role, model := range map[string]string{"executor": "implementation", "orchestrator": "planning"} {
+		got := router.Candidates(nil, role)
+		if len(got) != 1 || got[0].Config.AgentModel != model {
+			t.Fatalf("%s: %+v", role, got)
+		}
+	}
+	library.Workers = append(library.Workers, project.DispatchWorkerProfile{ID: "custom", Enabled: true, Driver: "claude"})
+	router = NewProjectWorkerRouterWithGlobal(Config{}, library)
+	if got := router.Candidates(nil, "executor"); len(got) != 1 || got[0].ID != "custom" {
+		t.Fatalf("implicit routing changed: %+v", got)
+	}
+	proj := &project.Project{DispatchConfig: project.DispatchConfig{Policies: map[string]project.DispatchRolePolicy{"executor": {WorkerIDs: []string{"default"}}}, Workers: []project.DispatchWorkerProfile{{ID: project.BuiltinDispatch, Enabled: true, Model: "project-model"}}}}
+	if got := router.Candidates(proj, "executor"); len(got) != 1 || got[0].Config.AgentModel != "project-model" {
+		t.Fatalf("project default override ignored: %+v", got)
+	}
+}

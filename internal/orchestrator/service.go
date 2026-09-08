@@ -468,6 +468,9 @@ func (s *Service) runOrchestratorWorker(ctx context.Context, proj *project.Proje
 	if lastErr != nil {
 		return nil, lastWorker, lastErr
 	}
+	if lastResult == nil {
+		return nil, lastWorker, ErrWorkerNotConfigured
+	}
 	return lastResult, lastWorker, nil
 }
 

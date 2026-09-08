@@ -327,3 +327,32 @@ test('J19 assign a custom worker directly to a workflow step', async ({ page }) 
     expect(phase.config.role).toBe('executor')
   } finally { await json('PUT', '/settings', saved) }
 })
+
+
+test('J20 edit an included worker through the same worker editor', async ({ page }) => {
+  const saved = await json('GET', '/settings')
+  try {
+    await page.goto('/#/settings?section=workers')
+    for (const name of ['Implementation worker', 'PR reviewer', 'Feedback worker', 'Orchestrator']) {
+      await expect(page.getByRole('button', { name: new RegExp(`^${name}`) })).toBeVisible()
+    }
+    await page.getByRole('button', { name: /^PR reviewer/ }).click()
+    await page.getByLabel('Name', { exact: true }).fill('Pragmatic reviewer')
+    await page.getByRole('combobox', { name: 'Model', exact: true }).click()
+    await page.getByRole('option', { name: 'gpt-5.6-sol', exact: true }).click()
+    await page.getByLabel('Instructions', { exact: true }).fill('Focus on correctness and keep feedback short.')
+    await page.getByRole('button', { name: 'Save changes', exact: true }).click()
+    await expect(page.getByText('Saved', { exact: true })).toBeVisible()
+    await page.reload()
+    await page.getByRole('button', { name: /^Pragmatic reviewer/ }).click()
+    await expect(page.getByLabel('Instructions', { exact: true })).toHaveValue('Focus on correctness and keep feedback short.')
+    await expect(page.getByRole('combobox', { name: 'Model', exact: true })).toHaveText('gpt-5.6-sol')
+    await page.getByRole('tab', { name: 'Task assignments' }).click()
+    await expect(page.getByRole('combobox', { name: 'Review worker', exact: true })).toHaveText('Pragmatic reviewer')
+    await page.getByRole('combobox', { name: 'Review worker', exact: true }).click()
+    await expect(page.getByRole('option', { name: 'Pragmatic reviewer', exact: true })).toHaveCount(1)
+    await page.keyboard.press('Escape')
+  } finally {
+    await json('PUT', '/settings', saved)
+  }
+})

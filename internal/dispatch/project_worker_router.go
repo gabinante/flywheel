@@ -97,7 +97,9 @@ func (r *ProjectWorkerRouter) Candidates(proj *project.Project, role string) []R
 		if !worker.Enabled {
 			continue
 		}
-		enabled = append(enabled, worker)
+		if !project.IsBuiltinWorker(worker.ID) {
+			enabled = append(enabled, worker)
+		}
 		workersByID[worker.ID] = worker
 	}
 
@@ -110,7 +112,7 @@ func (r *ProjectWorkerRouter) Candidates(proj *project.Project, role string) []R
 			case "":
 				continue
 			case DefaultProjectWorkerID:
-				candidates = append(candidates, r.defaultWorker())
+				candidates = append(candidates, r.defaultCandidates(cfg, role)...)
 			default:
 				if worker, ok := workersByID[id]; ok {
 					candidates = append(candidates, r.profileWorker(worker))
@@ -124,7 +126,7 @@ func (r *ProjectWorkerRouter) Candidates(proj *project.Project, role string) []R
 	}
 
 	if len(candidates) == 0 {
-		candidates = append(candidates, r.defaultWorker())
+		candidates = append(candidates, r.defaultCandidates(cfg, role)...)
 	}
 	if policy.SelectionMode == "any" && len(candidates) > 1 {
 		start := int(atomic.AddUint64(&r.counter, 1)-1) % len(candidates)
@@ -149,6 +151,23 @@ func (r *ProjectWorkerRouter) Worker(proj *project.Project, id string) (RoutedWo
 	return RoutedWorker{}, false
 }
 
+// Default routing uses an editable built-in, while old configs retain the base worker.
+func (r *ProjectWorkerRouter) defaultCandidates(cfg project.DispatchConfig, role string) []RoutedWorker {
+	id := project.BuiltinDispatch
+	if normalizePolicyRole(role) == WorkerRoleOrchestrator {
+		id = project.BuiltinOrchestrator
+	}
+	for _, w := range cfg.Workers {
+		if w.ID == id {
+			if !w.Enabled {
+				return nil
+			}
+			return []RoutedWorker{r.profileWorker(w)}
+		}
+	}
+	return []RoutedWorker{r.defaultWorker()}
+}
+
 func (r *ProjectWorkerRouter) defaultWorker() RoutedWorker {
 	cfg := cloneDispatchConfig(r.base)
 	return RoutedWorker{
@@ -161,6 +180,15 @@ func (r *ProjectWorkerRouter) defaultWorker() RoutedWorker {
 
 func (r *ProjectWorkerRouter) profileWorker(profile project.DispatchWorkerProfile) RoutedWorker {
 	cfg := cloneDispatchConfig(r.base)
+	if project.IsBuiltinWorker(profile.ID) && profile.Driver != "" {
+		cfg.AgentModel, cfg.AgentReasoningEffort = "", ""
+		if d, ok := cfg.DriverDefaults[profile.Driver]; ok {
+			cfg.AgentModel, cfg.AgentReasoningEffort = d.Model, d.Effort
+		}
+	}
+	if profile.ID == project.BuiltinOrchestrator {
+		cfg.AgentCLIPath = ""
+	}
 	if profile.Runner != "" {
 		cfg.AgentRunner = profile.Runner
 	}
