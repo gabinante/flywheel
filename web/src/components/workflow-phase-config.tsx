@@ -104,7 +104,7 @@ export function AgentPhaseConfig({ phase, onChange }: PhaseConfigProps) {
               value={selectedRole}
               onValueChange={(v) => onChange(updateConfig(phase, 'role', v))}
             >
-              <SelectTrigger className="w-full bg-white/5">
+              <SelectTrigger aria-label="Worker role" className="w-full bg-white/5">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

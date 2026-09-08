@@ -66,6 +66,7 @@ export function SchedulePage() {
     setRunning(null)
     if (!response.ok) {
       setErr(formatApiError(error))
+      return
     }
     void load()
   }
@@ -91,7 +92,7 @@ export function SchedulePage() {
         </Button>
       </div>
 
-      {err && <p className="text-sm text-destructive">{err}</p>}
+      {err && <p role="alert" className="text-sm text-destructive">{err}</p>}
       {!items && !err && <p className="text-sm text-muted-foreground">Loading…</p>}
 
       {groups.map(

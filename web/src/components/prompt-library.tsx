@@ -66,7 +66,7 @@ function PromptEditor({ p, onSaved }: { p: PromptDefinition; onSaved: (next: Pro
         </span>
       </div>
       <p className="text-xs text-muted-foreground">{p.description}</p>
-      <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={Math.min(18, Math.max(4, text.split('\n').length + 1))} className="font-mono text-xs leading-relaxed" />
+      <Textarea aria-label={`${p.name} prompt`} value={text} onChange={(e) => setText(e.target.value)} rows={Math.min(18, Math.max(4, text.split('\n').length + 1))} className="font-mono text-xs leading-relaxed" />
       {p.customized && text !== p.default_text && (
         <details className="text-xs text-muted-foreground">
           <summary className="cursor-pointer hover:text-foreground">Show the built-in default</summary>

@@ -39,7 +39,7 @@ function Meta({ label, value, mono }: { label: string; value: string | number | 
   )
 }
 
-function ContinueSession({ sessionId, harness, onReplied }: { sessionId: string; harness: string; onReplied: () => void }) {
+function ContinueSession({ sessionId, harness, running, onReplied }: { sessionId: string; harness: string; running: boolean; onReplied: () => void }) {
   const { client } = useAPI()
   const [messages, setMessages] = useState<ConversationMessage[]>([])
   const send = async (text: string) => {
@@ -61,6 +61,7 @@ function ContinueSession({ sessionId, harness, onReplied }: { sessionId: string;
       messages={messages}
       onSend={send}
       emptyHint="Pick up where this session left off."
+      disabled={running}
     />
   )
 }
@@ -264,8 +265,8 @@ export function SessionDetailPage() {
             )}
           </div>
 
-          {running ? <p role="status" className="text-xs text-muted-foreground">This session is running. You can continue it after the current run finishes.</p> :
-            <ContinueSession sessionId={s.id} harness={s.harness} onReplied={() => setReloadTick((t) => t + 1)} />}
+          {running && <p role="status" className="text-xs text-muted-foreground">This session is running. You can continue it after the current run finishes.</p>}
+          <ContinueSession key={s.id} sessionId={s.id} harness={s.harness} running={running} onReplied={() => setReloadTick((t) => t + 1)} />
         </div>
       )}
     </div>

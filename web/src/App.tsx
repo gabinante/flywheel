@@ -127,6 +127,7 @@ export default function App() {
                 <Route element={<AppShell />}>
                   {/* Auto-redirect UUID URLs to slug URLs */}
                   <Route element={<SlugRedirect />}>
+                    <Route path="*" element={<div className="space-y-3 p-6"><h1 className="text-xl font-semibold">Page not found</h1><a href="#/orgs" className="text-primary underline">Return to projects</a></div>} />
                     <Route path="/orgs" element={<OrgsGate />} />
                     <Route path="/sessions" element={<SessionsPage />} />
                     <Route path="/sessions/:sessionId" element={<SessionDetailPage />} />

@@ -53,7 +53,8 @@ export PATH="$run_dir/bin:$PATH"
 export FLYWHEEL_E2E_HARNESS_HOLD_DIR="$run_dir/holds"
 export PORT=8091 BASE_URL=http://127.0.0.1:8091 JWT_SECRET=flywheel-isolated-browser-test-secret
 export WEB_DIST="$repo/web/dist" WEB_DEV_PROXY_URL=''
-export DISPATCH_ENABLED=false ORCHESTRATOR_ENABLED=false REVIEW_ENABLED=false
+export DISPATCH_ENABLED=false ORCHESTRATOR_ENABLED=true REVIEW_ENABLED=false
+export ORCHESTRATOR_AGENT_DRIVER=claude ORCHESTRATOR_AGENT_CMD="$repo/web/e2e/fake-planner.py"
 export REVIEW_WATCH_REQUESTED=false REVIEW_WATCH_AUTHORED=false REVIEW_PUBLISH=false
 export FEEDBACK_AUTO_ADDRESS=false LINEAR_SYNC_ENABLED=false LINEAR_API_KEY=''
 export REPORT_PROJECT_UPDATES_ENABLED=false REPORT_WEEKLY_ENABLED=false
@@ -70,4 +71,4 @@ for attempt in {1..60}; do
   sleep 1
 done
 if ! $ready; then echo 'Test server did not become ready.' >&2; exit 1; fi
-npx playwright test | tee "$run_dir/playwright.log"
+npx playwright test "$@" | tee "$run_dir/playwright.log"

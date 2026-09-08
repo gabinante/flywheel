@@ -632,6 +632,7 @@ export function OrchestratorConsole({
                   void submit()
                 }
               }}
+              aria-label="Message the project planner"
               placeholder="Describe the task, scope, constraints, or ask what should be ticketed next."
               className="min-h-[40px] max-h-[200px] resize-none rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary/40 focus:ring-2 focus:ring-primary/15"
               rows={1}

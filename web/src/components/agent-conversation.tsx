@@ -100,6 +100,7 @@ export function AgentConversation({
             onKeyDown={(e) => {
               if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') void send()
             }}
+            aria-label="Message the agent"
             placeholder={placeholder ?? 'Ask a question or give an instruction… (⌘↩ to send)'}
             rows={2}
             disabled={busy || disabled}

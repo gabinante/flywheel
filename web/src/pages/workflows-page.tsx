@@ -159,6 +159,7 @@ export function WorkflowEditorPage() {
   const { client } = useAPI()
   const orgId = useOrgId()
   const templateId = params.get('template')
+  const [templateError, setTemplateError] = useState<string | null>(null)
   const [template, setTemplate] = useState<{ name: string; description?: string; phases: WorkflowPhase[] } | null>(null)
 
   useEffect(() => {
@@ -166,10 +167,12 @@ export function WorkflowEditorPage() {
     let cancelled = false
     void client
       .GET('/orgs/{orgID}/workflow-library' as never, { params: { path: { orgID: orgId } } } as never)
-      .then(({ data }) => {
+      .then(({ data, response }) => {
         if (cancelled) return
+        if (!response.ok) { setTemplateError('Could not load the template. Return to the workflow library and try again.'); return }
         const entry = ((data as unknown as { entries?: LibraryEntry[] } | undefined)?.entries ?? []).find((e) => e.id === templateId)
-        if (entry) setTemplate({ name: entry.name, description: entry.description, phases: entry.phases })
+        if (entry) { setTemplateError(null); setTemplate({ name: entry.name, description: entry.description, phases: entry.phases }) }
+        else setTemplateError('Template not found. Choose another template from the workflow library.')
       })
     return () => {
       cancelled = true
@@ -177,6 +180,7 @@ export function WorkflowEditorPage() {
   }, [client, id, templateId, orgId])
 
   if (!orgId) return <p className="p-6 text-sm text-muted-foreground">Loading…</p>
+  if (id === 'new' && (templateError || !templateId)) return <div className="space-y-3 p-6"><p role="alert">{templateError || 'Template not found. Choose a template from the workflow library.'}</p><Link to="/workflows" className="text-primary underline">Workflow library</Link></div>
   if (id === 'new' && !template) return <p className="p-6 text-sm text-muted-foreground">Loading template…</p>
 
   return (

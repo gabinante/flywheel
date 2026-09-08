@@ -193,11 +193,12 @@ function SortablePhaseNode({
             className="cursor-grab touch-none text-muted-foreground hover:text-foreground"
             {...attributes}
             {...listeners}
+            aria-label={`Move ${phase.name}`}
           >
             <GripVertical className="size-4" />
           </button>
 
-          <button type="button" onClick={onToggle} className="text-muted-foreground hover:text-foreground">
+          <button type="button" aria-label={`${expanded ? 'Collapse' : 'Edit'} ${phase.name}`} onClick={onToggle} className="text-muted-foreground hover:text-foreground">
             {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
           </button>
 
@@ -207,6 +208,7 @@ function SortablePhaseNode({
 
           {expanded ? (
             <Input
+              aria-label="Phase name"
               value={phase.name}
               onChange={(e) => onChange({ ...phase, name: e.target.value })}
               className="h-7 flex-1 border-none bg-transparent px-1 text-sm font-medium"
@@ -387,7 +389,7 @@ export function WorkflowTimelineEditor({
         return
       }
       const endpoint = definitionId
-        ? '/workflows/{id}'
+        ? '/api/v1/workflows/{id}'
         : scope === 'org'
           ? '/orgs/{orgID}/workflow'
           : '/projects/{projectID}/workflow'
@@ -402,6 +404,10 @@ export function WorkflowTimelineEditor({
       )
       if (cancelled) return
       setLoading(false)
+      if (definitionId && !response.ok) {
+        setError('Could not load this workflow. Return to the library and choose an existing workflow.')
+        return
+      }
       const payload = data as { workflow?: WorkflowDefinition; suggested?: WorkflowDefinition; source?: string } | undefined
       const wf = payload?.workflow
       const suggested = payload?.suggested
@@ -496,7 +502,7 @@ export function WorkflowTimelineEditor({
       return
     }
     const endpoint = definitionId
-      ? '/workflows/{id}'
+      ? '/api/v1/workflows/{id}'
       : targetScope === 'org'
         ? '/orgs/{orgID}/workflow'
         : '/projects/{projectID}/workflow'
@@ -540,12 +546,15 @@ export function WorkflowTimelineEditor({
     if (!orgId) return
     setLibrarySavedAt(null)
     const body = { name: name || 'Delivery Pipeline', description, phases }
-    const { response } = await client.POST(
+    setError(null)
+    const { response, error: apiError } = await client.POST(
       '/orgs/{orgID}/workflow-library' as never,
       { params: { path: { orgID: orgId } }, body } as never,
     )
     if (response.ok) {
       setLibrarySavedAt(Date.now())
+    } else {
+      setError(formatApiError(apiError))
     }
   }, [client, orgId, name, description, phases])
 
@@ -620,10 +629,10 @@ export function WorkflowTimelineEditor({
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1.5">
           <CardTitle className="text-sm">
-            {scope === 'org' ? 'Organization Default Pipeline' : 'Delivery Pipeline'}
+            {template || definitionId ? 'Library Workflow' : scope === 'org' ? 'Organization Default Pipeline' : 'Delivery Pipeline'}
           </CardTitle>
           <CardDescription>
-            {scope === 'org'
+            {template || definitionId ? 'Edit this reusable workflow. Projects keep their own copies.' : scope === 'org'
               ? definition
                 ? 'Default pipeline inherited by all projects in this organization.'
                 : isSuggested
@@ -636,15 +645,15 @@ export function WorkflowTimelineEditor({
                   : 'No pipeline configured. Add steps to create one.'}
           </CardDescription>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {savedAt ? <span className="text-xs text-emerald-400">Saved</span> : null}
           {librarySavedAt ? <span className="text-xs text-emerald-400">Saved to library</span> : null}
           {orgId ? (
             <WorkflowLibraryPicker orgId={orgId} onSelect={loadFromTemplate} />
           ) : null}
-          <Button size="xs" onClick={() => void save()} disabled={saving}>
+          <Button size="xs" onClick={() => void save()} disabled={saving || (!!definitionId && !definition)}>
             <Save className="size-3.5" />
-            {saving ? 'Saving…' : scope === 'org' ? 'Save org default' : 'Save pipeline'}
+            {saving ? 'Saving…' : template ? 'Create workflow' : definitionId ? 'Save workflow' : scope === 'org' ? 'Save org default' : 'Save pipeline'}
           </Button>
           {scope === 'project' && orgId && phases.length > 0 ? (
             <Button
@@ -672,7 +681,7 @@ export function WorkflowTimelineEditor({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
 
         {isSuggested ? (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
@@ -682,7 +691,7 @@ export function WorkflowTimelineEditor({
 
         {loadedFromTemplate ? (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
-            Loaded from template. Customize the phases below, then click <strong>{scope === 'org' ? 'Save org default' : 'Save pipeline'}</strong> to apply.
+            Loaded from template. Customize the phases below, then click <strong>{template ? 'Create workflow' : definitionId ? 'Save workflow' : scope === 'org' ? 'Save org default' : 'Save pipeline'}</strong> to apply.
           </div>
         ) : null}
 
@@ -777,7 +786,7 @@ export function WorkflowTimelineEditor({
         </div>
 
         {/* Add step buttons */}
-        <div className="flex items-center gap-2 pt-2">
+        <div className="flex flex-wrap items-center gap-2 pt-2">
           <span className="text-xs text-muted-foreground">Add step:</span>
           {PRIMARY_TYPES.map((type) => {
             const meta = PHASE_TYPE_META[type]
