@@ -52,7 +52,7 @@ export function reviewStatus(r: CodeReviewRequest, prState?: string) {
       label: r.watch ? (prState === 'CLOSED' || prState === 'MERGED' ? 'PR closed or merged' : 'Review inactive') : 'Review stopped',
       detail: r.error?.startsWith('dropped: team request')
         ? 'This earlier team request was removed from automatic review. A direct request or manual review can restart it.'
-        : 'No review is queued for this entry in Flywheel. A new explicit request or manual review can restart it.',
+        : r.watch ? 'No review is queued for this entry in Flywheel.' : 'Automatic reviews are stopped, including new commits and GitHub review requests. Re-review manually to resume.',
     }
     default:
       if (r.dry_run) return { label: 'Dry run complete', detail: `${recommendation} Nothing was posted to GitHub.` }

@@ -79,7 +79,7 @@ func (s *Store) Update(ctx context.Context, q *Request) error {
 	_, err := s.pool.Exec(ctx, `UPDATE code_review_requests SET url=$2, title=$3, author=$4, base_ref=$5, head_ref=$6, head_sha=$7, origin=$8,
 		harness=$9, model=$10, reasoning_effort=$11, state=$12, attempt=$13, watch=$14, dry_run=$15, verdict=$16, summary=$17, review_url=$18,
 		my_review_state=$19, my_review_id=$20, last_reviewed_head_sha=$21, session_id=$22, session_external_id=$23, worktree_path=$24,
-		ticket_id=$25, error=$26, last_checked_at=$27, reviewed_at=$28, updated_at=now() WHERE id=$1 AND attempt=$13 AND (state <> 'closed' OR $12='closed')`,
+		ticket_id=$25, error=$26, last_checked_at=$27, reviewed_at=$28, updated_at=now() WHERE id=$1 AND attempt=$13 AND (state <> 'closed' OR (watch AND $12='closed'))`,
 		q.ID, q.URL, q.Title, q.Author, q.BaseRef, q.HeadRef, q.HeadSHA, string(q.Origin), q.Harness, q.Model, q.ReasoningEffort, string(q.State),
 		q.Attempt, q.Watch, q.DryRun, q.Verdict, q.Summary, q.ReviewURL, q.MyReviewState, q.MyReviewID, q.LastReviewedHeadSHA, q.SessionID,
 		q.SessionExternalID, q.WorktreePath, q.TicketID, q.Error, q.LastCheckedAt, q.ReviewedAt)
@@ -249,7 +249,8 @@ func (s *Store) Requeue(ctx context.Context, id string, origin Origin) error {
 func (s *Store) RequeueWithOptions(ctx context.Context, id string, origin Origin, opts EnqueueOptions) error {
 	_, err := s.pool.Exec(ctx, `UPDATE code_review_requests SET `+resetAttempt+`, origin=$2,
 		watch=COALESCE($3,watch), dry_run=COALESCE($4,dry_run), harness=COALESCE(NULLIF($5,''),harness)
-		WHERE id=$1 AND state NOT IN ('queued','fetching','reviewing','publishing')`, id, string(origin), opts.Watch, opts.DryRun, opts.Harness)
+		WHERE id=$1 AND state NOT IN ('queued','fetching','reviewing','publishing')
+		AND ($2 <> 're_review' OR (state='watching' AND watch))`, id, string(origin), opts.Watch, opts.DryRun, opts.Harness)
 	return err
 }
 
@@ -264,7 +265,7 @@ const resetAttempt = resetAttemptState + `, error='', retry_count=0, retry_at=NU
 // conservatively as pending rather than silently losing an explicit re-request.
 func (s *Store) ObserveReviewRequest(ctx context.Context, id string, event ReviewRequestEvent) error {
 	_, err := s.pool.Exec(ctx, `UPDATE code_review_requests SET last_requested_event_id=$2,
-		pending_requested_at=CASE WHEN state <> 'queued' AND $3 >= date_trunc('second',request_handled_at)
+		pending_requested_at=CASE WHEN state <> 'queued' AND NOT (state='closed' AND NOT watch) AND $3 >= date_trunc('second',request_handled_at)
 			THEN GREATEST(pending_requested_at,$3) ELSE pending_requested_at END
 		WHERE id=$1 AND last_requested_event_id < $2`, id, event.ID, event.CreatedAt)
 	return err
@@ -272,7 +273,7 @@ func (s *Store) ObserveReviewRequest(ctx context.Context, id string, event Revie
 
 func (s *Store) PromoteRequested(ctx context.Context) error {
 	_, err := s.pool.Exec(ctx, `UPDATE code_review_requests SET `+resetAttempt+`, origin='review_requested', watch=true
-		WHERE pending_requested_at IS NOT NULL AND state NOT IN ('queued','fetching','reviewing','publishing')`)
+		WHERE pending_requested_at IS NOT NULL AND NOT (state='closed' AND NOT watch) AND state NOT IN ('queued','fetching','reviewing','publishing')`)
 	return err
 }
 

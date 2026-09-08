@@ -146,7 +146,7 @@ export function CodeReviewDetailPage() {
             <Button variant="ghost" size="sm" onClick={() => act('rerun')} disabled={!!actionPending || ACTIVE_STATES.has(r.state)}>
               <RefreshCw className={`size-4 ${actionPending === 'rerun' ? 'animate-spin' : ''}`} /> {actionPending === 'rerun' ? 'Queueing…' : 'Re-review'}
             </Button>
-            {r.watch && r.state !== 'closed' && (
+            {(r.watch || ACTIVE_STATES.has(r.state)) && r.state !== 'closed' && (
               <Button variant="ghost" size="sm" onClick={() => act('close')} disabled={!!actionPending}>
                 <XCircle className="size-4" /> {actionPending === 'close' ? 'Stopping…' : ACTIVE_STATES.has(r.state) ? 'Stop review' : 'Stop watching'}
               </Button>

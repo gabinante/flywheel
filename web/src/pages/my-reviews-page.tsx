@@ -79,6 +79,27 @@ export function MyReviewsPage() {
     }
   }
 
+  const [stopping, setStopping] = useState<Set<string>>(new Set())
+  const stopWatching = async (pr: PullRequestCard) => {
+    const key = `${pr.repo}#${pr.number}`
+    if (!pr.review || pending.current.has(key)) return
+    pending.current.add(key)
+    setStopping(prev => new Set(prev).add(key))
+    setQueueErrors(prev => ({ ...prev, [key]: '' }))
+    try {
+      const result = await client.POST('/code-reviews/{reviewID}/close', { params: { path: { reviewID: pr.review.id } } })
+      if (!result.response.ok) throw new Error(formatApiError(result.error))
+      await queryClient.invalidateQueries({ queryKey: reviewsKey })
+      void queryClient.invalidateQueries({ queryKey: ['operator-overview'] })
+      void queryClient.invalidateQueries({ queryKey: ['code-review-status'] })
+    } catch (e) {
+      setQueueErrors(prev => ({ ...prev, [key]: e instanceof Error ? e.message : 'Could not stop review.' }))
+    } finally {
+      pending.current.delete(key)
+      setStopping(prev => { const next = new Set(prev); next.delete(key); return next })
+    }
+  }
+
   const actions = (pr: PullRequestCard) => {
     const key = `${pr.repo}#${pr.number}`
     const active = pr.review && ACTIVE_STATES.has(pr.review.state)
@@ -93,10 +114,16 @@ export function MyReviewsPage() {
             you {reviewStateLabel(pr.my_review_state)}
           </Badge>
         )}
-        <Button size="sm" variant="outline" disabled={queueing.has(key) || !!active} onClick={() => enqueue(pr)}>
+        <Button size="sm" variant="outline" disabled={queueing.has(key) || stopping.has(key) || !!active} onClick={() => enqueue(pr)}>
           {queueing.has(key) && <Loader2 className="size-3.5 animate-spin" />}
           {queueing.has(key) ? 'Queueing…' : active ? reviewStatus(pr.review!).label : pr.review ? 'Re-review' : 'Review with harness'}
         </Button>
+        {pr.review && pr.review.state !== 'closed' && (pr.review.watch || active) && (
+          <Button size="sm" variant="outline" disabled={queueing.has(key) || stopping.has(key)} onClick={() => stopWatching(pr)}
+            title="Stop the current review and future automatic reviews until you manually re-review">
+            {stopping.has(key) ? 'Stopping…' : 'Stop watching'}
+          </Button>
+        )}
         {active && <p role="status" className="text-xs text-sky-300">
           {pr.review?.state === 'queued' && service?.enabled === false ? 'Queued — review service is paused. Enable Service above to start.' : `Attempt ${pr.review?.attempt} · ${reviewStatus(pr.review!).label}`}
         </p>}

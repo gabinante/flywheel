@@ -180,7 +180,22 @@ func TestExplicitReRequestsQueueOnceAndSurviveActiveAttempt(t *testing.T) {
 	check(StateClosed, 4) // Stop consumes the outstanding request.
 	fixture(13)
 	poll()
-	check(StateQueued, 5) // An explicit later request overrides stop.
+	check(StateClosed, 4) // Even later GitHub requests respect the operator's stop.
+	stale := check(StateClosed, 4)
+	stale.Watch = true
+	if err := store.Update(ctx, stale); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Requeue(ctx, r.ID, OriginReReview); err != nil {
+		t.Fatal(err)
+	}
+	if stopped := check(StateClosed, 4); stopped.Watch {
+		t.Fatal("stale watcher restored watching")
+	}
+	if err := store.Requeue(ctx, r.ID, OriginPaste); err != nil {
+		t.Fatal(err)
+	}
+	check(StateQueued, 5) // Only a manual review resumes the queue.
 }
 
 func TestManualReviewQueueIsAtomicAndCachedCardsStayFresh(t *testing.T) {
