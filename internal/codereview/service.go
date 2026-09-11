@@ -2,6 +2,7 @@ package codereview
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/gabinante/flywheel/internal/prompts"
@@ -470,6 +471,22 @@ func (s *Service) process(ctx context.Context, req *Request) {
 		return
 	}
 
+	discussion, err := s.gh.ReviewDiscussion(ctx, req.Repo, req.Number)
+	if err != nil {
+		fail(fmt.Errorf("load PR discussion: %w", err))
+		return
+	}
+	discussionJSON, err := json.Marshal(discussion)
+	if err != nil {
+		fail(fmt.Errorf("encode PR discussion: %w", err))
+		return
+	}
+	discussionPath := filepath.Join(diffDir, "discussion.json")
+	if err := os.WriteFile(discussionPath, discussionJSON, 0o600); err != nil {
+		fail(err)
+		return
+	}
+
 	var prior []Finding
 	if req.Attempt > 1 {
 		prior, _ = s.store.ListFindings(ctx, req.ID, req.Attempt-1)
@@ -482,7 +499,7 @@ func (s *Service) process(ctx context.Context, req *Request) {
 		fail(err)
 		return
 	}
-	prompt := BuildReviewPrompt(pr, diffPath, diffIdx.Files(), prior)
+	prompt := BuildReviewPrompt(pr, diffPath, diffIdx.Files(), prior, discussionPath)
 	started := time.Now()
 	ctx = runstatus.WithInfo(ctx, runstatus.Run{Kind: "code_review", ReviewID: req.ID, Ref: req.Ref(), Title: req.Title})
 	res, runErr := s.runner.Run(ctx, harness.Spec{

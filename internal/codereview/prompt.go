@@ -65,7 +65,7 @@ Return the structured output only: a summary and the findings array. If nothing 
 findings array and say so in the summary; never invent a finding.`
 
 // BuildReviewPrompt renders the task for one PR.
-func BuildReviewPrompt(pr *PR, diffPath string, files []string, priorFindings []Finding) string {
+func BuildReviewPrompt(pr *PR, diffPath string, files []string, priorFindings []Finding, discussionPaths ...string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Review pull request %s#%d: %s\n", pr.Repo, pr.Number, pr.Title)
 	fmt.Fprintf(&b, "Author: %s. Base: %s. Head: %s (%s).\nURL: %s\n\n", pr.Author, pr.BaseRef, pr.HeadRef, short(pr.HeadSHA), pr.URL)
@@ -86,11 +86,14 @@ func BuildReviewPrompt(pr *PR, diffPath string, files []string, priorFindings []
 		b.WriteString("\n")
 	}
 	if len(priorFindings) > 0 {
-		b.WriteString("This is a re-review after new commits. Findings from the previous round (check whether each is addressed; do not repeat ones that are fixed):\n")
+		b.WriteString("This is a re-review after new commits. Findings from the previous round (reassess each against the current code and discussion; do not repeat addressed or convincingly rebutted findings):\n")
 		for _, f := range priorFindings {
-			fmt.Fprintf(&b, "  - [%s] %s — %s:%d\n", f.Severity, f.Title, f.Path, f.Line)
+			fmt.Fprintf(&b, "  - [%s] %s — %s:%d (GitHub comment %d)\n    %s\n", f.Severity, f.Title, f.Path, f.Line, f.GitHubCommentID, f.Body)
 		}
 		b.WriteString("\n")
+	}
+	for _, path := range discussionPaths {
+		fmt.Fprintf(&b, discussionInstructions+"\n", path)
 	}
 	b.WriteString("Produce the structured review now.")
 	return b.String()

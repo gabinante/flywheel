@@ -15,8 +15,14 @@ if args[:2] == ['api', 'user']:
 elif args[:2] == ['search', 'prs']:
     print('[]')  # Automatic external intake stays disabled.
 elif args[:2] == ['api', 'graphql']:
-    query = next((x for x in args if x.startswith('q=')), '')
-    print(json.dumps({'data': {'search': {'nodes': prs if 'review-requested:' in query else []}}}))
+    query = next((x for x in args if x.startswith(('q=', 'query='))), '')
+    if 'reviewThreads' in query:
+        print(json.dumps({'data': {'repository': {'pullRequest': {'reviewThreads': {'nodes': [], 'pageInfo': {'hasNextPage': False, 'endCursor': None}}}}}}))
+        sys.exit(0)
+    search = next((x for x in args if x.startswith('q=')), '')
+    print(json.dumps({'data': {'search': {'nodes': prs if 'review-requested:' in search else []}}}))
+elif args[:2] == ['api', '--paginate'] and any('/comments?per_page=' in a or '/reviews?per_page=' in a for a in args):
+    print(json.dumps([{'id': 101, 'node_id': 'comment-root', 'body': 'Concern about duplicate processing', 'user': {'login': 'reviewer'}}, {'id': 102, 'in_reply_to_id': 101, 'body': 'The existing idempotency check prevents duplicate processing.', 'user': {'login': 'author'}}]) if '/pulls/' in args[2] and '/comments?' in args[2] else '[]')
 elif pr and args[:3] == ['pr', 'view', str(pr['number'])]:
     fail_once = root / ('review-view-failure-' + str(pr['number']))
     if fail_once.exists():

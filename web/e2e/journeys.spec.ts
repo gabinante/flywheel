@@ -56,11 +56,17 @@ test('J04 create, preview, edit and close a work stream', async ({ page }, info)
   await expect(page.getByRole('heading', { name: 'Delivery plan', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Create work stream', exact: true }).click()
   await page.getByLabel('Branch', { exact: true }).fill('audit-branch')
-  await page.getByRole('button', { name: 'Save changes', exact: true }).click()
+  await Promise.all([
+    page.waitForResponse(response => response.request().method() === 'PATCH' && response.url().includes('/work-streams/')),
+    page.getByRole('button', { name: 'Save changes', exact: true }).click(),
+  ])
   await page.reload()
   await expect(page.getByLabel('Branch', { exact: true })).toHaveValue('audit-branch')
   await page.getByRole('switch').uncheck()
-  await page.getByRole('button', { name: 'Save changes', exact: true }).click()
+  await Promise.all([
+    page.waitForResponse(response => response.request().method() === 'PATCH' && response.url().includes('/work-streams/')),
+    page.getByRole('button', { name: 'Save changes', exact: true }).click(),
+  ])
   await page.reload()
   await expect(page.getByRole('switch')).not.toBeChecked()
   await evidence(page, info)
@@ -338,8 +344,7 @@ test('J20 edit an included worker through the same worker editor', async ({ page
       await expect(page.getByRole('button', { name: new RegExp(`^${name}`) })).toBeVisible()
     }
     await page.getByRole('button', { name: /^PR reviewer/ }).click()
-    await expect(page.getByRole('textbox', { name: 'Code reviewer prompt', exact: true })).toHaveValue(/You are reviewing a pull request/)
-    await expect(page.getByRole('textbox', { name: 'Code reviewer prompt', exact: true })).toHaveValue(/P0 or P1/)
+    await expect(page.getByRole('textbox', { name: 'Code reviewer prompt', exact: true })).toHaveValue(prompt.text)
     await expect(page.getByLabel('Additional instructions', { exact: true })).toBeEmpty()
     await page.getByRole('textbox', { name: 'Code reviewer prompt', exact: true }).fill(prompt.text + '\nKeep examples concrete.')
     await page.getByRole('button', { name: 'Save', exact: true }).click()
