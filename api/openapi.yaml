@@ -1500,6 +1500,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StructuredError'
+  /code-reviews/{reviewID}/prioritize:
+    post:
+      operationId: PrioritizeCodeReview
+      summary: Prioritize a queued review and allow one extra reviewer slot
+      parameters:
+        - name: reviewID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeReviewRequest'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredError'
   /code-reviews/{reviewID}/close:
     post:
       operationId: CloseCodeReview
@@ -3094,6 +3123,9 @@ components:
       type: object
       required: [id, repo, number, url, title, author, origin, harness, state, attempt, watch, dry_run, verdict, summary, findings, created_at, updated_at]
       properties:
+        priority_at:
+          type: string
+          format: date-time
         id:
           type: string
         repo:

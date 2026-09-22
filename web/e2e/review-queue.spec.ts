@@ -23,10 +23,12 @@ test('review buttons acknowledge the queue immediately and lead to a live sessio
   git('add', 'example.txt'); git('commit', '-m', 'Local review fixture')
   git('update-ref', 'refs/pull/7/head', 'HEAD')
   git('update-ref', 'refs/pull/8/head', 'HEAD')
+  git('update-ref', 'refs/pull/11/head', 'HEAD')
+  git('update-ref', 'refs/pull/12/head', 'HEAD')
   const url = 'https://github.com/flywheel-tests/review-fixture/pull/7'
   const secondURL = 'https://github.com/flywheel-tests/review-fixture/pull/8'
   const pr = { number: 7, title: 'Explicit review request fixture', repository: { nameWithOwner: 'flywheel-tests/review-fixture' }, author: { login: 'author' }, state: 'OPEN', url, headRefName: 'review-fixture', headRefOid: git('rev-parse', 'HEAD'), baseRefName: 'main', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), reviewRequests: { nodes: [{ requestedReviewer: { login: 'flywheel-test' } }] } }
-  writeFileSync(join(root, 'review-fixture.json'), JSON.stringify([pr, { ...pr, number: 8, url: secondURL, title: 'Second concurrent review fixture' }]))
+  writeFileSync(join(root, 'review-fixture.json'), JSON.stringify([pr, { ...pr, number: 8, url: secondURL, title: 'Second concurrent review fixture' }, ...[11, 12].map(number => ({ ...pr, number, url: `https://github.com/flywheel-tests/review-fixture/pull/${number}`, title: `Priority review ${number}`, reviewRequests: { nodes: [] } }))]))
   const settings = await (await request.get('/settings')).json()
   const saved = structuredClone(settings)
   settings.review.enabled = false
@@ -36,7 +38,7 @@ test('review buttons acknowledge the queue immediately and lead to a live sessio
   settings.review.harness = 'codex'
   settings.review.max_concurrent = 2
   settings.dispatch.enabled = false
-  settings.dispatch.max_workers = 3
+  settings.dispatch.max_workers = 2
   settings.harnesses.codex.bin = fileURLToPath(new URL('./fake-reviewer.py', import.meta.url))
   settings.harnesses.codex.model = 'browser-selected-model'
   expect((await request.put('/settings', { data: settings })).ok()).toBeTruthy()
@@ -84,7 +86,7 @@ test('review buttons acknowledge the queue immediately and lead to a live sessio
     await expect(reviewers).toContainText('Reviewers on')
     await expect(reviewers).toContainText('2/2 workers')
     await expect(reviewers).toContainText('0 queued')
-    await expect(tray.getByRole('link', { name: /Dispatch off/ })).toContainText('0/3 workers')
+    await expect(tray.getByRole('link', { name: /Dispatch off/ })).toContainText('0/2 workers')
     const firstCard = tray.locator('[data-work-id]').filter({ has: page.getByRole('link', { name: 'Open PR flywheel-tests/review-fixture#7 on GitHub' }) })
     const secondCard = tray.locator('[data-work-id]').filter({ has: page.getByRole('link', { name: 'Open PR flywheel-tests/review-fixture#8 on GitHub' }) })
     for (const [card, prURL] of [[firstCard, url], [secondCard, secondURL]] as const) {
@@ -113,6 +115,23 @@ test('review buttons acknowledge the queue immediately and lead to a live sessio
     await expect(reviewers).toContainText('active reviews will finish')
     settings.review.enabled = true
     expect((await request.put('/settings', { data: settings })).ok()).toBeTruthy()
+    const priorityIDs: string[] = []
+    for (const number of [11, 12]) {
+      const queued = await request.post('/code-reviews', { data: { text: `https://github.com/flywheel-tests/review-fixture/pull/${number}` } })
+      expect(queued.ok()).toBeTruthy()
+      priorityIDs.push((await queued.json()).requests[0].id)
+    }
+    await page.goto(`/#/code-reviews/${priorityIDs[0]}`)
+    await page.getByRole('button', { name: 'Jump the queue', exact: true }).click()
+    await expect.poll(async () => (await (await request.get(`/code-reviews/${priorityIDs[0]}`)).json()).state).toBe('reviewing')
+    await expect(reviewers).toContainText('3/2 workers')
+    await expect(reviewers).toContainText('extra slot active')
+    expect((await request.post(`/code-reviews/${priorityIDs[1]}/prioritize`)).ok()).toBeTruthy()
+    expect((await request.post(`/code-reviews/${priorityIDs[0]}/prioritize`)).ok()).toBeTruthy()
+    await page.goto(`/#/code-reviews/${priorityIDs[1]}`)
+    await expect(page.getByRole('button', { name: 'Priority queued', exact: true })).toBeDisabled()
+    expect((await (await request.get('/code-reviews/status')).json()).active).toBe(3)
+    expect((await (await request.get(`/code-reviews/${priorityIDs[1]}`)).json()).state).toBe('queued')
     writeFileSync(join(hold, 'review.release'), '')
     await expect.poll(async () => (await (await request.get(`/code-reviews/${id}`)).json()).state).toBe('watching')
     await expect.poll(async () => (await (await request.get(`/code-reviews/${secondID}`)).json()).state).toBe('watching')

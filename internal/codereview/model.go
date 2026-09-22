@@ -78,6 +78,7 @@ type Request struct {
 	TicketID            string     `json:"ticket_id"`
 	Error               string     `json:"error"`
 	RetryCount          int        `json:"retry_count"`
+	PriorityAt          *time.Time `json:"priority_at,omitempty"`
 	RetryAt             *time.Time `json:"retry_at,omitempty"`
 	LastCheckedAt       *time.Time `json:"last_checked_at,omitempty"`
 	ReviewedAt          *time.Time `json:"reviewed_at,omitempty"`

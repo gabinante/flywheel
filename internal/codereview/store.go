@@ -25,7 +25,7 @@ func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 
 const reqCols = `id, repo, number, url, title, author, base_ref, head_ref, head_sha, origin, recipe, harness, model, reasoning_effort,
 	state, attempt, watch, dry_run, verdict, summary, review_url, my_review_state, my_review_id, last_reviewed_head_sha,
-	session_id, session_external_id, worktree_path, ticket_id, error, last_checked_at, reviewed_at, created_at, updated_at, retry_count, retry_at`
+	session_id, session_external_id, worktree_path, ticket_id, error, last_checked_at, reviewed_at, created_at, updated_at, retry_count, retry_at, priority_at`
 
 type rowScanner interface{ Scan(dest ...any) error }
 
@@ -34,7 +34,7 @@ func scanRequest(r rowScanner) (*Request, error) {
 	if err := r.Scan(&q.ID, &q.Repo, &q.Number, &q.URL, &q.Title, &q.Author, &q.BaseRef, &q.HeadRef, &q.HeadSHA, &q.Origin, &q.Recipe,
 		&q.Harness, &q.Model, &q.ReasoningEffort, &q.State, &q.Attempt, &q.Watch, &q.DryRun, &q.Verdict, &q.Summary, &q.ReviewURL,
 		&q.MyReviewState, &q.MyReviewID, &q.LastReviewedHeadSHA, &q.SessionID, &q.SessionExternalID, &q.WorktreePath, &q.TicketID,
-		&q.Error, &q.LastCheckedAt, &q.ReviewedAt, &q.CreatedAt, &q.UpdatedAt, &q.RetryCount, &q.RetryAt); err != nil {
+		&q.Error, &q.LastCheckedAt, &q.ReviewedAt, &q.CreatedAt, &q.UpdatedAt, &q.RetryCount, &q.RetryAt, &q.PriorityAt); err != nil {
 		return nil, err
 	}
 	return &q, nil
@@ -218,14 +218,18 @@ func (s *Store) ClaimQueued(ctx context.Context, n int) ([]*Request, error) {
 }
 
 func (s *Store) claimQueued(ctx context.Context, n int, activeIDs []string) ([]*Request, error) {
+	return s.claimQueue(ctx, n, activeIDs, false)
+}
+
+func (s *Store) claimQueue(ctx context.Context, n int, activeIDs []string, priorityOnly bool) ([]*Request, error) {
 	if err := s.PromoteRequested(ctx); err != nil {
 		return nil, err
 	}
 	rows, err := s.pool.Query(ctx, `WITH picked AS (
 			SELECT id FROM code_review_requests WHERE state = 'queued' AND (retry_at IS NULL OR retry_at <= now())
-			AND NOT (id=ANY($2::text[])) ORDER BY COALESCE(retry_at,created_at),id LIMIT $1 FOR UPDATE SKIP LOCKED)
+			AND NOT (id=ANY($2::text[])) AND (NOT $3::boolean OR priority_at IS NOT NULL) ORDER BY priority_at ASC NULLS LAST, COALESCE(retry_at,created_at),id LIMIT $1 FOR UPDATE SKIP LOCKED)
 		UPDATE code_review_requests r SET state = 'fetching', retry_at=NULL, updated_at = now(), request_handled_at = now(), pending_requested_at = NULL FROM picked WHERE r.id = picked.id
-		RETURNING `+prefixCols("r.", reqCols), n, nonNilIDs(activeIDs))
+		RETURNING `+prefixCols("r.", reqCols), n, nonNilIDs(activeIDs), priorityOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +260,7 @@ func (s *Store) RequeueWithOptions(ctx context.Context, id string, origin Origin
 
 const resetAttemptState = `state='queued', attempt=attempt+1, verdict='', summary='', review_url='',
 	session_id='', session_external_id='', worktree_path='', updated_at=now(), request_handled_at=now(), pending_requested_at=NULL`
-const resetAttempt = resetAttemptState + `, error='', retry_count=0, retry_at=NULL`
+const resetAttempt = resetAttemptState + `, error='', retry_count=0, retry_at=NULL, priority_at=NULL`
 
 // ObserveReviewRequest records each GitHub event once. Requests made during a run
 // remain pending until it finishes; they cannot create a concurrent second worker.
@@ -645,5 +649,12 @@ func (s *Store) ClaimFeedback(ctx context.Context, repo string, number int, roun
 }
 func (s *Store) FinishFeedback(ctx context.Context, runID, state, sessionID string) error {
 	_, err := s.pool.Exec(ctx, `UPDATE pr_feedback_rounds SET state=$2,session_id=COALESCE(NULLIF($3,''),session_id),run_id=NULL WHERE run_id=$1`, runID, state, sessionID)
+	return err
+}
+
+// Prioritize is idempotent and only changes queued attempts. It never resumes a
+// stopped review or duplicates a running worker. Explicit action cancels backoff.
+func (s *Store) Prioritize(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE code_review_requests SET priority_at=COALESCE(priority_at,now()), retry_at=NULL, updated_at=now() WHERE id=$1 AND state='queued'`, id)
 	return err
 }

@@ -1,3 +1,4 @@
+import { PrioritizeReviewButton } from '@/components/prioritize-review-button'
 import { QueuePRReviews } from '@/components/queue-pr-reviews'
 import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -118,6 +119,7 @@ export function MyReviewsPage() {
           {queueing.has(key) && <Loader2 className="size-3.5 animate-spin" />}
           {queueing.has(key) ? 'Queueing…' : active ? reviewStatus(pr.review!).label : pr.review ? 'Re-review' : 'Review with harness'}
         </Button>
+        {pr.review && <PrioritizeReviewButton key={`${pr.review.id}:${pr.review.attempt}`} review={pr.review} />}
         {pr.review && pr.review.state !== 'closed' && (pr.review.watch || active) && (
           <Button size="sm" variant="outline" disabled={queueing.has(key) || stopping.has(key)} onClick={() => stopWatching(pr)}
             title="Stop the current review and future automatic reviews until you manually re-review">

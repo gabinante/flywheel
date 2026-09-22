@@ -742,6 +742,7 @@ type CodeReviewRequest struct {
 	MyReviewState *string             `json:"my_review_state,omitempty"`
 	Number        int                 `json:"number"`
 	Origin        string              `json:"origin"`
+	PriorityAt    *time.Time          `json:"priority_at,omitempty"`
 	Recipe        *string             `json:"recipe,omitempty"`
 	Repo          string              `json:"repo"`
 
@@ -2129,6 +2130,11 @@ type ClientInterface interface {
 	// Corresponds with POST /code-reviews/{reviewID}/messages (the `AskCodeReview` operationId).
 	AskCodeReview(ctx context.Context, reviewID string, body AskCodeReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PrioritizeCodeReview Prioritize a queued review and allow one extra reviewer slot
+	//
+	// Corresponds with POST /code-reviews/{reviewID}/prioritize (the `PrioritizeCodeReview` operationId).
+	PrioritizeCodeReview(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// RerunCodeReview Queue another review attempt
 	//
 	// Corresponds with POST /code-reviews/{reviewID}/rerun (the `RerunCodeReview` operationId).
@@ -2790,6 +2796,21 @@ func (c *Client) AskCodeReviewWithBody(ctx context.Context, reviewID string, con
 // Corresponds with POST /code-reviews/{reviewID}/messages (the `AskCodeReview` operationId).
 func (c *Client) AskCodeReview(ctx context.Context, reviewID string, body AskCodeReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAskCodeReviewRequest(c.Server, reviewID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PrioritizeCodeReview Prioritize a queued review and allow one extra reviewer slot
+//
+// Corresponds with POST /code-reviews/{reviewID}/prioritize (the `PrioritizeCodeReview` operationId).
+func (c *Client) PrioritizeCodeReview(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPrioritizeCodeReviewRequest(c.Server, reviewID)
 	if err != nil {
 		return nil, err
 	}
@@ -4559,6 +4580,40 @@ func NewAskCodeReviewRequestWithBody(server string, reviewID string, contentType
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPrioritizeCodeReviewRequest constructs an http.Request for the PrioritizeCodeReview method
+func NewPrioritizeCodeReviewRequest(server string, reviewID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "reviewID", reviewID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/code-reviews/%s/prioritize", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -7368,6 +7423,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /code-reviews/{reviewID}/messages (the `AskCodeReview` operationId).
 	AskCodeReviewWithResponse(ctx context.Context, reviewID string, body AskCodeReviewJSONRequestBody, reqEditors ...RequestEditorFn) (*AskCodeReviewResponse, error)
 
+	// PrioritizeCodeReviewWithResponse Prioritize a queued review and allow one extra reviewer slot
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /code-reviews/{reviewID}/prioritize (the `PrioritizeCodeReview` operationId).
+	PrioritizeCodeReviewWithResponse(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*PrioritizeCodeReviewResponse, error)
+
 	// RerunCodeReviewWithResponse Queue another review attempt
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -8468,6 +8530,61 @@ func (r AskCodeReviewResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r AskCodeReviewResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PrioritizeCodeReviewResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CodeReviewRequest
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *StructuredError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *StructuredError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PrioritizeCodeReviewResponse) GetJSON200() *CodeReviewRequest {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PrioritizeCodeReviewResponse) GetJSON401() *StructuredError {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PrioritizeCodeReviewResponse) GetJSON404() *StructuredError {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r PrioritizeCodeReviewResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PrioritizeCodeReviewResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PrioritizeCodeReviewResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PrioritizeCodeReviewResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -11647,6 +11764,19 @@ func (c *ClientWithResponses) AskCodeReviewWithResponse(ctx context.Context, rev
 	return ParseAskCodeReviewResponse(rsp)
 }
 
+// PrioritizeCodeReviewWithResponse Prioritize a queued review and allow one extra reviewer slot
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /code-reviews/{reviewID}/prioritize (the `PrioritizeCodeReview` operationId).
+func (c *ClientWithResponses) PrioritizeCodeReviewWithResponse(ctx context.Context, reviewID string, reqEditors ...RequestEditorFn) (*PrioritizeCodeReviewResponse, error) {
+	rsp, err := c.PrioritizeCodeReview(ctx, reviewID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePrioritizeCodeReviewResponse(rsp)
+}
+
 // RerunCodeReviewWithResponse Queue another review attempt
 //
 // Returns a wrapper object for the known response body format(s).
@@ -13055,6 +13185,46 @@ func ParseAskCodeReviewResponse(rsp *http.Response) (*AskCodeReviewResponse, err
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePrioritizeCodeReviewResponse parses an HTTP response from a PrioritizeCodeReviewWithResponse call
+func ParsePrioritizeCodeReviewResponse(rsp *http.Response) (*PrioritizeCodeReviewResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PrioritizeCodeReviewResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CodeReviewRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest StructuredError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest StructuredError

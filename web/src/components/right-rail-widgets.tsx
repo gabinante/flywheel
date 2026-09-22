@@ -98,7 +98,7 @@ export function RightRailWidgets() {
             {reviews.data ? <Link to="/code-reviews" className="block space-y-1 rounded-lg bg-white/[0.035] px-2.5 py-2 text-[11px] text-muted-foreground hover:bg-white/[0.06]">
               <span className="flex items-center justify-between gap-2">
                 <span className={reviews.data.enabled ? 'text-primary' : 'text-amber-300'}>Reviewers {reviews.data.enabled ? 'on' : 'paused'}</span>
-                <span className="tabular-nums">{reviews.data.active}/{reviews.data.max_concurrent} workers</span>
+                <span className="tabular-nums">{reviews.data.active}/{reviews.data.max_concurrent} workers{reviews.data.active > reviews.data.max_concurrent ? ' · extra slot active' : ''}</span>
               </span>
               <span className="block">{reviews.data.queued} queued{!reviews.data.enabled && (reviews.data.active > 0 ? ' · active reviews will finish' : reviews.data.queued > 0 ? ' · waiting for service' : '')}</span>
             </Link> : reviews.isPending && <p className="text-xs text-muted-foreground">Loading reviewer status…</p>}

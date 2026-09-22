@@ -632,6 +632,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/code-reviews/{reviewID}/prioritize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prioritize a queued review and allow one extra reviewer slot */
+        post: operations["PrioritizeCodeReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/code-reviews/{reviewID}/close": {
         parameters: {
             query?: never;
@@ -1502,6 +1519,8 @@ export interface components {
             status: string;
         };
         CodeReviewRequest: {
+            /** Format: date-time */
+            priority_at?: string;
             id: string;
             repo: string;
             number: number;
@@ -3779,6 +3798,46 @@ export interface operations {
         };
     };
     RerunCodeReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reviewID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodeReviewRequest"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StructuredError"];
+                };
+            };
+        };
+    };
+    PrioritizeCodeReview: {
         parameters: {
             query?: never;
             header?: never;

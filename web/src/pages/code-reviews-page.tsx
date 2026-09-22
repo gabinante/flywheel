@@ -1,3 +1,4 @@
+import { PrioritizeReviewButton } from '@/components/prioritize-review-button'
 import { useActivityVersion } from '@/contexts/use-activity'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -43,8 +44,7 @@ function ReviewRow({ r, base }: { r: CodeReviewRequest; base: string }) {
   const counts = findingCounts(r.findings)
   const active = ACTIVE_STATES.has(r.state)
   return (
-    <Link
-      to={`${base}/code-reviews/${r.id}`}
+    <div
       className="grid grid-cols-[auto_1fr_auto] items-start gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 transition-colors hover:border-white/20 hover:bg-white/[0.06]"
     >
       <GitPullRequest className={cn('mt-0.5 size-4', active ? 'animate-pulse text-sky-300' : 'text-muted-foreground')} />
@@ -53,7 +53,7 @@ function ReviewRow({ r, base }: { r: CodeReviewRequest; base: string }) {
           <span className="font-mono text-xs text-muted-foreground">
             {r.repo}#{r.number}
           </span>
-          <span className="truncate text-sm font-medium">{r.title || '(fetching title…)'}</span>
+          <Link to={`${base}/code-reviews/${r.id}`} className="truncate text-sm font-medium hover:underline">{r.title || `${r.repo}#${r.number}`}</Link>
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
           <ReviewStatus review={r} />
@@ -72,8 +72,8 @@ function ReviewRow({ r, base }: { r: CodeReviewRequest; base: string }) {
           {r.error && <span className="truncate text-red-300" title={r.error}>· {r.error.slice(0, 80)}</span>}
         </div>
       </div>
-      <div className="text-right text-xs text-muted-foreground">{relativeTime(r.updated_at)}</div>
-    </Link>
+      <div className="text-right text-xs text-muted-foreground">{relativeTime(r.updated_at)}<div className="mt-2"><PrioritizeReviewButton key={`${r.id}:${r.attempt}`} review={r} /></div></div>
+    </div>
   )
 }
 

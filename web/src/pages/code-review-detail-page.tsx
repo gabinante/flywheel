@@ -1,3 +1,4 @@
+import { PrioritizeReviewButton } from '@/components/prioritize-review-button'
 import { useActivityVersion } from '@/contexts/use-activity'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
@@ -143,6 +144,7 @@ export function CodeReviewDetailPage() {
         </Button>
         {r && (
           <>
+            <PrioritizeReviewButton key={`${r.id}:${r.attempt}`} review={r} onChanged={setR} />
             <Button variant="ghost" size="sm" onClick={() => act('rerun')} disabled={!!actionPending || ACTIVE_STATES.has(r.state)}>
               <RefreshCw className={`size-4 ${actionPending === 'rerun' ? 'animate-spin' : ''}`} /> {actionPending === 'rerun' ? 'Queueing…' : 'Re-review'}
             </Button>

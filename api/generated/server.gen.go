@@ -743,6 +743,7 @@ type CodeReviewRequest struct {
 	MyReviewState *string             `json:"my_review_state,omitempty"`
 	Number        int                 `json:"number"`
 	Origin        string              `json:"origin"`
+	PriorityAt    *time.Time          `json:"priority_at,omitempty"`
 	Recipe        *string             `json:"recipe,omitempty"`
 	Repo          string              `json:"repo"`
 
@@ -2000,6 +2001,9 @@ type ServerInterface interface {
 	// AskCodeReview Ask the reviewing agent a question (resumes its session); may take a minute or two
 	// (POST /code-reviews/{reviewID}/messages)
 	AskCodeReview(w http.ResponseWriter, r *http.Request, reviewID string)
+	// PrioritizeCodeReview Prioritize a queued review and allow one extra reviewer slot
+	// (POST /code-reviews/{reviewID}/prioritize)
+	PrioritizeCodeReview(w http.ResponseWriter, r *http.Request, reviewID string)
 	// RerunCodeReview Queue another review attempt
 	// (POST /code-reviews/{reviewID}/rerun)
 	RerunCodeReview(w http.ResponseWriter, r *http.Request, reviewID string)
@@ -2530,6 +2534,32 @@ func (siw *ServerInterfaceWrapper) AskCodeReview(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AskCodeReview(w, r, reviewID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PrioritizeCodeReview operation middleware
+func (siw *ServerInterfaceWrapper) PrioritizeCodeReview(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reviewID" -------------
+	var reviewID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reviewID", r.PathValue("reviewID"), &reviewID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PrioritizeCodeReview(w, r, reviewID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4408,6 +4438,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/code-reviews/feedback/{roundID}/address", wrapper.AddressFeedbackRound)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/code-reviews/{reviewID}", wrapper.GetCodeReview)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/code-reviews/{reviewID}/rerun", wrapper.RerunCodeReview)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/code-reviews/{reviewID}/prioritize", wrapper.PrioritizeCodeReview)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/code-reviews/{reviewID}/close", wrapper.CloseCodeReview)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/reports", wrapper.ListReports)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/reports/weekly/preview", wrapper.PreviewWeeklyRoundup)
@@ -4919,6 +4950,56 @@ func (response AskCodeReview400JSONResponse) VisitAskCodeReviewResponse(w http.R
 type AskCodeReview404JSONResponse StructuredError
 
 func (response AskCodeReview404JSONResponse) VisitAskCodeReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrioritizeCodeReviewRequestObject struct {
+	ReviewID string `json:"reviewID"`
+}
+
+type PrioritizeCodeReviewResponseObject interface {
+	VisitPrioritizeCodeReviewResponse(w http.ResponseWriter) error
+}
+
+type PrioritizeCodeReview200JSONResponse CodeReviewRequest
+
+func (response PrioritizeCodeReview200JSONResponse) VisitPrioritizeCodeReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrioritizeCodeReview401JSONResponse StructuredError
+
+func (response PrioritizeCodeReview401JSONResponse) VisitPrioritizeCodeReviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrioritizeCodeReview404JSONResponse StructuredError
+
+func (response PrioritizeCodeReview404JSONResponse) VisitPrioritizeCodeReviewResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -7505,6 +7586,9 @@ type StrictServerInterface interface {
 	// AskCodeReview Ask the reviewing agent a question (resumes its session); may take a minute or two
 	// (POST /code-reviews/{reviewID}/messages)
 	AskCodeReview(ctx context.Context, request AskCodeReviewRequestObject) (AskCodeReviewResponseObject, error)
+	// PrioritizeCodeReview Prioritize a queued review and allow one extra reviewer slot
+	// (POST /code-reviews/{reviewID}/prioritize)
+	PrioritizeCodeReview(ctx context.Context, request PrioritizeCodeReviewRequestObject) (PrioritizeCodeReviewResponseObject, error)
 	// RerunCodeReview Queue another review attempt
 	// (POST /code-reviews/{reviewID}/rerun)
 	RerunCodeReview(ctx context.Context, request RerunCodeReviewRequestObject) (RerunCodeReviewResponseObject, error)
@@ -8026,6 +8110,32 @@ func (sh *strictHandler) AskCodeReview(w http.ResponseWriter, r *http.Request, r
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(AskCodeReviewResponseObject); ok {
 		if err := validResponse.VisitAskCodeReviewResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PrioritizeCodeReview operation middleware
+func (sh *strictHandler) PrioritizeCodeReview(w http.ResponseWriter, r *http.Request, reviewID string) {
+	var request PrioritizeCodeReviewRequestObject
+
+	request.ReviewID = reviewID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PrioritizeCodeReview(ctx, request.(PrioritizeCodeReviewRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PrioritizeCodeReview")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PrioritizeCodeReviewResponseObject); ok {
+		if err := validResponse.VisitPrioritizeCodeReviewResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

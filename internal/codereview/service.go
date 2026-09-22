@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gabinante/flywheel/internal/prompts"
+	"github.com/gabinante/flywheel/internal/runlimit"
 	"github.com/gabinante/flywheel/internal/runstatus"
 	"log/slog"
 	"os"
@@ -50,6 +51,7 @@ type Config struct {
 
 // Service runs the review queue and the GitHub watchers.
 type Service struct {
+	queueMu       sync.Mutex // serialize capacity checks and claims, including manual drains
 	onActivity    func()
 	activeReviews sync.Map
 	queueWake     chan struct{}
@@ -223,15 +225,21 @@ func (s *Service) wakeQueue() {
 }
 
 func (s *Service) drainQueue(ctx context.Context) {
+	s.queueMu.Lock()
+	defer s.queueMu.Unlock()
 	cfg := s.conf()
 	if !cfg.Enabled {
 		return
 	}
 	free := cfg.MaxConcurrent - int(atomic.LoadInt32(&s.active))
-	if free <= 0 {
+	priorityOnly := free <= 0
+	if free < 0 {
 		return
+	} // At most one extra reviewer beyond the normal limit.
+	if priorityOnly {
+		free = 1
 	}
-	reqs, err := s.store.claimQueued(ctx, free, s.ActiveReviewIDs())
+	reqs, err := s.store.claimQueue(ctx, free, s.ActiveReviewIDs(), priorityOnly)
 	if err != nil {
 		s.setError(err)
 		return
@@ -502,6 +510,9 @@ func (s *Service) process(ctx context.Context, req *Request) {
 	prompt := BuildReviewPrompt(pr, diffPath, diffIdx.Files(), prior, discussionPath)
 	started := time.Now()
 	ctx = runstatus.WithInfo(ctx, runstatus.Run{Kind: "code_review", ReviewID: req.ID, Ref: req.Ref(), Title: req.Title})
+	if req.PriorityAt != nil {
+		ctx = runlimit.WithPriority(ctx)
+	}
 	res, runErr := s.runner.Run(ctx, harness.Spec{
 		Harness: kind, Model: req.Model, Effort: req.ReasoningEffort, WorkDir: wt,
 		SystemPrompt: withPrefix(cfg.PromptPrefix, prompts.Text("code_review")), Prompt: prompt, OutputSchema: FindingsSchema,
@@ -1068,4 +1079,13 @@ func (s *Service) notifyActivity() {
 	if s.onActivity != nil {
 		s.onActivity()
 	}
+}
+
+func (s *Service) Prioritize(ctx context.Context, id string) (*Request, error) {
+	if err := s.store.Prioritize(ctx, id); err != nil {
+		return nil, err
+	}
+	defer s.wakeQueue()
+	defer s.notifyActivity()
+	return s.store.Get(ctx, id)
 }

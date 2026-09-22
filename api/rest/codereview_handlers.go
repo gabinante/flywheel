@@ -23,7 +23,7 @@ func codeReviewToGen(r *codereview.Request) generated.CodeReviewRequest {
 		Id: r.ID, Repo: r.Repo, Number: r.Number, Url: r.URL, Title: r.Title, Author: r.Author, Origin: string(r.Origin), Harness: r.Harness,
 		State: string(r.State), Attempt: r.Attempt, Watch: r.Watch, DryRun: r.DryRun, Verdict: r.Verdict, Summary: r.Summary,
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Findings: make([]generated.CodeReviewFinding, 0, len(r.Findings)),
-		ReviewedAt: r.ReviewedAt, LastCheckedAt: r.LastCheckedAt, RetryAt: r.RetryAt, RetryCount: &r.RetryCount,
+		ReviewedAt: r.ReviewedAt, LastCheckedAt: r.LastCheckedAt, PriorityAt: r.PriorityAt, RetryAt: r.RetryAt, RetryCount: &r.RetryCount,
 	}
 	setOpt := func(dst **string, v string) {
 		if v != "" {
@@ -251,6 +251,23 @@ func (s *StrictServer) RerunCodeReview(ctx context.Context, req generated.RerunC
 		return generated.RerunCodeReview404JSONResponse(seToGen(apierrors.New(apierrors.CodeNotFound, "review request not found", false))), nil
 	}
 	return generated.RerunCodeReview200JSONResponse(codeReviewToGen(r)), nil
+}
+
+func (s *StrictServer) PrioritizeCodeReview(ctx context.Context, req generated.PrioritizeCodeReviewRequestObject) (generated.PrioritizeCodeReviewResponseObject, error) {
+	if err := requireAgent(ctx, s.AgentStore); err != nil {
+		return generated.PrioritizeCodeReview401JSONResponse(seToGen(err)), nil
+	}
+	if err := s.requireCodeReview(); err != nil {
+		return nil, err
+	}
+	r, err := s.CodeReviewSvc.Prioritize(ctx, req.ReviewID)
+	if err != nil {
+		return nil, apierrors.MapError(err)
+	}
+	if r == nil {
+		return generated.PrioritizeCodeReview404JSONResponse(seToGen(apierrors.New(apierrors.CodeNotFound, "review request not found", false))), nil
+	}
+	return generated.PrioritizeCodeReview200JSONResponse(codeReviewToGen(r)), nil
 }
 
 func (s *StrictServer) CloseCodeReview(ctx context.Context, req generated.CloseCodeReviewRequestObject) (generated.CloseCodeReviewResponseObject, error) {

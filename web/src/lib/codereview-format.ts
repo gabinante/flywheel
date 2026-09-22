@@ -40,7 +40,7 @@ export function reviewStatus(r: CodeReviewRequest, prState?: string) {
     case 'queued': return r.retry_at ? {
       label: 'Retry scheduled',
       detail: `${r.error || 'The previous attempt did not finish.'} Retrying automatically after ${new Date(r.retry_at).toLocaleTimeString()}.${r.retry_count ? ` Retry ${r.retry_count} of 3.` : ''}`,
-    } : { label: 'Queued', detail: 'Waiting for an available review worker.' }
+    } : r.priority_at ? { label: 'Priority queued', detail: 'Ahead of normal reviews. Can use one extra reviewer slot when the service is enabled.' } : { label: 'Queued', detail: 'Waiting for an available review worker.' }
     case 'fetching': return { label: 'Preparing review', detail: 'Fetching the PR and preparing its checkout. The agent has not started yet.' }
     case 'reviewing': return { label: 'Agent reviewing', detail: 'Review in progress. Open the session to follow the agent.' }
     case 'publishing': return { label: 'Posting review', detail: `${recommendation} Submitting the review to GitHub.` }
